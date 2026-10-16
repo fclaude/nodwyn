@@ -964,6 +964,74 @@
        (not (let any ((cs ran)) (and (pair? cs) (or (coverage-run? (car cs)) (any (cdr cs))))))
        (branchy? (added-source-lines touched))))
 
+;; The directory of a repository path: "" for a file at the root.
+(define (path-dir path)
+  (let ((parts (string-split path "/")))
+    (if (or (null? parts) (null? (cdr parts)))
+        ""
+        (string-join (reverse (cdr (reverse parts))) "/"))))
+
+;; The directories of the source files the turn changed (touched).
+(define (changed-dirs touched)
+  (let walk ((ps touched) (out '()))
+    (cond ((null? ps) (reverse out))
+          ((and (coverage-source? (car ps)) (not (member (path-dir (car ps)) out)))
+           (walk (cdr ps) (cons (path-dir (car ps)) out)))
+          (else (walk (cdr ps) out)))))
+
+;; How much of the changed directories a passing command runs: all of them
+;; for go test ./... and the repository's whole-check words, else the ones
+;; its line names ("go test ./internal/prim/"), and one more if it is not
+;; narrowed to some tests (-run, -k).
+(define (command-reach call dirs)
+  (let* ((line (command-line call))
+         (wide (or (string-contains? line "./...")
+                   (let any ((ws whole-check-words)) (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws))))))))
+    (+ (* 2 (if wide
+                (+ (length dirs) 1)
+                (length (filter (lambda (d) (and (not (string-empty? d)) (string-contains? line d))) dirs))))
+       (if (narrowed-run? call) 0 1))))
+
+;; The passing call that runs the most of what the turn changed, the newest
+;; of those that tie: the check check-without takes apart and the coverage
+;; point names. The last passing call was the exfiltration suite alone on
+;; commit-bench 855e90e7, which ran none of the changed packages' tests, so
+;; check-without named four hunks no test covered and the run spent 53 calls
+;; on revert experiments (ADR 32, amended 2026-10-16, the original tests).
+;; calls: the passing calls since the last edit, newest first.
+(define (broadest-passing calls touched)
+  (and (pair? calls)
+       (let ((dirs (changed-dirs touched)))
+         (let best ((cs (cdr calls)) (top (car calls)) (score (command-reach (car calls) dirs)))
+           (if (null? cs)
+               top
+               (let ((s (command-reach (car cs) dirs)))
+                 (if (> s score) (best (cdr cs) (car cs) s) (best (cdr cs) top score))))))))
+
+;; The existing tests of the test files the turn edited that fail when those
+;; files are as the last commit had them (original-tests), as a list of
+;; alists of path and tests. The turn's own tests are not among them (the
+;; last commit does not declare them), and a language other than Go has no
+;; run: the log says so, and the earlier lines of the finish review stay.
+(define (original-test-failures touched)
+  (let* ((paths (let keep ((ps touched) (out '()))
+                  (cond ((null? ps) (reverse out))
+                        ((and (test-file-path? (car ps)) (not (member (car ps) out))) (keep (cdr ps) (cons (car ps) out)))
+                        (else (keep (cdr ps) out)))))
+         (go (filter (lambda (p) (string-suffix? "_test.go" p)) paths)))
+    (cond ((null? paths) '())
+          ((null? go)
+           (log-note "original-tests: not run, it runs Go tests only")
+           '())
+          ((not (host-primitive? "original-tests")) '())
+          (else
+           (let ((result (guard (e (else (log-note (string-append "original-tests failed: " (format "~a" (assoc-ref e 'message ""))))
+                                           '()))
+                           (original-tests go))))
+             (when (pair? (assoc-ref result "unrun" '()))
+               (log-note (string-append "original-tests: did not run in " (string-join (assoc-ref result "unrun" '()) ", "))))
+             (assoc-ref result "failures" '()))))))
+
 ;; The finish review: what an unattended turn's change lacks, gathered when
 ;; the turn first ends with a change and no reminder of its evidence is due,
 ;; and said in one message (finish-review-message), once a turn: the new
@@ -990,6 +1058,9 @@
 ;; runs as shown keeps them and the files it edited by hand): a run's result
 ;; or figures, an amendment date, a paragraph pasted twice, entries added by
 ;; hand to a generated file.
+;; And it names the existing tests the turn edited that fail when their files
+;; are as the last commit had them (original-test-failures, in Go): what a
+;; grader runs, and what a rewritten want string hides (5040f9fe).
 ;; With them, when the latest run since the last edit passed and nothing in
 ;; the turn measured coverage, it asks for the lines of the change that no
 ;; test executed (uncovered-lines-due?): the loop knows which commands passed
@@ -1012,6 +1083,7 @@
                       '()))
          (defs (assoc-ref removed "definitions" '()))
          (lines (assoc-ref removed "expectations" '()))
+         (original (original-test-failures touched))
          (dropped (if (and quiet (host-primitive? "change-dropped-conditions"))
                       (guard (e (else (log-note (string-append "change-dropped-conditions failed: " (format "~a" (assoc-ref e 'message ""))))
                                       '()))
@@ -1028,6 +1100,7 @@
             (if (pair? stale) (list (finish-stale-citations-message stale)) '())
             (if (pair? defs) (list (finish-removed-definitions-message defs)) '())
             (if (pair? lines) (list (finish-removed-expectations-message lines)) '())
+            (if (pair? original) (list (finish-original-tests-message original)) '())
             (if (pair? dropped) (list (finish-dropped-conditions-message dropped)) '())
             (if (pair? claims) (list (finish-unshown-claims-message claims)) '())
             (if (and quiet (uncovered-lines-due? touched ran))
@@ -1192,6 +1265,45 @@
       edits
       (map (lambda (e) (cons (car e) (append (cdr e) (list line)))) edits)))
 
+;; Whether a failed test run shows that tests ran: a test it names failed,
+;; a test or package passed, or a package says FAIL with a time of its own
+;; (not [build failed]). Such a run is not one that "did not run": its
+;; failures are the tests', and finish-unrunnable-message is for a command
+;; that never got to them (a missing program, a package that does not build).
+(define (tests-ran? result)
+  (let ((out (run-output result)))
+    (or (pair? (filter (lambda (n) (not (package-name? n))) (failure-names out)))
+        (pair? (passing-lines out))
+        (let any ((ls (string-split out "\n")))
+          (and (pair? ls)
+               (or (and (string-prefix? "FAIL\t" (car ls))
+                        (not (string-contains? (car ls) "[build failed]"))
+                        (not (string-contains? (car ls) "[setup failed]")))
+                   (any (cdr ls))))))))
+
+;; How many lines a file's changes against the last commit hold.
+(define (diff-size path)
+  (guard (e (else 0))
+    (length (filter (lambda (l) (and (or (string-prefix? "+" l) (string-prefix? "-" l))
+                                     (not (string-prefix? "+++" l)) (not (string-prefix? "---" l))))
+                    (string-split (format "~a" (git-diff path)) "\n")))))
+
+;; The size of the changes (diff-size) to each file a round's edit calls
+;; write, before they are made: (path . size). Documents and scratch files are
+;; left out. Nothing is measured until the turn has run a command: an edit
+;; takes part of the model's own change out to see a test fail only after a
+;; test has run, and each measure is a git call.
+(define (edit-sizes calls)
+  (map (lambda (c) (cons (repo-path c) (diff-size (repo-path c))))
+       (filter (lambda (c) (and (edit-call? c) (not (scratch-name c)) (not (doc-path? (repo-path c))))) calls)))
+
+;; Whether an edit call, made when the file's changes were sizes (edit-sizes),
+;; left the file closer to the last commit: the model took a part of its own
+;; change out, as a revert experiment does.
+(define (shrinking-edit? call sizes)
+  (let ((before (assoc (repo-path call) sizes)))
+    (and before (< (diff-size (repo-path call)) (cdr before)))))
+
 (define (evidence-loop request)
   ;; passing: the latest check or test call that exited 0 since the last
   ;; edit, for check-without. ran: the command lines run since the last edit,
@@ -1216,10 +1328,16 @@
   ;; commit), last-fails the failing tests of the latest run since the last
   ;; edit, hinted the failures the model was last told were the unchanged
   ;; code's.
-  (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
+  ;; passing-all: the calls that passed since the last edit (passing is the
+  ;; latest of them), newest first, for the broadest of them
+  ;; (broadest-passing). sizes: the size of the changes to the files a round's
+  ;; edits write, before the round; shrank: whether the latest edit took part
+  ;; of the change out (shrinking-edit?), which makes the next failing run a
+  ;; revert experiment, no sign that tests do not run.
+  (let ((before (git-state)) (passing #f) (passing-all '()) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
         (passed '()) (review-made #f) (shown '()) (hand-edits '()) (tests-edited '()) (tests-told '())
         (validate-made '()) (validate-print #f) (tool-before #f) (exited #f)
-        (base-fails '()) (last-fails '()) (hinted '()))
+        (base-fails '()) (last-fails '()) (hinted '()) (sizes '()) (shrank #f))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
@@ -1238,6 +1356,7 @@
         (if (pair? calls)
             (let walk ((cs calls)
                        (rs (begin (when (tool-round? calls) (set! tool-before (git-state)))
+                                  (set! sizes (if (pair? ran-all) (edit-sizes calls) '()))
                                   (run-calls calls)))
                        (edited edited) (tested tested) (failed failed-runs)
                        (scripts scripts) (written written) (outcome outcome) (told told))
@@ -1276,7 +1395,8 @@
                                   (equal? (run-status r) 0)
                                   (not (and (assoc name0 tool-commands) (whole-check? c)))
                                   (not (validate-call? c)))
-                         (set! passing c))
+                         (set! passing c)
+                         (set! passing-all (cons c passing-all)))
                        (let ((entry (run-entry c r)))
                          (when entry (set! passed (cons entry passed))))
                        (validated-run c r)
@@ -1324,9 +1444,11 @@
                          (set! passed '()))
                        (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)) (not (doc-path? (repo-path c))))
                          (set! passing #f)
+                         (set! passing-all '())
                          (set! ran '())
                          (set! started-ids '())
-                         (set! started-calls '()))
+                         (set! started-calls '())
+                         (set! shrank (and (shrinking-edit? c sizes) #t)))
                        (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
                               (let ((name (scratch-name c)))
                                 (cond (name
@@ -1351,8 +1473,18 @@
                              ;; run that went through says the setup works.
                              ((check-run? c scripts)
                               (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 failed) scripts written (run-outcome c r outcome) told))
+                             ;; A run that did not pass counts toward the way out
+                             ;; (finish-unrunnable-message) only if it shows no
+                             ;; sign that tests run here: failing tests ran, and a
+                             ;; run after an edit that took part of the change out
+                             ;; is a revert experiment, expected to fail (855e90e7:
+                             ;; six in a row were told "did not run successfully").
                              ((test-call? c)
-                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written (run-outcome c r outcome) told))
+                              (walk (cdr cs) (cdr rs) edited #t
+                                    (cond ((or (ran-ok? r) (tests-ran? r)) 0)
+                                          (shrank failed)
+                                          (else (+ failed 1)))
+                                    scripts written (run-outcome c r outcome) told))
                              (else (walk (cdr cs) (cdr rs) edited tested failed scripts written outcome told)))))
                     (else
                      ;; What the round's validate runs and tools left untracked
@@ -1421,7 +1553,8 @@
                                     (if now
                                         (filter (lambda (f) (not (plan-names? f))) (git-new-files before now))
                                         '())
-                                    (and (memq outcome '(passed kept)) passing)
+                                    (and (memq outcome '(passed kept))
+                                         (broadest-passing passing-all (append written (map git-state-path new-lines))))
                                     (memq outcome '(passed kept))
                                     (append ran base-ran) ran-all
                                     (or (and passing (whole-check? passing)) (whole-check-passed? passed))

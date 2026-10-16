@@ -141,8 +141,11 @@ func TestTheQuestionIsNotAskedOfTestsTheTurnAdded(t *testing.T) {
 // Both system prompts carry the rule on a failing existing test: decide
 // which side is wrong before editing either, the old expectation stands
 // unless the request names the new behaviour, no conditional skip in
-// production code to make an old test pass, and a test for each side of an
-// added branch.
+// production code to make an old test pass, and a test for each side of a
+// branch the request asks for, not of one added for any other reason. The
+// earlier wording, "a branch you add gets a test for each side", led 855e90e7
+// to add a test that pinned its skip (ADR 32, amended 2026-10-16, the
+// original tests).
 func TestThePromptsDecideWhichSideOfAFailingTestIsWrong(t *testing.T) {
 	t.Parallel()
 	for name, sys := range map[string]string{
@@ -153,12 +156,15 @@ func TestThePromptsDecideWhichSideOfAFailingTestIsWrong(t *testing.T) {
 			"When an existing test fails after your change, decide which side is wrong before you edit either.",
 			"The old expectation stands unless the request names the new behaviour for that input or case",
 			"Never add a conditional skip or exception to production code (least of all in a guard or denylist) to make an old test pass unless the request asks for it",
-			"if the test's setup contradicts what the request names, fix the setup",
-			"A branch you add gets a test for each side of it.",
+			"if the test's setup contradicts what the request names, fix the setup (a fixture is setup; its assertions are not)",
+			"A branch the request asks for gets a test for each side of it; a branch you add for any other reason is not tested into place: delete it.",
 		} {
 			if !strings.Contains(sys, want) {
 				t.Errorf("the %s prompt lacks %q", name, want)
 			}
+		}
+		if strings.Contains(sys, "A branch you add gets a test for each side of it.") {
+			t.Errorf("the %s prompt still asks for a test of every branch you add", name)
 		}
 	}
 }
@@ -198,9 +204,15 @@ func TestTheReviewAsksForTheChangedLinesNoTestRan(t *testing.T) {
 			continue
 		}
 		msg := lastMessage(r, len(c.turns)-1)
+		if strings.Contains(msg, "add a test that executes it or delete the line") {
+			t.Errorf("%s: the review still offers a test as the way out for a skip: %q", c.name, msg)
+		}
 		for _, want := range []string{"Your check (bash $TMPDIR/check.sh) passed, which does not show that a test ran each line you changed.",
 			"with coverage (go test -coverprofile=$TMPDIR/cover.out", "name the changed lines no test executed",
-			"add a test that executes it or delete the line", "Your next reply without tool calls ends the turn"} {
+			"For a line that does what the request asks for, add a test that executes it.",
+			"A branch no case reaches (a condition that cannot be true, a skip nothing exercises) is the usual one: delete it, or quote the sentence of the request that requires it and then add the test",
+			"a skip or exception you added after an existing test failed gets no test, since the test would pin it",
+			"Your next reply without tool calls ends the turn"} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("%s: the review lacks %q: %q", c.name, want, msg)
 			}

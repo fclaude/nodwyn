@@ -271,8 +271,11 @@
    ;; existing test failed after a correct change, and Pi added an untested
    ;; skip to the denylist's code instead of fixing the test, which removed
    ;; the directories the hidden test expects denied (ADR 32, amended
-   ;; 2026-10-16).
-   "\n- When an existing test fails after your change, decide which side is wrong before you edit either. The old expectation stands unless the request names the new behaviour for that input or case: otherwise change the code, not the test. Never add a conditional skip or exception to production code (least of all in a guard or denylist) to make an old test pass unless the request asks for it; if the test's setup contradicts what the request names, fix the setup. A branch you add gets a test for each side of it."
+   ;; 2026-10-16). The finish review's "a test for each side" then led the
+   ;; same run to add a test that pinned the skip, and a later point to 53
+   ;; calls of revert experiments on it: a test for a branch is for one the
+   ;; request asks for (ADR 32, amended 2026-10-16, the original tests).
+   "\n- When an existing test fails after your change, decide which side is wrong before you edit either. The old expectation stands unless the request names the new behaviour for that input or case: otherwise change the code, not the test. Never add a conditional skip or exception to production code (least of all in a guard or denylist) to make an old test pass unless the request asks for it; if the test's setup contradicts what the request names, fix the setup (a fixture is setup; its assertions are not). A branch the request asks for gets a test for each side of it; a branch you add for any other reason is not tested into place: delete it."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
    ;; The jev-key console change (ADR 32, amended 2026-10-02): Go tests and
    ;; node --check passed in every round while the page went blank on a
@@ -420,7 +423,7 @@
                             " -" (format "~a" (assoc-ref p "removed" 0)) " lines)")))
          parts)
     "; ")
-   ". Either a part is not needed, or the check cannot tell whether it works: extend the check so it fails without each part (an input, a case or a step that needs it) and run it again, or remove the part."))
+   ". Either a part is not needed, or the check cannot tell whether it works: extend the check so it fails without each part (an input, a case or a step that needs it) and run it again, or remove the part. A part the request does not ask for, such as a skip or an exception added to make an existing test pass, is removed, or defended by the sentence of the request that requires it; it is not given a test."))
 
 ;; Commands the report cites that have not run since the last edit
 ;; (strategy.scm, stale-citations).
@@ -476,6 +479,29 @@
    "Your change removes or rewrites these expectations of existing tests:"
    (expectation-lines lines)
    "\nAn existing test of something the request does not change is a constraint: restore each such line and fix the code instead, or quote in your report the request's words that change it."))
+;; The tests of the test files the turn edited, run as the last commit had
+;; them against the change (strategy.scm, original-tests), a point of the
+;; finish review: a grader lays the maintainers' test files over the patch.
+;; On commit-bench 5040f9fe the request added the response's Content-Type to
+;; an error; the model reworded the error so that a phrase an existing test
+;; pins was split, edited that test's want string to match, and its runs all
+;; passed; the original test failed on the patch, and the real change had
+;; appended to the phrase. 855e90e7 is the other way round: the request
+;; contradicts a fixture (one folder as repository, configuration and data),
+;; and the real change fixed the fixture. A request that changes a result
+;; changes the test that pins it, as much of the benchmark's resolved patches
+;; do, so that is the middle way out, with the sentence that requires it
+;; (ADR 32, amended 2026-10-16, the original tests). failures: alists of path
+;; and tests.
+(define (finish-original-tests-message failures)
+  (string-append
+   "These original tests fail on your change (the last commit's version of each test file you edited, run against your code): "
+   (string-join (map (lambda (f)
+                       (string-append (string-join (map (lambda (n) (format "~a" n)) (assoc-ref f "tests" '())) ", ")
+                                      " (" (format "~a" (assoc-ref f "path" "")) ")"))
+                     failures)
+                "; ")
+   ". Either your change is wrong (change the code, appending to what a test pins rather than rewording it); or the request names the new result for that input or case (a rule stated in general words does not cover an input it does not name), and the test's assertion changes: say which sentence of the request requires it; or the request contradicts the test's setup (a fixture): then change the setup, not its assertions, and say which sentence of the request requires it."))
 
 ;; The same lines, said as the edit that changes them is made rather than at
 ;; the finish (strategy.scm, test-edit-nudge), once for each test file. At the
@@ -489,7 +515,7 @@
   (string-append
    "You changed these expectations of existing tests (the line numbers are the last commit's):"
    (expectation-lines lines)
-   "\nWhich sentence of the request requires the new expectation, for that input or case? A rule the request states in general words does not cover an input it does not name. If none does, restore the line and change the code to meet it; if one does, say which in your answer. Answer in a line beside your next call. This is asked once for each test file."))
+   "\nWhich sentence of the request requires the new expectation, for that input or case? A rule the request states in general words does not cover an input it does not name. If none does, restore the line and change the code to meet it (to add to what a test pins, append to the phrase it checks; do not reword it); if one does, say which in your answer. Answer in a line beside your next call. This is asked once for each test file."))
 
 ;; What the finish review asks of the lines of a change that no test ran
 ;; (strategy.scm, finish-review-points). The loop knows which commands passed
@@ -503,7 +529,7 @@
    (if (string-empty? check)
        "Your last test run"
        (string-append "Your check (" (if (> (string-length check) 160) (string-append (substring check 0 160) "…") check) ")"))
-   " passed, which does not show that a test ran each line you changed. Run the tests of the files you changed once with coverage (go test -coverprofile=$TMPDIR/cover.out and go tool cover -func, pytest --cov, ...), name the changed lines no test executed, and for each add a test that executes it or delete the line. A branch no case reaches (a condition that cannot be true, a skip nothing exercises) is the usual one. If coverage cannot run here, read the change line by line against your tests and name those lines instead."))
+   " passed, which does not show that a test ran each line you changed. Run the tests of the files you changed once with coverage (go test -coverprofile=$TMPDIR/cover.out and go tool cover -func, pytest --cov, ...) and name the changed lines no test executed. For a line that does what the request asks for, add a test that executes it. A branch no case reaches (a condition that cannot be true, a skip nothing exercises) is the usual one: delete it, or quote the sentence of the request that requires it and then add the test; a skip or exception you added after an existing test failed gets no test, since the test would pin it: delete it and fix that test's setup or your code instead. If coverage cannot run here, read the change line by line against your tests and name those lines instead."))
 
 ;; The parts of a condition the change no longer checks (strategy.scm,
 ;; change-dropped-conditions), a point of the finish review. On commit-bench
