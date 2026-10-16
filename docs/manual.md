@@ -269,7 +269,7 @@ Commands at the `you>` prompt:
 |---|---|
 | `:q` | quit (writes `session.end`) |
 | `:h` | list these commands |
-| `:log [n]` | last n log events |
+| `:log [n]` | last n log events, 1 to 1000 (default 20), from the log, so a resumed session shows the earlier runs too |
 | `:tools` | tools offered to the model |
 | `:allow` | standing command and write approvals in effect |
 | `:eval EXPR` | evaluate Scheme yourself (user origin) |
@@ -654,6 +654,10 @@ edits (ADR 38). It asks once, its diff is the whole file's with every edit
 applied, and the header shows the call in Scheme's positional form,
 `fs-edit ("x.go" "" "" #f ((("old" . "…") ("new" . "…")) …))`. Nothing is
 written unless every edit applies.
+
+The question lists the answers that prompt offers, the same as the TUI's (a
+security prompt or a protected path offers only `y` and `N`); typing one it
+does not offer declines.
 
 - `y` — once. `N` or anything else — no; the model is told `denied: not
   confirmed by the user` and moves on.

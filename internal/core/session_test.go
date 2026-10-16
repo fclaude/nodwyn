@@ -363,7 +363,9 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 		evs = append(evs, ev)
 		if ev.Kind == event.PromptConfirm {
 			prompts++
-			r.s.Answer(ev.Payload.(event.Confirm).ID, "t")
+			if err := r.s.CreateApproval(ev.Payload.(event.Confirm).ID, "turn", "test"); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if ev.Kind == event.Status && ev.Payload.(event.StatusInfo).State == "idle" {
 			break
@@ -393,7 +395,18 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 	for ev := range r.s.Events() {
 		if ev.Kind == event.PromptConfirm {
 			prompts++
-			r.s.Answer(ev.Payload.(event.Confirm).ID, "a")
+			// As a front end does: the wider scope where the prompt offers it,
+			// and the protected path is answered for this call only.
+			c := ev.Payload.(event.Confirm)
+			var err error
+			if c.Prompt.ApprovalOptions().Session {
+				err = r.s.CreateApproval(c.ID, "session", "test")
+			} else {
+				err = r.s.Answer(c.ID, "y")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		if ev.Kind == event.Status && ev.Payload.(event.StatusInfo).State == "idle" {
 			break
@@ -404,6 +417,36 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 	}
 	if got := strings.Join(r.s.AllowedWrites(), ","); got != "a/" {
 		t.Fatalf("standing writes: %q", got)
+	}
+}
+
+// A longer answer is not a way to widen authority: Answer takes y or n, and
+// a standing scope is the explicit CreateApproval. The loose terminal path
+// that read "a" and "t" is gone.
+func TestAnswerDoesNotWidenAuthority(t *testing.T) {
+	t.Parallel()
+	r := newAskingRig(t,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "1", Name: "fs-write", Args: map[string]any{"path": "a/one.txt", "content": "1"}}}},
+		fake.Turn{Content: "done"})
+	r.s.Send("write a file")
+	for ev := range r.s.Events() {
+		if ev.Kind == event.PromptConfirm {
+			id := ev.Payload.(event.Confirm).ID
+			for _, wider := range []string{"a", "always", "t", "turn"} {
+				if err := r.s.Answer(id, wider); err == nil {
+					t.Fatalf("Answer(%q) was accepted", wider)
+				}
+			}
+			if err := r.s.Answer(id, "y"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if ev.Kind == event.Status && ev.Payload.(event.StatusInfo).State == "idle" {
+			break
+		}
+	}
+	if got := r.s.AllowedWrites(); len(got) != 0 {
+		t.Fatalf("a standing approval was made: %v", got)
 	}
 }
 

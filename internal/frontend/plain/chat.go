@@ -3,6 +3,7 @@ package plain
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -36,7 +37,6 @@ type Chat struct {
 	Interrupt <-chan struct{}
 
 	lines         *lineReader
-	recent        []event.Event
 	lastWasStream bool
 	// Streaming state belongs to this frontend, not the process.
 	stream struct {
@@ -196,12 +196,6 @@ func (c *Chat) writeStream(mode, text string) {
 }
 
 func (c *Chat) show(ev event.Event) {
-	if ev.Seq != 0 {
-		c.recent = append(c.recent, ev)
-		if len(c.recent) > 200 {
-			c.recent = c.recent[len(c.recent)-200:]
-		}
-	}
 	endStream := func() {
 		if c.lastWasStream {
 			if !c.stream.atLineStart {
@@ -418,30 +412,65 @@ func (c *Chat) confirm(p event.Confirm) {
 	if p.Prompt.Detail != "" {
 		fmt.Fprintln(c.Out, indent(p.Prompt.Detail, "  "))
 	}
-	prompt := "allow? [y/N] "
-	switch {
-	case p.Prompt.Security:
-		// Security confirmations always apply to this call only.
-	case len(p.Prompt.Argv) > 0 && p.Prompt.ApprovalOptions().Session:
-		prompt = fmt.Sprintf("allow? [y/N/a=always %s this session] ", p.Prompt.ApprovalOptions().Target)
-	case p.Prompt.Path != "" && !guard.IsProtected(p.Prompt.Path):
-		prompt = fmt.Sprintf("allow? [y/N/a=always under %s/t=all writes this turn] ", guard.DirPrefix(p.Prompt.Path))
-	}
-	if p.Prompt.Binding != nil && !p.Prompt.Security {
-		prompt = "allow? [y/N/b=bind this exact scope persistently and allow] "
-	}
-	line, ok := c.lines.answer(prompt)
+	options := p.Prompt.ApprovalOptions()
+	line, ok := c.lines.answer(approvalQuestion(options))
 	if !ok {
 		line = "n"
 	}
-	if (strings.EqualFold(strings.TrimSpace(line), "b")) && p.Prompt.Binding != nil && !p.Prompt.Security {
-		if err := c.Session.CreateBinding(p.ID, "terminal"); err != nil {
-			fmt.Fprintf(c.Out, "binding: %s\n", err)
-			_ = c.Session.Answer(p.ID, "n")
+	// The wider answers are the explicit scope operations the TUI uses, only
+	// for what the guard offered; anything else, however typed, declines.
+	var err error
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		err = c.Session.AnswerFrom(p.ID, "y", "terminal")
+	case "b":
+		if err = offered(options.Binding); err == nil {
+			err = c.Session.CreateBinding(p.ID, "terminal")
 		}
-	} else {
-		_ = c.Session.Answer(p.ID, line)
+	case "a":
+		if err = offered(options.Session); err == nil {
+			err = c.Session.CreateApproval(p.ID, "session", "terminal")
+		}
+	case "t":
+		if err = offered(options.Turn); err == nil {
+			err = c.Session.CreateApproval(p.ID, "turn", "terminal")
+		}
+	default:
+		err = c.Session.AnswerFrom(p.ID, "n", "terminal")
 	}
+	if err != nil {
+		fmt.Fprintf(c.Out, "approval: %s\n", err)
+		_ = c.Session.AnswerFrom(p.ID, "n", "terminal")
+	}
+}
+
+// offered is the error for a wider answer the prompt did not offer, nil when
+// it did.
+func offered(ok bool) error {
+	if ok {
+		return nil
+	}
+	return errors.New("that answer is not offered for this prompt; declined")
+}
+
+// approvalQuestion is the confirm's question, listing the answers the guard
+// offers beyond y and n (guard.Prompt.ApprovalOptions), as the TUI does.
+func approvalQuestion(o guard.ApprovalOptions) string {
+	choices := "y/N"
+	if o.Binding {
+		choices += "/b=bind this exact scope persistently and allow"
+	}
+	if o.Session {
+		if o.Kind == "command" {
+			choices += fmt.Sprintf("/a=always %s this session", o.Target)
+		} else {
+			choices += fmt.Sprintf("/a=always under %s", o.Target)
+		}
+	}
+	if o.Turn {
+		choices += "/t=all writes this turn"
+	}
+	return "allow? [" + choices + "] "
 }
 
 func (c *Chat) secretInput(p event.SecretPrompt) {
@@ -464,7 +493,7 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 	case ":h", ":help":
 		fmt.Fprint(c.Out, `commands:
   :q             quit
-  :log [n]       show the last n log events of this run (default 20, at most 200)
+  :log [n]       show the last n log events (default 20, at most 1000)
   :tools         list the tools offered to the model
   :eval EXPR     evaluate Scheme with user origin
   :thinking      toggle showing the model's thinking
@@ -474,17 +503,20 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 		n := 20
 		if len(fields) > 1 {
 			var err error
-			if n, err = strconv.Atoi(fields[1]); err != nil || n < 1 {
-				fmt.Fprintln(c.Out, "usage: :log [n], n a count of events from 1 (this run's, the last 200 at most)")
+			if n, err = strconv.Atoi(fields[1]); err != nil || n < 1 || n > 1000 {
+				fmt.Fprintln(c.Out, "usage: :log [n], n a count of events from 1 to 1000")
 				return false
 			}
 		}
-		start := len(c.recent) - n
-		if start < 0 {
-			start = 0
+		// The durable log, as the TUI's :log reads it, so a resumed session
+		// shows the events of the runs before this one too.
+		history, err := c.Session.History()
+		if err != nil {
+			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
+			return false
 		}
-		for _, ev := range c.recent[start:] {
-			fmt.Fprintf(c.Out, "%5d %-15s %s\n", ev.Seq, ev.Kind, trim(fmt.Sprintf("%+v", ev.Payload), 120))
+		for _, ev := range history[max(0, len(history)-n):] {
+			fmt.Fprintf(c.Out, "%5d %-15s %s\n", ev.Seq, ev.Kind, trim(string(ev.Payload), 120))
 		}
 	case ":tools":
 		for _, t := range c.Session.Tools() {
@@ -725,7 +757,7 @@ func (c *Chat) choice(ev event.Choice) {
 			fmt.Fprintf(c.Out, "answer one of %s\n", strings.Join(keys, ", "))
 			continue
 		}
-		if err := c.Session.Answer(ev.ID, line); err != nil {
+		if err := c.Session.AnswerFrom(ev.ID, line, "terminal"); err != nil {
 			fmt.Fprintln(c.Out, err)
 		}
 		return
@@ -766,7 +798,7 @@ func (c *Chat) checkpoint(ev event.Checkpoint) {
 			fmt.Fprintln(c.Out, err)
 			continue
 		}
-		if err := c.Session.Answer(ev.ID, line); err != nil {
+		if err := c.Session.AnswerFrom(ev.ID, line, "terminal"); err != nil {
 			fmt.Fprintln(c.Out, err)
 		}
 		return

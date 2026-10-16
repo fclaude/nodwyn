@@ -20,7 +20,7 @@ func (s *Session) CreateBinding(id, actor string) error {
 	if actor == "" {
 		return fmt.Errorf("core: binding actor is required")
 	}
-	return s.answer(id, "y", actor, "binding", true)
+	return s.answer(id, "y", actor, "binding")
 }
 
 func (s *Session) bindingEligible(p guard.Prompt) bool {

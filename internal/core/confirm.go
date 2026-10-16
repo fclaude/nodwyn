@@ -20,9 +20,10 @@ type pendingConfirmation struct {
 	reply      chan guard.Approval
 }
 
-// Answer preserves the terminal's y/n/a/t vocabulary. Transport callers use
-// AnswerFrom or CreateApproval so widening authority is an explicit operation.
-func (s *Session) Answer(id, reply string) error { return s.answer(id, reply, "", "", false) }
+// Answer is a one-time answer (y or n) or a budget choice, with no actor
+// recorded. Widening authority is always an explicit operation: CreateApproval
+// and CreateBinding, never a longer answer.
+func (s *Session) Answer(id, reply string) error { return s.answer(id, reply, "", "") }
 
 // AnswerFrom accepts only a one-time answer or a budget choice. Actor is set by
 // the frontend's authenticated transport, never by the model or request body.
@@ -30,7 +31,7 @@ func (s *Session) AnswerFrom(id, reply, actor string) error {
 	if actor == "" {
 		return fmt.Errorf("core: answering actor is required")
 	}
-	return s.answer(id, reply, actor, "", true)
+	return s.answer(id, reply, actor, "")
 }
 
 // CreateApproval widens a specific pending ordinary confirmation. There is no
@@ -39,9 +40,9 @@ func (s *Session) CreateApproval(id, scope, actor string) error {
 	if actor == "" || (scope != "session" && scope != "turn") {
 		return fmt.Errorf("core: actor and session or turn scope are required")
 	}
-	return s.answer(id, "y", actor, scope, true)
+	return s.answer(id, "y", actor, scope)
 }
-func (s *Session) answer(id, reply, actor, scope string, strict bool) error {
+func (s *Session) answer(id, reply, actor, scope string) error {
 	s.promptMu.Lock()
 	defer s.promptMu.Unlock()
 	pending, ok := s.prompts[id]
@@ -68,26 +69,8 @@ func (s *Session) answer(id, reply, actor, scope string, strict bool) error {
 	}
 	r := strings.ToLower(strings.TrimSpace(reply))
 	p := pending.prompt
-	if strict && scope == "" && r != "y" && r != "yes" && r != "n" && r != "no" {
+	if scope == "" && r != "y" && r != "yes" && r != "n" && r != "no" {
 		return fmt.Errorf("core: ordinary answers accept y or n; use explicit approval creation to widen scope")
-	}
-	if !strict {
-		switch r {
-		case "a", "always":
-			if len(p.Argv) > 0 || p.Path != "" {
-				scope = "session"
-				r = "y"
-			}
-		case "t", "turn":
-			if p.Path != "" {
-				scope = "turn"
-				r = "y"
-			}
-		}
-		// Keep the terminal's protected-path fallback: approve this call only.
-		if p.Security || guard.IsProtected(p.Path) {
-			scope = ""
-		}
 	}
 	options := p.ApprovalOptions()
 	if scope == "binding" {

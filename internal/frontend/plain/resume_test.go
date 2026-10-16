@@ -18,9 +18,10 @@ import (
 	"github.com/fclaude/nodwyn/internal/log"
 )
 
-// `nodwyn --resume ID` replays the whole conversation, read from the log,
-// though the resumed session holds only its end (ADR 49 §10).
-func TestResumeReplaysTheWholeConversation(t *testing.T) {
+// resumedSession is a long stored conversation, resumed: the session holds
+// only its end (ADR 49 §10).
+func resumedSession(t *testing.T) *core.Session {
+	t.Helper()
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
 	if err := os.Mkdir(repo, 0o700); err != nil {
@@ -61,10 +62,17 @@ func TestResumeReplaysTheWholeConversation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	t.Cleanup(func() { s.Close() })
 	if first := s.EventsSoFar()[0].Seq; first <= 1 {
 		t.Fatalf("the session holds its log from seq %d: this shows nothing", first)
 	}
+	return s
+}
+
+// `nodwyn --resume ID` replays the whole conversation, read from the log,
+// though the resumed session holds only its end (ADR 49 §10).
+func TestResumeReplaysTheWholeConversation(t *testing.T) {
+	s := resumedSession(t)
 	var out bytes.Buffer
 	c := &Chat{Session: s, In: strings.NewReader(""), Out: &out, ReplayHistory: true}
 	if err := c.Run(context.Background()); err != nil {
@@ -74,5 +82,24 @@ func TestResumeReplaysTheWholeConversation(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("the replay does not show %q", want)
 		}
+	}
+}
+
+// :log reads the durable log, so a resumed session shows the runs before
+// this one, as the TUI's :log does; it showed only what this process had
+// seen.
+func TestLogCommandReadsTheWholeLogOfAResumedSession(t *testing.T) {
+	var out bytes.Buffer
+	c := &Chat{Session: resumedSession(t), Out: &out}
+	c.command(context.Background(), ":log 1000")
+	for _, want := range []string{"run 0 of the schedule", "run 299 done"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf(":log does not show %q:\n%s", want, out.String())
+		}
+	}
+	out.Reset()
+	c.command(context.Background(), ":log 1001")
+	if !strings.Contains(out.String(), "usage: :log") {
+		t.Fatalf("a count past the most: %q", out.String())
 	}
 }
