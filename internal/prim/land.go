@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -34,7 +35,7 @@ import (
 //     fetched first, when it has one), never anyone else's; a conflict
 //     stops it with the files named, for the model to resolve and call
 //     git-land again;
-//  3. refuse a change whose outgoing diff holds credential-shaped text;
+//  3. refuse a change whose outgoing diff adds credential-shaped text;
 //  4. push it to the base branch's upstream by fast-forward only, never
 //     forced;
 //  5. move the local base branch too when that is safe: its ref when no
@@ -49,11 +50,28 @@ import (
 const landTimeout = 2 * time.Minute
 
 // landEnvAllow is what git's environment for a landing adds to the
-// session's: the session's, plus what
-// signing and an SSH remote need from the person's own session (their
-// agents), with every prompt off, so a passphrase prompt fails at once
-// instead of hanging.
-var landEnvAllow = []string{"SSH_AUTH_SOCK", "GNUPGHOME", "GPG_AGENT_INFO", "SSH_AGENT_PID"}
+// session's: the session's, plus what signing and an SSH remote need from the
+// person's own session (their agents, and the ssh command they chose, such as
+// one naming a key), with every prompt off, so a passphrase prompt fails at
+// once instead of hanging.
+var landEnvAllow = []string{"SSH_AUTH_SOCK", "GNUPGHOME", "GPG_AGENT_INFO", "SSH_AGENT_PID", "GIT_SSH_COMMAND"}
+
+// landEnv is git's environment for a landing.
+func landEnv(o Options) []string {
+	env := append(scrubEnv(append(append([]string(nil), o.EnvAllow...), landEnvAllow...)),
+		// Names from status are names, not patterns: a file called * would
+		// otherwise match every file, the refused ones included.
+		"GIT_LITERAL_PATHSPECS=1",
+		// SSH_ASKPASS_REQUIRE makes ssh use the askpass program, which
+		// answers nothing, even when a terminal is there to prompt on.
+		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_ASKPASS=true", "SSH_ASKPASS=true", "SSH_ASKPASS_REQUIRE=force")
+	// Decided from the child's own environment: the person's command, when
+	// they have one and it came through, is theirs to choose.
+	if !slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "GIT_SSH_COMMAND=") }) {
+		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	}
+	return env
+}
 
 func gitLand(o Options) *scheme.Prim {
 	return &scheme.Prim{
@@ -136,15 +154,7 @@ func land(ctx context.Context, o Options, message string) (string, error) {
 	if w == nil {
 		return "", errors.New("this session has no worktree of its own; its work is in the folder itself")
 	}
-	env := append(scrubEnv(append(append([]string(nil), o.EnvAllow...), landEnvAllow...)),
-		// Names from status are names, not patterns: a file called * would
-		// otherwise match every file, the refused ones included.
-		"GIT_LITERAL_PATHSPECS=1",
-		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_ASKPASS=true", "SSH_ASKPASS=true")
-	if _, set := os.LookupEnv("GIT_SSH_COMMAND"); !set {
-		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
-	}
-	l := lander{ctx: ctx, o: o, env: env}
+	l := lander{ctx: ctx, o: o, env: landEnv(o)}
 	root := o.Root
 	if branch, err := l.git(root, "rev-parse", "--abbrev-ref", "HEAD"); err != nil || branch != w.Branch {
 		if inRebase(l, root) {
@@ -287,11 +297,13 @@ func (l lander) publish(w *Worktree, onto, remote, ref string, said []string) (s
 		return "", err
 	}
 	count, _ := l.git(root, "rev-list", "--count", onto+"..HEAD")
-	diff, err := l.git(root, "diff", "--no-ext-diff", "--no-textconv", onto, "HEAD")
+	// Only what the change adds can leak: a removed line is the person
+	// taking a credential out, and context is text they did not write.
+	diff, err := l.git(root, "diff", "--no-ext-diff", "--no-textconv", "-U0", onto, "HEAD")
 	if err != nil {
 		return "", err
 	}
-	for _, f := range l1.New().Scan(diff) {
+	for _, f := range l1.New().Scan(addedText(diff)) {
 		if f.Class != l1.ClassUnknownEntropy {
 			return "", fmt.Errorf("the change holds a %s-shaped text, so nothing was pushed; take it out, or land it from a terminal if it belongs", f.Class)
 		}
@@ -304,6 +316,25 @@ func (l lander) publish(w *Worktree, onto, remote, ref string, said []string) (s
 	}
 	said = append(said, l.moveLocal(w, head))
 	return strings.Join(said, "\n"), nil
+}
+
+// addedText is the lines a unified diff adds, joined by newlines, so that the
+// lines of one block stay together for the scanner. Lines before a file's
+// first hunk are its header, not text.
+func addedText(diff string) string {
+	var added []string
+	inHunk := false
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			inHunk = false
+		case strings.HasPrefix(line, "@@"):
+			inHunk = true
+		case inHunk && strings.HasPrefix(line, "+"):
+			added = append(added, line[1:])
+		}
+	}
+	return strings.Join(added, "\n")
 }
 
 // moveLocal moves the local base branch to head when that is a fast

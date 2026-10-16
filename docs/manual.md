@@ -453,7 +453,7 @@ passed: one step that commits what changed with the message the model
 writes (files the guard keeps from `fs-read` are left out, even when
 already staged), rebases the
 task's own commits onto the newest base (fetching its upstream first),
-refuses a change that holds credential-shaped text, pushes to the base's
+refuses a change that adds credential-shaped text, pushes to the base's
 upstream by fast-forward only, and fast-forwards your checkout of the base
 branch when it is clean (a checkout with changes of its own is left alone,
 and the answer says so). It asks you first, as any call that cannot be
