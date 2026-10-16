@@ -3,7 +3,7 @@ import { manageSchedule } from "./schedule.js";
 // beside it, in tabs, the plan, this turn's budget, the changes, the
 // project notes and the workspace. Every figure comes from the log or from
 // session.info; a panel with no source says so instead of guessing.
-import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename, sizeOf } from "./dom.js";
+import { h, icon, repoName, shortPath, clock, minutes, ago, toast, toastError, basename, sizeOf } from "./dom.js";
 import { Transcript, planSteps, stepTitle, usd, contextGauge, judgeTally, spanWords } from "./transcript.js";
 import { askCard, shortcut, summary, parseDiff, splitDiff, diffView } from "./prompts.js";
 import { Attachments, attachmentChip } from "./attach.js";
@@ -104,7 +104,7 @@ export class TaskView {
     if (previous?.open && previous.id !== id) this.conn.call("session.unsubscribe", { id: previous.id }).catch(() => {});
     let item = this.desk.sessions.get(id);
     if (!item) {
-      await this.desk.refresh().catch(() => {});
+      await this.desk.reload();
       if (version !== this.version) return;
       item = this.desk.sessions.get(id);
     }
@@ -239,7 +239,7 @@ export class TaskView {
       button.hidden = !page.more;
       if (anchor && top !== undefined) scroll.scrollTop += anchor.getBoundingClientRect().top - top;
     } catch (error) {
-      if (version === this.version) toast(`Could not read earlier runs: ${error.message}`);
+      if (version === this.version) toastError(`Could not read earlier runs: ${error.message}`);
     } finally {
       if (version === this.version) {
         this.olderLoading = false;
@@ -371,7 +371,7 @@ export class TaskView {
       } catch (error) {
         if (version === this.version) {
           this.totalSnapshot = null;
-          toast(`Could not read totals: ${error.message}`);
+          toastError(`Could not read totals: ${error.message}`);
           this.aside();
         }
       } finally {
@@ -505,7 +505,7 @@ export class TaskView {
     // "Don't ask" switched, here or on another screen: show it as it is.
     if (event.kind === "approval.change" && p.kind === "all" && !this.loading && this.item?.open) this.loadInfo();
     // A name given here or on another screen: the list and the heading follow.
-    if (event.kind === "session.title" && !this.loading) this.desk.refresh().catch(() => {});
+    if (event.kind === "session.title" && !this.loading) this.desk.reload();
     // A model or effort chosen here or on another screen, or applied as a
     // response ended: the picker shows what the conversation has now.
     if ((event.kind === "schedule.run" || event.kind === "session.schedule" || event.kind === "session.model" || event.kind === "session.judge") && !this.loading && this.item?.open) this.loadInfo();
@@ -618,7 +618,7 @@ export class TaskView {
         this.placePrompt();
       }
     } catch (error) {
-      toast(`${error.message} Nothing was retried; check the conversation before answering again.`);
+      toastError(`${error.message} Nothing was retried; check the conversation before answering again.`);
       // Never reuse an uncertain prompt or keep typed secrets after an error.
       if (version === this.version && this.conn.live) this.open(item.id);
     } finally {
@@ -819,7 +819,7 @@ export class TaskView {
       if (version === this.version && this.info) this.info.judge = state;
       toast(name ? `${name} judges this task from its next question.` : "This task has no judge now: you answer its commands.");
     } catch (error) {
-      toast(`${error.message} Nothing was retried; the task keeps the judge it had.`);
+      toastError(`${error.message} Nothing was retried; the task keeps the judge it had.`);
     } finally {
       this.judging = false;
       if (version === this.version) {
@@ -850,7 +850,7 @@ export class TaskView {
       }
       if (reset) toast("That model takes other efforts: its own default is chosen.");
     } catch (error) {
-      toast(`${error.message} Nothing was retried; the conversation keeps the model it had.`);
+      toastError(`${error.message} Nothing was retried; the conversation keeps the model it had.`);
     } finally {
       this.changing = false;
       if (version === this.version) {
@@ -869,7 +869,7 @@ export class TaskView {
     try {
       await this.conn.call("session.approve_all", { id, on });
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     } finally {
       if (version !== this.version) return;
       // Keep the clicked state drawn until the latest authoritative details
@@ -891,7 +891,7 @@ export class TaskView {
     try {
       await this.conn.call("session.limits.set", { id, on });
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     } finally {
       if (version === this.version) {
         await this.loadInfo();
@@ -930,7 +930,7 @@ export class TaskView {
       }
     } catch (error) {
       // A failed reply is not evidence of failed delivery: reload first.
-      toast(`${error.message} Nothing was retried; check the conversation before sending again.`);
+      toastError(`${error.message} Nothing was retried; check the conversation before sending again.`);
       if (version === this.version && this.conn.live) this.open(item.id);
     } finally {
       this.acting = false;
@@ -1085,9 +1085,9 @@ export class TaskView {
     try {
       await this.conn.call("session.rename", { id: item.id, title: name });
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     }
-    await this.desk.refresh().catch(() => {});
+    await this.desk.reload();
   }
   async archive(archived) {
     const item = this.item;
@@ -1098,7 +1098,7 @@ export class TaskView {
       toast(archived ? "Archived. It waits under Archived in the sidebar." : "Back in the task list.");
       await this.desk.refresh();
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     } finally {
       this.acting = false;
       this.refreshAll();
@@ -1111,7 +1111,7 @@ export class TaskView {
     try {
       await this.conn.call("session.delete", { id: item.id });
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
       this.acting = false;
       this.refreshAll();
       return;
@@ -1120,7 +1120,7 @@ export class TaskView {
     this.deleting = false;
     toast("Deleted the task.");
     this.navigate("#/");
-    await this.desk.refresh().catch(() => {});
+    await this.desk.reload();
     drafts.delete(item.id);
   }
   async act(method, message) {
@@ -1132,7 +1132,7 @@ export class TaskView {
       await this.conn.call(method, { id: item.id });
       if (method === "session.close") await this.desk.refresh();
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     } finally {
       this.acting = false;
       this.refreshAll();
@@ -1150,7 +1150,7 @@ export class TaskView {
       // Another task may have been opened meanwhile: never replace it.
       if (version === this.version) await this.open(item.id);
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     } finally {
       this.acting = false;
       this.controls();
@@ -1736,7 +1736,7 @@ export class TaskView {
     try {
       const started = await this.conn.call("session.notes.write", { id: item.id, text });
       this.expect(started.operation_id, (result) => {
-        if (result.Err) toast(`Notes not saved: ${result.Err}`);
+        if (result.Err) toastError(`Notes not saved: ${result.Err}`);
         else {
           this.notesDraft = null;
           toast("Notes saved.");
@@ -1744,7 +1744,7 @@ export class TaskView {
         }
       });
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     }
   }
   workspacePanel() {
@@ -2034,9 +2034,9 @@ export class TaskView {
   async restore(path, hash) {
     try {
       const started = await this.conn.call("session.restore", { id: this.item.id, path, hash });
-      this.expect(started.operation_id, (result) => toast(result.Err ? `Not restored: ${result.Err}` : `Restored ${basename(path)}.`));
+      this.expect(started.operation_id, (result) => (result.Err ? toastError(`Not restored: ${result.Err}`) : toast(`Restored ${basename(path)}.`)));
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     }
   }
   detailsPanel() {

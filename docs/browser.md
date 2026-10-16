@@ -139,6 +139,24 @@ U3 inspectors described below sit under a task's **Details**, in the
 Workspace tab. For the app
 window and first-run setup see [app.md](app.md).
 
+## Messages and failures
+
+Messages sit at the top of the window, clear of the composer. A confirmation
+("Allowed once.") is a toast that goes after four seconds, one at a time. An
+error stays until it is dismissed, is announced as an alert and is not
+replaced by the next message: it often says what not to do next ("check the
+conversation before sending again"), and a person looking elsewhere must still
+find it. An identical error is shown once, and one that can be tried again
+has a **Retry** button. A read the desk makes on its own (the task list,
+what waits for you, the settings, the workspaces, the models' check) that
+fails is such an error, not a silent gap: only a daemon that does not offer
+the method (`conn.has` is false) is treated as an older one. A page that
+throws while it is drawn is replaced by its failure, with the message,
+**Reload** and **Home**, instead of leaving the previous page under a sidebar
+that already moved on; an error nobody caught is shown the same way as an
+error toast. A lost connection says so on its own banner and is not reported
+once for every read it cut short.
+
 ## Settings
 
 Settings is what tasks start with when nobody says otherwise, kept in

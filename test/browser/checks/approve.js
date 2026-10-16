@@ -219,7 +219,18 @@ check(async () => {
   failNextApprove = true;
   await page.$eval(".dont-ask input", (el) => el.click());
   assert.deepStrictEqual(await page.$eval(".dont-ask", (el) => ({ checked: el.querySelector("input").checked, on: el.classList.contains("on"), disabled: el.querySelector("input").disabled })), { checked: false, on: false, disabled: true }, "the requested off-state appears while pending");
-  await until("the refusal toast", async () => (await page.textContent(".toast"))?.includes("simulated approval refusal"));
+  await until("the refusal", async () => (await page.textContent(".toast.error"))?.includes("simulated approval refusal"));
+  // An error stays until it is dismissed: a confirmation shown after it does
+  // not replace it, it is announced as an alert, and it does not sit over
+  // the composer.
+  assert.strictEqual(await page.getAttribute(".toast.error", "role"), "alert");
+  await page.evaluate(async () => (await import("/dom.js")).toast("Something else."));
+  await page.waitForSelector("#toast:not([hidden])");
+  assert.strictEqual(await page.locator(".toast.error").count(), 1, "a later toast replaced the error");
+  const clear = await page.evaluate(() => document.querySelector("#toasts").getBoundingClientRect().bottom <= document.querySelector("form.reply").getBoundingClientRect().top);
+  assert.ok(clear, "the messages cover the composer");
+  await page.click(".toast.error [aria-label=Dismiss]");
+  assert.strictEqual(await page.locator(".toast.error").count(), 0, "Dismiss left the error on screen");
   await until("the refused switch restored", async () => page.$eval(".dont-ask", (el) => el.querySelector("input").checked && el.classList.contains("on") && !el.querySelector("input").disabled));
   await page.screenshot({ path: `${out}/switch-refused.png` });
   // The panel ticks only while the turn runs, and a turn faster than a

@@ -742,11 +742,21 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
 .stack { gap: 8px; }
 .stack-md { gap: 12px; }
 .stack-lg { gap: 24px; }
-.toast {
-  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px));
-  padding: 10px 14px; border-radius: 10px; background: var(--invert-bg); color: var(--invert-fg);
-  font-size: 13.5px; box-shadow: var(--shadow); z-index: 30;
+/* Messages stack at the top, over the page's heading rather than the composer
+   at its foot (toast and toastError in dom.js). */
+.toasts {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 32px));
+  display: flex; flex-direction: column; gap: 8px; z-index: 30; pointer-events: none;
 }
+.toast {
+  pointer-events: auto; align-self: center; max-width: 100%; padding: 10px 14px; border-radius: 10px;
+  background: var(--invert-bg); color: var(--invert-fg); font-size: 13.5px; box-shadow: var(--shadow);
+}
+.toast.error {
+  align-self: stretch; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px;
+  background: var(--warn-bg); color: var(--ink); border: 1px solid var(--bad);
+}
+.toast.error .toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 /* ---------- narrower screens ---------- */
 @media (max-width: 1180px) {
@@ -1003,6 +1013,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
    defined it, gives way to it at equal weight. */
 @media (max-width: 760px) {
   body { font-size: 15px; }
+  .toasts { top: 64px; }
   .shell { flex-direction: column; }
   .topbar {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;

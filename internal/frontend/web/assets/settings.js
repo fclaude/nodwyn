@@ -318,12 +318,14 @@ export function renderSettings(root, ctx) {
 
   // An older daemon reports no values: its settings live in config.toml.
   const known = !!desk.settings?.values;
+  // A daemon that has the method and failed to answer is not an older one.
+  const unknown = (older) => h("p", { class: "hint" }, ctx.conn.has("settings.read") ? "The settings could not be read: retry from the message on screen, or reload." : older);
   // Only the tab shown is drawn; the edits waiting in the bar are kept across
   // tabs, so a change made in one is saved with one made in another.
   const build = {
-    general: () => (known ? [approvalSection(ctx, redraw), advancedFold(ctx, redraw)] : [h("p", { class: "hint" }, "This daemon's settings live in config.toml.")]),
+    general: () => (known ? [approvalSection(ctx, redraw), advancedFold(ctx, redraw)] : [unknown("This daemon's settings live in config.toml.")]),
     models: () => [modelsSection(ctx, root)],
-    judge: () => (known ? [judgeSection(ctx, redraw, root)] : [h("p", { class: "hint" }, "This daemon's judge is set in config.toml.")]),
+    judge: () => (known ? [judgeSection(ctx, redraw, root)] : [unknown("This daemon's judge is set in config.toml.")]),
     keys: () => [keysSection(ctx, root, redraw)],
     browser: () => [browserSection(ctx), connectionSection(ctx)],
   };

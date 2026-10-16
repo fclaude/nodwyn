@@ -1,6 +1,6 @@
 // Entry point: pairing, the connection, the router and the shell. Views are
 // redrawn from the desk's state; the task view keeps its own conversation.
-import { $, h, icon, toast } from "./dom.js";
+import { $, h, icon, toastError } from "./dom.js";
 import { Connection, pair, takeTicket } from "./connection.js";
 import { Desk } from "./desk.js";
 import { renderSidebar } from "./sidebar.js";
@@ -166,8 +166,36 @@ function dropViews() {
 
 let lastRoute = "";
 // render draws the shell and the route. what is the desk change that asked
-// for it ("" when something else did).
+// for it ("" when something else did). A page that throws while it is drawn
+// leaves the old one on screen with the sidebar already redrawn, so the
+// failure is drawn instead, with a way out (see fault).
 function render(routeChanged = false, what = "") {
+  try {
+    draw(routeChanged, what);
+  } catch (error) {
+    fault(error);
+  }
+}
+function fault(error) {
+  console.error(error);
+  // The next render draws the route afresh instead of finding it done.
+  lastRoute = "";
+  $("view").replaceChildren(
+    h(
+      "main",
+      { class: "page", id: "fault" },
+      h(
+        "div",
+        { class: "page-col" },
+        h("h1", {}, "This page could not be drawn"),
+        h("p", { class: "lede" }, "Something on it was not as nodwyn expected. Nothing you started was changed."),
+        h("p", { class: "error mono", role: "alert" }, String(error?.message || error)),
+        h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn dark", onclick: () => location.reload() }, "Reload"), h("a", { class: "btn", href: "#/" }, "Home")),
+      ),
+    ),
+  );
+}
+function draw(routeChanged, what) {
   if (conn.state !== "live") return;
   $("gate").hidden = true;
   $("shell").hidden = false;
@@ -229,6 +257,15 @@ function editing(root) {
 }
 
 desk.onChange((what) => render(false, what));
+// A throw outside a render (a click's handler, a request nobody waits for)
+// would otherwise reach the console only; a connection that dropped says so
+// on its own banner.
+window.addEventListener("unhandledrejection", (event) => {
+  if (conn.live) toastError(String(event.reason?.message || event.reason));
+});
+window.addEventListener("error", (event) => {
+  if (event.message && !event.message.startsWith("ResizeObserver")) toastError(event.message);
+});
 desk.notifier.onOpen = (id) => navigate(`#/task/${id}`);
 conn.onState(async (state, detail) => {
   $("offline").hidden = state === "live" || state === "connecting" || $("shell").hidden;
@@ -246,7 +283,7 @@ conn.onState(async (state, detail) => {
     try {
       await desk.start();
     } catch (error) {
-      toast(error.message);
+      toastError(error.message);
     }
     render(true);
     // The browser checks wait for this mark before they look at a page: the
@@ -274,7 +311,7 @@ document.addEventListener("click", (event) => {
   const link = event.target.closest?.("a[target=_blank]");
   if (!link || typeof window.nodwynOpenExternal !== "function") return;
   event.preventDefault();
-  window.nodwynOpenExternal(link.href).catch((error) => toast(String(error)));
+  window.nodwynOpenExternal(link.href).catch((error) => toastError(String(error)));
 });
 
 $("menu").append(icon("menu", 20));

@@ -2,6 +2,7 @@
 // answer and what they ask, and whether the models answer. It is refreshed
 // from the daemon and updated by the content-free session.watch feed; it is
 // never an authority for anything.
+import { toastError } from "./dom.js";
 
 export class Desk {
   constructor(conn) {
@@ -60,6 +61,17 @@ export class Desk {
     this.latest = this.load(++this.version);
     return this.latest;
   }
+  // reload is refresh for a caller with nothing to do about a failure (after
+  // a rename, a delete, a state change): it says so once, where it would
+  // otherwise leave the sidebar as it was without a word.
+  reload() {
+    return this.refresh().catch((error) => this.report("Could not read the task list", error, () => this.reload()));
+  }
+  // report shows a failed read as an error that stays. A lost connection says
+  // so on its own, and is not reported once for every read it cut short.
+  report(what, error, retry) {
+    if (this.conn.live) toastError(`${what}: ${error.message}`, retry);
+  }
   // load reads the list for refresh. When a newer refresh has started
   // meanwhile, its list wins, and this one waits for it: whoever awaited a
   // refresh then finds at least what the list held when they asked. A task
@@ -93,28 +105,40 @@ export class Desk {
   }
   scheduleAttention() {
     clearTimeout(this.attentionTimer);
-    this.attentionTimer = setTimeout(() => this.refreshAttention().catch(() => {}), 150);
+    this.attentionTimer = setTimeout(() => this.refreshAttention().catch((error) => this.report("Could not read what waits for you", error)), 150);
   }
+  // refreshSetup reads what setup shows. A daemon without a method has none
+  // of it (conn.has says so: setup happens in config.toml); a read that
+  // fails is an error, said, and what was read before stays.
   async refreshSetup() {
-    try {
-      if (this.conn.has("settings.read")) this.settings = await this.conn.call("settings.read");
-      if (this.conn.has("keychain.status")) this.keychain = await this.conn.call("keychain.status");
-      // The window's console is on a new loopback port every launch (ADR
-      // 30), so the browser's own memory cannot carry the folder picked
-      // last across an app restart; the daemon's can.
-      if (this.conn.has("workspace.active")) this.last = (await this.conn.call("workspace.active", {})).path || "";
-      await this.refreshWorkspaces();
-    } catch {
-      /* an older daemon: setup happens in config.toml */
-    }
+    const read = async (method) => {
+      if (!this.conn.has(method)) return undefined;
+      try {
+        return await this.conn.call(method);
+      } catch (error) {
+        this.report(`Could not read ${method}`, error, () => this.refreshSetup());
+        return undefined;
+      }
+    };
+    const settings = await read("settings.read");
+    if (settings !== undefined) this.settings = settings;
+    const keychain = await read("keychain.status");
+    if (keychain !== undefined) this.keychain = keychain;
+    // The window's console is on a new loopback port every launch (ADR
+    // 30), so the browser's own memory cannot carry the folder picked
+    // last across an app restart; the daemon's can.
+    const active = await read("workspace.active");
+    if (active !== undefined) this.last = active.path || "";
+    await this.refreshWorkspaces();
     this.changed("setup");
   }
   async refreshWorkspaces() {
     if (!this.conn.has("workspace.list")) return;
     try {
       this.workspaces = (await this.conn.call("workspace.list")) || [];
-    } catch {
+    } catch (error) {
       this.workspaces = [];
+      this.report("Could not read the workspaces", error, () => this.refreshWorkspaces());
     }
     await this.refreshForgotten();
     this.changed("workspaces");
@@ -125,8 +149,9 @@ export class Desk {
     if (!this.conn.has("workspace.forgotten")) return;
     try {
       this.forgotten = new Set((await this.conn.call("workspace.forgotten")) || []);
-    } catch {
+    } catch (error) {
       this.forgotten = new Set();
+      this.report("Could not read the forgotten folders", error, () => this.refreshForgotten());
     }
     if (this.forgotten.has(this.last)) this.last = "";
     this.changed("workspaces");
@@ -155,11 +180,7 @@ export class Desk {
     return !!(c && (c.Credential || c.credential) && this.keychain?.exists && !this.keychain.unlocked && this.conn.has("keychain.unlock"));
   }
   async keysChanged() {
-    try {
-      await this.refreshSetup();
-    } catch {
-      /* the next refresh says it */
-    }
+    await this.refreshSetup();
     await this.refreshModels();
   }
   // refreshModels reads whether the models can be used; fresh asks every
@@ -171,8 +192,11 @@ export class Desk {
     const before = JSON.stringify(this.models ?? null);
     try {
       this.models = await this.conn.call("models.status", fresh ? { fresh: true } : {});
-    } catch {
+    } catch (error) {
       this.models = null;
+      // The minute's check says nothing: it would put the same error back
+      // every minute after it was dismissed, and the sidebar shows the state.
+      if (!quiet) this.report("Could not check the models", error);
     }
     if (!quiet || JSON.stringify(this.models ?? null) !== before) this.changed("models");
   }
@@ -183,13 +207,13 @@ export class Desk {
     const item = this.sessions.get(state.id);
     if (!item) {
       // A session opened by another client: fetch the list once.
-      if (state.open) this.refresh().catch(() => {});
+      if (state.open) this.reload();
       return;
     }
     Object.assign(item, { open: state.open, busy: state.busy, needs_answer: state.needs_answer });
     // A turn that ended or a task that closed has new activity, and perhaps
     // a title: the list, ordered by activity, is read again.
-    if (notify && previous && ((previous.busy && !state.busy) || (previous.open && !state.open))) this.refresh().catch(() => {});
+    if (notify && previous && ((previous.busy && !state.busy) || (previous.open && !state.open))) this.reload();
     if (!state.open || !state.needs_answer) this.pending.delete(state.id);
     if (!!previous?.needs_answer !== !!state.needs_answer || state.needs_answer) this.scheduleAttention();
     this.notifier.update(state, previous, notify, item);

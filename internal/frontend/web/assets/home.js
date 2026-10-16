@@ -1,5 +1,5 @@
 // Home: start anything, and see what needs you across every task.
-import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, basename } from "./dom.js";
+import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, toastError, basename } from "./dom.js";
 import { newSchedule, scheduleTime, scheduleActions } from "./schedule.js";
 import { summary } from "./prompts.js";
 import { keychainForm } from "./setup.js";
@@ -206,7 +206,7 @@ export function renderHome(root, ctx) {
                 toast("Allowed once.");
                 desk.scheduleAttention();
               } catch (error) {
-                toast(`${error.message} Nothing was retried.`);
+                toastError(`${error.message} Nothing was retried.`);
                 event.target.disabled = false;
               }
             },
@@ -441,10 +441,10 @@ export function renderHome(root, ctx) {
             keepDraft(opened, task.value);
             draft = "";
             files.clear();
-            toast(`${error.message} The message was not sent: it waits in the task's reply box.`);
+            toastError(`${error.message} The message was not sent: it waits in the task's reply box.`);
             navigate(`#/task/${opened}`);
-          } else toast(`${error.message} Nothing was retried; check the task list before starting again.`);
-          desk.refresh().catch(() => {});
+          } else toastError(`${error.message} Nothing was retried; check the task list before starting again.`);
+          desk.reload();
         } finally {
           starting = false;
           submit.disabled = !ready();

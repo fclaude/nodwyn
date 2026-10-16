@@ -1,7 +1,7 @@
 // Schedule drafts are local UI state; only daemon log records enable a timer.
 // The word for all of it is "Schedule", the verb and the noun; "Repeat" is
 // only the field that says how often.
-import { h, toast, removal } from "./dom.js";
+import { h, toast, toastError, removal } from "./dom.js";
 
 const localMinute = () => {
   const d = new Date(Date.now() + 60000);
@@ -80,7 +80,7 @@ export async function manageSchedule(conn, id, done) {
     let removing = false;
     const update = async (method, params = {}) => {
       try { state = await conn.call(method, { id, ...params }); await done(); draw(); }
-      catch (e) { toast(e.message); }
+      catch (e) { toastError(e.message); }
     };
     function draw() {
       const d = state.definition;
@@ -101,5 +101,5 @@ export async function manageSchedule(conn, id, done) {
       }));
     }
     draw();
-  } catch (e) { toast(e.message); }
+  } catch (e) { toastError(e.message); }
 }

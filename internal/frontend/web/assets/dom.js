@@ -152,17 +152,45 @@ export function diffStats(detail) {
   return { plus, minus };
 }
 
+// Messages sit at the top of the window, clear of the composer at its foot.
+// A toast confirms something and goes after a few seconds, one at a time.
+// An error stays until it is dismissed: it often says what not to do next
+// ("check the conversation before sending again"), and a person looking
+// elsewhere would otherwise find it gone.
+function messages() {
+  let box = $("toasts");
+  if (!box) {
+    box = h("div", { id: "toasts", class: "toasts" });
+    document.body.append(box);
+  }
+  return box;
+}
 let toastTimer = 0;
 export function toast(message) {
   let node = $("toast");
   if (!node) {
     node = h("div", { id: "toast", class: "toast", role: "status" });
-    document.body.append(node);
+    messages().prepend(node);
   }
   node.textContent = message;
   node.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (node.hidden = true), 5000);
+  toastTimer = setTimeout(() => (node.hidden = true), 4000);
+}
+// toastError shows an error until it is dismissed. The same message shown
+// already is not shown twice, and retry, when given, is offered as a button
+// that dismisses the message and tries again.
+export function toastError(message, retry) {
+  const box = messages();
+  for (const shown of box.querySelectorAll(".toast.error .toast-text")) if (shown.textContent === message) return;
+  const node = h(
+    "div",
+    { class: "toast error", role: "alert" },
+    h("span", { class: "toast-text" }, message),
+    retry ? h("button", { type: "button", class: "btn small", onclick: () => { node.remove(); retry(); } }, "Retry") : null,
+    h("button", { type: "button", class: "icon-btn", "aria-label": "Dismiss", onclick: () => node.remove() }, icon("cross", 14)),
+  );
+  box.append(node);
 }
 
 // toolLabel shows an MCP tool (server__tool) as server/tool.

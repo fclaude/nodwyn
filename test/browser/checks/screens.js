@@ -3,7 +3,7 @@
 // what each shot asserts is what its view shows, its background, and what
 // the actions in it did.
 const assert = require("assert");
-const { out, start, line, launch, watch, shows, until, ready, check } = require("../lib");
+const { out, start, line, launch, watch, expectError, requests, shows, until, ready, check } = require("../lib");
 
 check(async () => {
   const demo = start(process.env.DEMO, ["-seed", "-pace=0"]);
@@ -12,10 +12,11 @@ check(async () => {
   const browser = await launch();
   // The browser always reports a light system: dark is the console's default,
   // and light only a stored choice, so the dark shots check the default too.
-  const shoot = async (name, viewport, theme, look, scheme = "light") => {
+  const shoot = async (name, viewport, theme, look, scheme = "light", prepare = async () => {}) => {
     const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: 1 });
     if (theme !== "dark") await ctx.addInitScript((mode) => localStorage.setItem("nodwyn-theme", mode), theme);
     const page = watch(await ctx.newPage(), name);
+    await prepare(page);
     // Each page pairs with a ticket of its own, one per line the demo reads.
     const from = demo.stdoutText.length;
     demo.stdin.write("\n");
@@ -266,6 +267,57 @@ check(async () => {
       await page.waitForSelector(`#section-${tab}`);
     });
   }
+  // A read that fails is an error that stays, not an older daemon: the first
+  // settings.read is refused, the page says so with a Retry, and Retry reads
+  // it again, after which the page has its settings.
+  let refuse = true;
+  const readSettings = [];
+  await shoot("settings-read-failed", { width: 1280, height: 800 }, "light", async (page) => {
+    const error = page.locator(".toast.error");
+    await error.waitFor();
+    assert.ok((await error.textContent()).includes("Could not read settings.read: simulated read failure"), await error.textContent());
+    await page.screenshot({ path: `${out}/settings-read-failed-error.png` });
+    await page.evaluate(() => (location.hash = "#/settings"));
+    await page.waitForSelector("#settings-tab-general");
+    assert.ok(!(await page.textContent("#view")).includes("live in config.toml"), "a failed read was shown as an older daemon");
+    refuse = false;
+    await page.click(".toast.error button:text-is('Retry')");
+    await until("the settings read again", async () => readSettings.length === 2);
+    await until("the error gone", async () => (await error.count()) === 0);
+    await until("the settings drawn", async () => (await page.textContent("#view")).includes("Tokens used"));
+  }, "light", async (page) => {
+    await page.routeWebSocket("**/socket", async (ws) => {
+      const server = await ws.connectToServer();
+      ws.onMessage((message) => {
+        const frame = JSON.parse(message);
+        if (frame.method === "settings.read") {
+          readSettings.push(frame.id);
+          if (refuse) return ws.send(JSON.stringify({ jsonrpc: "2.0", id: frame.id, error: { code: -32000, message: "simulated read failure" } }));
+        }
+        server.send(message);
+      });
+      server.onMessage((message) => ws.send(message));
+    });
+  });
+  // A page that throws while it is drawn is replaced by its failure, with a
+  // way out, instead of leaving the last page on screen under a sidebar
+  // that already moved on.
+  await shoot("fault", { width: 1280, height: 800 }, "light", async (page) => {
+    await page.evaluate(async () => {
+      const { Desk } = await import("/desk.js");
+      window.needsYou = Desk.prototype.needsYou;
+      Desk.prototype.needsYou = () => { throw new Error("needs exploded"); };
+    });
+    expectError(/needs exploded/);
+    await go(page, "#/connections");
+    await page.waitForSelector("#fault");
+    await shows(page, "#view", "This page could not be drawn", "needs exploded", "Reload");
+    await page.screenshot({ path: `${out}/fault-panel.png` });
+    await page.evaluate(async () => (await import("/desk.js")).Desk.prototype.needsYou = window.needsYou);
+    await page.click("#fault a:text-is('Home')");
+    await page.waitForSelector("#task");
+    await shows(page, "#view", "What should we get done?");
+  });
   await shoot("connections", { width: 1280, height: 800 }, "light", async (page) => {
     await go(page, "#/connections");
     await page.waitForSelector("text=No MCP servers yet");
