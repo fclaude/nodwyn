@@ -18,10 +18,17 @@ type SessionMark struct {
 
 type indexMark struct {
 	SessionMark
-	Offset   int64       `json:"offset"`
-	Reply    string      `json:"reply,omitempty"`
-	ReplySeq uint64      `json:"reply_seq,omitempty"`
-	Context  []log.Event `json:"context,omitempty"`
+	Offset   int64  `json:"offset"`
+	Reply    string `json:"reply,omitempty"`
+	ReplySeq uint64 `json:"reply_seq,omitempty"`
+	// Context is the setup a run inherits (its session.start or resume,
+	// model, judge, helpers and limits), so the latest run opens without a
+	// read of the log before it. Only the latest run keeps the events whole:
+	// they are tens of kilobytes each, the system prompt and tool schemas
+	// among them, and kept in every run's mark they grew the index by that
+	// much a run. An earlier run's keep their seq and kind, and are read
+	// from the log when that run is opened.
+	Context []log.Event `json:"context,omitempty"`
 }
 
 // SessionTotals covers a complete durable prefix, including records no longer

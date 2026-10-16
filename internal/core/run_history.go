@@ -47,6 +47,11 @@ func (idx *logIndex) observeHistory(ev log.Event) {
 		h.Context[ev.Kind] = ev
 	}
 	if n := len(idx.Runs); n > 0 && idx.Runs[n-1].Seq == ev.Seq {
+		if n > 1 {
+			for i := range idx.Runs[n-2].Context {
+				idx.Runs[n-2].Context[i].Payload = nil
+			}
+		}
 		for _, e := range h.Context {
 			idx.Runs[n-1].Context = append(idx.Runs[n-1].Context, e)
 		}
@@ -157,11 +162,17 @@ func (s Store) ReadLatestRun(id string, through uint64, limit int) (LogPage, err
 		page := LogPage{Events: []log.Event{}, Next: m.Seq - 1, Through: through, Truncated: truncated, Run: &run}
 		if m.Seq > 1 {
 			page.Context = slices.Clone(m.Context)
-			for i := range page.Context {
-				page.Context[i].Payload, _, err = redact.JSON(page.Context[i].Payload, nil)
-				if err != nil {
+			for i, ev := range page.Context {
+				// An earlier run's setup is read from the log.
+				if ev.Payload == nil {
+					if ev, err = s.eventAt(id, ev.Seq); err != nil {
+						return LogPage{}, err
+					}
+				}
+				if ev.Payload, _, err = redact.JSON(ev.Payload, nil); err != nil {
 					return LogPage{}, err
 				}
+				page.Context[i] = ev
 			}
 		}
 		err = s.readPage(id, idx, &page, page.Next, through, limit)

@@ -38,7 +38,7 @@ import (
 // reach (the default denylist), and whatever could write it could write the
 // log itself.
 
-const indexVersion = 5
+const indexVersion = 6
 
 // markEvery is how many events apart the index notes where a line starts: a
 // page is read from the nearest mark before it, at most this many events

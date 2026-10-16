@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -177,5 +178,45 @@ func TestRunHistoryKeepsConversationBeforeTheFirstRun(t *testing.T) {
 	}
 	if old.Run.Seq != 1 || old.Through != chat.Through || len(old.Events) != 4 {
 		t.Fatalf("fixed prefix: %+v", old)
+	}
+}
+
+// A task that runs every day resumes before each run, and the resume
+// records the whole setup (the system prompt, the tools' schemas): the
+// index kept a copy of it in every run's mark, so it grew by that much a
+// run (17 MB for a year of a daily task). Only the latest run's is kept
+// whole; an earlier run's is read from the log when it is opened.
+func TestRunSetupIsKeptOnceInTheIndex(t *testing.T) {
+	t.Parallel()
+	st := Store{Dir: t.TempDir()}
+	id := "daily"
+	l := newSyntheticLog(t, st.Dir, id)
+	system := strings.Repeat("You are nodwyn. ", 2000) // 32 KB, as a real setup is
+	for run := 0; run < 30; run++ {
+		l.add(log.KindSessionResume, log.SessionStart{Repo: l.repo, Context: &log.WindowContext{System: system + strconv.Itoa(run)}})
+		l.add(log.KindRunState, log.RunState{Status: "running"})
+		l.turns(2)
+	}
+	latest, err := st.ReadLatestRun(id, 0, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(indexPath(st.Dir, id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() > 4*int64(len(system)) {
+		t.Fatalf("the index is %d bytes for 30 runs of a %d-byte setup", info.Size(), len(system))
+	}
+	if !strings.Contains(asJSON(t, latest.Context), "nodwyn. 29") {
+		t.Fatal("the latest run lost its setup")
+	}
+	// An earlier run, opened at its own end, reads its setup from the log.
+	earlier, err := st.ReadLatestRun(id, latest.Run.Seq-1, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := asJSON(t, earlier.Context); !strings.Contains(got, "nodwyn. 28") || strings.Contains(got, "nodwyn. 29") {
+		t.Fatalf("an earlier run's setup: %.200s", got)
 	}
 }
