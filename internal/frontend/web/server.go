@@ -597,7 +597,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	// the person back to a listener on this computer's loopback. A key the
 	// model asks for (session.secret) is a key typed too: a device shows the
 	// request, and it is answered here.
-	case "keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize", "session.secret":
+	case "keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "session.secret":
 		return !remote
 	case "devices.list", "devices.revoke":
 		return !remote && b.devices != nil

@@ -184,6 +184,7 @@ var methodTable = map[string]handler{
 	"credentials.replace":      (*server).credentialsMethod,
 	"credentials.remove":       (*server).credentialsMethod,
 	"credentials.bind":         (*server).credentialsMethod,
+	"credentials.unbind":       (*server).credentialsMethod,
 	"credentials.authorize":    (*server).credentialsMethod,
 	"settings.read":            (*server).settingsMethod,
 	"settings.control.write":   (*server).settingsMethod,

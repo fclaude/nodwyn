@@ -129,6 +129,14 @@ type credentialBindParams struct {
 	Methods  []string `json:"methods"`
 	Position string   `json:"position"`
 }
+type credentialUnbindParams struct {
+	ID string `json:"id"`
+	// Dest, Positions and Scopes are the row to take back, as the list shows
+	// it: every method it allowed goes with it.
+	Dest      string   `json:"dest"`
+	Positions []string `json:"positions"`
+	Scopes    []string `json:"scopes,omitempty"`
+}
 type credentialAuthorizeParams struct {
 	// ID authorizes an existing OAuth2 credential again, with its client,
 	// endpoints and scopes. Without it the rest describe a new one.
@@ -252,6 +260,28 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 			return nil, failure(-32000, err.Error())
 		}
 		return s.credentials(), nil
+	case "credentials.unbind":
+		var p credentialUnbindParams
+		if err := params(req.Params, &p, "id", "dest", "positions", "scopes"); err != nil {
+			return nil, err
+		}
+		in, err := store.Info(p.ID)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		n, err := binding.RemoveExact(ctx, s.options.Paths.Bindings, in.Class, p.Dest, p.Positions, p.Scopes)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		if n == 0 {
+			return nil, failure(-32000, fmt.Sprintf("bindings.toml has no row allowing %s at %s as %s: it may have changed since the page was drawn", in.Class, p.Dest, strings.Join(p.Positions, ", ")))
+		}
+		if err := s.reloadBindings(); err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		return s.credentials(), nil
 	}
 	return nil, failure(-32601, "Method not found")
 }
@@ -287,6 +317,12 @@ func (s *server) appendRows(rows []binding.Binding) error {
 			return err
 		}
 	}
+	return s.reloadBindings()
+}
+
+// reloadBindings reads bindings.toml again for the table new sessions start
+// with; sessions already open reload it before egress.
+func (s *server) reloadBindings() error {
 	table, err := binding.Load(s.options.Paths.Bindings)
 	if err != nil {
 		return err

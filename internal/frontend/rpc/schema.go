@@ -84,6 +84,7 @@ func contracts() map[string]methodContract {
 		"credentials.replace":      {credentialReplaceParams{}, credentialsResult{}},
 		"credentials.remove":       {credentialRemoveParams{}, credentialRemoved{}},
 		"credentials.bind":         {credentialBindParams{}, credentialsResult{}},
+		"credentials.unbind":       {credentialUnbindParams{}, credentialsResult{}},
 		"credentials.authorize":    {credentialAuthorizeParams{}, authorizationInfo{}},
 		"settings.read":            {struct{}{}, settingsResult{}},
 		"settings.control.write":   {controlParams{}, settingsResult{}},

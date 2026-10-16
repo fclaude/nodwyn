@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -90,6 +92,99 @@ func token(s string) bool {
 		}
 	}
 	return true
+}
+
+var (
+	bindHeader  = regexp.MustCompile(`^[ \t]*\[\[[ \t]*bind[ \t]*\]\][ \t]*(#.*)?$`)
+	tableHeader = regexp.MustCompile(`^[ \t]*\[`)
+)
+
+// RemoveExact narrows the file by taking out the rows that allow class at
+// dest with exactly these positions and scopes, whatever their methods: the
+// row the console lists. Every other byte stays as the user wrote it,
+// comments included. It cuts only a [[bind]] table it can delimit and read on
+// its own, and checks the result: a row held in any other form (an inline
+// array) is not guessed at, and the file is left as it was with an error that
+// says to edit it. It returns how many rows it removed, none leaving the file
+// unchanged.
+func RemoveExact(ctx context.Context, path, class, dest string, positions, scopes []string) (int, error) {
+	if path == "" {
+		return 0, fmt.Errorf("bindings: no persistence path")
+	}
+	dest = strings.ToLower(strings.TrimSpace(dest))
+	matches := func(b Binding) bool {
+		return b.Class == class && strings.ToLower(b.Dest) == dest && sameSet(b.Positions, positions) && sameSet(b.Scopes, scopes)
+	}
+	removed := 0
+	err := policyfile.Update(ctx, path, func(raw []byte) ([]byte, error) {
+		removed = 0
+		before, err := parse(raw, path)
+		if err != nil {
+			return nil, err
+		}
+		lines := strings.SplitAfter(string(raw), "\n")
+		var out strings.Builder
+		for i := 0; i < len(lines); {
+			if !bindHeader.MatchString(strings.TrimRight(lines[i], "\r\n")) {
+				out.WriteString(lines[i])
+				i++
+				continue
+			}
+			// The table runs to the next table header. Comments and blank
+			// lines at its end are the next row's, or the file's: they stay.
+			end := i + 1
+			for end < len(lines) && !tableHeader.MatchString(lines[end]) {
+				end++
+			}
+			last := end
+			for last > i+1 && (strings.TrimSpace(lines[last-1]) == "" || strings.HasPrefix(strings.TrimSpace(lines[last-1]), "#")) {
+				last--
+			}
+			one, err := parse([]byte(strings.Join(lines[i:last], "")), path)
+			if err == nil && len(one.Bind) == 1 && matches(one.Bind[0]) {
+				removed++
+			} else {
+				out.WriteString(strings.Join(lines[i:last], ""))
+			}
+			out.WriteString(strings.Join(lines[last:end], ""))
+			i = end
+		}
+		if removed == 0 {
+			// Nothing cut out as text: say so when a row that matches is still
+			// there in a form this cannot cut.
+			for _, b := range before.Bind {
+				if matches(b) {
+					return nil, fmt.Errorf("bindings: that row is written in a form the console cannot edit: change it in %s", path)
+				}
+			}
+			return nil, nil
+		}
+		after, err := parse([]byte(out.String()), path)
+		if err != nil {
+			return nil, err
+		}
+		for _, b := range after.Bind {
+			if matches(b) {
+				return nil, fmt.Errorf("bindings: a row for %s at %s is written in a form the console cannot edit: change it in %s", class, dest, path)
+			}
+		}
+		if len(before.Bind)-len(after.Bind) != removed {
+			return nil, fmt.Errorf("bindings: removing the row would have changed other rows: change %s by hand", path)
+		}
+		return []byte(out.String()), nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return removed, nil
+}
+
+// sameSet reports whether a and b hold the same words, in any order.
+func sameSet(a, b []string) bool {
+	x, y := slices.Clone(a), slices.Clone(b)
+	slices.Sort(x)
+	slices.Sort(y)
+	return slices.Equal(slices.Compact(x), slices.Compact(y))
 }
 
 // AppendExact preserves the user's bytes and appends one TOML row. A sibling

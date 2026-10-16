@@ -3536,6 +3536,9 @@
           "$ref": "#/$defs/request.credentials.replace"
         },
         {
+          "$ref": "#/$defs/request.credentials.unbind"
+        },
+        {
           "$ref": "#/$defs/request.hello"
         },
         {
@@ -4009,6 +4012,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.credentialReplaceParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.credentials.unbind": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "credentials.unbind"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.credentialUnbindParams"
             }
           ],
           "unevaluatedProperties": false
@@ -6523,6 +6557,9 @@
     "result.credentials.replace": {
       "$ref": "#/$defs/rpc.credentialsResult"
     },
+    "result.credentials.unbind": {
+      "$ref": "#/$defs/rpc.credentialsResult"
+    },
     "result.hello": {
       "$ref": "#/$defs/rpc.helloResult"
     },
@@ -7353,6 +7390,40 @@
       "required": [
         "id",
         "value"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialUnbindParams": {
+      "properties": {
+        "dest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "positions": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "dest",
+        "positions"
       ],
       "type": "object"
     },

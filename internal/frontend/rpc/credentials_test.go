@@ -148,6 +148,33 @@ func TestCredentialsAdminOverTheSocket(t *testing.T) {
 		t.Fatalf("missing: %+v", list.Missing)
 	}
 
+	// A host it was allowed for can be taken back, whatever its methods:
+	// narrowing is the safe direction, and bindings.toml keeps the rest.
+	if r := c.call("credentials.unbind", map[string]any{"id": gh.ID, "dest": "nowhere.example", "positions": []string{"header:Authorization:Bearer"}}); r.Error == nil || !strings.Contains(r.Error.Message, "no row allowing") {
+		t.Fatalf("took back a row that is not there: %+v", r.Error)
+	}
+	json.Unmarshal(c.ok("credentials.unbind", map[string]any{"id": gh.ID, "dest": "uploads.github.com", "positions": []string{"header:Authorization:Bearer"}}), &list)
+	for _, cred := range list.Credentials {
+		if cred.Class == "github-token" {
+			gh = cred
+		}
+	}
+	if len(gh.Bindings) != 2 || gh.Bindings[0].Dest != "api.github.com" || gh.Bindings[1].Dest != "api.github.com" {
+		t.Fatalf("after unbinding uploads.github.com: %+v", gh.Bindings)
+	}
+	table, err = binding.Load(o.Paths.Bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := table.Lookup("github-token", "uploads.github.com", "PUT", "header:Authorization:Bearer"); ok {
+		t.Fatal("the host taken back is still bound")
+	}
+	if ok, _ := table.Lookup("github-token", "api.github.com", "POST", "header:Authorization:Bearer"); !ok {
+		t.Fatal("another host's row went with it")
+	}
+	// Put back, so what follows sees the three rows it was written for.
+	json.Unmarshal(c.ok("credentials.bind", map[string]any{"id": gh.ID, "dest": "uploads.github.com", "methods": []string{"PUT"}, "position": "header:Authorization:Bearer"}), &list)
+
 	c.ok("credentials.replace", map[string]any{"id": gh.ID, "value": "ghp-canary-4"})
 	store, err := keychain.Open(o.Paths.Keychain, []byte("correct horse"))
 	if err != nil {
