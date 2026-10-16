@@ -77,29 +77,46 @@ func SetServer(raw []byte, name string, s Server) ([]byte, Config, error) {
 }
 
 // setTable replaces table, and any table under it, with block; an empty
-// block removes it.
+// block removes it. The comments and blank lines after the table's last
+// setting belong to the table that follows, as Edit reads them, and stay.
 func setTable(raw []byte, table, block string) ([]byte, Config, error) {
 	lines := strings.SplitAfter(string(raw), "\n")
 	var out strings.Builder
 	replaced, skipping := false, false
+	var held []string // comments and blank lines met while skipping
 	for _, line := range lines {
 		if match := tableHeader.FindStringSubmatch(strings.TrimRight(line, "\r\n")); match != nil {
 			name := strings.Trim(match[1], `"`)
-			if skipping {
-				skipping = false
-			}
 			if name == table || strings.HasPrefix(name, table+".") {
 				if !replaced {
 					out.WriteString(block)
 					replaced = true
 				}
-				skipping = true
+				skipping, held = true, nil
 				continue
 			}
+			if skipping {
+				// The next table's own lines: what came before its header
+				// after the last setting, its leading blank lines dropped,
+				// since the block ends with one.
+				for len(held) > 0 && strings.TrimSpace(held[0]) == "" {
+					held = held[1:]
+				}
+				for _, h := range held {
+					out.WriteString(h)
+				}
+				skipping, held = false, nil
+			}
 		}
-		if !skipping {
-			out.WriteString(line)
+		if skipping {
+			if t := strings.TrimSpace(line); t == "" || strings.HasPrefix(t, "#") {
+				held = append(held, line)
+			} else {
+				held = nil // a setting: what was held was the table's own
+			}
+			continue
 		}
+		out.WriteString(line)
 	}
 	text := out.String()
 	if !replaced && block != "" {

@@ -215,3 +215,32 @@ func TestSetControlWritesCacheKey(t *testing.T) {
 		t.Fatalf("%s\n%+v", raw, cfg.Control)
 	}
 }
+
+// The comment above a table is that table's: replacing or removing the
+// table before it used to take the comment with it.
+func TestReplacingATableKeepsTheNextTablesComment(t *testing.T) {
+	raw := []byte(`[control]
+url = "http://old:11434"
+model = "old"
+# old control's trailing note
+
+# --- Budget: keep this low ---
+[budget]
+cost_hard = 5.0
+`)
+	out, _, err := SetControl(raw, Model{Provider: "ollama", URL: "http://new:11434", Model: "new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	if !strings.Contains(text, "# --- Budget: keep this low ---\n[budget]") {
+		t.Fatalf("the next table's comment went:\n%s", text)
+	}
+	if strings.Contains(text, "old:11434") {
+		t.Fatalf("the old table stayed:\n%s", text)
+	}
+	out, _, err = SetControl(out, Model{})
+	if err == nil && !strings.Contains(string(out), "# --- Budget: keep this low ---\n[budget]") {
+		t.Fatalf("removing the table took the next one's comment:\n%s", out)
+	}
+}

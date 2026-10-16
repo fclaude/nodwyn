@@ -611,18 +611,6 @@ type RepoAllow struct {
 	Writes   []string `toml:"writes"`
 }
 
-// LoadRepoAllow reads a repository's allow file. Missing means none.
-func LoadRepoAllow(path string) (RepoAllow, error) {
-	raw, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return RepoAllow{}, nil
-	}
-	if err != nil {
-		return RepoAllow{}, err
-	}
-	return ParseRepoAllow(raw)
-}
-
 // ParseRepoAllow validates proposed standing approvals with the loading rules.
 func ParseRepoAllow(raw []byte) (RepoAllow, error) {
 	var r RepoAllow
