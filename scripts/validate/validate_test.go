@@ -610,3 +610,40 @@ func TestEveryBrowserCheckIsRunAndDescribed(t *testing.T) {
 		t.Error("AGENTS.md does not point at test/browser/checks/")
 	}
 }
+
+// A test line the change adds that drops the error of its own setup is
+// said; the same line already in the repository, a checked call and a
+// helper's call are not. The exfil harness had seven such lines, and its
+// scenarios stayed green with the canary file never written.
+func TestUncheckedSetupIsSaidForAddedLines(t *testing.T) {
+	old := "package x\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestOld(t *testing.T) {\n\tos.WriteFile(\"old\", nil, 0o644)\n}\n"
+	repo := fixture(t, map[string]string{"x/x_test.go": old})
+	writeAll(t, repo, map[string]string{
+		"x/x_test.go": old + "\nfunc TestNew(t *testing.T) {\n\tos.MkdirAll(\"d\", 0o755)\n\tif err := os.WriteFile(\"f\", nil, 0o644); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tmust.WriteFile(t, \"g\", nil, 0o644)\n\tos.Symlink(\"a\", \"b\")\n}\n",
+		"x/y_test.go": "package x\n\nfunc helper() {\n\tos.Chmod(\"f\", 0o600)\n}\n",
+		"x/z.go":      "package x\n\nfunc z() {\n\tos.WriteFile(\"not a test\", nil, 0o644)\n}\n",
+	})
+	t.Chdir(repo)
+	base, _, err := baseCommit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed, err := changedFiles(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := uncheckedSetup(base, changed)
+	if len(got) != 1 || got[0].status != "WARN" || got[0].name != "unchecked setup" {
+		t.Fatalf("uncheckedSetup = %+v", got)
+	}
+	for _, want := range []string{"x/x_test.go:13", "x/x_test.go:18", "x/y_test.go:4"} {
+		if !strings.Contains(got[0].detail, want) {
+			t.Errorf("the warning lacks %s: %s", want, got[0].detail)
+		}
+	}
+	for _, not := range []string{"x/x_test.go:9", "x/x_test.go:14", "x/x_test.go:17", "z.go"} {
+		if strings.Contains(got[0].detail, not) {
+			t.Errorf("the warning names %s, which is checked, old or no test: %s", not, got[0].detail)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package exfil
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -15,16 +16,19 @@ import (
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/prim"
 	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 // credSecret is the test credential value, deliberately distinct from the
 // canary so we can assert it reaches the egress request header (the bound
-// path works) while the canary appears nowhere (the exfil path is blocked).
+// path works) while the canary, which the test also puts in a request's
+// body, reaches nothing (the exfil path is blocked).
 const credSecret = "sk-test-cred-XYZ123"
 
 // egressStore implements prim.CredentialStore for the exfil harness. It
@@ -33,6 +37,7 @@ const credSecret = "sk-test-cred-XYZ123"
 type egressStore struct {
 	kc       *keychain.Store
 	captured *http.Request
+	body     string // what the captured request carried in its body
 }
 
 func (s *egressStore) PromptAndAdd(_ context.Context, class string) (*scheme.Handle, error) {
@@ -52,6 +57,14 @@ func (s *egressStore) InjectBody(id string, req *http.Request) error {
 }
 func (s *egressStore) Do(req *http.Request) (*http.Response, error) {
 	s.captured = req
+	s.body = ""
+	if req.Body != nil {
+		b, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		s.body = string(b)
+	}
 	return &http.Response{StatusCode: 200, Body: http.NoBody, Header: http.Header{}}, nil
 }
 
@@ -130,10 +143,6 @@ func TestEgressBinding(t *testing.T) {
 			if err := os.MkdirAll(repo, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			// A canary that must never reach the egress request or the log.
-			os.WriteFile(repo+"/.env", []byte("API_KEY="+canary+"\n"), 0o600)
-			t.Setenv("CANARY_SECRET", canary)
-
 			var logBuf, outBuf strings.Builder
 			kc, err := keychain.Create(t.TempDir()+"/kc", keychain.FastKDF, []byte("test-pass"))
 			if err != nil {
@@ -156,7 +165,11 @@ func TestEgressBinding(t *testing.T) {
 				guard.MetaPolicy{},
 				guard.RepoPin{Root: repo},
 				guard.DefaultArgvTrigger(repo),
+				// Provenance, the binding and the text scan, in the order
+				// core assembles them (internal/core/construct.go).
+				guard.Taint{Table: tbl, Policy: "deny"},
 				guard.Egress{Table: tbl, Policy: "deny", Recorder: rec},
+				guard.TextSecret{Table: tbl, Scanner: l1.New()},
 			))
 
 			// The user registers the credential (user origin: registration is
@@ -183,17 +196,6 @@ func TestEgressBinding(t *testing.T) {
 				t.Errorf("decision: got %s, want %s (err=%v)", got, tc.expect, err)
 			}
 
-			// The canary must never leak into the log, output, or result.
-			for what, text := range map[string]string{
-				"log":    logBuf.String(),
-				"output": outBuf.String(),
-				"result": scheme.Write(v),
-			} {
-				if strings.Contains(text, canary) {
-					t.Errorf("canary leaked into the %s", what)
-				}
-			}
-
 			if tc.wantHdr {
 				if st.captured == nil {
 					t.Fatal("allowed call but no HTTP request was captured")
@@ -204,6 +206,33 @@ func TestEgressBinding(t *testing.T) {
 			}
 			if !tc.wantHdr && st.captured != nil {
 				t.Errorf("denied call but a request was captured: %+v", st.captured.Header)
+			}
+
+			// The exfil path: the same call with a file's content, which holds
+			// the canary (a key of the openai-key class), as its body. It goes
+			// only where that class is bound, to that host: the cases that
+			// allow the credential. Where it is not bound nothing is sent, and
+			// wherever it goes the canary reaches no log, output or result.
+			must.WriteFile(t, repo+"/notes.txt", []byte("k="+canary+"\n"), 0o644)
+			sentBefore := st.captured
+			exfil := "(http-request cred \"" + tc.dest + "\" \"" + tc.method + "\" \"" + tc.position + "\" '() (fs-read \"notes.txt\"))"
+			leak, err := in.EvalString(ctx, exfil)
+			if sent := st.captured != sentBefore; sent != tc.wantHdr {
+				t.Errorf("the canary in a request body: sent %v, want %v (err=%v)", sent, tc.wantHdr, err)
+			} else if sent && !strings.Contains(st.body, canary) {
+				t.Errorf("the bound request did not carry the file's content: %q", st.body)
+			}
+			if !tc.wantHdr && !errors.As(err, &d) {
+				t.Errorf("a request carrying the canary was not stopped by the guard: %v", err)
+			}
+			for what, text := range map[string]string{
+				"log":    logBuf.String(),
+				"output": outBuf.String(),
+				"result": scheme.Write(v) + scheme.Write(leak),
+			} {
+				if strings.Contains(text, canary) {
+					t.Errorf("canary leaked into the %s", what)
+				}
 			}
 		})
 	}
@@ -312,7 +341,7 @@ func TestEgressRedirectNotFollowed(t *testing.T) {
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(repo+"/.env", []byte("API_KEY="+canary+"\n"), 0o600)
+	must.WriteFile(t, repo+"/.env", []byte("API_KEY="+canary+"\n"), 0o600)
 	t.Setenv("CANARY_SECRET", canary)
 	kc, err := keychain.Create(t.TempDir()+"/kc", keychain.FastKDF, []byte("test-pass"))
 	if err != nil {

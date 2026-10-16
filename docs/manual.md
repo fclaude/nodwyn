@@ -99,7 +99,7 @@ Read a test when you want to know what a claim actually means.
 | Agent behaviours are user code, not core features | [userland_test.go](../internal/core/userland_test.go): each behaviour is written as a user's `init.scm`; one that needs Go marks a gap in the core |
 | A handle can never become text | `TestHandlePrintsOpaque` |
 | The core knows nothing about terminals | [scripts/lint-boundaries.sh](../scripts/lint-boundaries.sh) in `make lint` |
-| No path exists for the canary to leak | [test/exfil](../test/exfil/): each scenario asserts the decision *and* greps the canary out of log, output and result |
+| No path exists for the canary to leak | [test/exfil](../test/exfil/): each scenario runs in a real session (the guard core assembles) and asserts the decision, whether a confirm is a security confirm no standing approval may waive, *and* greps the canary out of the log, the output and the requests to the model |
 | Request prefix is byte-stable | [session_test.go](../internal/core/session_test.go) `TestTurnWithToolCall` compares request N's messages with request N+1's prefix |
 
 ### Searching what earlier tasks did

@@ -41,7 +41,9 @@ are faster.
   git archive HEAD | tar -x -C "$TMPDIR/base"`, copy the test in, run it
   there). A test that cannot compile against the unchanged code shows
   nothing either way: say so. Setup whose errors are ignored (an unchecked
-  `os.WriteFile`) lets a test pass on a state that never existed.
+  `os.WriteFile`) lets a test pass on a state that never existed: check it,
+  or write it with `test/fakes/must` (`must.WriteFile(t, ...)`); validate
+  warns for each such line a change adds.
 - **The console** (`internal/frontend/web/assets`: JS, CSS): Go's tests do not
   run it. Run its browser check, `bash test/browser/run.sh <check>`: one
   per file in `test/browser/checks/`, each described in `test/browser/README.md`
@@ -72,7 +74,8 @@ are faster.
   `internal/core` tests. The working rules were measured on a benchmark
   (ADR 32): a rule you add says, in a comment and an ADR 32 amendment, the
   failure it comes from.
-- **Guard, denylist, bindings, keychain, egress, redaction:** `make exfil`.
+- **Guard, denylist, bindings, keychain, egress, redaction:** `make exfil`
+  (its scenarios run in a real session, `test/exfil/scenarios/README.md`).
   Never loosen a check to make a test pass.
 - **The book and the expert guide** are built by the release flow
   (`scripts/release.py build`, ADR 42), not by `validate` or a session.

@@ -23,10 +23,9 @@ type Server struct {
 	ClientID string
 
 	mu        sync.Mutex
-	expiresIn int64  // access token lifetime in seconds; 0: tokens do not expire
-	rotate    bool   // a new refresh token on every refresh, the old one retired
-	grant     string // the scope answered instead of the one requested
-	deny      bool   // the authorization endpoint refuses (access_denied)
+	expiresIn int64 // access token lifetime in seconds; 0: tokens do not expire
+	rotate    bool  // a new refresh token on every refresh, the old one retired
+	deny      bool  // the authorization endpoint refuses (access_denied)
 	n         int
 	codes     map[string]pending
 	refresh   map[string]string // refresh token -> scope
@@ -38,7 +37,6 @@ type Server struct {
 // Settings change how the fake answers from now on.
 func (s *Server) SetExpiresIn(seconds int64) { s.mu.Lock(); s.expiresIn = seconds; s.mu.Unlock() }
 func (s *Server) SetRotate(rotate bool)      { s.mu.Lock(); s.rotate = rotate; s.mu.Unlock() }
-func (s *Server) SetGrant(scope string)      { s.mu.Lock(); s.grant = scope; s.mu.Unlock() }
 func (s *Server) SetDeny(deny bool)          { s.mu.Lock(); s.deny = deny; s.mu.Unlock() }
 
 // Refreshes and Exchanges count the refresh_token and authorization_code
@@ -166,9 +164,6 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	default:
 		fail("unsupported_grant_type")
 		return
-	}
-	if s.grant != "" {
-		scope = s.grant
 	}
 	s.n++
 	answer := map[string]any{"access_token": fmt.Sprintf("fake-access-token-%d", s.n), "token_type": "Bearer", "scope": scope}

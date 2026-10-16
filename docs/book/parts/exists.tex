@@ -115,7 +115,7 @@ Every primitive is documented & \code{TestDocCoverage}, \code{TestSessionPrimiti
 A handle never becomes text & \code{TestHandlePrintsOpaque} \\
 What enters the context is redacted & \code{TestIngressCanary} and the redaction tests in \file{internal/core} \\
 The core knows nothing about terminals & \file{scripts/lint-boundaries.sh} in \code{make lint} \\
-No path for the canary to leak & \code{test/exfil}: fifteen scenarios, run with writes in the folder allowed, as sessions have them by default (a write to a hook, a credential-shaped write and a write through a link still ask or are refused), plus Go tests for bindings, redirects, the judge, OAuth2 credentials and document uploads; each asserts the decision and greps the canary out of the log, the output and the result \\
+No path for the canary to leak & \code{test/exfil}: nineteen scenarios, run with writes in the folder allowed, as sessions have them by default (a write to a hook, a credential-shaped write and a write through a link still ask or are refused), plus Go tests for bindings, redirects, the judge, OAuth2 credentials and document uploads; the scenarios run in a real session, so the guard is the one core assembles; each asserts the decision (and whether a confirm is a security confirm no standing approval may waive) and greps the canary out of the log, the output and the requests to the model \\
 Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive requests \\
 \bottomrule
 \end{longtable}}

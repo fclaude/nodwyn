@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,6 +21,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/prim"
 	"github.com/fclaude/nodwyn/internal/scheme"
 	fakejev "github.com/fclaude/nodwyn/test/fakes/jev"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 // judgeStore implements prim.JudgeClient for the judge exfil harness.
@@ -111,7 +111,7 @@ func newJudgeHarness(t *testing.T, provider string, bound, tools, key bool) *jud
 	t.Helper()
 	setup := judgeSetups[provider]
 	repo := t.TempDir()
-	os.WriteFile(repo+"/.env", []byte("API_KEY="+canary+"\n"), 0o600)
+	must.WriteFile(t, repo+"/.env", []byte("API_KEY="+canary+"\n"), 0o600)
 
 	kc, err := keychain.Create(t.TempDir()+"/kc", keychain.FastKDF, []byte("test"))
 	if err != nil {
@@ -398,7 +398,7 @@ func TestGateEventsPerMessage(t *testing.T) {
 //     a confirm from the Scheme checker.
 func TestRegisterCheckConfirms(t *testing.T) {
 	repo := t.TempDir()
-	os.WriteFile(repo+"/f.txt", []byte("x"), 0o644)
+	must.WriteFile(t, repo+"/f.txt", []byte("x"), 0o644)
 
 	var logB strings.Builder
 	rec := recorder{nlog.New(&logB, "regchk")}
@@ -439,7 +439,7 @@ func TestRegisterCheckConfirms(t *testing.T) {
 //     relax it back to allow.
 func TestRegisterCheckDenyWins(t *testing.T) {
 	repo := t.TempDir()
-	os.WriteFile(repo+"/f.txt", []byte("x"), 0o644)
+	must.WriteFile(t, repo+"/f.txt", []byte("x"), 0o644)
 
 	var logB strings.Builder
 	rec := recorder{nlog.New(&logB, "denywins")}

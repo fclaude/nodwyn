@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -34,9 +35,7 @@ func TestKeyEndingASentenceNeverLeaves(t *testing.T) {
 	)
 	t.Cleanup(srv.Close)
 	repo := t.TempDir()
-	if err := os.WriteFile(filepath.Join(repo, "notes.md"), []byte("The bucket key is "+awsKey+".\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	must.WriteFile(t, filepath.Join(repo, "notes.md"), []byte("The bucket key is "+awsKey+".\n"), 0o644)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
 	cfg.Loop.MaxToolCalls = 10
@@ -51,26 +50,16 @@ func TestKeyEndingASentenceNeverLeaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Ordinary confirms (the command) are answered yes, security ones no.
-	var security []event.Confirm
-	timeout := time.After(10 * time.Second)
-	for idle := false; !idle; {
-		select {
-		case ev := <-s.Events():
-			switch ev.Kind {
-			case event.PromptConfirm:
-				c := ev.Payload.(event.Confirm)
-				answer := "y"
-				if c.Prompt.Security {
-					security, answer = append(security, c), "n"
-				}
-				if err := s.Answer(c.ID, answer); err != nil {
-					t.Fatal(err)
-				}
-			case event.Status:
-				idle = ev.Payload.(event.StatusInfo).State == "idle"
-			}
-		case <-timeout:
-			t.Fatal("the session did not go idle")
+	var security []guard.Prompt
+	asked, _ := driveTurn(t, s, func(c event.Confirm) string {
+		if c.Prompt.Security {
+			return "n"
+		}
+		return "y"
+	})
+	for _, p := range asked {
+		if p.Security {
+			security = append(security, p)
 		}
 	}
 
@@ -87,7 +76,7 @@ func TestKeyEndingASentenceNeverLeaves(t *testing.T) {
 			t.Errorf("request %d does not show the model %q", i, want)
 		}
 	}
-	if len(security) != 1 || security[0].Prompt.Prim != "fs-write" {
+	if len(security) != 1 || security[0].Prim != "fs-write" {
 		t.Errorf("writing the key did not ask as a security confirm: %+v", security)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "report.md")); !os.IsNotExist(err) {

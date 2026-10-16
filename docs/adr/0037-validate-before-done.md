@@ -297,3 +297,13 @@ check that would have failed it. Each is closed here; validate's own tests
   main line measures from its own upstream.
 
 The tool's description no longer says validate builds the books.
+
+Added the same day: validate warns for each line a change adds to a test
+file that drops the error of `os.WriteFile`, `MkdirAll`, `Symlink` and the like
+(about two hundred such lines were already there and are not listed), and
+`test/fakes/must` is how to write them. The exfiltration scenarios were run
+through a guard the test assembled by hand; they now run as tools of a real
+session (`core.New`) with a scripted model, so a checker dropped or reordered
+in `internal/core/construct.go`, or a security confirm that became an
+ordinary one, fails them (shown by editing `internal/core/construct.go` and
+`internal/guard/taint.go`: the old runner passed both edits).

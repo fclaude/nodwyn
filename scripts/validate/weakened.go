@@ -3,7 +3,9 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -93,4 +95,52 @@ func removedChecks(base string, changed []string) []string {
 	}
 	sort.Strings(gone)
 	return gone
+}
+
+// uncheckedCall is a statement that sets a test's world up and drops its
+// error. AGENTS.md says such setup lets a test pass on a state that never
+// existed (the exfil scenarios stayed green with the canary file unwritten,
+// as the guard refuses by path first); a checked call or test/fakes/must is
+// the way to write it.
+var uncheckedCall = regexp.MustCompile(`^\s*os\.(WriteFile|MkdirAll|Mkdir|Symlink|Link|Chmod|Rename|Truncate|Chtimes)\(`)
+
+// uncheckedSetup lists the lines the change adds to test files that drop a
+// setup error. Lines already there are not listed: there are about two
+// hundred of them, and a warning for each would hide this one.
+func uncheckedSetup(base string, changed []string) []result {
+	if base == "" {
+		return nil
+	}
+	var found []string
+	for _, p := range changed {
+		if !strings.HasSuffix(p, "_test.go") || !fileExists(p) {
+			continue
+		}
+		ranges, isNew, err := changedLines(base, p)
+		if err != nil {
+			continue
+		}
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for i, line := range strings.Split(string(raw), "\n") {
+			if uncheckedCall.MatchString(line) && (isNew || inRanges(i+1, ranges)) {
+				found = append(found, p+":"+strconv.Itoa(i+1))
+			}
+		}
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	return []result{{status: "WARN", name: "unchecked setup", detail: strings.Join(found, ", ") + ": a test whose setup failed passes on a state that never existed; check the error or use test/fakes/must"}}
+}
+
+func inRanges(line int, ranges [][2]int) bool {
+	for _, r := range ranges {
+		if r[0] <= line && line <= r[1] {
+			return true
+		}
+	}
+	return false
 }

@@ -195,7 +195,8 @@ func docRules(base string, changed []string) []result {
 	if console && !consoleCheck {
 		out = append(out, result{status: "WARN", name: "browser check", detail: "the console changed and no check in test/browser/checks did: the check performs each new action and checks its effect (AGENTS.md), and a Go test did not run the console"})
 	}
-	return append(out, weakened(base, changed)...)
+	out = append(out, weakened(base, changed)...)
+	return append(out, uncheckedSetup(base, changed)...)
 }
 
 // primitiveTables fails when a primitive the change adds is missing from

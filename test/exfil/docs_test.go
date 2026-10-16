@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	fakedrive "github.com/fclaude/nodwyn/test/fakes/drive"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 // Documents out (W5): a document sent to Google Drive never was a Scheme
@@ -31,7 +31,9 @@ func docsSession(t *testing.T, drive *fakedrive.Server, bound bool) (*core.Sessi
 	if err != nil {
 		t.Fatal(err)
 	}
-	kc.Add("google", []byte(googleSecret))
+	if _, err := kc.Add("google", []byte(googleSecret)); err != nil {
+		t.Fatal(err)
+	}
 	var tbl binding.Table
 	if bound {
 		tbl.Bind = []binding.Binding{{Class: "google", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}
@@ -82,7 +84,7 @@ func TestDocumentHoldingTheCanaryNeverReachesDrive(t *testing.T) {
 		"notes.txt":    []byte("notes " + canary + "\n"),
 	}
 	for name, content := range files {
-		os.WriteFile(filepath.Join(repo, name), content, 0o644)
+		must.WriteFile(t, filepath.Join(repo, name), content, 0o644)
 		_, err := s.Eval(context.Background(), `(google-doc-upload "`+name+`")`)
 		if err == nil || !strings.Contains(err.Error(), "nothing was sent") {
 			t.Fatalf("%s: %v", name, err)
@@ -95,7 +97,7 @@ func TestDocumentHoldingTheCanaryNeverReachesDrive(t *testing.T) {
 		t.Fatal("the canary or the token reached the log")
 	}
 	// The same upload without the canary goes, with the bound token.
-	os.WriteFile(filepath.Join(repo, "clean.txt"), []byte("notes\n"), 0o644)
+	must.WriteFile(t, filepath.Join(repo, "clean.txt"), []byte("notes\n"), 0o644)
 	if _, err := s.Eval(context.Background(), `(google-doc-upload "clean.txt")`); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +113,7 @@ func TestUnboundUploadNeverLeaves(t *testing.T) {
 	drive := fakedrive.New()
 	t.Cleanup(drive.Close)
 	s, repo, logb := docsSession(t, drive, false)
-	os.WriteFile(filepath.Join(repo, "notes.txt"), []byte("notes\n"), 0o644)
+	must.WriteFile(t, filepath.Join(repo, "notes.txt"), []byte("notes\n"), 0o644)
 	_, err := s.Eval(context.Background(), `(google-doc-upload "notes.txt")`)
 	if err == nil || !strings.Contains(err.Error(), "denied") {
 		t.Fatalf("an unbound upload: %v", err)
