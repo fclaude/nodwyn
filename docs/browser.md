@@ -748,19 +748,17 @@ The session view buttons open fixed snapshots:
   turn approval. It does not restore authority from recorded receipts. Separate
   buttons open the guarded policy-file editor.
 - **Tools** shows the model's current tool catalog and input schemas.
-- **Friction** reads `docs/friction.md` through the session interpreter and guard.
-  It needs an idle open session in interactive mode. Custom checker prompts take
-  priority; after answering, reopen Friction to see the completed result. Refresh
-  view starts a new guarded read. Denial or cancellation returns an error, never
-  the preceding read's contents. Text passes normal redaction and is rendered
-  literally. This fixed-path operation cannot select arbitrary files.
+- There is no Friction entry: `docs/friction.md` is nodwyn's own development log
+  and only its repository has the file, so the console does not offer a read that
+  fails everywhere else. `session.friction` and the TUI's `:friction` remain as
+  developer commands.
 
 Every inspector names its log watermark. Live transcript events keep arriving but
 an open inspector stays fixed until Refresh view reloads history and metadata.
 Current session metadata is sampled separately from the log prefix. Saved sessions
 retain plan/log views; current limits, policy and tools require an open session.
 Pending prompts take priority over inspector navigation. Read-only mode has the
-same snapshot inspectors; it cannot start a friction read. It retains its server-side mutation restrictions.
+same snapshot inspectors. It retains its server-side mutation restrictions.
 
 Without `--listen` the bridge binds only `127.0.0.1`, on the port it had the last time when free, else a new one; with it,
 the address you give, for paired devices (above). Every request checks its
@@ -804,10 +802,9 @@ confirmations, exact persistent binding and host injection, forged destinations,
 and clean authority after resume.
 Inspector browser checks cover paged log filters, older-plan exclusion, fixed
 snapshot refresh, current/saved session distinctions and prompt priority.
-The friction view is covered through core, RPC and the browser WebSocket, with
+The friction read is covered through core, RPC and the browser WebSocket, with
 allow/deny/custom-confirm/cancellation, concurrent-operation rejection and canary
-redaction. Browser checks also cover prompt priority, cached result reopening,
-explicit guarded refresh and denial replacing the previous result.
+redaction.
 The policy editor completes the current U3 scope. Its two targets are shared
 `bindings.toml` and repository `.nodwyn/allow.toml`. Reads and writes use fixed host
 primitives through the interpreter and guard, with no arbitrary path or browser

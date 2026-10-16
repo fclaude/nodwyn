@@ -696,6 +696,9 @@ check(async () => {
       tabs.afterEvent = { chosen: chosen(), shown: shown() };
       pick("Workspace");
       tabs.workspace = { chosen: chosen(), shown: shown() };
+      // Details offers what any project has: docs/friction.md is nodwyn's own
+      // development log, so no entry reads it.
+      tabs.detailLinks = [...task.el.side.querySelectorAll("[role=tabpanel] .panel .links button")].map((b) => b.textContent);
       task.notes = "Project knowledge";
       task.aside();
       tabs.notes = { chosen: chosen(), shown: shown() };
@@ -1304,6 +1307,7 @@ check(async () => {
   want(tb.changes.chosen === "Changes" && tb.changes.shown === "No approved changes yet.", `Changes tab: ${JSON.stringify(tb.changes)}`);
   want(tb.afterEvent.chosen === "Changes" && tb.afterEvent.shown === "No approved changes yet.", `the tab kept through an event's redraw: ${JSON.stringify(tb.afterEvent)}`);
   want(tb.workspace.chosen === "Workspace" && tb.workspace.shown.join() === "Workspace,Details", `Workspace tab: ${JSON.stringify(tb.workspace)}`);
+  want(tb.detailLinks.join() === "Log,Plan record,Budget,Policy,Tools", `Details entries: ${JSON.stringify(tb.detailLinks)}`);
   want(tb.notes.chosen === "Workspace" && tb.notes.shown.join() === "Workspace,Details,What nodwyn knows here", `Workspace notes: ${JSON.stringify(tb.notes)}`);
   want(tb.statistics.chosen === "Statistics" && tb.statistics.shown.join() === "This turn,Totals", `Statistics panels: ${JSON.stringify(tb.statistics)}`);
   want(tb.left.chosen === "Statistics" && tb.left.focused === "Statistics" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Progress" && tb.home.focused === "Progress", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);

@@ -2041,7 +2041,7 @@ export class TaskView {
   }
   detailsPanel() {
     const link = (label, kind) => h("button", { type: "button", class: "btn small", onclick: () => this.inspect(kind) }, label);
-    return h("section", { class: "panel" }, h("h2", {}, "Details"), h("div", { class: "links" }, link("Log", "log"), link("Plan record", "plan"), link("Budget", "budget"), link("Policy", "policy"), link("Tools", "tools"), link("Friction", "friction")));
+    return h("section", { class: "panel" }, h("h2", {}, "Details"), h("div", { class: "links" }, link("Log", "log"), link("Plan record", "plan"), link("Budget", "budget"), link("Policy", "policy"), link("Tools", "tools")));
   }
 
   // ---------- inspectors (U3), under Details ----------
@@ -2054,7 +2054,7 @@ export class TaskView {
     this.el.transcript.hidden = true;
     view.hidden = false;
     this.controls();
-    const title = { log: "Log", plan: "Plan record", budget: "Budget", policy: "Policy", tools: "Tools", friction: "Friction" }[kind];
+    const title = { log: "Log", plan: "Plan record", budget: "Budget", policy: "Policy", tools: "Tools" }[kind];
     const back = h("button", { type: "button", class: "btn small", onclick: () => this.closeInspector() }, icon("back", 14), "Conversation");
     const refresh = h("button", { type: "button", class: "btn small", onclick: () => this.inspect(kind, true) }, "Refresh view");
     const content = h("div");
@@ -2062,7 +2062,6 @@ export class TaskView {
     const count = h("input", { class: "input", type: "number", min: 1, max: 1000, value: "50", "aria-label": "Maximum records", style: "width:110px" });
     const form = kind === "log" ? h("form", { onsubmit: (e) => { e.preventDefault(); draw(); } }, filter, count, h("button", { class: "btn small", type: "submit" }, "Filter")) : null;
     view.replaceChildren(...[h("div", { class: "bar" }, back, h("h2", {}, title), refresh), this.historyCursor > 1 ? h("p", { class: "hint" }, "Records from the latest run and its inherited setup. Open earlier runs in Conversation to read their records.") : null, form, content].filter(Boolean));
-    if (kind === "friction") return this.friction(content, version);
     if (kind === "policy" && this.policy && !reread) return this.showPolicy(content);
     const snapshot = { events: this.events(), info: null, infoError: "This task is not open. Resume it to see its current configuration.", truncated: this.truncated };
     if (this.item.open && ["budget", "policy", "tools"].includes(kind)) {
@@ -2129,22 +2128,6 @@ export class TaskView {
     } catch (error) {
       request.error = error.message;
       this.showPolicy(content);
-    }
-  }
-  async friction(content, version) {
-    if (!this.item.open || this.busy || !this.conn.has("session.friction")) {
-      content.replaceChildren(h("p", {}, "Reading the friction log needs an open, idle task in an interactive view."));
-      return;
-    }
-    content.replaceChildren(h("p", { class: "hint" }, "Reading docs/friction.md through the task's guard…"));
-    try {
-      const started = await this.conn.call("session.friction", { id: this.item.id });
-      this.expect(started.operation_id, (result) => {
-        if (version !== this.version || this.inspecting !== "friction") return;
-        content.replaceChildren(h("p", { class: "hint" }, "docs/friction.md · guarded read · refresh to read again"), h("pre", {}, result.Err || result.Text));
-      });
-    } catch (error) {
-      content.replaceChildren(h("p", {}, error.message));
     }
   }
   // expect pairs a guarded operation's result event with its handler; the

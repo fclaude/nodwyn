@@ -145,7 +145,7 @@ but `:replay`. Both read the same log.
 | Live gauges (spend, time, context, cache hit, 90% warnings) | yes, the summary above the tabs; session totals from `session.totals` | the context share in the title | — | — |
 | Tools offered, with schemas | Details › Tools | `:tools [name]` | `:tools` | — |
 | Bindings and approvals in effect | Details › Policy | `:bindings`, `:allow` | `:allow` | — |
-| `docs/friction.md`, guarded | Details › Friction | `:friction` | — | — |
+| `docs/friction.md`, guarded (nodwyn's own development log: a developer command, not offered to every project) | deliberate gap: no Details entry, since only nodwyn's repository has the file | `:friction` | — | — |
 | A transcript replayed from the log | — (the conversation is it) | `:replay` | — | `nodwyn replay` |
 
 ## Setup and the computer (ADR 30)
