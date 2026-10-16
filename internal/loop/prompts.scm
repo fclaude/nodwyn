@@ -419,6 +419,26 @@
                lines))
    "\nAn existing test of something the request does not change is a constraint: restore each such line and fix the code instead, or quote in your report the request's words that change it."))
 
+;; The parts of a condition the change no longer checks (strategy.scm,
+;; change-dropped-conditions), a point of the finish review. On commit-bench
+;; dsl19 turned `Jev.Enabled() && ...` into `state == stateReady`, as its
+;; plan said, against its own doubts four times; no test had a case where the
+;; judge's content was none, so every check passed (c80b38ac; ADR 32, amended
+;; 2026-10-15).
+(define (finish-dropped-conditions-message dropped)
+  (string-append
+   "Your change no longer checks "
+   (string-join
+    (map (lambda (d)
+           (string-append "`" (format "~a" (assoc-ref d "operand" "")) "` in "
+                          (format "~a" (assoc-ref d "function" "")) "() (" (format "~a" (assoc-ref d "path" "")) ")"
+                          (if (assoc-ref d "guard" #f) ", a guard that returned early" "")))
+         dropped)
+    "; ")
+   ", and your check passed without " (if (null? (cdr dropped)) "it" "them")
+   ". If the task drops " (if (null? (cdr dropped)) "it" "one")
+   ", add a test case where it is false and say so in your report; otherwise put it back."))
+
 ;; The lines the change adds to documents and comments that state what
 ;; nothing in the turn showed (strategy.scm, change-claims), a point of the
 ;; finish review. On commit-bench three builds copied the task's "40 s (9.4M

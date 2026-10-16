@@ -269,6 +269,11 @@
    "\n(context \"name\" ...) — the other names the request gives that read as code: what the change only uses or edits; nothing else"
    "\nEvery name of the request that reads as code (session-id, cache_key, output_index) appears in names or context. If you think one is already in the code under another name, keep it in names anyway: the change is checked for the request's own spelling."
    "\nSay what the code should do as behaviour, in which cases and with what result, not as code to type. Where the request or the code leaves a detail open (which helper to call, a literal's format, which of several fixes), name the options and what will decide between them inside the step, and leave the choice to whoever carries the plan out. Copy the request's own examples, names and formats word for word."
+   ;; dsl19's planner read "judge requires ready" as "judge equals ready" and
+   ;; dropped Enabled() from the old condition it had been given, and its
+   ;; executor followed the step against its own doubts (commit-bench
+   ;; c80b38ac; ADR 32, amended 2026-10-15).
+   "\nWhen a step changes an existing condition, it names each part of the old condition and says whether that part stays."
    "\nFor example:"
    "\n(change \"src/flags.go\" \"parseFlags\" \"accept --verbose and set Verbose\")"
    "\n(test \"src/flags_test.go\" \"TestVerboseFlag\" \"--verbose sets Verbose and -q does not\" (fails-today \"the flag is unknown\") (run \"go test ./src -run TestVerboseFlag\"))"

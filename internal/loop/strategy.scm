@@ -759,6 +759,9 @@
 ;; a deleted helper the hidden test called failed dsl16's and Pi's builds
 ;; (67a1f950), and Pi's rewritten and deleted cases failed three tasks
 ;; (94f5cac4, ef04de9c, 5040f9fe), each after its own tests had passed.
+;; With it come the parts of a condition a rewritten Go function no longer
+;; checks (change-dropped-conditions): dsl19 dropped the judge's Enabled()
+;; on c80b38ac, and no test had a case where it was false.
 ;; And it names what the lines the change adds to documents and comments
 ;; state that nothing in the turn showed (change-claims, given the turn's
 ;; runs as shown keeps them and the files it edited by hand): a run's result
@@ -781,6 +784,11 @@
                       '()))
          (defs (assoc-ref removed "definitions" '()))
          (lines (assoc-ref removed "expectations" '()))
+         (dropped (if (and quiet (host-primitive? "change-dropped-conditions"))
+                      (guard (e (else (log-note (string-append "change-dropped-conditions failed: " (format "~a" (assoc-ref e 'message ""))))
+                                      '()))
+                        (change-dropped-conditions request))
+                      '()))
          (claims (if (host-primitive? "change-claims")
                      (guard (e (else (log-note (string-append "change-claims failed: " (format "~a" (assoc-ref e 'message ""))))
                                      '()))
@@ -792,6 +800,7 @@
             (if (pair? stale) (list (finish-stale-citations-message stale)) '())
             (if (pair? defs) (list (finish-removed-definitions-message defs)) '())
             (if (pair? lines) (list (finish-removed-expectations-message lines)) '())
+            (if (pair? dropped) (list (finish-dropped-conditions-message dropped)) '())
             (if (pair? claims) (list (finish-unshown-claims-message claims)) '()))))
 
 ;; Whether the host offers a primitive hidden from the model, as the analyses

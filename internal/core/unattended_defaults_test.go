@@ -1053,3 +1053,58 @@ func TestTheReviewIsQuietOnClaimsARunShowed(t *testing.T) {
 		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
 	}
 }
+
+// The finish review names a part of a condition a rewritten Go function no
+// longer checks, when the check passed without it: dsl19 dropped the
+// judge's Enabled() on c80b38ac, as its plan said, and no test had a case
+// where it was false (ADR 32, amended 2026-10-15).
+func TestTheReviewNamesADroppedCondition(t *testing.T) {
+	t.Parallel()
+	repo := goRepo(t)
+	write := func(id, content string) fake.Turn { return write(id, "calc/judge.go", content) }
+	old := "package calc\n\nfunc judge(enabled, stored bool, state string) bool {\n\treturn enabled && stored\n}\n"
+	if err := os.WriteFile(filepath.Join(repo, "calc", "judge.go"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-c", "git add calc && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m judge")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	r := unattendedRigIn(t, repo,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "c", Name: "fs-write", Args: map[string]any{"path": "$TMPDIR/check.sh", "content": "grep -q 'state == \"ready\"' calc/judge.go\n"}}}},
+		write("w", "package calc\n\nfunc judge(enabled, stored bool, state string) bool {\n\treturn stored && state == \"ready\"\n}\n"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // reviewed: enabled is no longer checked
+		fake.Turn{Content: "The request drops it."},
+	)
+	if e := r.turn("the judge requires its key's state to be ready"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 4); !strings.Contains(msg, "Your change no longer checks `enabled` in judge() (calc/judge.go), and your check passed without it. If the task drops it, add a test case where it is false") {
+		t.Fatalf("review: %q", msg)
+	}
+}
+
+// A planner told to change a condition names each part of the old one and
+// says whether it stays: dsl19's planner read "judge requires ready" as
+// "judge equals ready" and dropped Enabled() from the line it had been given
+// (commit-bench c80b38ac; ADR 32, amended 2026-10-15).
+func TestThePlannerSaysWhichPartsOfAConditionStay(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true,
+		fake.Turn{Content: "main.go declares package main."}, // the explorer
+		fake.Turn{Content: "1. Edit main.go."},               // the planner
+		fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+	)
+	if err := r.s.SendPlanned("change main.go"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if planner := lastMessage(r, 1); !strings.Contains(planner, "When a step changes an existing condition, it names each part of the old condition and says whether that part stays.") {
+		t.Fatalf("the planner's request: %q", planner)
+	}
+}

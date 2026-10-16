@@ -1463,3 +1463,53 @@ background whose exit no read saw (A, 0a9f700, 3422faf1), which the
 harness does not count as a run either. Not built: the server behaviour
 stated as known, and a citation the plan made up (report 11's other
 cases), which no command's output can settle.
+
+## Amendment 2026-10-15: a dropped part of a condition is named, and plans say which parts stay
+
+On commit-bench's c80b38ac (deep study, 2026-10-15, report 08) dsl19's
+planner turned "judge requires ready" into `result.Judge = (state ==
+stateReady)`, though the old line it had been given read
+`s.options.Config.Jev.Enabled() && ...`. The executor saw the dropped check
+four times, named the case where the judge's content is none, and followed
+the plan each time; no test had that case, so every check passed and
+validate passed. dsl16's planner made the same drop and its executor put the
+operand back, "safer". Nothing in the harness looked at a condition the
+change removed: the plan's evidence marks a change step done when its file is
+written, and check-without takes out whole hunks, and this hunk was needed.
+
+So:
+
+- **The finish review names a dropped part of a condition.**
+  `change-dropped-conditions` (internal/prim/operands.go, hidden) reads each
+  Go function of a changed non-test file whose body changed: the operands of
+  the `&&` and `||` of its old body, and the condition of each old guard (an
+  `if` whose block ends in a return), that its new body no longer holds,
+  white space and a leading `!` aside. An operand that stands in the body of
+  a function of the package the new body calls, one the change added or
+  rewrote, is still checked; so are error and ok checks, literals and
+  one-letter names, left out; and so is an operand with a word the request
+  names (the request is about it). When the latest run since the last edit
+  passed, `finish-dropped-conditions-message` says: "Your change no longer
+  checks X in F(), and your check passed without it. If the task drops it,
+  add a test case where it is false and say so in your report; otherwise
+  put it back." Report 08 proposed "your check passes either way"; the
+  harness has only run the check without the operand, so it says that.
+  `TestTheReviewNamesADroppedCondition`,
+  `TestDroppedOperandsAreThePartsTheNewBodyLacks`,
+  `TestDroppedOperandsLeaveMovedAndNamedConditionsAlone`,
+  `TestChangeDroppedConditionsReadsTheWorkingTree`.
+- **A plan step that changes a condition names its old parts.**
+  `plan-language-shape` (planspec.scm) asks: "When a step changes an
+  existing condition, it names each part of the old condition and says
+  whether that part stays." `TestThePlannerSaysWhichPartsOfAConditionStay`.
+
+Replayed over the benchmark's patches: on c80b38ac's original and the four
+builds of the study (A, dsl16, dsl18m, dsl19) it names dsl19's
+`s.options.Config.Jev.Enabled()` alone; the keychain operands the others
+dropped from that line still stand in its `stored` line. Over all patches
+that apply (310: a run in progress had added four since the replay of the
+removals above) it names something in 24 of 237 attempts and 13 of 73
+original commits, most of them conditions the task rewrote on purpose (validate's
+book rules on 1fd4c3e7, the pending ask's fields on 48f90ea8), so it stays
+advisory. Without the request's words left out it named 53 attempts and 21
+originals. Not built: Python and Scheme conditions.
