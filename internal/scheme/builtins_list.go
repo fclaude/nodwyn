@@ -4,6 +4,10 @@ import (
 	"sort"
 )
 
+// maxIota bounds (iota n): the list is built in one Go loop that the context
+// is not checked inside, so a huge n would run out of memory, not abort.
+const maxIota = 1_000_000
+
 func (in *Interp) registerLists() {
 	any1 := []Param{{Name: "x", Type: "any"}}
 	lst := []Param{{Name: "l", Type: "list"}}
@@ -118,13 +122,16 @@ func (in *Interp) registerLists() {
 		}
 		return v, nil
 	})
-	in.mustRegister("iota", "The list (0 1 ... n-1).", []Param{{Name: "n", Type: "integer"}}, false, func(c *Call) (Value, error) {
+	in.mustRegister("iota", "The list (0 1 ... n-1); n is at most 1000000.", []Param{{Name: "n", Type: "integer"}}, false, func(c *Call) (Value, error) {
 		n, err := c.Int(0)
 		if err != nil {
 			return Value{}, err
 		}
 		if n < 0 {
 			return Value{}, errorf(c.Name, "n must be non-negative")
+		}
+		if n > maxIota {
+			return Value{}, errorf(c.Name, "n is %d; a list of more than %d elements is refused", n, maxIota)
 		}
 		out := Nil
 		for i := n - 1; i >= 0; i-- {

@@ -192,7 +192,7 @@ primitive in the table (§7) and can be listed with `(primitives)`.
 | `(abs n)` `(min n …)` `(max n …)` | |
 | `(floor x)` `(ceiling x)` `(round x)` `(truncate x)` | integers pass through; floats stay floats (`(floor 2.5)` → `2.0`). `round` rounds half to even |
 | `(exact x)` `(inexact x)` | float→int (truncates toward zero) / int→float |
-| `(expt b e)` `(sqrt x)` | `expt` of two integers with `e ≥ 0` is an integer; everything else is a float |
+| `(expt b e)` `(sqrt x)` | `expt` of two integers with `e ≥ 0` is an integer (an error when it does not fit 64 bits, unlike `+` and `*`, which wrap); everything else is a float |
 | `(number? x)` `(integer? x)` `(float? x)` | |
 | `(zero? n)` `(positive? n)` `(negative? n)` `(even? n)` `(odd? n)` | `even?`/`odd?` need integers |
 | `(number->string n)` `(string->number s)` | `string->number` returns `#f` when `s` is not a number |
@@ -215,7 +215,7 @@ primitive in the table (§7) and can be listed with `(primitives)`.
 | `(list x …)` `(list? x)` `(pair? x)` `(null? x)` | `list?` is true only for proper lists |
 | `(length l)` `(append l …)` `(reverse l)` | |
 | `(list-ref l i)` `(list-tail l i)` | 0-based; out of range is an error |
-| `(iota n)` | `(0 1 … n-1)` |
+| `(iota n)` | `(0 1 … n-1)`; `n` is at most 1,000,000 (more is an error: the list is built without a chance to abort) |
 | `(memq x l)` `(member x l)` | tail starting at the first match (`eq?` / `equal?`), else `#f` |
 | `(assq k al)` `(assoc k al)` | first pair whose car matches (`eq?` / `equal?`), else `#f` |
 | `(map f l …)` | n-ary; stops at the shortest list |

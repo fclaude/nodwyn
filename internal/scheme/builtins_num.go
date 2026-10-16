@@ -208,7 +208,7 @@ func (in *Interp) registerNumbers() {
 		}
 		return Float(v.AsFloat()), nil
 	})
-	in.mustRegister("expt", "b raised to e. Two integers with e >= 0 give an integer; otherwise a float.", []Param{{Name: "b", Type: "number"}, {Name: "e", Type: "number"}}, false, func(c *Call) (Value, error) {
+	in.mustRegister("expt", "b raised to e. Two integers with e >= 0 give an integer, or an error when it does not fit 64 bits; otherwise a float.", []Param{{Name: "b", Type: "number"}, {Name: "e", Type: "number"}}, false, func(c *Call) (Value, error) {
 		b, err := c.Number(0)
 		if err != nil {
 			return Value{}, err
@@ -218,9 +218,9 @@ func (in *Interp) registerNumbers() {
 			return Value{}, err
 		}
 		if b.Kind == KInt && e.Kind == KInt && e.I >= 0 {
-			r := int64(1)
-			for i := int64(0); i < e.I; i++ {
-				r *= b.I
+			r, ok := intPow(b.I, e.I)
+			if !ok {
+				return Value{}, errorf(c.Name, "%d to the power %d does not fit an integer", b.I, e.I)
 			}
 			return Int(r), nil
 		}
@@ -337,4 +337,37 @@ func arith(a, b Value, op byte) (Value, error) {
 		return Float(x / y), nil
 	}
 	return Value{}, errorf("arith", "bad op")
+}
+
+// intPow is b**e for e >= 0 by squaring, so that a huge exponent costs
+// O(log e) and not a loop no abort can stop; ok is false when the result
+// does not fit an int64 (the loop it replaces wrapped around silently).
+func intPow(b, e int64) (r int64, ok bool) {
+	r = 1
+	for e > 0 {
+		if e&1 == 1 {
+			if r, ok = mulInt(r, b); !ok {
+				return 0, false
+			}
+		}
+		e >>= 1
+		if e > 0 {
+			if b, ok = mulInt(b, b); !ok {
+				return 0, false
+			}
+		}
+	}
+	return r, true
+}
+
+// mulInt multiplies without wrapping.
+func mulInt(a, b int64) (int64, bool) {
+	if a == 0 || b == 0 {
+		return 0, true
+	}
+	p := a * b
+	if p/b != a || (a == -1 && b == math.MinInt64) || (b == -1 && a == math.MinInt64) {
+		return 0, false
+	}
+	return p, true
 }

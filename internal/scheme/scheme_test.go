@@ -99,7 +99,7 @@ func TestConformance(t *testing.T) {
 		{`(abs -3)`, `3`}, {`(abs -2.5)`, `2.5`}, {`(min 3 1 2)`, `1`}, {`(max 1 2.0)`, `2.0`},
 		{`(floor 2.5)`, `2.0`}, {`(ceiling 2.1)`, `3.0`}, {`(round 2.5)`, `2.0`}, {`(round 3.5)`, `4.0`}, {`(truncate -2.7)`, `-2.0`}, {`(floor 3)`, `3`},
 		{`(exact 2.9)`, `2`}, {`(exact -2.9)`, `-2`}, {`(inexact 2)`, `2.0`},
-		{`(expt 2 10)`, `1024`}, {`(expt 2 -1)`, `0.5`}, {`(expt 2.0 2)`, `4.0`}, {`(sqrt 16)`, `4.0`},
+		{`(expt 2 10)`, `1024`}, {`(expt 2 62)`, `4611686018427387904`}, {`(expt -2 63)`, `-9223372036854775808`}, {`(expt 1 9223372036854775807)`, `1`}, {`(expt -1 9223372036854775807)`, `-1`}, {`(expt 0 9223372036854775807)`, `0`}, {`(expt 2 -1)`, `0.5`}, {`(expt 2.0 2)`, `4.0`}, {`(sqrt 16)`, `4.0`},
 		{`(zero? 0)`, `#t`}, {`(zero? 0.0)`, `#t`}, {`(positive? 1)`, `#t`}, {`(negative? -1.5)`, `#t`}, {`(even? 4)`, `#t`}, {`(odd? 4)`, `#f`},
 		{`(number->string 42)`, `"42"`}, {`(number->string 1.5)`, `"1.5"`}, {`(string->number "42")`, `42`}, {`(string->number "1e2")`, `100.0`}, {`(string->number "x")`, `#f`},
 		// booleans and equivalence
@@ -183,6 +183,10 @@ func TestErrors(t *testing.T) {
 		{`(quotient 1 0)`, "division by zero"},
 		{`(error "boom" 1 "two")`, `boom 1 "two"`},
 		{`(list-ref '(1) 5)`, "out of range"},
+		{`(expt 2 63)`, "does not fit an integer"},
+		{`(expt 2 100)`, "does not fit an integer"},
+		{`(iota 1000001)`, "refused"},
+		{`(iota 9223372036854775807)`, "refused"},
 		{`(substring "abc" 2 1)`, "out of bounds"},
 		{`(string-split "a" "")`, "must not be empty"},
 		{`(format "~a")`, "too few arguments"},
@@ -225,6 +229,26 @@ func TestErrors(t *testing.T) {
 		if !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s\n  got  %q\n  want substring %q", tc.src, err.Error(), tc.want)
 		}
+	}
+}
+
+// TestHugePowerIsQuick: expt's loop ran e times with no context check, so
+// (expt 1 9223372036854775807) spun past its deadline; it now squares.
+func TestHugePowerIsQuick(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	done := make(chan Value, 1)
+	go func() {
+		v, _ := New().EvalString(ctx, `(expt 1 9223372036854775807)`)
+		done <- v
+	}()
+	select {
+	case v := <-done:
+		if Write(v) != "1" {
+			t.Fatalf("got %s", Write(v))
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("expt did not return")
 	}
 }
 
