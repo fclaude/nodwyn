@@ -39,6 +39,7 @@ it can see the thing but not change it.
 | Resume a stored session | yes, the sidebar | yes, the chooser or `--resume` | yes, `--resume` | — |
 | Switch between open tasks | yes, the sidebar; several open at once | one session per process; quit and choose again | one session | — |
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
+| Create and manage schedules (ADR 49) | yes, Home’s clock and task’s **Repeat…** / **Schedule…**; paired devices can pause or run now | not built | not built | not built |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | daemon mode detaches and the turn goes on; local mode aborts it | aborts it | — |
@@ -47,6 +48,7 @@ it can see the thing but not change it.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
+| Open at the latest run; page back through collapsed earlier runs (ADR 49) | yes; earlier contents load on expansion | deliberate gap: replays the conversation whole | replays whole | `replay` reads whole |
 | Send a message, abort a turn | yes | yes; Ctrl+C aborts | yes | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |
 | Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` | `nodwyn eval`, `nodwyn repl` |
@@ -135,10 +137,11 @@ but `:replay`. Both read the same log.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
-| Log records filtered by kind | Details › Log | `:log [n] [prefix]` | `:log [n]` | `replay` |
+| Log records filtered by kind | Details › Log (latest run and inherited setup; earlier runs expand in Conversation) | `:log [n] [prefix]` | `:log [n]` | `replay` |
 | Plan record, step marks | Progress tab, Details › Plan record | `:plan` | — | — |
+| Indexed whole-task totals and turn/run counts (`session.totals`, ADR 49) | yes, Statistics and Changes, including closed tasks | deliberate gap: its inspectors read the log | — | — |
 | Budget, spend, checkpoints | Statistics tab, Details › Budget | `:budget` | — | `replay` shows the records |
-| Live gauges (spend, time, context, cache hit, 90% warnings) | yes, the summary above the tabs | the context share in the title | — | — |
+| Live gauges (spend, time, context, cache hit, 90% warnings) | yes, the summary above the tabs; session totals from `session.totals` | the context share in the title | — | — |
 | Tools offered, with schemas | Details › Tools | `:tools [name]` | `:tools` | — |
 | Bindings and approvals in effect | Details › Policy | `:bindings`, `:allow` | `:allow` | — |
 | `docs/friction.md`, guarded | Details › Friction | `:friction` | — | — |
@@ -187,6 +190,6 @@ needs.
 - The TUI's local mode makes worktrees without the daemon's task-root
   refusal, as it opens any `--repo` without it. The refusal moving into core
   is still not built (ADR 34, amended 2026-10-08).
-- The console computes its gauges in JavaScript, and the TUI computes its
-  own in `gauge.go` and `plan_budget.go`. Figures with one definition, such
-  as cache hit, can drift between them.
+- The console reads whole-task totals from the daemon's log index; its
+  current-turn gauges still read the loaded conversation. The TUI computes
+  its own in `gauge.go` and `plan_budget.go`.

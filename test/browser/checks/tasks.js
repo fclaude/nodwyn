@@ -2,6 +2,8 @@
 // first; a task renamed, archived and brought back, and deleted, each kept
 // across a reload, which reads the list from the daemon again.
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 const { out, start: run, line, launch, watch, requests, until, check } = require("../lib");
 
 check(async () => {
@@ -57,6 +59,7 @@ check(async () => {
     await page.click(row);
     await page.waitForFunction((t) => document.querySelector(".task-head h1")?.textContent === t, title);
   };
+  const locationID = (url) => decodeURIComponent(url.split("#/task/")[1]);
   const button = (label) => page.click(`.task-actions button:text-is("${label}")`);
 
   await page.goto(url);
@@ -103,6 +106,20 @@ check(async () => {
   await idle();
   s = await settled("receipts first after a message", (s) => s.folders.map((f) => f.name).join() === "receipts,console" && folder(s, "receipts").tasks[0] === "Summarize what is in this folder");
   step("ordered by last activity");
+  // Totals are requested through the real bridge after the reply and survive
+  // reopening. The turn count also proves this is the indexed response.
+  await page.click('#aside-tab-statistics');
+  const totalsTurns = () => page.locator('[data-totals] .kv').filter({ has: page.locator('span:text-is("Turns")') }).textContent();
+  await until("indexed totals after the reply", async () => (await totalsTurns()) === "Turns2");
+  assert.ok(sent.of("session.totals").some((p) => p.id === locationID(page.url())), "the console never requested session.totals");
+  const totalsBeforeReload = await page.locator('[data-totals]').textContent();
+  await page.reload();
+  await ready();
+  await page.waitForSelector('.task[data-loaded]');
+  await page.click('#aside-tab-statistics');
+  assert.strictEqual(await page.locator('[data-totals]').textContent(), totalsBeforeReload, "reopening changed the indexed totals");
+  await page.screenshot({ path: `${out}/tasks-indexed-totals.png` });
+
 
   // Rename from the heading: Escape keeps the name, Enter saves it.
   await page.click(".rename-btn");
@@ -234,11 +251,85 @@ check(async () => {
   await settled("search", (s) => s.folders.length === 1 && folder(s, "receipts").tasks.join() === "Receipt question 2");
   await page.screenshot({ path: `${out}/tasks-search.png` });
 
-  // The same list at phone width, in the drawer.
+  // A saved task with eight driver runs opens at the latest one. Older
+  // runs are previews until expanded, and both directions retain fixed ends.
   await page.fill(".search input", "");
+  const sessions = path.join(path.dirname(path.dirname(consoleRepo)), "data", "sessions");
+  const sample = fs.readdirSync(sessions).filter((f) => f.endsWith(".jsonl")).flatMap((f) => fs.readFileSync(path.join(sessions, f), "utf8").trim().split("\n").map(JSON.parse)).find((e) => e.kind === "session.start");
+  const historyID = "browser-run-history", history = [], boundaries = [];
+  const record = (kind, payload) => history.push({ seq: history.length + 1, ts: new Date(Date.UTC(2026, 9, 14, 12, 0, history.length)).toISOString(), session: historyID, kind, payload });
+  record("session.start", { ...sample.payload, repo: consoleRepo });
+  record("session.title", { title: "History paging" });
+  for (let n = 1; n <= 8; n++) {
+    boundaries.push(history.length + 1);
+    record("run.state", { task: "History paging", status: "running", turns: 0, max_turns: 1 });
+    record("run.turn", { number: 1 });
+    record("user.msg", { text: `History request ${n}` });
+    if (n >= 7) {
+      record("session.model", { model: n === 7 ? "historic-only" : "demo", ...(n === 8 ? { name: "control" } : {}) });
+      for (let j = 0; j < 550; j++) record("guard.decision", { prim: "fs-read", origin: "model", decision: "allow" });
+    }
+    record("llm.resp", { content: `Final reply ${n} <script>not markup</script>`, usage: { prompt_tokens: 100, cached_tokens: 50, cost: 0.01 } });
+    record("turn.end", { outcome: "completed" });
+    record("run.state", { task: "History paging", status: "completed", turns: 1, max_turns: 1 });
+  }
+  fs.writeFileSync(path.join(sessions, `${historyID}.jsonl`), history.map((e) => JSON.stringify(e)).join("\n") + "\n", { mode: 0o600 });
+  await page.reload(); await ready();
+  const begin = sent.of("log.read").length;
+  await page.evaluate((id) => location.hash = `#/task/${id}`, historyID);
+  await page.waitForSelector('.task[data-loaded]');
+  assert.deepStrictEqual(await page.locator('.transcript > .turn.user .you-text').allTextContents(), ["History request 8"], "the initial conversation includes an earlier run");
+  const initialReads = sent.of("log.read").slice(begin);
+  assert.ok(initialReads[0].latest_run && initialReads.slice(1).every((p) => p.after >= boundaries[7]), "initial log pages started before the latest run");
+  await page.click('#aside-tab-statistics');
+  assert.ok((await page.locator('[data-totals]').textContent()).includes("Turns8Runs8"), "whole-task totals were narrowed to the latest run");
+  const beforeOlder = sent.of("log.read").length;
+  await page.click('button.earlier-runs');
+  await page.waitForSelector('.earlier-run');
+  assert.strictEqual(await page.locator('.earlier-run').count(), 5, "one page of earlier previews");
+  assert.strictEqual(sent.of("log.read").length, beforeOlder, "fetching previews fetched their transcripts");
+  assert.ok((await page.locator('.earlier-run').last().textContent()).includes("Final reply 7 <script>not markup</script>"), "the collapsed run lost its last reply");
+  const newestOld = page.locator('.earlier-run').last();
+  await newestOld.locator(':scope > summary').click();
+  await newestOld.locator('.run-transcript .you-text').waitFor();
+  assert.strictEqual(await newestOld.locator('.run-transcript .you-text').textContent(), "History request 7", "expansion loaded the wrong range");
+  const historicalReads = sent.of("log.read").slice(beforeOlder);
+  assert.ok(historicalReads.length >= 2 && historicalReads.every((p) => p.after >= boundaries[6] - 1 && p.through === boundaries[7] - 1), "older pagination escaped its run");
+  assert.strictEqual(await newestOld.locator('script').count(), 0, "a reply preview became markup");
+  await newestOld.locator(':scope > summary').click();
+  const closedReads = sent.of("log.read").length;
+  await newestOld.locator(':scope > summary').click();
+  await page.waitForTimeout(50);
+  assert.strictEqual(sent.of("log.read").length, closedReads, "reopening reread a loaded run");
+  await page.click('button.earlier-runs');
+  await until("all earlier runs", async () => await page.locator('.earlier-run').count() === 7);
+  assert.strictEqual(await page.isVisible('button.earlier-runs'), false, "the start still offers more runs");
+  await page.screenshot({ path: `${out}/tasks-earlier-runs.png` });
+  // Resuming establishes a latest-run subscription, then a new message is
+  // delivered once while older run panels remain independent.
+  await button("Resume");
+  await page.waitForSelector('.task[data-loaded]');
+  assert.strictEqual(sent.of("session.subscribe").at(-1).latest_run, true, "resume subscribed from the beginning");
+  await page.fill('#reply', "Thanks"); await page.press('#reply', 'Enter'); await idle();
+  await until("live reply after latest-run load", async () => (await page.locator('.transcript > .turn.agent').last().textContent()).includes("Glad that helps"));
+  assert.strictEqual(await page.locator('.transcript > .turn.user .you-text').count(), 2, "live delivery lost or duplicated a user message");
+  await page.reload(); await ready(); await page.waitForSelector('.task[data-loaded]');
+  assert.strictEqual(await page.locator('.transcript > .turn.user .you-text').count(), 2, "reopening lost the human follow-up to the latest run");
+  step("latest run, lazy earlier pages, fixed ranges and live delivery");
+
+  // The reload above cleared the search; show the same list in the phone drawer.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.click("#menu");
   await page.waitForSelector(".shell.menu-open");
   await page.waitForFunction(() => document.getAnimations().every((a) => a.playState === "finished"));
   await page.screenshot({ path: `${out}/tasks-phone.png` });
+  await page.click("#scrim", { position: { x: 380, y: 100 } });
+  await page.click("button.earlier-runs");
+  await until("phone previews", async () => await page.locator('.earlier-run').count() === 5);
+  const phoneRun = page.locator('.earlier-run').last();
+  await phoneRun.locator(':scope > summary').click();
+  await phoneRun.locator('.run-transcript .you-text').waitFor();
+  assert.strictEqual(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false, "earlier run history scrolls the phone sideways");
+  await page.screenshot({ path: `${out}/tasks-earlier-runs-phone.png` });
+
 });

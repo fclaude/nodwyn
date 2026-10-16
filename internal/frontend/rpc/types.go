@@ -87,15 +87,17 @@ type sendParams struct {
 	Text string `json:"text"`
 }
 type subscribeParams struct {
-	ID    string `json:"id"`
-	After uint64 `json:"after,omitempty"`
-	Limit int    `json:"limit,omitempty"`
+	LatestRun bool   `json:"latest_run,omitempty"`
+	ID        string `json:"id"`
+	After     uint64 `json:"after,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
 }
 type readParams struct {
-	ID      string `json:"id"`
-	After   uint64 `json:"after,omitempty"`
-	Through uint64 `json:"through,omitempty"`
-	Limit   int    `json:"limit,omitempty"`
+	LatestRun bool   `json:"latest_run,omitempty"`
+	ID        string `json:"id"`
+	After     uint64 `json:"after,omitempty"`
+	Through   uint64 `json:"through,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
 }
 
 type evalParams struct {
@@ -105,4 +107,12 @@ type evalParams struct {
 
 type inspectionStarted struct {
 	OperationID string `json:"operation_id"`
+}
+
+// runsParams fixes a prefix while paging backwards through run previews.
+type runsParams struct {
+	ID      string `json:"id"`
+	Before  uint64 `json:"before,omitempty"`
+	Through uint64 `json:"through,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
 }

@@ -1071,6 +1071,107 @@ check(async () => {
       out.monitor = { initial, before, expanded, redrawn, updated, ticked, reused, workspace, returned: geometry(), warning: task.el.side.querySelector(".monitor-warning")?.textContent };
       window.monitorFixture = task;
     }
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const listeners = new Set(), sent = [];
+      let snapshot = {
+        through: 50, started: true, turns: 8, runs: 2,
+        last_turn: { seq: 48, ts: "2026-01-01T00:00:00Z" },
+        last_run: { seq: 40, ts: "2026-01-01T00:00:00Z" },
+        cost: 1.25, unpriced: 1, estimated: true,
+        cache: { prompt: 1000, cached: 750 },
+        speed: { out: 100, ms: 2000, replies: 2 },
+        judge: { calls: 3, tokens: 12, cost: 0.25, unpriced: 0 },
+        clock: { total: 12000, work: 7000, model: 2000, tools: 3000, open: 0, prev: 0, open_model: 0, open_tool: 0 },
+        changes: [{ path: "earlier.txt", decision: "allow", detail: "+ earlier change" }],
+        attachments: [{ name: "earlier.md", type: "text" }],
+      };
+      const conn = {
+        live: true,
+        has: (m) => m === "session.totals",
+        onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        onResult: () => () => {},
+        async call(method, params) {
+          sent.push({ method, params });
+          if (method === "session.totals") return structuredClone(snapshot);
+          if (method === "session.subscribe") return { page: { events: [], through: 50, more: false }, pending: [], busy: false };
+          if (method === "session.info") return {};
+          return {};
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("indexed", { id: "indexed", repo: "/tmp/indexed", open: true, busy: false });
+      const task = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(task.root);
+      await task.open("indexed");
+      task.tab = "statistics"; task.aside();
+      const text = () => task.root.querySelector('[data-totals]')?.textContent || "";
+      const initial = text();
+      const cache = task.root.querySelector('[data-monitor=cache]').textContent;
+      task.tab = "changes"; task.aside();
+      const changes = task.root.querySelector('.aside-panel').textContent;
+      task.tab = "statistics"; task.aside();
+      snapshot.cost = 2; snapshot.turns = 9; snapshot.through = 51;
+      for (const fn of listeners) fn({ method: "session.event", params: { id: "indexed", seq: 51, kind: "turn.end", payload: { outcome: "completed" } } });
+      await sleep(100);
+      const updated = text();
+      // A pending response from the previous task must not change this one.
+      let release;
+      const call = conn.call;
+      conn.call = (m, p) => m === "session.totals" && p.id === "indexed" ? new Promise((r) => release = r) : call(m, p);
+      const stale = task.loadTotals?.() || Promise.resolve();
+      desk.sessions.set("new-indexed", { id: "new-indexed", repo: "/tmp/new", open: true, busy: false });
+      snapshot.cost = 4; snapshot.turns = 1;
+      await task.open("new-indexed");
+      release?.({ ...snapshot, cost: 99 });
+      await stale;
+      out.indexedTotals = { initial, cache, changes, updated, stale: task.totalSnapshot?.cost, requests: sent.filter((s) => s.method === "session.totals").length };
+      task.dispose();
+    }
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const requests = [];
+      let listFailures = 1, readFailures = 1, release;
+      const conn = {
+        live: true, has: (m) => m === "log.runs", onEvent: () => () => {}, onResult: () => () => {},
+        async call(method, params) {
+          requests.push({ method, ...params });
+          if (method === "session.subscribe") return { page: { events: [{ seq: 101, kind: "user.msg", payload: { text: params.id } }], through: 110, more: false, run: { seq: 100 }, earlier: true }, busy: false, pending: [] };
+          if (method === "session.info") return {};
+          if (method === "log.runs") {
+            if (listFailures-- > 0) throw new Error("temporary preview failure");
+            return { runs: [{ seq: 50, through: 99, ts: "2026-01-01T00:00:00Z", reply: "old preview" }], before: 50, more: false };
+          }
+          if (method === "log.read") {
+            if (readFailures-- > 0) throw new Error("temporary run failure");
+            return new Promise((r) => release = r);
+          }
+          return {};
+        },
+      };
+      const desk = new Desk(conn);
+      for (const id of ["history-first", "history-next"]) desk.sessions.set(id, { id, repo: "/tmp/history", open: true, busy: false });
+      const task = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(task.root);
+      await task.open("history-first");
+      await task.loadEarlierRuns();
+      const retryPage = !task.historyControl.disabled && task.root.querySelectorAll('.earlier-run').length === 0 && !task.failed;
+      await task.loadEarlierRuns();
+      const detail = task.root.querySelector('.earlier-run');
+      detail.open = true;
+      await sleep(20);
+      const retry = detail.querySelector('button');
+      const retryRun = !retry.hidden && detail.textContent.includes("temporary run failure") && !task.failed;
+      retry.click(); await sleep(20);
+      await task.open("history-next");
+      release({ events: [{ seq: 51, kind: "user.msg", payload: { text: "STALE HISTORY" } }], next: 99, through: 99, more: false });
+      await sleep(20);
+      out.runHistoryFailures = { retryPage, retryRun, stale: !task.root.textContent.includes("STALE HISTORY") && task.item.id === "history-next" && !task.seen.has(51), latest: requests.filter((r) => r.method === "session.subscribe").every((r) => r.latest_run), bounds: requests.filter((r) => r.method === "log.read").every((r) => r.after === 49 && r.through === 99) };
+      task.dispose();
+    }
+    document.body.replaceChildren(window.monitorFixture.root);
     return out;
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1208,6 +1309,11 @@ check(async () => {
   want(tb.left.chosen === "Statistics" && tb.left.focused === "Statistics" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Progress" && tb.home.focused === "Progress", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
   want(tb.end.chosen === "Workspace" && tb.end.focused === "Workspace" && tb.edge.chosen === "Workspace" && tb.edge.focused === "Workspace" && tb.focusVisible, `tab End, right edge and visible keyboard focus: ${JSON.stringify(tb)}`);
   want(Object.values(tb.inspector).every(Boolean), `change inspector states and stale replies: ${JSON.stringify(tb.inspector)}`);
+  want(Object.values(results.runHistoryFailures).every(Boolean), `history retry and task-switch states: ${JSON.stringify(results.runHistoryFailures)}`);
+  const indexed = results.indexedTotals;
+  want(indexed.initial.includes("Turns8") && indexed.initial.includes("Runs2") && indexed.initial.includes("12 s") && indexed.initial.includes("50.0 tok/s") && indexed.cache === "75%", `indexed totals without their conversation: ${JSON.stringify(indexed)}`);
+  want(indexed.changes.includes("earlier.txt") && indexed.changes.includes("earlier.md"), `indexed Changes without old events: ${JSON.stringify(indexed)}`);
+  want(indexed.updated.includes("Turns9") && indexed.updated.includes("2.00") && indexed.requests >= 3 && indexed.stale === 4, `live indexed totals and stale replies: ${JSON.stringify(indexed)}`);
   const c = results.clocks;
   want(c.model === "5.0 s" && c.tools === "0.0 s", `the clocks count only answered pairs: ${JSON.stringify(c)}`);
   want(c.running === "12 s" && c.working === "12 s", `running and working stay at the turns' own spans: ${JSON.stringify(c)}`);

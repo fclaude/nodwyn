@@ -18,6 +18,14 @@ import (
 // (spendBefore, from the log's index) and those it holds, added in the order
 // the log has them, as adding up the whole log would.
 func (s *Session) knownSpend() float64 {
+	total := s.lifetimeSpend()
+	if run := s.scheduledRun.Load(); run != nil {
+		total = max(0, total-run.SpendBefore)
+	}
+	return total
+}
+
+func (s *Session) lifetimeSpend() float64 {
 	total := s.spendBefore
 	for _, ev := range s.EventsSoFar() {
 		if cost, ok := knownCost(ev); ok {

@@ -593,6 +593,20 @@ export class Transcript {
         // (ADR 47), and who chose it.
         this.audit(p.server ? `Judge: ${p.server}${p.model ? ` · ${p.model}` : ""}${p.host ? ` at ${p.host}` : ""}` : "No judge: you answer the commands");
         break;
+      case "session.schedule":
+        this.audit(p.removed ? "Schedule removed" : `Schedule: ${p.repeat} from ${p.at}${p.paused ? " · paused" : ""} · $${p.cost || 0} per run (0 means none)`, p);
+        break;
+      case "schedule.run":
+        this.end();
+        this.el.append(h("div", { class: "audit run-marker" }, `${p.manual ? "Run now" : "Scheduled run"} · due ${new Date(p.due).toLocaleString()} · started ${new Date(p.started).toLocaleString()}${p.missed ? ` · includes ${p.missed} missed time(s)` : ""}`));
+        break;
+      case "schedule.skip":
+        this.end();
+        this.el.append(h("div", { class: "audit warn" }, `Scheduled time skipped: ${p.reason}${p.missed ? ` · includes ${p.missed} missed time(s)` : ""}`));
+        break;
+      case "context.handover":
+        this.audit("Prepared a handover for the next scheduled run", p);
+        break;
       case "session.limits":
         // The task's turn limits turned off or on (ADR 49): amber while its
         // turns may run, and wait, as long as they need.

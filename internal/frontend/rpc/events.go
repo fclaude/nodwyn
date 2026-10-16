@@ -56,7 +56,7 @@ type subscription struct {
 	Pending []sessionEvent `json:"pending"`
 }
 
-func (stream *eventStream) subscribe(client *peer, store core.Store, after uint64, limit int) (subscription, error) {
+func (stream *eventStream) subscribe(client *peer, store core.Store, after uint64, limit int, latest bool) (subscription, error) {
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
 	// Record appends before remembering and emitting. Take the committed history
@@ -67,7 +67,13 @@ func (stream *eventStream) subscribe(client *peer, store core.Store, after uint6
 	if len(history) > 0 {
 		through = history[len(history)-1].Seq
 	}
-	page, err := store.ReadLog(stream.session.ID(), after, through, limit)
+	var page core.LogPage
+	var err error
+	if latest {
+		page, err = store.ReadLatestRun(stream.session.ID(), through, limit)
+	} else {
+		page, err = store.ReadLog(stream.session.ID(), after, through, limit)
+	}
 	if err != nil {
 		return subscription{}, err
 	}

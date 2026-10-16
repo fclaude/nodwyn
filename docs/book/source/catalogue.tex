@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 256 of 514 tracked Go files: every non-test Go file, 58,874 of 107,252 Go source lines (54.9\% by lines). It also includes all 35 tracked Scheme files (3,278 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 262 of 527 tracked Go files: every non-test Go file, 60,345 of 109,825 Go source lines (54.9\% by lines). It also includes all 35 tracked Scheme files (3,278 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -182,6 +182,12 @@ Read value, reader, environment and interpreter first; then follow primitive app
 
 \sourcefile{internal/scheme/value.go}{Go}
 
+\chapter{Civil-time recurrence without timers}
+
+Read \src{internal/schedule/schedule.go} for the five repeat choices, summer-time resolution and missed-time coalescing. This package computes occurrences only; the RPC daemon owns the timer and lock, and core stores schedule records in the session log. Its tests cover skipped and repeated minutes and recurrence progress.
+
+\sourcefile{internal/schedule/schedule.go}{Go}
+
 \chapter{Assembling and owning a session}
 
 Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; return here whenever a subsystem needs a session-owned capability. The feature files register primitives, connect policy to state and record events. Read resume, reload and close paths with the normal path: persistence does not mean replaying side effects. The adjacent test files exercise these features through constructed sessions and fake providers.
@@ -254,6 +260,10 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 
 \sourcefile{internal/core/resume.go}{Go}
 
+\sourcefile{internal/core/run_history.go}{Go}
+
+\sourcefile{internal/core/schedule.go}{Go}
+
 \sourcefile{internal/core/scratch.go}{Go}
 
 \sourcefile{internal/core/session.go}{Go}
@@ -263,6 +273,8 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 \sourcefile{internal/core/store.go}{Go}
 
 \sourcefile{internal/core/summaries.go}{Go}
+
+\sourcefile{internal/core/totals.go}{Go}
 
 \sourcefile{internal/core/turn_outcome.go}{Go}
 
@@ -275,6 +287,8 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 \chapter{The host beneath the Scheme loop}
 
 Read \src{internal/loop/loop.go} for installation, freezing and turn entry; \src{internal/loop/prims.go} for Scheme-facing contracts; model and tools for actual requests and calls; turn and progress for accounting and stops. Pair these with the complete Scheme listings earlier in the catalogue. The strategy decides when to continue, but cannot invent a provider's tool call or escape host budgets.
+
+\sourcefile{internal/loop/handover.go}{Go}
 
 \sourcefile{internal/loop/images.go}{Go}
 
@@ -557,6 +571,8 @@ The subdirectories are independent entry routes to core. Plain implements line-o
 \sourcefile{internal/frontend/rpc/providers.go}{Go}
 
 \sourcefile{internal/frontend/rpc/run.go}{Go}
+
+\sourcefile{internal/frontend/rpc/schedule.go}{Go}
 
 \sourcefile{internal/frontend/rpc/schema.go}{Go}
 

@@ -256,7 +256,7 @@ check(async () => {
   }
   const clocks = await page.evaluate(async (events) => {
     const { TaskView } = await import("/task.js");
-    const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
+    const view = new TaskView({ onEvent: () => () => {}, has: () => false }, {}, () => {});
     view.busy = false;
     view.prompts = new Map();
     return view.tally(events).run;
@@ -397,7 +397,7 @@ check(async () => {
   // to now.
   const rules = await page.evaluate(async () => {
     const { TaskView } = await import("/task.js");
-    const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
+    const view = new TaskView({ onEvent: () => () => {}, has: () => false }, {}, () => {});
     const base = Date.now() - 3600_000;
     const ev = (s, kind, payload = {}) => ({ seq: s, ts: new Date(base + s * 1000).toISOString(), kind, payload });
     const run = (events, busy = false, prompts = 0) => {
@@ -447,7 +447,7 @@ check(async () => {
   // moment, where walking and sorting the log each time took seconds.
   const ticks = await page.evaluate(async () => {
     const { TaskView } = await import("/task.js");
-    const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
+    const view = new TaskView({ onEvent: () => () => {}, has: () => false }, {}, () => {});
     const base = Date.now() - 3600_000;
     let reads = 0;
     for (let s = 1; s <= 20000; s++) view.seen.set(s, { seq: s, ts: new Date(base + s * 100).toISOString(), kind: s === 1 ? "user.msg" : "llm.resp", payload: { get usage() { reads++; return { cost: 0.001, prompt_tokens: 100, cached_tokens: 25 }; } } });

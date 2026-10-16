@@ -1,3 +1,4 @@
+import { manageSchedule } from "./schedule.js";
 // The task view: one session's conversation with its approval inline, and
 // beside it, in tabs, the plan, this turn's budget, the changes, the
 // project notes and the workspace. Every figure comes from the log or from
@@ -34,11 +35,16 @@ export class TaskView {
     this.item = null;
     this.version = 0;
     this.loading = false;
+    this.subscribed = false;
     this.queued = [];
     this.seen = new Map();
+    this.historyCursor = 0;
+    this.historyThrough = 0;
+    this.olderLoading = false;
     this.prompts = new Map(); // live prompt events by ID, in arrival order
     this.resolved = new Set();
     this.info = null;
+    this.totalSnapshot = null;
     this.infoVersion = 0; // only the newest session.info read may redraw this task
     this.approveAllPending = null;
     this.limitsPending = undefined; // a limits choice sent and not yet answered
@@ -90,6 +96,8 @@ export class TaskView {
   async open(id) {
     this.clearStreams();
     const version = ++this.version;
+    clearTimeout(this.totalsTimer);
+    this.totalsTimer = 0;
     delete this.root.dataset.loaded;
     const previous = this.item;
     if (previous) drafts.set(previous.id, this.el?.reply.value || "");
@@ -106,14 +114,19 @@ export class TaskView {
     }
     this.item = item;
     this.loading = true;
+    this.subscribed = false;
     this.asideScroll.clear();
     this.failed = false;
     this.scroll = null;
     this.queued = [];
     this.seen = new Map();
+    this.historyCursor = 0;
+    this.historyThrough = 0;
+    this.olderLoading = false;
     this.prompts = new Map();
     this.resolved = new Set();
     this.info = null;
+    this.totalSnapshot = null;
     this.infoVersion++;
     this.switching = false;
     this.approveAllPending = null;
@@ -144,12 +157,23 @@ export class TaskView {
         pending = [],
         busy = item.busy;
       if (item.open) {
-        const snapshot = await this.conn.call("session.subscribe", { id, after: 0, limit: 500 });
+        const snapshot = await this.conn.call("session.subscribe", { id, after: 0, limit: 500, ...(this.conn.has("log.runs") ? { latest_run: true } : {}) });
         if (version !== this.version) return;
+        this.subscribed = true;
         page = snapshot.page;
         pending = snapshot.pending || [];
         busy = snapshot.busy;
-      } else page = await this.conn.call("log.read", { id, after: 0, limit: 500 });
+      } else page = await this.conn.call("log.read", { id, after: 0, limit: 500, ...(this.conn.has("log.runs") ? { latest_run: true } : {}) });
+      if (version !== this.version) return;
+      this.historyCursor = page.run?.seq || 0;
+      this.historyThrough = page.through;
+      // The inherited setup feeds the current model and gauges without
+      // inserting old choices into this run's conversation.
+      for (const event of page.context || []) {
+        this.seen.set(event.seq, event);
+        if (["session.start", "session.resume", "session.model"].includes(event.kind)) this.noteModel(event.kind, event.payload || {});
+      }
+      if (page.earlier) this.historyButton();
       const through = page.through;
       let truncated = false;
       for (;;) {
@@ -166,7 +190,7 @@ export class TaskView {
       for (const event of pending) this.render(event);
       for (const event of this.queued) this.render(event);
       this.queued = [];
-      const details = Promise.all([item.open ? this.loadInfo() : null, this.loadNotes(), this.loadIndex()]);
+      const details = Promise.all([item.open ? this.loadInfo() : null, this.loadNotes(), this.loadIndex(), this.loadTotals()]);
       if (this.transcript.empty) this.el.transcript.prepend(h("p", { class: "hint", dataset: { placeholder: "1" } }, item.open ? "Nothing yet. Say what you want done." : "This task has no conversation."));
       this.el.transcript.scrollTop = this.el.transcript.scrollHeight;
       this.refreshAll();
@@ -174,7 +198,10 @@ export class TaskView {
       // The browser checks wait for this mark before they look at a task:
       // its conversation, its details and its notes are drawn.
       await details;
-      if (version === this.version) this.root.dataset.loaded = "";
+      if (version === this.version) {
+        if (!this.subscribed && this.desk.sessions.get(id)?.open && this.conn.has("session.subscribe")) return this.open(id);
+        this.root.dataset.loaded = "";
+      }
     } catch (error) {
       if (version !== this.version) return;
       // A failed load must not enable sending against uncertain state.
@@ -185,6 +212,78 @@ export class TaskView {
       this.controls();
     }
   }
+  historyButton() {
+    const button = h("button", { type: "button", class: "btn small earlier-runs", onclick: () => this.loadEarlierRuns() }, "Earlier runs");
+    this.el.transcript.prepend(button);
+    this.historyControl = button;
+  }
+  // Earlier runs start as previews. Opening one reads only its fixed range,
+  // into its own renderer, so historical choices cannot change the live task.
+  async loadEarlierRuns() {
+    if (this.olderLoading || !this.item) return;
+    const version = this.version, id = this.item.id;
+    this.olderLoading = true;
+    const button = this.historyControl;
+    button.disabled = true;
+    button.textContent = "Loading earlier runs…";
+    try {
+      const page = await this.conn.call("log.runs", { id, before: this.historyCursor, through: this.historyThrough, limit: 5 });
+      if (version !== this.version) return;
+      const scroll = this.el.transcript;
+      const anchor = button.nextElementSibling;
+      const top = anchor?.getBoundingClientRect().top;
+      const fragment = document.createDocumentFragment();
+      for (const run of [...page.runs].reverse()) fragment.append(this.earlierRun(run, version, id));
+      button.after(fragment);
+      this.historyCursor = page.before;
+      button.hidden = !page.more;
+      if (anchor && top !== undefined) scroll.scrollTop += anchor.getBoundingClientRect().top - top;
+    } catch (error) {
+      if (version === this.version) toast(`Could not read earlier runs: ${error.message}`);
+    } finally {
+      if (version === this.version) {
+        this.olderLoading = false;
+        button.disabled = false;
+        button.textContent = "Earlier runs";
+      }
+    }
+  }
+  earlierRun(run, version, id) {
+    const body = h("div", { class: "run-transcript" });
+    const state = h("p", { class: "hint" });
+    const retry = h("button", { type: "button", class: "btn small", hidden: true, onclick: () => load() }, "Retry loading this run");
+    const preview = h("p", { class: "run-preview" }, run.reply || "No reply recorded.");
+    const detail = h("details", { class: "earlier-run", dataset: { run: String(run.seq) } },
+      h("summary", {}, h("span", {}, `Run · ${new Date(run.ts).toLocaleString()}`), preview), state, retry, body);
+    let loading = false, loaded = false;
+    const load = async () => {
+      if (loading || loaded || version !== this.version) return;
+      loading = true; retry.hidden = true; state.textContent = "Loading this run…";
+      const events = [];
+      try {
+        let after = run.seq - 1;
+        for (;;) {
+          const page = await this.conn.call("log.read", { id, after, through: run.through, limit: 500 });
+          if (version !== this.version) return;
+          events.push(...page.events);
+          if (!page.more) break;
+          if (page.next <= after) throw new Error("The history page did not advance.");
+          after = page.next;
+        }
+        const transcript = new Transcript(body);
+        for (const event of events) transcript.render(event);
+        transcript.end();
+        loaded = true; detail.dataset.loaded = ""; state.textContent = "";
+      } catch (error) {
+        if (version === this.version) {
+          state.textContent = `Could not read this run: ${error.message}`;
+          retry.hidden = false;
+        }
+      } finally { loading = false; }
+    };
+    detail.addEventListener("toggle", () => { if (detail.open) load(); });
+    return detail;
+  }
   // leave stops showing the task; with unsubscribe false it leaves the
   // subscription alone, as on a new connection, which never had it.
   leave(unsubscribe = true) {
@@ -192,6 +291,8 @@ export class TaskView {
     if (this.item) drafts.set(this.item.id, this.el?.reply.value || "");
     if (unsubscribe && this.item?.open && this.conn.live) this.conn.call("session.unsubscribe", { id: this.item.id }).catch(() => {});
     this.version++;
+    clearTimeout(this.totalsTimer);
+    this.totalsTimer = 0;
     this.item = null;
     clearInterval(this.timer);
   }
@@ -207,7 +308,7 @@ export class TaskView {
   // subscribed here, so every event since reached the view, and nothing
   // failed to load. Provisional fragments may still be waiting to be drawn.
   keeps(id) {
-    return this.item?.id === id && !!this.item.open && !this.failed && this.conn.live;
+    return this.item?.id === id && !!this.item.open && this.subscribed && !this.failed && this.conn.live;
   }
   // park takes the view off screen and keeps its subscription. Recorded
   // events keep drawing; provisional fragments wait until they are needed.
@@ -225,7 +326,7 @@ export class TaskView {
   // show puts a kept view back on screen with the list's newest word on the
   // task, where its conversation was, or at its end if it followed it.
   show(fresh) {
-    if (fresh && this.item) Object.assign(this.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived, worktree: fresh.worktree });
+    if (fresh && this.item) Object.assign(this.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived, worktree: fresh.worktree, schedule: fresh.schedule });
     this.flushStreams();
     this.refreshAll();
     // Settings may have changed what the task's details say while it was
@@ -246,6 +347,45 @@ export class TaskView {
   focusReply() {
     if (this.failed || this.el?.form.hidden || this.el?.reply.disabled || this.activePrompt()) return;
     setTimeout(() => this.el?.reply?.focus(), 0);
+  }
+  // Totals come from the durable log's index, even for a closed task. A
+  // response for an older task cannot overwrite the one now being shown.
+  async loadTotals() {
+    if (!this.item || !this.conn.has("session.totals")) return;
+    const version = this.version;
+    if (this.totalsRead?.version === version) {
+      this.totalsRead.dirty = true;
+      return this.totalsRead.promise;
+    }
+    const read = { version, dirty: false };
+    this.totalsRead = read;
+    read.promise = (async () => {
+      try {
+        do {
+          read.dirty = false;
+          const totals = await this.conn.call("session.totals", { id: this.item.id });
+          if (version !== this.version) return;
+          this.totalSnapshot = totals;
+          this.aside();
+        } while (read.dirty);
+      } catch (error) {
+        if (version === this.version) {
+          this.totalSnapshot = null;
+          toast(`Could not read totals: ${error.message}`);
+          this.aside();
+        }
+      } finally {
+        if (this.totalsRead === read) this.totalsRead = null;
+      }
+    })();
+    return read.promise;
+  }
+  scheduleTotals() {
+    if (!this.conn.has("session.totals") || this.totalsTimer) return;
+    this.totalsTimer = setTimeout(() => {
+      this.totalsTimer = 0;
+      this.loadTotals();
+    }, 40);
   }
   async loadInfo() {
     const version = this.version;
@@ -295,11 +435,13 @@ export class TaskView {
   // ---------- events ----------
   onFrame(frame) {
     if (!this.item) return;
-    if (frame.method === "session.closed" && frame.params?.id === this.item.id) {
+    if ((frame.method === "session.closed" || (frame.method === "session.event" && frame.params?.kind === "session.closed")) && frame.params?.id === this.item.id) {
       this.flushStreams();
       this.item.open = false;
+      this.subscribed = false;
       this.busy = false;
       this.prompts.clear();
+      this.scheduleTotals();
       this.refreshAll();
       if (this.root.isConnected) toast("This task was closed. Its conversation is kept.");
       return;
@@ -351,7 +493,10 @@ export class TaskView {
     if (event.seq && this.seen.has(event.seq)) return;
     // Live notifications carry no timestamp; the arrival time stands in.
     if (event.seq && !event.ts) event.ts = new Date().toISOString();
-    if (event.seq) this.seen.set(event.seq, event);
+    if (event.seq) {
+      this.seen.set(event.seq, event);
+      if (!this.loading) this.scheduleTotals();
+    }
     const p = event.payload || {};
     const view = this.el.transcript;
     const follow = view.scrollHeight - view.scrollTop - view.clientHeight < 120;
@@ -363,7 +508,7 @@ export class TaskView {
     if (event.kind === "session.title" && !this.loading) this.desk.refresh().catch(() => {});
     // A model or effort chosen here or on another screen, or applied as a
     // response ended: the picker shows what the conversation has now.
-    if ((event.kind === "session.model" || event.kind === "session.judge") && !this.loading && this.item?.open) this.loadInfo();
+    if ((event.kind === "schedule.run" || event.kind === "session.schedule" || event.kind === "session.model" || event.kind === "session.judge") && !this.loading && this.item?.open) this.loadInfo();
     // Limits turned off or on here or on another screen: the tick, the
     // heading and the budget follow.
     if (event.kind === "session.limits" && !this.loading && this.item?.open) this.loadInfo();
@@ -810,6 +955,7 @@ export class TaskView {
     const home = this.desk.home;
     const st = this.status();
     const actions = h("div", { class: "task-actions" });
+    if (this.conn.has("schedule.read") && (this.conn.has("schedule.set") || item.schedule?.definition)) actions.append(h("button", { type: "button", class: "btn ghost", onclick: () => manageSchedule(this.conn, item.id, async () => { await this.desk.refresh(); if (this.item?.id === item.id) { this.item = this.desk.sessions.get(item.id) || item; this.header(); if (this.item.open) await this.loadInfo(); } }) }, item.schedule?.definition ? "Schedule…" : "Repeat…"));
     const button = (label, iconName, handler, cls = "") => h("button", { type: "button", class: `btn ${cls}`, disabled: !this.conn.live || this.acting, onclick: handler }, iconName ? icon(iconName, 15) : null, label);
     // A run comes from nodwyn run (ADR 35): Stop ends it, and a message
     // afterwards goes on with the task as a chat. A request waiting outside
@@ -1230,7 +1376,7 @@ export class TaskView {
       near("Time", elapsed, budgets?.wall_ns?.soft / 1e6);
       near("Tool calls", calls, budgets?.tool_calls?.soft);
     }
-    near("Spend", totals?.cost || 0, budgets?.cost?.soft / 1e6);
+    near("Spend", this.runSpend(totals) ?? totals?.cost ?? 0, budgets?.cost?.soft / 1e6);
     near("Context", context.est, context.high);
     for (const [key, value] of Object.entries(values)) panel.querySelector(`[data-monitor="${key}"]`).textContent = value;
     panel.querySelector('[data-monitor="spend"]').title = `${totals?.unpriced ? "Lower bound: some requests are unpriced. " : ""}${this.truncated ? "From the log that remains. " : ""}${budgets?.cost?.soft ? `Spend limit: ${usd(budgets.cost.soft / 1e6, false)}.` : "Task-wide model and judge spend."}`;
@@ -1315,7 +1461,8 @@ export class TaskView {
   // judgeLine is what the judge has used in this task, when it was asked at
   // all: its calls, tokens and, with its prices, what they cost.
   judgeLine() {
-    const j = judgeTally(this.events());
+    const j = this.conn.has("session.totals") ? this.totalSnapshot?.judge : judgeTally(this.events());
+    if (!j) return null;
     if (!j.calls) return null;
     const cost = j.tokens && j.unpriced === 0 ? ` · ${usd(j.cost, true)}` : j.cost > 0 ? ` · at least ${usd(j.cost, true)}` : j.unpriced ? " · not priced" : "";
     return statRow(
@@ -1348,17 +1495,26 @@ export class TaskView {
   // totalsPanel is the task's whole-life figures, first in the aside: what
   // its requests cost and how long it ran, added up over the whole log. A
   // spend limit shows itself as the bar behind the total.
+  runSpend(totals = this.totals()) {
+    const run = this.events().findLast((e) => e.kind === "schedule.run");
+    if (run && totals) return Math.max(0, totals.cost - (run.payload.spend_before || 0));
+    return this.info?.run_spend;
+  }
   totalsPanel() {
     const t = this.totals();
     if (!t) return null;
     const limit = this.info?.budgets?.cost?.hard ? this.info.budgets.cost.soft / 1e6 : 0;
+    const runSpend = this.runSpend(t);
     const spend = `${t.unpriced ? "at least " : ""}${usd(t.cost, t.estimated)}`;
     const spendHint = "What the task's model and judge requests cost, as far as the log prices them and as a spend limit counts them; a request without a known cost makes this a lower bound";
     return h(
       "section",
       { class: "panel", dataset: { totals: "1" } },
       h("h2", {}, "Totals", h("span", { class: "note" }, this.truncated ? "from the log that remains" : "")),
-      limit ? meterBar("Total spend", `${spend} / ${usd(limit, false)}`, t.cost, limit, spendHint) : statRow("Total spend", spend, {}, spendHint),
+      limit && runSpend === undefined ? meterBar("Total spend", `${spend} / ${usd(limit, false)}`, t.cost, limit, spendHint) : statRow("Total spend", spend, {}, spendHint),
+      runSpend !== undefined ? (limit ? meterBar("This run", `${usd(runSpend, false)} / ${usd(limit, false)}`, runSpend, limit, "Resets at each scheduled run; human follow-ups count in this run.") : statRow("This run", usd(runSpend, false))) : null,
+      this.totalSnapshot ? statRow("Turns", String(this.totalSnapshot.turns), {}, this.totalSnapshot.last_turn ? `Latest turn: ${clock(this.totalSnapshot.last_turn.ts)}` : "") : null,
+      this.totalSnapshot?.runs ? statRow("Runs", String(this.totalSnapshot.runs), {}, `Latest run: ${clock(this.totalSnapshot.last_run.ts)}`) : null,
       statRow("Total running time", spanWords(t.ms), { dataset: { running: "1" } }, "How long the task's turns took, wall clock, the time it spent waiting for answers included; a turn still running counts up to now"),
       statRow("Total working time", spanWords(t.work), { dataset: { working: "1" } }, "How long the task's turns took, with the time it spent waiting for a person's answer left out; a turn still running counts up to now unless it waits for one"),
       statRow("Model wait", spanWords(t.model), { dataset: { model: "1" } }, "How long the task waited for answers from models, each request from its sending to its reply; streaming counts as waiting, and a request still being answered counts up to now"),
@@ -1380,6 +1536,22 @@ export class TaskView {
   // models answered and the share of their prompts read from cache. Null
   // before the first turn: nothing has run to add up.
   totals(evs = this.events()) {
+    if (this.conn.has("session.totals")) {
+      const t = this.totalSnapshot;
+      if (!t?.started) return null;
+      const c = t.clock;
+      const live = c.open && this.busy ? Math.max(0, Date.now() - Math.max(c.prev, c.open)) : 0;
+      const until = this.busy && !this.prompts.size ? Date.now() : c.prev;
+      return {
+        ...t,
+        ms: c.total + live,
+        work: c.work + (this.prompts.size ? 0 : live),
+        model: c.model + (c.open_model ? Math.max(0, until - c.open_model) : 0),
+        tools: c.tools + (c.open_tool ? Math.max(0, until - c.open_tool) : 0),
+        speed: t.speed.ms ? { ...t.speed, tps: t.speed.out / (t.speed.ms / 1000) } : null,
+      };
+    }
+    // Older daemons without session.totals still supply the complete log.
     const { spend, split, speed, cache } = this.tally(evs);
     if (!spend) return null;
     // A request or tool still open counts on to now, or stops at the log's
@@ -1434,9 +1606,8 @@ export class TaskView {
   changesPanel() {
     const approvals = new Map();
     const seen = new Set();
-    for (const e of this.events()) {
-      if (e.kind !== "guard.decision") continue;
-      const p = e.payload;
+    const decisions = this.conn.has("session.totals") ? this.totalSnapshot?.changes || [] : this.events().filter((e) => e.kind === "guard.decision").map((e) => e.payload);
+    for (const p of decisions) {
       const allowed = p.decision === "allow" || (p.decision === "confirm" && (p.answer === "yes" || p.answer === "turn"));
       if (p.path && allowed) {
         seen.add(p.path);
@@ -1518,7 +1689,7 @@ export class TaskView {
     );
   }
   attachmentsPanel() {
-    const attached = this.events().filter((e) => e.kind === "attach").map((e) => e.payload);
+    const attached = this.conn.has("session.totals") ? this.totalSnapshot?.attachments || [] : this.events().filter((e) => e.kind === "attach").map((e) => e.payload);
     if (!attached.length) return null;
     return h(
       "section",
@@ -1880,7 +2051,7 @@ export class TaskView {
     const filter = h("input", { class: "input", placeholder: "kind prefix, e.g. guard.", "aria-label": "Kind prefix" });
     const count = h("input", { class: "input", type: "number", min: 1, max: 1000, value: "50", "aria-label": "Maximum records", style: "width:110px" });
     const form = kind === "log" ? h("form", { onsubmit: (e) => { e.preventDefault(); draw(); } }, filter, count, h("button", { class: "btn small", type: "submit" }, "Filter")) : null;
-    view.replaceChildren(...[h("div", { class: "bar" }, back, h("h2", {}, title), refresh), form, content].filter(Boolean));
+    view.replaceChildren(...[h("div", { class: "bar" }, back, h("h2", {}, title), refresh), this.historyCursor > 1 ? h("p", { class: "hint" }, "Records from the latest run and its inherited setup. Open earlier runs in Conversation to read their records.") : null, form, content].filter(Boolean));
     if (kind === "friction") return this.friction(content, version);
     if (kind === "policy" && this.policy && !reread) return this.showPolicy(content);
     const snapshot = { events: this.events(), info: null, infoError: "This task is not open. Resume it to see its current configuration.", truncated: this.truncated };

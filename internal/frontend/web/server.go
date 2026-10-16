@@ -349,7 +349,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 
 func readOnly(method string) bool {
 	switch method {
-	case "hello", "session.list", "session.watch", "session.info", "session.subscribe", "session.unsubscribe", "log.read",
+	case "schedule.read", "schedule.next", "hello", "session.list", "session.watch", "session.info", "session.totals", "session.subscribe", "session.unsubscribe", "log.read", "log.runs",
 		"attention.list", "notes.read", "index.status", "models.status", "models.offered", "models.published", "run.info", "keychain.status", "settings.read",
 		"workspace.list", "workspace.forgotten", "versions.list", "versions.diff", "worktree.diff", "mcp.list", "mcp.runtime", "credentials.list":
 		return true
@@ -522,7 +522,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	}
 	switch method {
 	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
-		"session.notes.write", "run.start", "run.stop", "run.resume", "session.restore", "session.rename", "session.archive":
+		"schedule.pause", "schedule.run", "session.notes.write", "run.start", "run.stop", "run.resume", "session.restore", "session.rename", "session.archive":
 		return true
 	// Choosing a conversation's model, or the judge its plans and commands
 	// go to, decides where its content goes next, so it stays with the
@@ -533,7 +533,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	// lifting them stays with this computer too, as Settings' limits do
 	// (ADR 49); the daemon refuses limits: false in session.open from a
 	// device.
-	case "session.limits.set":
+	case "schedule.set", "session.limits.set":
 		return !remote
 	// A log is the record of what a session did, devices included: only
 	// this computer removes one (ADR 39).

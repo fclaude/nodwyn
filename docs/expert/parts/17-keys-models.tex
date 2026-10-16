@@ -405,7 +405,19 @@ Where you see it:
     when some requests had no known cost; and, if you set
     \code{cost\_hard} in \code{[budget]}, a checkpoint and a stop on what
     the whole task has cost (Chapter~\ref{ch:first});
-  \item the console's side panel, ``Totals'' in its Statistics tab: the whole
+  \item the console's side panel, ``Totals'' in its Statistics tab, reads the
+    daemon's derived log index, including for closed tasks. It shows turn and
+    CLI driver and scheduled run counts, their latest start times in tooltips, and refreshes
+    after recorded events. Changes reads approved previews and attachment
+    metadata from the same index. A conversation with run records
+    opens at the latest run, with Earlier runs paging five last-reply previews
+    at a time and fetching their contents only on expansion. Older renderers
+    do not change the live model or prompts; read failures can be retried.
+    Inspectors label their latest-run scope; totals remain whole-task. A task
+    without run records keeps its full conversation. Scheduled messages and
+    manual Run now reset their per-run spend base; human follow-ups share it.
+    The open task adds This run and applies spend warnings to it, while
+    Totals remain whole-task (\adr{49}). Its figures include the whole
     task's spend, the judge's priced cost counted in, ``at least'' when a
     request had no known cost, how long the task's turns took all in, how
     long they took without the time it spent waiting for your answers, how
@@ -675,3 +687,23 @@ exclusive 0600 sibling files, sync, rename and sync the directory. A directory-s
 failure after rename is reported with uncertain durability; the published key
 remains in memory. \file{docs/security.md} gives the exact parameter bounds and
 migration limits (ADR 45).
+
+\paragraph{Scheduler ownership and context (\adr{49}).}
+The daemon holds a data-directory flock and checks civil-time occurrences
+on startup and every 30 seconds. The log is the authority: session.schedule
+holds the latest definition, schedule.run claims a due interval and pins its
+spend base, and schedule.skip consumes a skipped interval. Manual runs consume
+no automatic time. Pausing preserves progress; resuming sets it to now.
+Archive pauses the definition. A log another process owns cannot be written:
+its skip is deferred in daemon memory until release; if the daemon stops
+first, restart handles that interval as missed. A task closes after 15 idle
+minutes with no pending answer. Nothing schedules through Scheme, and only
+this computer creates or changes a definition; paired devices may pause or
+run now. The daemon must already be running; login startup is not built.
+
+A successful turn that added more than a quarter-window since its last note
+asks compact-note for a handover focused on the scheduled request. It keeps
+the turn's budget, skips tool calls and records context.handover without
+narrowing the current chat. The next scheduled message applies a lasting
+narrowing and the note, then sends the request. Human replies retain the
+conversation. Pending answers suppress preparation.

@@ -448,6 +448,60 @@
       ],
       "type": "object"
     },
+    "core.CacheTotals": {
+      "properties": {
+        "cached": {
+          "type": "integer"
+        },
+        "prompt": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "prompt",
+        "cached"
+      ],
+      "type": "object"
+    },
+    "core.ClockTotals": {
+      "properties": {
+        "model": {
+          "type": "integer"
+        },
+        "open": {
+          "type": "integer"
+        },
+        "open_model": {
+          "type": "integer"
+        },
+        "open_tool": {
+          "type": "integer"
+        },
+        "prev": {
+          "type": "integer"
+        },
+        "tools": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "work": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "work",
+        "model",
+        "tools",
+        "open",
+        "prev",
+        "open_model",
+        "open_tool"
+      ],
+      "type": "object"
+    },
     "core.IndexInfo": {
       "properties": {
         "bytes": {
@@ -519,8 +573,43 @@
       ],
       "type": "object"
     },
+    "core.JudgeTotals": {
+      "properties": {
+        "calls": {
+          "type": "integer"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "tokens": {
+          "type": "integer"
+        },
+        "unpriced": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "calls",
+        "tokens",
+        "cost",
+        "unpriced"
+      ],
+      "type": "object"
+    },
     "core.LogPage": {
       "properties": {
+        "context": {
+          "items": {
+            "$ref": "#/$defs/log.Event"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "earlier": {
+          "type": "boolean"
+        },
         "events": {
           "items": {
             "$ref": "#/$defs/log.Event"
@@ -537,6 +626,16 @@
           "minimum": 0,
           "type": "integer"
         },
+        "run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/core.LogRun"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "through": {
           "minimum": 0,
           "type": "integer"
@@ -551,6 +650,32 @@
         "through",
         "more",
         "truncated"
+      ],
+      "type": "object"
+    },
+    "core.LogRun": {
+      "properties": {
+        "reply": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "through": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "through",
+        "reply"
       ],
       "type": "object"
     },
@@ -647,6 +772,173 @@
       },
       "required": [
         "model"
+      ],
+      "type": "object"
+    },
+    "core.RunPage": {
+      "properties": {
+        "before": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "more": {
+          "type": "boolean"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/core.LogRun"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "through": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "runs",
+        "through",
+        "before",
+        "more",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "core.SessionMark": {
+      "properties": {
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts"
+      ],
+      "type": "object"
+    },
+    "core.SessionTotals": {
+      "properties": {
+        "attachments": {
+          "items": {
+            "$ref": "#/$defs/log.Attach"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "cache": {
+          "$ref": "#/$defs/core.CacheTotals"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/log.GuardDecision"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "clock": {
+          "$ref": "#/$defs/core.ClockTotals"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "estimated": {
+          "type": "boolean"
+        },
+        "judge": {
+          "$ref": "#/$defs/core.JudgeTotals"
+        },
+        "last_run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/core.SessionMark"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_turn": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/core.SessionMark"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runs": {
+          "type": "integer"
+        },
+        "speed": {
+          "$ref": "#/$defs/core.SpeedTotals"
+        },
+        "started": {
+          "type": "boolean"
+        },
+        "through": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "turns": {
+          "type": "integer"
+        },
+        "unpriced": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "through",
+        "truncated",
+        "started",
+        "cost",
+        "unpriced",
+        "estimated",
+        "cache",
+        "speed",
+        "judge",
+        "clock",
+        "changes",
+        "attachments",
+        "turns",
+        "runs"
+      ],
+      "type": "object"
+    },
+    "core.SpeedTotals": {
+      "properties": {
+        "ms": {
+          "type": "integer"
+        },
+        "out": {
+          "type": "integer"
+        },
+        "replies": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "out",
+        "ms",
+        "replies"
       ],
       "type": "object"
     },
@@ -1181,6 +1473,22 @@
     "log.ContextFold": {
       "properties": {},
       "required": [],
+      "type": "object"
+    },
+    "log.ContextHandover": {
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "through": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "text",
+        "through"
+      ],
       "type": "object"
     },
     "log.ContextNarrow": {
@@ -1946,6 +2254,78 @@
       ],
       "type": "object"
     },
+    "log.ScheduleRun": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "due": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "manual": {
+          "type": "boolean"
+        },
+        "missed": {
+          "type": "integer"
+        },
+        "spend_before": {
+          "type": "number"
+        },
+        "started": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "through": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "due",
+        "through",
+        "started",
+        "missed",
+        "manual",
+        "actor",
+        "cost",
+        "spend_before"
+      ],
+      "type": "object"
+    },
+    "log.ScheduleSkip": {
+      "properties": {
+        "due": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "missed": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "started": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "through": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "due",
+        "through",
+        "started",
+        "missed",
+        "reason"
+      ],
+      "type": "object"
+    },
     "log.SessionArchive": {
       "properties": {
         "actor": {
@@ -2067,6 +2447,45 @@
       },
       "required": [
         "model"
+      ],
+      "type": "object"
+    },
+    "log.SessionSchedule": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "after": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "message": {
+          "type": "string"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "removed": {
+          "type": "boolean"
+        },
+        "repeat": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "repeat",
+        "at",
+        "cost",
+        "paused",
+        "actor",
+        "after"
       ],
       "type": "object"
     },
@@ -2661,6 +3080,9 @@
     "payload.context.fold": {
       "$ref": "#/$defs/log.ContextFold"
     },
+    "payload.context.handover": {
+      "$ref": "#/$defs/log.ContextHandover"
+    },
     "payload.context.narrow": {
       "$ref": "#/$defs/log.ContextNarrow"
     },
@@ -2776,6 +3198,12 @@
     "payload.run.turn": {
       "$ref": "#/$defs/log.RunTurn"
     },
+    "payload.schedule.run": {
+      "$ref": "#/$defs/log.ScheduleRun"
+    },
+    "payload.schedule.skip": {
+      "$ref": "#/$defs/log.ScheduleSkip"
+    },
     "payload.session.archive": {
       "$ref": "#/$defs/log.SessionArchive"
     },
@@ -2796,6 +3224,9 @@
     },
     "payload.session.resume": {
       "$ref": "#/$defs/log.SessionStart"
+    },
+    "payload.session.schedule": {
+      "$ref": "#/$defs/log.SessionSchedule"
     },
     "payload.session.start": {
       "$ref": "#/$defs/log.SessionStart"
@@ -2958,6 +3389,9 @@
           "$ref": "#/$defs/request.log.read"
         },
         {
+          "$ref": "#/$defs/request.log.runs"
+        },
+        {
           "$ref": "#/$defs/request.mcp.approve"
         },
         {
@@ -3004,6 +3438,21 @@
         },
         {
           "$ref": "#/$defs/request.run.stop"
+        },
+        {
+          "$ref": "#/$defs/request.schedule.next"
+        },
+        {
+          "$ref": "#/$defs/request.schedule.pause"
+        },
+        {
+          "$ref": "#/$defs/request.schedule.read"
+        },
+        {
+          "$ref": "#/$defs/request.schedule.run"
+        },
+        {
+          "$ref": "#/$defs/request.schedule.set"
         },
         {
           "$ref": "#/$defs/request.session.abort"
@@ -3082,6 +3531,9 @@
         },
         {
           "$ref": "#/$defs/request.session.subscribe"
+        },
+        {
+          "$ref": "#/$defs/request.session.totals"
         },
         {
           "$ref": "#/$defs/request.session.unsubscribe"
@@ -3613,6 +4065,37 @@
       ],
       "type": "object"
     },
+    "request.log.runs": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "log.runs"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.runsParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.mcp.approve": {
       "properties": {
         "id": {
@@ -4100,6 +4583,161 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.schedule.next": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "schedule.next"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/schedule.Definition"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.schedule.pause": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "schedule.pause"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.schedulePauseParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.schedule.read": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "schedule.read"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.schedule.run": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "schedule.run"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.schedule.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "schedule.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.scheduleSetParams"
             }
           ],
           "unevaluatedProperties": false
@@ -4919,6 +5557,37 @@
       ],
       "type": "object"
     },
+    "request.session.totals": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.totals"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.unsubscribe": {
       "properties": {
         "id": {
@@ -5641,6 +6310,9 @@
     "result.log.read": {
       "$ref": "#/$defs/core.LogPage"
     },
+    "result.log.runs": {
+      "$ref": "#/$defs/core.RunPage"
+    },
     "result.mcp.approve": {
       "$ref": "#/$defs/config.MCPServer"
     },
@@ -5717,6 +6389,21 @@
       "properties": {},
       "required": [],
       "type": "object"
+    },
+    "result.schedule.next": {
+      "$ref": "#/$defs/rpc.scheduleState"
+    },
+    "result.schedule.pause": {
+      "$ref": "#/$defs/rpc.scheduleState"
+    },
+    "result.schedule.read": {
+      "$ref": "#/$defs/rpc.scheduleState"
+    },
+    "result.schedule.run": {
+      "$ref": "#/$defs/rpc.scheduleState"
+    },
+    "result.schedule.set": {
+      "$ref": "#/$defs/rpc.scheduleState"
     },
     "result.session.abort": {
       "properties": {},
@@ -5825,6 +6512,9 @@
     },
     "result.session.subscribe": {
       "$ref": "#/$defs/rpc.subscription"
+    },
+    "result.session.totals": {
+      "$ref": "#/$defs/core.SessionTotals"
     },
     "result.session.unsubscribe": {
       "properties": {},
@@ -7480,6 +8170,9 @@
         "id": {
           "type": "string"
         },
+        "latest_run": {
+          "type": "boolean"
+        },
         "limit": {
           "type": "integer"
         },
@@ -7631,6 +8324,149 @@
       ],
       "type": "object"
     },
+    "rpc.runsParams": {
+      "properties": {
+        "before": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "through": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "rpc.schedulePauseParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "paused": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "paused"
+      ],
+      "type": "object"
+    },
+    "rpc.scheduleSetParams": {
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "remove": {
+          "type": "boolean"
+        },
+        "repeat": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "rpc.scheduleState": {
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        },
+        "cursor": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "definition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.SessionSchedule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.ScheduleRun"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_skip": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.ScheduleSkip"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next": {
+          "items": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "scheduler": {
+          "type": "boolean"
+        },
+        "sequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sequence",
+        "cursor",
+        "next",
+        "timezone",
+        "archived",
+        "scheduler"
+      ],
+      "type": "object"
+    },
     "rpc.secretParams": {
       "properties": {
         "id": {
@@ -7746,6 +8582,16 @@
         "repo": {
           "type": "string"
         },
+        "run_spend": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "tools": {
           "items": {
             "$ref": "#/$defs/llm.Tool"
@@ -7859,6 +8705,16 @@
           "anyOf": [
             {
               "$ref": "#/$defs/run.State"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/rpc.scheduleState"
             },
             {
               "type": "null"
@@ -8067,6 +8923,9 @@
         },
         "id": {
           "type": "string"
+        },
+        "latest_run": {
+          "type": "boolean"
         },
         "limit": {
           "type": "integer"
@@ -8407,6 +9266,33 @@
       ],
       "type": "object"
     },
+    "schedule.Definition": {
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "message": {
+          "type": "string"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "repeat": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "repeat",
+        "at",
+        "cost",
+        "paused"
+      ],
+      "type": "object"
+    },
     "sessionEvent": {
       "oneOf": [
         {
@@ -8515,6 +9401,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.ContextFold"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "context.handover"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.ContextHandover"
             },
             "seq": {
               "minimum": 0,
@@ -9322,6 +10232,54 @@
               "type": "string"
             },
             "kind": {
+              "const": "schedule.run"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.ScheduleRun"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "schedule.skip"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.ScheduleSkip"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
               "const": "session.archive"
             },
             "payload": {
@@ -9470,6 +10428,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.SessionStart"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "session.schedule"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionSchedule"
             },
             "seq": {
               "minimum": 0,

@@ -17,12 +17,18 @@ import (
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/prim"
 	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/schedule"
 )
 
 type methodContract struct{ params, result any }
 
 func contracts() map[string]methodContract {
 	return map[string]methodContract{
+		"schedule.next":            {schedule.Definition{}, scheduleState{}},
+		"schedule.read":            {idParams{}, scheduleState{}},
+		"schedule.set":             {scheduleSetParams{}, scheduleState{}},
+		"schedule.pause":           {schedulePauseParams{}, scheduleState{}},
+		"schedule.run":             {idParams{}, scheduleState{}},
 		"run.start":                {runParams{}, runResult{}},
 		"run.info":                 {idParams{}, run.State{}},
 		"run.stop":                 {idParams{}, struct{}{}},
@@ -39,6 +45,7 @@ func contracts() map[string]methodContract {
 		"session.judge.set":        {judgeSetParams{}, core.JudgeState{}},
 		"session.limits.set":       {limitsSetParams{}, limitsState{}},
 		"session.info":             {idParams{}, sessionDetails{}},
+		"session.totals":           {idParams{}, core.SessionTotals{}},
 		"session.close":            {idParams{}, struct{}{}},
 		"session.rename":           {renameParams{}, struct{}{}},
 		"session.archive":          {archiveParams{}, struct{}{}},
@@ -52,6 +59,7 @@ func contracts() map[string]methodContract {
 		"session.subscribe":        {subscribeParams{}, subscription{}},
 		"session.unsubscribe":      {idParams{}, struct{}{}},
 		"log.read":                 {readParams{}, core.LogPage{}},
+		"log.runs":                 {runsParams{}, core.RunPage{}},
 		"session.answer":           {answerParams{}, struct{}{}},
 		"session.secret":           {secretParams{}, struct{}{}},
 		"session.approval.create":  {approvalParams{}, struct{}{}},
@@ -143,6 +151,7 @@ func WireSchema() ([]byte, error) {
 		map[string]any{"required": []string{"error"}, "not": map[string]any{"required": []string{"result"}}},
 	}}
 	payloads := map[string]any{
+		string(log.KindSessionSchedule): log.SessionSchedule{}, string(log.KindScheduleRun): log.ScheduleRun{}, string(log.KindScheduleSkip): log.ScheduleSkip{}, string(log.KindContextHandover): log.ContextHandover{},
 		"session.state":        sessionState{},
 		event.InspectionResult: event.Inspection{},
 		event.PolicyResult:     event.Policy{},

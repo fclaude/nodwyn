@@ -189,6 +189,11 @@ func (f *infoFold) observe(id string, ev log.Event) error {
 		if ev.Decode(&a) == nil {
 			info.Archived = a.Archived
 		}
+	case log.KindSessionSchedule:
+		var d log.SessionSchedule
+		if ev.Decode(&d) == nil && !d.Removed && !f.First {
+			info.FirstMessage = redact.Redact(d.Message, nil).Text
+		}
 	case log.KindUserMsg:
 		var msg log.UserMsg
 		if err := ev.Decode(&msg); err != nil {

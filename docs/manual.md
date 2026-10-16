@@ -2083,12 +2083,76 @@ summary or navigation, and tabs keep their reading position across events
 and switches. Narrow screens use ordinary stacked sections and page
 scrolling instead of a nested scroll area.
 
-Reopening a task reads its recorded replies into Statistics, just as live
-replies update it. A read-style tool wrapper can run a shell command; the
+On Home, describe the task and choose its folder or worktree, model, helpers,
+judge and turn limits as usual. The clock beside Send opens **Schedule this
+task**. Choose Once, Every hour, Every day, Weekdays or Every week, its first
+local date and minute, and its dollar spend limit per run (0 means none).
+The preview comes from the daemon and shows its local times and offsets.
+Saving opens the task immediately; its message is sent when due. Scheduled
+tasks appear on Home with their next time or Paused.
+
+On an existing task, **Repeat…** adds a schedule. **Schedule…** shows its
+message, next times and last skip, and lets you save changes, pause, resume,
+run now or remove it. Run now also works while paused and leaves the automatic
+next time unchanged. Resuming a paused schedule starts after now, without
+catching up the paused interval. Retiming starts the new series; changing
+only its message or spend preserves the times already handled. Removing a
+schedule keeps the chat. Close frees the task but leaves its schedule enabled;
+Archive pauses it, and Unarchive leaves it paused. Delete removes both.
+
+The daemon must be running. It checks every 30 seconds and immediately on
+startup. Times missed during sleep or shutdown become one late run, whose
+marker gives due and start times and the additional missed count. A busy task,
+a pending answer or another process holding its log skips the time, with a
+reason in the conversation. An externally held log cannot be written: the
+daemon remembers its skip until the writer releases it. If the daemon stops
+before then, that unrecorded interval becomes a late run on restart. A single
+data-directory lock prevents two daemons from dispatching the same timer.
+
+Scheduled messages use normal approvals and discard Don't ask. Settings’
+turn limits still apply unless this computer turns the task’s **Limits** off;
+the spend limit counts each run and its human follow-ups, then resets at the
+next scheduled or manual run. Statistics keeps whole-task totals and shows
+**This run** separately for the loaded scheduled run. Unknown prices remain outside the limit.
+A scheduled task closes after 15 idle minutes with no pending answer, freeing
+its interpreter, MCP services and any clean worktree. It resumes when next due.
+
+When a turn has added over a quarter of its context window since the last
+handover, it prepares a note for the next scheduled run while its context is
+warm. This uses the same run budget. The note is recorded without replacing
+the current conversation: human follow-ups keep that conversation. The next
+scheduled message starts from the note. A pending answer prevents preparation.
+Creating, editing, resuming or removing schedules stays on this computer;
+paired devices can pause and run now. There is no scheduling Scheme primitive.
+Automatic daemon startup at login is not built.
+
+Opening or reopening a task with run records loads its latest run, including
+all turns and human follow-ups in that run. **Earlier runs** fetches five
+older previews at a time, in conversation order. Each collapsed run shows its
+last reply; opening it loads its full conversation, and closing it returns to
+the preview. Expanding a loaded run again needs no further read. Earlier-page
+and run-read failures leave the current task usable and can be retried. Loading
+older runs keeps the existing reading position. Switching tasks discards replies
+still arriving for the former task. Tasks without run records keep their whole
+conversation view; older daemons without this feature do too.
+
+The Log and Plan record inspectors cover the loaded latest run and its inherited
+setup; their scope is labelled when earlier history is omitted. Earlier run
+contents stay separate from the current model, prompts and turn gauges.
+Statistics and Changes continue to cover the whole retained task, just as live
+replies update them. A read-style tool wrapper can run a shell command; the
 transcript keeps the guard's recorded, redacted command on that tool's row
 and continues loading the history and its figures.
 
-The console's side panel adds the task up in "Totals", in its Statistics tab:
+The console's side panel reads "Totals" from the daemon's log index, in its
+Statistics tab. It includes the whole retained history, even when a resumed
+task holds only the end in memory. The index is rebuilt if missing or stale;
+it is safe to delete. Totals refresh after recorded events and when reopening
+an open or closed task. "Turns" counts submitted turns; "Runs" appears for
+CLI driver and scheduled runs, with the latest start time in each row's tooltip. These run
+markers also provide conversation paging.
+Changes reads approved previews and attachment metadata from the same index.
+The figures are:
 "Total spend", what its model and judge requests cost as far as the log
 prices them (the same accounting a spend limit counts; with a limit set,
 the total is a bar against it, and every other figure here is a plain row);

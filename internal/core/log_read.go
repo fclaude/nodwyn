@@ -17,6 +17,9 @@ type LogPage struct {
 	Through   uint64      `json:"through"`
 	More      bool        `json:"more"`
 	Truncated bool        `json:"truncated"`
+	Run       *LogRun     `json:"run,omitempty"`
+	Earlier   bool        `json:"earlier,omitempty"`
+	Context   []log.Event `json:"context,omitempty"`
 }
 
 // ReadLog never executes or rewrites history. A zero through selects the last

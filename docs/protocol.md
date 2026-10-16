@@ -65,6 +65,7 @@ IDs are transport data and are echoed unchanged.
 | `worktree.diff` | `{"id"}` | `{base,changes:[{path,status,diff}],omitted}`: what the open session changed in its worktree since its base commit |
 | `worktree.review` | `{"id","comments":[{"path","line"?,"text"}],"note"?}` | `{}`: sends the comments to the session as one message |
 | `session.resume` | `{"id":"SESSION_ID"}` | Open-session details |
+| `session.totals` | `{"id":"SESSION_ID"}` | Indexed totals and latest turn/run boundaries, for an open or closed session |
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
 | `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"`, and `"effort"` | The model and effort the conversation talks to now, and the choice queued behind a running turn |
 | `session.judge.set` | `{"id":"SESSION_ID","judge":"jev"}`, or `"judge":""` for none | The judge the task asks now |
@@ -279,6 +280,7 @@ the daemon or other clients.
 | `session.abort` | `{"id":"SESSION_ID"}` | `{}` when cancellation is requested |
 | `session.subscribe` | `{"id":"SESSION_ID","after":0,"limit":100}` | First catch-up page, `busy`, and `pending` |
 | `session.unsubscribe` | `{"id":"SESSION_ID"}` | `{}` after stopping new delivery |
+| `log.runs` | `{"id":"SESSION_ID","before":0,"through":0,"limit":10}` | Run previews, newest first, over a fixed durable prefix |
 | `log.read` | `{"id":"SESSION_ID","after":0,"through":0,"limit":100}` | One page of durable records |
 
 Only one turn may run in a session. Send and abort return immediately; subscribe
@@ -311,10 +313,70 @@ selects the current last complete record. Cursors beyond history are errors.
 An incomplete final line sets `truncated: true`; complete records remain
 readable, but corruption elsewhere fails the request. Reading a closed session
 requires no resume, writer lock or initialization. A page is read from the
-log's index (ADR 49 §10): from the nearest of its marks, one every 256
-records, before `after`, not from the log's first record, so a page costs the
+log's index (ADR 49 §10): from the nearest turn boundary, run boundary or sparse mark (one every 256
+records) at or before `after + 1`, not from the log's first record, so a page costs the
 same in a long log as in a short one. `session.list` folds into each grown
 log's index only what the log gained.
+
+`log.read` and `session.subscribe` accept `latest_run: true` with `after`
+omitted or zero. This selects the latest run in the fixed `through` prefix
+and returns the ordinary bounded event page plus `run {seq,ts,through,reply}`,
+`earlier` (whether older runs exist), and `context` (redacted setup records
+inherited before this run). Continuation pages use ordinary `log.read` with
+`after: next` and the same `through`, omitting `latest_run`. A subscription
+selects its latest run under the existing delivery lock and retains the same
+watermark rule: no durable record between the suffix and live delivery is lost.
+Do not render `context` as new conversation or apply it as authority: it only
+supplies the recorded model and context high water to a display.
+
+`log.runs` returns `{runs,through,before,more,truncated}`. Each run has
+`{seq,ts,through,reply}`: its first sequence and time, inclusive end, and a plain
+text last-reply preview capped at 2,000 Unicode characters plus an ellipsis.
+Previews are redacted again for display. `before` is an exclusive run-start
+cursor; omit it for the latest page, otherwise reuse the returned `before`.
+`through` fixes the overall prefix and must be reused across older pages.
+`limit` is 1..100 (default 10). A cursor that is not a boundary or is beyond
+history is refused. A run's contents are ordinary `log.read` pages, starting
+at `after: run.seq - 1` and retaining `through: run.through`.
+
+Current boundaries are CLI driver starts (`run.state` running with zero turns),
+including all their turns and human follow-ups until the next start. Startup
+records are included with the first run; conversation before the first run is
+an earlier group when it contains submitted work. A task with no run record is
+one conversation, preserving its existing display. `schedule.run` also starts a run boundary. The console requests
+five earlier previews at a time and fetches a run's full range only on expansion.
+Whole-task totals and Changes retain their independent `session.totals` scope.
+Older daemons that do not advertise `log.runs` keep the complete-history view.
+
+`session.totals` reads the same derived index, folding in only newly appended
+records. Its `through` is the inclusive last complete sequence and `truncated`
+reports a partial tail. It returns `started`, `cost` (USD), `unpriced` and
+`estimated`; `cache {prompt,cached}` counts raw prompt tokens only for replies
+that reported both prompt and cache-read usage; `speed {out,ms,replies}` sums
+output tokens and request wall time for replies with reported output usage.
+The rate is `out / (ms / 1000)`, unknown when `ms` is zero.
+`judge {calls,tokens,cost,unpriced}` keeps judge usage separately.
+
+`clock {total,work,model,tools,open,prev,open_model,open_tool}` uses milliseconds:
+the first four are accumulated durations, the rest Unix timestamps (zero means
+no open clock). `total` includes human waits, `work` excludes them; `model`
+counts answered request pairs and `tools` counts the union of tool intervals
+minus human waits. Completed parts of still-open tools are already in `tools`;
+`open_tool` is where their live extension starts. An active client's running
+clock extends from `max(prev,open)`; working time extends only without a pending
+prompt. Model and tool clocks extend from their open timestamps to now only
+while busy without a pending prompt, otherwise to `prev`. A closed task never
+counts downtime. End and resume records discard abandoned pairs.
+
+`turns` and `runs` count indexed boundaries; `last_turn` and `last_run`, when
+present, hold `{seq,ts}`. A driver `run.turn` followed by its `user.msg` is one
+turn. Runs begin at `run.state {status:"running",turns:0}` or `schedule.run`. `changes` holds the latest allowed
+`guard.decision` per path in last-approved order (approval is not proof of a
+successful write). `attachments` holds attachment metadata with `text` empty.
+Both are redacted for display, including legacy records. The response contains
+no conversation or model output. Missing or invalid indexes are rebuilt from
+the authoritative log; deleting an index loses no history. This read method is
+available to paired devices and read-only bridges, without resuming the task.
 
 Reconnect in this order:
 
@@ -998,3 +1060,63 @@ startup skips both and emits a note; reload refuses. The CLI `nodwyn trust` owns
 the explicit review/accept/revoke flow; no RPC method grants this trust. Policy
 editor saves do not grant it implicitly. A running session keeps its already loaded
 code and grants until restarted. The optimiser keeps a changed init pending review.
+
+## Scheduled tasks (ADR 49)
+
+- `schedule.next {message,repeat,at,cost,paused}` is read-only. `repeat` is
+  `once`, `hourly`, `daily`, `weekdays` or `weekly`; `at` is the daemon’s local
+  civil minute (`YYYY-MM-DDTHH:MM`); `cost` is dollars per run, 0 for none.
+  It validates the definition and returns up to five `next` ISO times with
+  offsets and a `timezone` label. Missing summer-time minutes advance to the
+  next valid minute; repeated minutes use their first occurrence.
+- `schedule.read {id}` returns `definition` when present, its log `sequence`,
+  automatic `cursor`, optional `last_run` and `last_skip`, plus `next`,
+  `timezone`, `archived` and `scheduler` (whether this daemon owns the lock).
+  `session.list` includes the same `schedule` view for scheduled tasks.
+- `schedule.set {id,message,repeat,at,cost,paused}` writes `session.schedule`.
+  Defaults are cost 0 and paused false; message, repeat and at must validate.
+  `{id,remove:true}` removes the schedule while retaining its chat. Keeping
+  at/repeat preserves the consumed cursor; retiming starts a new series.
+  Resuming a paused definition sets its cursor to now.
+- `schedule.pause {id,paused}` preserves its definition and records the change.
+  Archive records a paused definition before archiving; Unarchive leaves it
+  paused. A closed scheduled task can still run automatically.
+- `schedule.run {id}` starts one normal turn immediately, including while
+  paused, without consuming an automatic time. Archived tasks refuse it.
+  Busy tasks, pending answers, resume conflicts and inaccessible models
+  refuse dispatch and record a skip when the log can be written.
+
+Set (including removal) and resuming through pause are local-only, checked in
+both daemon and bridge. Paired devices may pause and run now; read-only
+bridges expose only read and next. No Scheme primitive creates schedules.
+The ordinary task-opening methods retain all folder/worktree/model/helper/
+judge/limits choices; the console then calls set without sending a message.
+
+The daemon holds `scheduler.lock` in its data directory and checks every 30
+seconds and at startup. Due occurrences after the cursor through now become
+one late run; `missed` counts the additional occurrences. A busy task, pending
+answer or another log owner skips that interval. External log locks defer the
+skip in memory until released; daemon shutdown before release loses that
+unrecorded skip, so restart treats it as missed. No authoritative schedules
+file or repository configuration is read. The index is only a derived view.
+
+Log payloads (see the generated schema for full shapes):
+
+- `session.schedule`: message/repeat/at/cost/paused, actor, removed, after
+  (preserved consumed cursor, or now on resume).
+- `schedule.run`: due, through (latest coalesced occurrence), started, missed,
+  manual, actor, cost, spend_before (lifetime model/judge cost before this run).
+  Manual runs have a zero through and do not move the automatic cursor.
+- `schedule.skip`: due, through, started, missed, reason. A refused manual
+  dispatch has zero through and leaves automatic progress alone.
+- `context.handover`: text, through (last event included in preparation).
+  A successful turn with over a quarter-window since the last note and no
+  pending answer prepares it with compact-note under the same budget. The
+  next scheduled turn applies a lasting context.narrow and harness message.
+
+Scheduled messages discard Don’t ask and refuse unattended/yolo session
+options. Their spend limit resets at schedule.run and includes human
+follow-ups. `session.info` adds optional `run_spend`; budgets.cost reports the
+current run’s limit. Whole-task session.totals remains unchanged. Scheduled
+sessions close after 15 idle minutes without pending prompts, freeing the
+same resources as session.close. Automatic daemon startup at login is not built.

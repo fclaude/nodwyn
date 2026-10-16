@@ -294,3 +294,12 @@ func (s *Session) installApproval(ctx context.Context, p guard.Prompt, a guard.A
 	}
 	return nil
 }
+
+// scheduledApproval may only revoke session-wide approval. Keeping that
+// revocation here preserves the boundary that no primitive can enable it.
+func (s *Session) scheduledApproval() error {
+	if s.opts.NoConfirm || s.opts.AutoApprove || s.opts.JudgeApprove || s.opts.Unattended {
+		return fmt.Errorf("scheduled runs require normal chat approvals")
+	}
+	return s.SetApproveAll(false, "scheduler")
+}

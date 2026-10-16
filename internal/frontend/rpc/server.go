@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"syscall"
 
 	"github.com/fclaude/nodwyn/internal/core"
 )
@@ -26,6 +27,11 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 	_ = s.bindModelLists()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if err := s.ensureScheduler(); err != nil {
+		return err
+	}
+	schedulerDone := make(chan struct{})
+	go s.scheduler(ctx, schedulerDone)
 	var mu sync.Mutex
 	connections := make(map[net.Conn]bool)
 	var workers sync.WaitGroup
@@ -72,6 +78,11 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 	cancel()
 	<-stopped
 	workers.Wait()
+	<-schedulerDone
+	if s.schedulerLock != nil {
+		defer s.schedulerLock.Close()
+		defer syscall.Flock(int(s.schedulerLock.Fd()), syscall.LOCK_UN)
+	}
 	return errors.Join(serveErr, s.close())
 }
 func (s *server) connection(ctx context.Context, conn net.Conn) {

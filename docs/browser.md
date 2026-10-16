@@ -63,7 +63,36 @@ prompt tokens is 0%; without a positive prompt total the row says
 "unknown". This is neither the fraction of requests hitting cache nor the
 budget-discounted token count. If history was truncated, the Totals label
 "from the log that remains" applies to this rate too. Its aggregation is
-cached between recorded events, so clock ticks do not rescan the log.
+kept in the daemon's derived log index (`session.totals`), together with spend,
+judge usage, speed, clocks, approved previews and attachment metadata. Recorded
+events refresh the snapshot; clock ticks extend only its open clocks while the
+task runs. Statistics also shows turn counts and, for CLI driver runs, run
+counts; their tooltips give the latest start time. Closed tasks need no resume
+to read these figures. Older daemons without this method retain the browser's
+whole-log calculation. The conversation opens at its latest indexed run. Earlier runs fetches five
+older last-reply previews at a time; a run's event pages load only when it is
+expanded, within a fixed sequence range. Closing and reopening a loaded run
+reuses its content. Failures can be retried without disabling the live task;
+replies to a former task cannot replace the current conversation. A latest-run
+subscription selects its history and live watermark together. Historical runs
+have separate renderers, so old choices and turn records do not change the
+current model, prompts or gauges. The Log and Plan record inspectors label
+their latest-run scope. A task without run records retains its whole
+conversation view; earlier conversation before its first run remains reachable.
+Run markers include CLI driver starts and `schedule.run`. Home’s clock opens a
+schedule form beside the ordinary ask choices, without sending immediately.
+`Repeat…` / `Schedule…` on a task opens its saved definition and controls.
+`schedule.next` supplies the preview; displayed ISO times retain the daemon’s
+local offset even when a browser uses another timezone. Schedule creation and
+changes are local-only; devices can pause and run now. A pause survives reload,
+as do edits and removal. Runs discard Don’t ask and use normal approvals.
+Home lists next times and paused schedules. The daemon coalesces missed times,
+records skips and closes idle scheduled sessions after 15 minutes; see the
+manual and ADR 49 for log-lock deferral and startup requirements.
+Whole-task spend stays in Totals; an open scheduled task also shows This run
+and uses its per-run amount for spend warnings. The `schedule` browser check
+performs creation, reload, pause, edit, resume, run now with an actual write
+confirmation, removal and the phone layout.
 A compaction is
 a note behind **Activity**: what set it off, and the context's size before
 and after. Routine activity (judge requests, focused contexts, instructions

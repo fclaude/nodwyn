@@ -1,5 +1,6 @@
 // Home: start anything, and see what needs you across every task.
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, basename } from "./dom.js";
+import { newSchedule, scheduleTime } from "./schedule.js";
 import { summary } from "./prompts.js";
 import { keychainForm } from "./setup.js";
 import { firstModel } from "./models.js";
@@ -259,7 +260,12 @@ export function renderHome(root, ctx) {
       ),
     );
 
-  const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, done));
+  const schedules = h("section", { class: "home-section", "aria-label": "Scheduled tasks" }, h("h2", { class: "eyebrow" }, "Scheduled"));
+  for (const item of desk.sessions.values()) if (item.schedule?.definition && !item.archived) {
+    const s = item.schedule;
+    schedules.append(h("article", { class: "card" }, h("a", { href: `#/task/${item.id}` }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.definition.paused ? "Paused" : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending")));
+  }
+  const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, schedules, done));
   // The ask being typed survives updates: while focus is in the top half,
   // only the lists below are replaced. This is decided before the composer
   // is built, and the composer is built only for a full redraw: the form
@@ -364,11 +370,13 @@ export function renderHome(root, ctx) {
         : {}),
     });
   };
+  let scheduling = null;
+  let startTask;
   const form = h(
     "form",
     {
       class: "ask",
-      onsubmit: async (event) => {
+      onsubmit: startTask = async (event) => {
         event.preventDefault();
         if (!ready()) return;
         starting = true;
@@ -398,7 +406,9 @@ export function renderHome(root, ctx) {
           if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
           if (files.files.length) await files.upload(info.id);
           sending = true;
-          await conn.call("session.send", { id: info.id, text: task.value });
+          if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling, message: task.value });
+          else await conn.call("session.send", { id: info.id, text: task.value });
+          scheduling = null;
           draft = "";
           pick(null, desk);
           pickJudge(null, desk);
@@ -437,6 +447,10 @@ export function renderHome(root, ctx) {
       limitsBox,
       canChoose ? picker.el : h("span", { class: "where" }, where),
       helpersSlot,
+      conn.has("schedule.set") ? h("button", { type: "button", class: "btn", "aria-label": "Schedule task", title: "Schedule task", onclick: () => {
+        if (!ready()) return;
+        newSchedule(conn, async (d) => { scheduling = d; await startTask(new Event("submit", { cancelable: true })); });
+      } }, "◷") : null,
       submit,
     ),
   );

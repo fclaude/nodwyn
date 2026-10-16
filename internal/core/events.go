@@ -20,6 +20,7 @@ func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
 		return ev, err
 	}
 	s.notePlan(kind, payload)
+	s.noteSchedule(ev)
 	s.remember(ev)
 	s.Emit(event.FromLog(ev, payload))
 	return ev, s.recordRedactions(ev.Seq, redactions)

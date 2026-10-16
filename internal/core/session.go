@@ -26,17 +26,20 @@ import (
 
 // Session is one conversation with one log.
 type Session struct {
-	initSource []byte // The exact project startup snapshot whose trust was checked.
-	opts       Options
-	id         string
-	logw       *log.Writer
-	events     []log.Event
-	evmu       sync.Mutex
-	outputMu   sync.Mutex
-	output     strings.Builder
-	out        chan event.Event
-	interp     *scheme.Interp
-	loop       *loop.Loop
+	schedule     atomic.Pointer[log.SessionSchedule]
+	scheduledRun atomic.Pointer[log.ScheduleRun]
+	handover     atomic.Pointer[log.ContextHandover]
+	initSource   []byte // The exact project startup snapshot whose trust was checked.
+	opts         Options
+	id           string
+	logw         *log.Writer
+	events       []log.Event
+	evmu         sync.Mutex
+	outputMu     sync.Mutex
+	output       strings.Builder
+	out          chan event.Event
+	interp       *scheme.Interp
+	loop         *loop.Loop
 
 	mu         sync.Mutex
 	busy       bool
@@ -193,6 +196,9 @@ func (s *Session) limits() (budget.Limits, error) {
 	if err != nil {
 		return budget.Limits{}, err
 	}
+	if run := s.scheduledRun.Load(); run != nil {
+		limits.Cost = scheduledCost(run.Cost)
+	}
 	if s.limitsOff {
 		limits = withoutTurnLimits(limits)
 	}
@@ -288,6 +294,10 @@ func (s *Session) turn(ctx context.Context, text string, required, reviewed bool
 // and budget lifetime. Neither kind of work can mutate the interpreter while
 // the other is running.
 func (s *Session) startTurn(work func(context.Context) error) error {
+	return s.startScheduledTurn(work, nil)
+}
+
+func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.ScheduleRun) error {
 	s.mu.Lock()
 	if s.closed || s.closing {
 		s.mu.Unlock()
@@ -310,8 +320,11 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 		s.mu.Unlock()
 		return err
 	}
+	if run != nil {
+		limits.Cost = scheduledCost(run.Cost)
+	}
 	ctx, turn, cancel := budget.Start(context.Background(), limits, s.confirmBudget)
-	if limits.Cost.Hard > 0 {
+	if limits.Cost.Hard > 0 && run == nil {
 		turn.SetEarlierCost(s.knownSpend())
 	}
 	s.busy = true
@@ -339,6 +352,13 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 			s.endTurn()
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
 		}()
+		if run != nil {
+			run.SpendBefore = s.lifetimeSpend()
+			if _, err := s.Record(log.KindScheduleRun, *run); err != nil {
+				turnErr = err
+				return
+			}
+		}
 		if err := work(ctx); err != nil {
 			turnErr = err
 			if ctx.Err() != nil {
@@ -347,6 +367,8 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 				_, _ = s.Record(log.KindNote, log.Note{Text: err.Error()})
 			}
 			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})
+		} else {
+			s.prepareHandover(ctx)
 		}
 	}()
 	return nil

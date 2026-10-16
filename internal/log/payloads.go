@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/schedule"
 )
 
 // Typed payloads for the event kinds. They are the schema of the log; the
@@ -692,4 +693,41 @@ type IndexUpdate struct {
 type ImageGap struct {
 	Seq    uint64 `json:"seq"` // the attach record
 	Reason string `json:"reason"`
+}
+
+// SessionSchedule is chosen by a person on this computer, never by Scheme.
+// After preserves automatic progress when paused or edited without retiming.
+type SessionSchedule struct {
+	schedule.Definition
+	Actor   string    `json:"actor"`
+	Removed bool      `json:"removed,omitempty"`
+	After   time.Time `json:"after"`
+}
+
+// ScheduleRun claims its due interval before starting work. A manual run does
+// not consume the automatic schedule. SpendBefore pins the per-run cost base.
+type ScheduleRun struct {
+	Due         time.Time `json:"due"`
+	Through     time.Time `json:"through"`
+	Started     time.Time `json:"started"`
+	Missed      int       `json:"missed"`
+	Manual      bool      `json:"manual"`
+	Actor       string    `json:"actor"`
+	Cost        float64   `json:"cost"`
+	SpendBefore float64   `json:"spend_before"`
+}
+
+type ScheduleSkip struct {
+	Due     time.Time `json:"due"`
+	Through time.Time `json:"through"`
+	Started time.Time `json:"started"`
+	Missed  int       `json:"missed"`
+	Reason  string    `json:"reason"`
+}
+
+// ContextHandover is a note prepared for the next scheduled message; recording
+// it does not narrow the current conversation.
+type ContextHandover struct {
+	Text    string `json:"text"`
+	Through uint64 `json:"through"`
 }

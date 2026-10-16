@@ -352,8 +352,17 @@ stable even with a long or expanded plan; narrow screens stack normally.
 Long review lines wrap inside the diff; phone side-by-side views scroll within
 it, not the page. Review drafts are tab memory, not saved across a reload.
 
-Reopening a task fills Statistics from its recorded replies, with the same
-accounting as live delivery. A read-style tool wrapper that runs a shell
+Statistics reads whole-task figures from the daemon's derived log index,
+including for closed tasks. Recorded events refresh them; reopening reads the
+same totals. Turns and, for CLI driver and scheduled runs, Runs show their counts and the
+latest start time in a tooltip. Changes reads approved previews and attachment
+metadata from the index too. A task with run records opens at its latest run, with all of that run's turns
+and follow-ups. Earlier runs loads five collapsed last-reply previews at a
+time; expand one to load its conversation, or retry if a read failed. Old runs
+keep their own renderer and do not change the current task's model or prompts.
+Tasks without run records retain their whole conversation. The inspectors
+label their latest-run scope; Statistics and Changes still cover the whole
+task. Scheduling is not built yet (\adr{49}). A read-style tool wrapper that runs a shell
 command keeps the guard's recorded, redacted command on its call row;
 loading continues through that decision to the rest of the history.
 
@@ -980,3 +989,26 @@ Old notes found through the requested path or earlier session records migrate to
 the canonical path hash, leaving \file{notes.md.before-path-migration} backups.
 Different note contents and duplicate workspace aliases require manual
 reconciliation; permissions are never silently merged (\adr{45}).
+
+\paragraph{Scheduled tasks (\adr{49}).}
+Home's clock beside Send turns the request into a schedule with the same
+folder or worktree, model, helpers, judge and Limits choice. Choose once,
+hourly, daily, weekdays or weekly, a first local minute and a dollar spend
+limit per run (0 means none). The daemon supplies the next-time preview.
+The task opens immediately, without sending until due. On a task,
+\textbf{Repeat\ldots} adds a schedule and \textbf{Schedule\ldots} edits,
+pauses, resumes, runs now or removes it. Run now leaves the automatic time
+unchanged; resuming skips the paused interval. Home lists scheduled tasks.
+Close keeps the schedule; Archive pauses it; Unarchive leaves it paused;
+Delete removes it with the chat. Devices can pause and run now; other changes
+stay on this computer.
+
+The daemon checks every 30 seconds and on startup, coalescing missed times
+into one late run. Busy tasks and pending answers skip their time. An external
+log lock defers recording a skip until released; shutdown before that loses
+the unrecorded skip, so restart treats it as a missed time. Runs use normal
+approvals, discard Don't ask and reset the spend limit for each run and its
+human follow-ups; Statistics keeps whole-task Totals and adds This run for the loaded scheduled run. Idle scheduled tasks close after 15 minutes. Long turns prepare a warm
+handover note for the next scheduled message without replacing the current
+human conversation. The daemon must be running: automatic startup at login
+is not built.

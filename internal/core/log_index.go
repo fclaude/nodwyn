@@ -38,7 +38,7 @@ import (
 // reach (the default denylist), and whatever could write it could write the
 // log itself.
 
-const indexVersion = 2
+const indexVersion = 5
 
 // markEvery is how many events apart the index notes where a line starts: a
 // page is read from the nearest mark before it, at most this many events
@@ -57,7 +57,12 @@ type logIndex struct {
 	Fold infoFold `json:"fold"`
 	// Resume is what resuming the session needs from the events it does
 	// not hold, up to and including Seq.
-	Resume resumeFold `json:"resume"`
+	Resume   resumeFold   `json:"resume"`
+	Totals   totalsFold   `json:"totals"`
+	History  historyFold  `json:"history"`
+	Schedule ScheduleInfo `json:"schedule"`
+	Turns    []indexMark  `json:"turns,omitempty"`
+	Runs     []indexMark  `json:"runs,omitempty"`
 	// Marks[k] is where the line of event k*markEvery+1 starts, and
 	// MarkSpend[k] what the requests before it cost, as knownSpend adds it.
 	Marks     []int64   `json:"marks"`
@@ -95,11 +100,17 @@ type resumeFold struct {
 }
 
 // keptChoices are the kinds whose latest record resumeFold keeps.
-var keptChoices = []log.Kind{log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits}
+var keptChoices = []log.Kind{log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits, log.KindSessionSchedule, log.KindScheduleRun, log.KindContextHandover}
 
 // observe folds one event in.
 func (r *resumeFold) observe(ev log.Event) {
 	r.Window.Observe(ev)
+	if slices.Contains(keptChoices, ev.Kind) {
+		if r.Latest == nil {
+			r.Latest = map[log.Kind]log.Event{}
+		}
+		r.Latest[ev.Kind] = ev
+	}
 	switch ev.Kind {
 	case log.KindUserMsg:
 		var m log.UserMsg
@@ -118,6 +129,8 @@ func (r *resumeFold) observe(ev log.Event) {
 		if ev.Decode(&p) == nil && turnFinished(p.Outcome) {
 			r.Finished = ev.Seq
 		}
+	case log.KindScheduleRun:
+		r.RunStart = ev.Seq
 	case log.KindRunState:
 		var p log.RunState
 		if ev.Decode(&p) == nil && p.Status == "running" && p.Turns == 0 {
@@ -128,13 +141,6 @@ func (r *resumeFold) observe(ev log.Event) {
 	case log.KindLLMResp, log.KindJevReq:
 		if cost, ok := knownCost(ev); ok {
 			r.Spend += cost
-		}
-	default:
-		if slices.Contains(keptChoices, ev.Kind) {
-			if r.Latest == nil {
-				r.Latest = map[log.Kind]log.Event{}
-			}
-			r.Latest[ev.Kind] = ev
 		}
 	}
 }
@@ -247,6 +253,9 @@ func extendIndex(f *os.File, id string, idx logIndex) (logIndex, bool, error) {
 			return err
 		}
 		idx.Resume.observe(ev)
+		idx.observeTotals(ev, start)
+		idx.observeHistory(ev)
+		idx.Schedule.observe(ev)
 		idx.Seq, idx.Start, idx.End, idx.Hash = ev.Seq, start, base+end, lineHash(line)
 		return nil
 	})
@@ -339,6 +348,17 @@ var errPageFull = errors.New("core: page full")
 // this log's: it is removed, and the caller reads again.
 func (s Store) readPage(id string, idx logIndex, page *LogPage, after, through uint64, limit int) error {
 	k := after / markEvery
+	seq, offset := k*markEvery+1, idx.Marks[k]
+	// Turn and run boundaries shorten reads that begin between sparse marks.
+	for _, marks := range [][]indexMark{idx.Turns, idx.Runs} {
+		i, _ := slices.BinarySearchFunc(marks, after+1, func(m indexMark, n uint64) int { return cmp.Compare(m.Seq, n) })
+		if i == len(marks) || marks[i].Seq > after+1 {
+			i--
+		}
+		if i >= 0 && marks[i].Seq > seq {
+			seq, offset = marks[i].Seq, marks[i].Offset
+		}
+	}
 	path, err := s.path(id)
 	if err != nil {
 		return err
@@ -348,11 +368,12 @@ func (s Store) readPage(id string, idx logIndex, page *LogPage, after, through u
 		return fmt.Errorf("log: %w", err)
 	}
 	defer f.Close()
-	if _, err := f.Seek(idx.Marks[k], io.SeekStart); err != nil {
-		return err
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		os.Remove(indexPath(s.Dir, id))
+		return errStaleIndex
 	}
 	read := false
-	err = log.ReplayFrom(f, k*markEvery+1, func(ev log.Event, _ []byte, _ int64) error {
+	err = log.ReplayFrom(f, seq, func(ev log.Event, _ []byte, _ int64) error {
 		read = true
 		if ev.Seq <= after {
 			return nil
@@ -370,7 +391,7 @@ func (s Store) readPage(id string, idx logIndex, page *LogPage, after, through u
 		page.Next = ev.Seq
 		return nil
 	})
-	if err != nil && !read && !errors.Is(err, log.ErrTruncated) {
+	if !read {
 		// Not even the mark's own line was there.
 		os.Remove(indexPath(s.Dir, id))
 		return errStaleIndex

@@ -175,8 +175,12 @@ function render(routeChanged = false, what = "") {
       // The list changed: keep the conversation, refresh what the task shows.
       const fresh = desk.sessions.get(route.id);
       if (fresh && task.item && task.item.id === fresh.id) {
-        Object.assign(task.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived, worktree: fresh.worktree });
-        task.refreshAll();
+        Object.assign(task.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived, worktree: fresh.worktree, schedule: fresh.schedule });
+        if (!fresh.open) task.subscribed = false;
+        // A scheduled run can reopen a task while its closed transcript is
+        // on screen. Its new stream needs a subscription and fixed snapshot.
+        if (fresh.open && !task.subscribed && (!task.loading || task.failed)) task.open(fresh.id);
+        else task.refreshAll();
       }
     }
   } else if (route.name === "home") {

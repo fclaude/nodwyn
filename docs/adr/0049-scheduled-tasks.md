@@ -1,7 +1,8 @@
 # ADR 0049: Scheduled tasks, one task each, and turn limits a task can do without
 
-- Status: accepted; a task's turn limits (§2) implemented 2026-10-15; the
-  rest not built (see "Not built")
+- Status: accepted; turn limits (§2), recorded worktree bases (§3), the log
+  index (§10), console history and totals (§11), and scheduler (§1, §4–§9, §12)
+  implemented 2026-10-15; login startup not built
 - Date: 2026-10-15
 - Amends: 18 (a task's turn limits can be off), 34 (a worktree made again
   records its new base), 9 (windows are built from a suffix of the log)
@@ -226,9 +227,150 @@ which a scheduled task does for every run (§7). Tests: `internal/window`
 log held from its last compaction), `internal/log` (`OpenAt`), and the TUI
 and line mode replaying a resumed task whole.
 
-Not built, in the order proposed: the index's totals and run marks for the
-console;
-§11 the console reading from the end; then §1, §4–§9 and §12, the schedules
+Not built, in the order proposed: §1, §4–§9 and §12, the schedules
 themselves; then a login item that keeps the daemon running when no window
 is open. Not proposed: the model proposing a schedule, cron expressions,
 splitting a log into several files.
+
+
+## Amendment 2026-10-15: Index totals and boundaries reach the console
+
+The index now folds model and judge spend, unknown costs, cache-read token
+sums, request speed, running and working clocks, answered model waits,
+merged tool intervals minus human waits, the latest allowed preview per
+path and attachment metadata (never extracted text). Unfinished pairs stay
+in the fold so extending a saved index gives the same totals as rebuilding
+it. End and resume records drop abandoned pairs and exclude crash downtime;
+open nested tools count their completed portion once, including when a
+result arrives before its outer call ends.
+
+Each submitted turn and each existing CLI driver's run start has its seq,
+time and byte offset indexed. The driver's `run.turn` and following
+`user.msg` are one turn. `log.read` uses these boundaries when closer than
+its sparse mark and checks the sought line's seq as before. `session.totals`
+reads the derived sums, counts and latest boundaries without resuming the
+task or replaying its old prefix; the bridge offers it as a read method.
+Legacy previews and attachment metadata are redacted for display.
+
+The console consumes it for whole-task totals, judge usage, summary spend
+and cache rate, approved previews and attachment chips; recorded events
+refresh it, live clocks extend only while the task is busy, and a reply to
+a former task cannot overwrite the one now shown. Statistics shows turn
+and CLI run counts and latest-start tooltips. Older daemons without the
+method retain the full-log calculation. The index version changed, so old
+indexes rebuild automatically.
+
+This completes §10 for existing record kinds and the totals part of §11.
+Not built in this slice: scheduled run records (§9, with the scheduler),
+paging back by runs, folding and lazily building older conversations (§11),
+and all scheduling behaviour in §1, §4–§9, §12. The console still loads the
+whole conversation. The model's window still follows the suffix rules of
+the earlier §10 implementation.
+
+Checks: core totals with fixed timestamps, growth, rebuild, torn tails,
+legacy redaction, nested tool waits and crash downtime; totals and boundary
+pages with the old log prefix unreadable; RPC totals for open and closed
+tasks and invalid parameters; tasks and transcript browser checks for
+indexed totals after a reply and reopening, summaries and Changes without
+their old conversation, and stale responses after switching tasks.
+
+
+## Amendment 2026-10-15: Latest-run conversation and paging earlier runs
+
+The console now selects the latest run when opening a task with run records,
+using `latest_run` in `session.subscribe` or `log.read`. The selection uses
+the subscription's fixed watermark while delivery is paused; continuation
+pages use that same inclusive end. Inherited setup records feed the displayed
+model and context high water without replaying old choices as new messages.
+
+`log.runs` pages backwards over the same fixed prefix. Its bounded, redacted
+previews hold the last non-empty model reply, capped at 2,000 Unicode
+characters and an ellipsis, with redaction before clipping so a secret
+straddling the cap cannot expose its prefix. The index keeps those previews and the setup each
+run inherited; neither the preview list nor opening the latest run replays the
+old prefix. It remains a revocable view in nodwyn's data directory, written by
+the same readers as before, with no new repository-controlled authority. The
+index version changed so older views rebuild. The first run includes startup
+records; submitted conversation before it is an earlier group. Without any
+run records the task remains one whole conversation.
+
+Earlier runs fetches five previews at a time, inserted in chronological order
+without moving the reader's existing anchor. They remain collapsed to their
+last reply. Expanding one fetches only its fixed range, in bounded event pages,
+then builds its own transcript; reopening reuses it. Historical choices,
+receipts and turn records cannot change the current model, prompts, pending
+operations or gauges. Failed preview reads leave the button available; a failed
+run read offers Retry. Replies arriving after a task switch are discarded.
+Whole-task totals, spend, cache rate and Changes still come from
+`session.totals`. Log and Plan record inspectors label their loaded latest-run
+scope. Older daemons without `log.runs` retain the full-history display.
+
+This completes §11 for existing run records: latest-run opening, backwards
+paging, collapsed last replies, lazy older contents and whole-task totals.
+Current runs are CLI driver starts, with all their turns and human follow-ups
+until the next start. Scheduled run boundaries will join the index with §9;
+§1, §4–§9 and §12, then the daemon's login item, remain unbuilt. This slice
+adds no scheduling behaviour.
+
+Checks: core fixed prefixes, redacted bounded previews, index rebuilds,
+conversation preceding runs and suffix reads with an unreadable old prefix;
+RPC latest-run subscriptions with a held fake model, fixed catch-up and live
+sequence delivery; tasks browser checks for closed and resumed history,
+multiple preview pages, expansion spanning event pages, literal untrusted
+text and live follow-ups; transcript checks for failed reads, retry and stale
+responses after switching tasks.
+
+
+## Amendment 2026-10-15: Scheduler and console management
+
+This implements §1, §4–§9 and §12. Home’s clock creates the task with all
+ordinary choices before recording its schedule, without sending immediately.
+Repeat… adds a schedule to an existing task; Schedule… reads and edits it,
+pauses, resumes, runs now or removes it. Home lists schedules. Archive pauses;
+Unarchive leaves it paused; deletion removes the log and schedule together.
+Run now works while paused and consumes no automatic time. Unpausing begins
+after now, skipping the paused interval. Same-time edits preserve progress;
+retiming starts a new series. Paired devices may pause and run now; unpausing,
+like other changes, is local-only. The bridge and daemon both enforce this.
+
+Civil recurrences use the daemon’s local timezone. The preview and saved
+view supply five ISO times with offsets; the console retains those offsets
+rather than converting them to a paired browser’s timezone. A skipped minute
+advances to the next valid one, and repeated minutes choose their first
+occurrence. Startup and 30-second wall-clock ticks coalesce missed times,
+claim their interval with schedule.run before model work, and record busy,
+pending-answer and failed-dispatch skips. One scheduler.lock flock in the
+data directory excludes other daemon dispatchers. A second daemon may serve
+clients and acquires scheduling if the first releases its lock.
+
+Clarification to §6: a log held by another process cannot also receive a
+skip. The daemon defers that skip in memory, extending its interval while
+ownership remains elsewhere, then appends it after release. If this daemon
+stops before release, that unrecorded skip is lost and restart treats the
+interval as missed. No separate authority file is introduced to bypass the
+log lock. The schedule, progress, spend base and handover remain log records
+written through normal redaction by the process owning the log, in nodwyn’s
+data directory. Nothing in a repository enables a timer.
+
+A run clears Don’t ask and uses normal chat approvals, refusing unattended or
+yolo options. Its spend base and limit come from schedule.run and survive
+resume; human follow-ups share that run’s cost. The next run resets it.
+Whole-task totals remain whole-task; open tasks also show This run and use
+its amount for spend warnings. Unknown prices remain uncounted as before.
+After 15 idle minutes with no pending answer the ordinary close path frees
+resources and clean worktrees. Successful turns over a quarter-window since
+the last handover call compact-note under the same budget, with tools skipped.
+context.handover records the note without narrowing the human conversation;
+the next scheduled message narrows to it. The index retains the latest
+schedule, run and handover and treats schedule.run as a history boundary.
+
+Checks: calendar coalescing, all five repeats and summer-time gaps/folds
+including Lord Howe; core per-run spend across resume, handover versus human
+context and clearing Don’t ask with an actual confirmation; daemon startup,
+coalescing, busy/external-log skips, idle closing and scheduler lease transfer;
+RPC creation/removal, pause/resume authority, manual runs and archive; browser
+creation without send, daemon preview, persistence, pause/edit/resume, run now
+with an approved write, removal and phone layout.
+
+No login item is built. The model proposing schedules, cron expressions and
+log splitting remain outside the proposal.

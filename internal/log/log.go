@@ -32,6 +32,10 @@ import (
 type Kind string
 
 const (
+	KindSessionSchedule  Kind = "session.schedule"
+	KindScheduleRun      Kind = "schedule.run"
+	KindScheduleSkip     Kind = "schedule.skip"
+	KindContextHandover  Kind = "context.handover"
 	KindRunState         Kind = "run.state"
 	KindRunTurn          Kind = "run.turn"
 	KindRunCheckpoint    Kind = "run.checkpoint"
@@ -88,7 +92,7 @@ const (
 )
 
 var kinds = map[Kind]bool{
-	KindRunState: true, KindRunTurn: true, KindRunCheckpoint: true,
+	KindSessionSchedule: true, KindScheduleRun: true, KindScheduleSkip: true, KindContextHandover: true, KindRunState: true, KindRunTurn: true, KindRunCheckpoint: true,
 	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindSessionModel: true, KindSessionJudge: true, KindSessionDelegates: true, KindSessionLimits: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindHarnessMsg: true, KindContextNarrow: true, KindContextWiden: true, KindContextFold: true, KindResultFold: true, KindContextCompact: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,

@@ -30,10 +30,12 @@ type ownedSession struct {
 // Lifecycle operations are serialized. This keeps construction, ownership and
 // closing atomic across clients without teaching core about connections.
 type server struct {
-	options  core.Options
-	mu       sync.Mutex
-	sessions map[string]ownedSession
-	watch    stateWatch
+	options       core.Options
+	schedulerLock *os.File
+	scheduleSkips map[string]deferredSkip
+	mu            sync.Mutex
+	sessions      map[string]ownedSession
+	watch         stateWatch
 	// authorizations are the OAuth2 authorizations started from the
 	// console (credentials.go).
 	authorizations map[string]*authorization
@@ -61,7 +63,8 @@ type sessionInfo struct {
 	Archived bool `json:"archived"`
 	// Worktree is the git worktree made for the session, whose path is
 	// Repo; a list groups the task under its repository (ADR 34).
-	Worktree *log.Worktree `json:"worktree,omitempty"`
+	Worktree *log.Worktree  `json:"worktree,omitempty"`
+	Schedule *scheduleState `json:"schedule,omitempty"`
 }
 type budgetInfo struct {
 	ToolCalls budget.Limit `json:"tool_calls"`
@@ -113,7 +116,8 @@ type sessionDetails struct {
 	// Limits says the task's turns stop at the turn limits; false is a task
 	// a person let run as long as it needs (ADR 49), whose Budgets then
 	// have a hard limit of 0, none, but for its spend limit.
-	Limits bool `json:"limits"`
+	Limits   bool     `json:"limits"`
+	RunSpend *float64 `json:"run_spend,omitempty"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
@@ -123,7 +127,11 @@ func (s *server) details(session *core.Session) sessionDetails {
 	trust, actor := session.TurnApproval()
 	all, allActor := session.ApproveAll()
 	limitsOn, _ := session.LimitsOn()
-	return sessionDetails{Limits: limitsOn, Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge(), Delegates: orEmpty(session.Delegates())}
+	var runSpend *float64
+	if cost, ok := session.RunSpend(); ok {
+		runSpend = &cost
+	}
+	return sessionDetails{RunSpend: runSpend, Limits: limitsOn, Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge(), Delegates: orEmpty(session.Delegates())}
 }
 
 func orEmpty[T any](list []T) []T {
@@ -211,6 +219,12 @@ var methodTable = map[string]handler{
 	"session.judge.set":        (*server).judge,
 	"session.limits.set":       (*server).limitsSet,
 	"session.info":             (*server).info,
+	"session.totals":           (*server).totals,
+	"schedule.next":            (*server).nextSchedule,
+	"schedule.read":            (*server).readSchedule,
+	"schedule.set":             (*server).setSchedule,
+	"schedule.pause":           (*server).pauseSchedule,
+	"schedule.run":             (*server).runSchedule,
 	"session.close":            (*server).closeSession,
 	"session.rename":           (*server).rename,
 	"session.archive":          (*server).archive,
@@ -222,6 +236,7 @@ var methodTable = map[string]handler{
 	"session.send":             (*server).send,
 	"session.subscribe":        (*server).subscribe,
 	"log.read":                 (*server).readLog,
+	"log.runs":                 (*server).readRuns,
 }
 
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
@@ -306,6 +321,9 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 			entry.Run = &state
 		} else if i.Run != nil {
 			entry.Run = &run.State{Task: i.Run.Task, Deadline: i.Run.Deadline, MaxTurns: i.Run.MaxTurns, Turns: i.Run.Turns, Status: i.Run.Status, Reason: i.Run.Reason, Unattended: i.Run.Unattended, AutoApprove: i.Run.AutoApprove, Judge: i.Run.Judge}
+		}
+		if state, err := s.scheduleState(i.ID); err == nil && state.Definition != nil {
+			entry.Schedule = &state
 		}
 		result = append(result, entry)
 	}
@@ -548,6 +566,22 @@ func (s *server) info(req request, _ *peer) (any, *rpcError) {
 	return s.details(owned.session), nil
 }
 
+// totals also reads closed tasks; it never resumes or executes a session.
+func (s *server) totals(req request, _ *peer) (any, *rpcError) {
+	var p idParams
+	if err := params(req.Params, &p, "id"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	result, err := s.store().Totals(p.ID)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return result, nil
+}
+
 func (s *server) abort(req request, _ *peer) (any, *rpcError) {
 	owned, _, err := s.session(req)
 	if err != nil {
@@ -627,6 +661,19 @@ func (s *server) archive(req request, client *peer) (any, *rpcError) {
 	}
 	if _, open := s.sessions[p.ID]; open {
 		return nil, failure(-32000, "Close the task before archiving it")
+	}
+	if p.Archived {
+		state, err := s.store().Schedule(p.ID)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		if state.Definition != nil {
+			def := *state.Definition
+			def.Paused, def.Actor, def.After = true, client.actor, state.Cursor
+			if err := s.writeSchedule(p.ID, def); err != nil {
+				return nil, failure(-32000, err.Error())
+			}
+		}
 	}
 	if err := s.store().Archive(p.ID, p.Archived, client.actor); err != nil {
 		return nil, failure(-32000, err.Error())
@@ -713,7 +760,7 @@ func (s *server) send(req request, _ *peer) (any, *rpcError) {
 // session.subscribe. through belongs only to log.read.
 func readRange(req request, withThrough bool) (readParams, *rpcError) {
 	var p readParams
-	names := []string{"id", "after", "limit"}
+	names := []string{"id", "after", "limit", "latest_run"}
 	if withThrough {
 		names = append(names, "through")
 	}
@@ -722,6 +769,9 @@ func readRange(req request, withThrough bool) (readParams, *rpcError) {
 	}
 	if p.ID == "" {
 		return p, failure(-32602, "id is required")
+	}
+	if p.LatestRun && p.After != 0 {
+		return p, failure(-32602, "latest_run cannot be combined with after")
 	}
 	if p.Limit == 0 {
 		p.Limit = 100
@@ -741,7 +791,7 @@ func (s *server) subscribe(req request, client *peer) (any, *rpcError) {
 	if !ok {
 		return nil, failure(-32002, "Session is not open in this daemon")
 	}
-	result, subErr := owned.stream.subscribe(client, s.store(), p.After, p.Limit)
+	result, subErr := owned.stream.subscribe(client, s.store(), p.After, p.Limit, p.LatestRun)
 	if subErr != nil {
 		return nil, failure(-32000, subErr.Error())
 	}
@@ -754,9 +804,36 @@ func (s *server) readLog(req request, _ *peer) (any, *rpcError) {
 	if err != nil {
 		return nil, err
 	}
-	page, readErr := s.store().ReadLog(p.ID, p.After, p.Through, p.Limit)
+	var page core.LogPage
+	var readErr error
+	if p.LatestRun {
+		page, readErr = s.store().ReadLatestRun(p.ID, p.Through, p.Limit)
+	} else {
+		page, readErr = s.store().ReadLog(p.ID, p.After, p.Through, p.Limit)
+	}
 	if readErr != nil {
 		return nil, failure(-32000, readErr.Error())
+	}
+	return page, nil
+}
+
+func (s *server) readRuns(req request, _ *peer) (any, *rpcError) {
+	var p runsParams
+	if err := params(req.Params, &p, "id", "before", "through", "limit"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	if p.Limit == 0 {
+		p.Limit = 10
+	}
+	if p.Limit < 1 || p.Limit > 100 {
+		return nil, failure(-32602, "limit must be between 1 and 100")
+	}
+	page, err := s.store().ReadRuns(p.ID, p.Before, p.Through, p.Limit)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
 	}
 	return page, nil
 }
