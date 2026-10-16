@@ -848,6 +848,9 @@ func authorizer(store *keychain.Store, table binding.Table, class, position stri
 			return llm.Permanent(errors.New(reason))
 		}
 		if err := store.Refresh(req.Context(), h.ID, nil); err != nil {
+			if keychain.IsTransient(err) {
+				return err // retried with the request
+			}
 			return llm.Permanent(err)
 		}
 		_, name, prefix := binding.Position(position)

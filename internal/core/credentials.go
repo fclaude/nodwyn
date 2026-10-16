@@ -241,7 +241,12 @@ func (s *Session) authorize(class, position string) func(*http.Request) error {
 			return llm.Permanent(errors.New(reason))
 		}
 		_, name, prefix := binding.Position(position)
+		// A refresh that failed on the way is retried with the request; a
+		// credential that is missing, refused or not allowed is not.
 		if err := s.InjectHeader(h.ID, name, prefix, req); err != nil {
+			if keychain.IsTransient(err) {
+				return err
+			}
 			return llm.Permanent(err)
 		}
 		return nil

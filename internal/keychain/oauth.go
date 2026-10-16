@@ -150,7 +150,7 @@ func (st *Store) Refresh(ctx context.Context, id string, observe func(Refreshed)
 			return reauthError(id, e.class)
 		}
 		report()
-		return fmt.Errorf("keychain: refresh %s: %w", e.class, err)
+		return &transientError{fmt.Errorf("keychain: refresh %s: %w", e.class, err)}
 	}
 	if t.Provider == "openai" {
 		if err := checkOpenAIGrant(tok, true); err != nil {
@@ -254,6 +254,22 @@ func (t token) expiry(now time.Time) time.Time {
 // refusedError is a token endpoint saying no for good (RFC 6749 §5.2:
 // invalid_grant, invalid_client, unauthorized_client): authorizing again is
 // the only way on.
+// transientError is a refresh that failed on the way (a timeout, a dropped
+// connection, a server error), not one the provider refused: asked again a
+// moment later, it may well work.
+type transientError struct{ err error }
+
+func (e *transientError) Error() string { return e.err.Error() }
+func (e *transientError) Unwrap() error { return e.err }
+
+// IsTransient reports whether err is a refresh that failed on the way and
+// may work if tried again; every other credential error stays until a
+// person acts.
+func IsTransient(err error) bool {
+	var t *transientError
+	return errors.As(err, &t)
+}
+
 type refusedError struct{ code string }
 
 func (e *refusedError) Error() string { return "the provider refused the grant (" + e.code + ")" }

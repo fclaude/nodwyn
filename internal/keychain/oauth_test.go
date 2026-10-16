@@ -352,3 +352,27 @@ func TestDeleteAndList(t *testing.T) {
 		t.Fatal("a credential another process added is not seen")
 	}
 }
+
+// A refresh that fails on the way (the token endpoint does not answer) may
+// work a moment later: it is transient, so the request that needed it is
+// retried, and the credential is not marked for a new sign-in. A refusal
+// is not transient.
+func TestOAuth2RefreshThatFailsOnTheWayIsTransient(t *testing.T) {
+	st, srv, c := oauthStore(t)
+	h, err := st.AddOAuth2(context.Background(), "docs", grant(srv), srv.Browser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Add(time.Hour)
+	srv.Close()
+	err = st.Refresh(context.Background(), h.ID, nil)
+	if err == nil || !IsTransient(err) {
+		t.Fatalf("an endpoint that does not answer: %v (transient %v)", err, IsTransient(err))
+	}
+	if info, _ := st.Info(h.ID); info.NeedsReauth {
+		t.Fatal("a failure on the way asked for a new sign-in")
+	}
+	if IsTransient(reauthError(h.ID, "docs")) || IsTransient(errNotFound) {
+		t.Fatal("a refusal reads as transient")
+	}
+}
