@@ -248,6 +248,17 @@
    ;; long-context benchmark (ADR 32, amended 2026-10-10), so it now says
    ;; which tests it means.
    "\n- When the request weighs more than one way to do something, follow the way it concludes for. When it asks for behaviour to change, change it, and update the existing tests that encode the old behaviour the request changes, instead of keeping the old behaviour behind a narrower special case. Only those: an existing test of something the request does not mention is a constraint, and when your change breaks it, the change is what is wrong. Name in your report each existing test whose expectations you changed, and the words of the request that called for it."
+   ;; The rule above names the changed tests in the report, after the
+   ;; edit. On commit-bench's Muse runs (2026-10-16) the wrong side lost two
+   ;; tasks, each the mirror of the other. 94f5cac4: the plan said "count 0
+   ;; stays and means default", which the request never states, and the run
+   ;; then rewrote the existing row `(fs-read "big.txt" 1 0)`, "count must be
+   ;; at least 1", to `1 -1`; the hidden test kept the row. 855e90e7: an
+   ;; existing test failed after a correct change, and Pi added an untested
+   ;; skip to the denylist's code instead of fixing the test, which removed
+   ;; the directories the hidden test expects denied (ADR 32, amended
+   ;; 2026-10-16).
+   "\n- When an existing test fails after your change, decide which side is wrong before you edit either. The old expectation stands unless the request names the new behaviour for that input or case: otherwise change the code, not the test. Never add a conditional skip or exception to production code (least of all in a guard or denylist) to make an old test pass unless the request asks for it; if the test's setup contradicts what the request names, fix the setup. A branch you add gets a test for each side of it."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
    ;; The jev-key console change (ADR 32, amended 2026-10-02): Go tests and
    ;; node --check passed in every round while the page went blank on a
@@ -410,14 +421,31 @@
      " by name, and your check passed without " (if one "it" "them") ". Unless removing " (if one "it" "one")
      " is the task, keep it and have its callers go through it with the new behaviour (it may call what replaced it); if the request removes it, say so in your report with its words.")))
 
+(define (expectation-lines lines)
+  (apply string-append
+         (map (lambda (l) (string-append "\n- " (format "~a" (assoc-ref l "path" "")) ":" (number->string (assoc-ref l "line" 0))
+                                         ": " (format "~a" (assoc-ref l "text" ""))))
+              lines)))
+
 (define (finish-removed-expectations-message lines)
   (string-append
    "Your change removes or rewrites these expectations of existing tests:"
-   (apply string-append
-          (map (lambda (l) (string-append "\n- " (format "~a" (assoc-ref l "path" "")) ":" (number->string (assoc-ref l "line" 0))
-                                          ": " (format "~a" (assoc-ref l "text" ""))))
-               lines))
+   (expectation-lines lines)
    "\nAn existing test of something the request does not change is a constraint: restore each such line and fix the code instead, or quote in your report the request's words that change it."))
+
+;; The same lines, said as the edit that changes them is made rather than at
+;; the finish (strategy.scm, test-edit-nudge), once for each test file. At the
+;; finish the review had named them on 94f5cac4, as one of four points, and
+;; the answer defended every one of the six by quoting the request's rule
+;; for a skipped argument, the wrong count row among them: the request names
+;; a skipped argument, and that row's count was given as 0. So the question is
+;; asked of the input or case the line tests, with the edit still in view
+;; (ADR 32, amended 2026-10-16).
+(define (edited-expectations-message lines)
+  (string-append
+   "You changed these expectations of existing tests (the line numbers are the last commit's):"
+   (expectation-lines lines)
+   "\nWhich sentence of the request requires the new expectation, for that input or case? A rule the request states in general words does not cover an input it does not name. If none does, restore the line and change the code to meet it; if one does, say which in your answer. Answer in a line beside your next call. This is asked once for each test file."))
 
 ;; The parts of a condition the change no longer checks (strategy.scm,
 ;; change-dropped-conditions), a point of the finish review. On commit-bench

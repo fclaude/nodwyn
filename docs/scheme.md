@@ -654,6 +654,19 @@ whose `.nodwyn/init.scm` defines `validation-state` and `validated-state`
 change), as its validate tool's run: `validated-run` sets `validated-state`
 as the tool does.
 
+The loop also asks about an expectation of an existing test as the edit is
+made, not only at the finish. After a round whose calls wrote a test file
+(`test-file-path?`: `x_test.go`, `test_x.py`, `x.test.js`, a file under
+`tests/`) not yet asked about in the turn, it sets the change against HEAD with
+`change-removals` and, for the lines of that file, adds
+`(edited-expectations-message lines)` before the next request (`test-edit-nudge`):
+which sentence of the request requires the new expectation, for that input or
+case; if none does, restore the line and change the code, and if one does, say
+which in the answer. The edit is never refused. The lines are HEAD's, so a test
+the turn added, or a case it adds to a table, is not asked about, and a file is
+asked about once in a turn; the finish review still names every such line when
+its latest run passed (ADR 32, amended 2026-10-16).
+
 Both loops also count, in `stall-check`, the rounds in a row whose reply
 thought at length (`stall-reasoning-tokens`, 10,000, or more reasoning
 tokens, as `ask-model` noted in `last-reasoning`) and whose calls wrote
@@ -735,7 +748,7 @@ strings (§1.1):
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them; a question is answered, and a request for something never built is told so, with what exists, what is missing and what the model would build, before it builds anything |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach, the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
-| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-review-message points)`, `finish-review-close` | what the evidence loop tells the model (§9); from `finish-new-files-message` on, points of the finish review, and the one message that carries them |
+| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-review-message points)`, `finish-review-close`, `(edited-expectations-message lines)` | what the evidence loop tells the model (§9); from `finish-new-files-message` to `finish-unshown-claims-message`, points of the finish review, and the one message that carries them; `edited-expectations-message` is said as a test file is edited, once for each file |
 | `(reading-reminder-message n)`, `(reading-reminder-reviewed-message n)` | what the default loop tells a model whose last `n` rounds only looked (§9) |
 | `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5): leads found without running anything, and any fix in them a guess to test |
 | `task-header` `plan-header` | the headers under which the window shows the user's request, at the head of their message, and its plan, as a message of its own after the calls it came with are answered; neither is ever trimmed away. The system prompt stays the same, so a new request or a plan keeps the server's cached prefix (window recipe v15); before v15 the system prompt carried both |

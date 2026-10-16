@@ -741,6 +741,47 @@
     (and (not (string-empty? name))
          (or (string-contains? text p) (string-contains? text name)))))
 
+;; Whether a repository path is a test file by its name or its folder:
+;; x_test.go, test_x.py, x.test.js, x.spec.ts, or a file under a test, tests
+;; or __tests__ folder.
+(define (test-file-path? path)
+  (let* ((parts (string-split path "/"))
+         (base (if (null? parts) "" (car (reverse parts)))))
+    (or (string-contains? base "_test.") (string-contains? base ".test.") (string-contains? base ".spec.")
+        (string-prefix? "test_" base)
+        (let any ((dirs (if (null? parts) '() (cdr (reverse parts)))))
+          (and (pair? dirs) (or (pair? (member (car dirs) '("test" "tests" "__tests__"))) (any (cdr dirs))))))))
+
+;; An existing test whose expectation the turn changes is asked about as the
+;; edit is made, once for each test file, and the edit is never refused. A
+;; round that edited test files (edited: their paths) not yet told (told) is
+;; set against HEAD with change-removals, which reads only the lines HEAD
+;; has: a test the turn added, or a case it added to a table, has none to
+;; name. The lines it names for the fresh files go in one message
+;; (edited-expectations-message); the files that had any are returned, to be
+;; added to told. The finish review still names every such line when the
+;; latest run passed (finish-review-points): it is the last place to ask.
+;; On 94f5cac4 the review named the wrong count row among six lines, as one
+;; of four points, some twenty rounds after the edits, and the answer
+;; defended all six (ADR 32, amended 2026-10-16).
+(define (test-edit-nudge request edited told)
+  (let ((fresh (let keep ((ps edited) (out '()))
+                 (cond ((null? ps) (reverse out))
+                       ((or (member (car ps) told) (member (car ps) out)) (keep (cdr ps) out))
+                       (else (keep (cdr ps) (cons (car ps) out)))))))
+    (if (or turn-stopping (null? fresh) (not (host-primitive? "change-removals")))
+        '()
+        (let* ((removed (guard (e (else (log-note (string-append "change-removals failed: " (format "~a" (assoc-ref e 'message ""))))
+                                        '()))
+                          (change-removals request)))
+               (lines (filter (lambda (l) (member (assoc-ref l "path" "") fresh))
+                              (assoc-ref removed "expectations" '()))))
+          (if (null? lines)
+              '()
+              (begin (add-message (edited-expectations-message lines))
+                     (filter (lambda (p) (pair? (filter (lambda (l) (equal? (assoc-ref l "path" "") p)) lines)))
+                             fresh)))))))
+
 ;; The finish review: what an unattended turn's change lacks, gathered when
 ;; the turn first ends with a change and no reminder of its evidence is due,
 ;; and said in one message (finish-review-message), once a turn: the new
@@ -889,8 +930,10 @@
   ;; once a turn, after which an answer ends the turn. shown: the turn's
   ;; commands and what they printed (shown-entry); hand-edits: the files the
   ;; turn edited by hand and the commands run since (hand-edits-add).
+  ;; tests-edited: the test files the latest round's calls wrote; tests-told:
+  ;; the test files asked about once already (test-edit-nudge).
   (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
-        (passed '()) (review-made #f) (shown '()) (hand-edits '()))
+        (passed '()) (review-made #f) (shown '()) (hand-edits '()) (tests-edited '()) (tests-told '()))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
@@ -972,6 +1015,8 @@
                                       ((doc-path? (repo-path c))
                                        (walk (cdr cs) (cdr rs) #t tested failed scripts (cons (repo-path c) written) outcome told))
                                       (else
+                                       (when (test-file-path? (repo-path c))
+                                         (set! tests-edited (cons (repo-path c) tests-edited)))
                                        (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written) 'none #f)))))
                              ;; A run on the unchanged copy tests nothing of
                              ;; the change; it can only show a failure was
@@ -991,6 +1036,8 @@
                            (reading (reading-rounds calls reading))
                            (outcome (keep-passed outcome before edited)))
                        (when stuck (add-message (finish-unrunnable-message failed)))
+                       (set! tests-told (append (test-edit-nudge request tests-edited tests-told) tests-told))
+                       (set! tests-edited '())
                        (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written excused
                              reading outcome told unchanged-told)))))
             (let* ((now (and before (git-state)))

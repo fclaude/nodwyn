@@ -1513,3 +1513,73 @@ original commits, most of them conditions the task rewrote on purpose (validate'
 book rules on 1fd4c3e7, the pending ask's fields on 48f90ea8), so it stays
 advisory. Without the request's words left out it named 53 attempts and 21
 originals. Not built: Python and Scheme conditions.
+
+## Amendment 2026-10-16: a changed expectation of an existing test is asked about at the edit
+
+The review of the Muse runs on commit-bench (2026-10-16, eight tasks,
+transcripts of dsl20r, dsl16r and Pi) found that both losses of dsl20r and the
+one of Pi are one mistake: an existing test fails after the change, and the
+agent picks the wrong side.
+
+- **94f5cac4** (dsl20r, at high and at low): the planner wrote "count 0 stays
+  and means default", which the request does not state (it says "fs-read's
+  start 0 is line 1", and nothing of count). Both runs then rewrote the
+  existing row `(fs-read "big.txt" 1 0)`, "count must be at least 1", to
+  `1 -1` and `1 -2`; at the high run's round 22 the old failure was printed
+  and round 23 called it "failing as expected". dsl16r and Pi kept the row.
+  The finish review named the row, as one of six lines of one of four points,
+  some twenty rounds after the edits, and the answer defended all six by
+  quoting the request's rule for a skipped argument, whose words do not name
+  a count given as 0.
+- **855e90e7** (Pi, the mirror): an existing test failed after Pi's correct
+  wiring, and Pi added an untested `overlapsRepo` skip to production code
+  that removes exactly the directories the hidden test expects denied.
+  dsl20r met the same failure and fixed the test, as the real change did.
+
+None of the extra verification (review loops, check-without, comparisons)
+caught either. The owner's principle is that a harness does not block the
+model's choices: it asks, and follows the choice. So both additions below are
+a rule and a question, and no edit is refused.
+
+- **A working rule.** Both system prompts say: when an existing test fails
+  after the change, decide which side is wrong before editing either; the old
+  expectation stands unless the request names the new behaviour for that
+  input or case; never add a conditional skip or exception to production code
+  (least of all in a guard or denylist) to make an old test pass unless the
+  request asks for it, and fix the test's setup when it contradicts what the
+  request names; a branch you add gets a test for each side of it.
+  `TestThePromptsDecideWhichSideOfAFailingTestIsWrong`.
+- **The question at the edit.** After a round whose calls wrote a test file
+  (`test-file-path?`: `x_test.go`, `test_x.py`, `x.test.js`, a `tests/`
+  folder) that the turn has not been asked about, the evidence loop sets the
+  change against HEAD with `change-removals` and, for that file's lines,
+  says once (`test-edit-nudge`, `edited-expectations-message`): "Which
+  sentence of the request requires the new expectation, for that input or
+  case? A rule the request states in general words does not cover an input it
+  does not name. If none does, restore the line and change the code to meet
+  it; if one does, say which in your answer." It lists each line as
+  `path:line: text`, as HEAD had it. The edit is never refused. A test the
+  turn added has no line at HEAD, and neither has a case it adds to a table,
+  so neither is asked about; a file is asked about once in a turn (the
+  evidence loop's state is the turn's), whatever else of it the turn changes.
+  The finish review still names every such line when its latest run passed:
+  it is the last place to ask, and it is unchanged. The question is about the
+  input or case, not the rule: on 94f5cac4 the wrong row's count was given as
+  0, and "a skipped argument gets its empty value" does not name it. The
+  chat's loop, where a person reads each answer, does not ask.
+  `TestAnEditedExpectationOfAnExistingTestIsAskedAbout`,
+  `TestTheQuestionOnAnEditedExpectationIsAskedOncePerFile`,
+  `TestTheQuestionIsNotAskedOfTestsTheTurnAdded`.
+
+The new tests fail on 204f6f1 (each asserts what that code does not say) and
+pass here. The 94f5cac4 patch of dsl20r, applied to its parent and read by
+`change-removals`, yields the six lines of the review above: the question
+would have been asked three times, at the rounds that edited
+`json_test.go` (98, 99), `fs_read_range_test.go` (59, 60: the start row the
+request requires and the count row it does not, together) and
+`index_grep_test.go` (187, and 188, which was only moved from a map to a
+direct assertion, a false alarm of `change-removals` that the finish review
+already had). No model was run: whether the rule or the question changes what
+a model does is for the next benchmark. Not built: refusing or reverting the
+edit; the question for a test deleted or rewritten through the shell (the
+finish review names it).

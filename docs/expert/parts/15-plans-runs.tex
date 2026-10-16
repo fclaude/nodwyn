@@ -83,7 +83,6 @@ test of behaviour that already works; a \code{Docs:} step each file a
 person or a later session reads that the change makes wrong or incomplete;
 and the last step, \code{Check:}, the command that shows the whole change
 works. A plan with no test or no doc to change says so in a step, and why.
-
 \begin{txt}
 1. Change: internal/prim/fs.go fsEdit — take an optional edits list.
 2. Test: internal/prim/fs_test.go TestEditsApplyInOrder — the second edit
@@ -236,6 +235,14 @@ evidence:
     entries added by hand to a generated file. After it the turn is
     accepted: the model's next answer ends it, and the reminders above are
     not asked again.
+  \item As a test file is edited, not only at the finish: after a round whose
+    calls wrote an existing test file, the loop sets the change against the
+    last commit and, for the lines of that file an edit removed or rewrote,
+    asks which sentence of the request requires the new expectation, for that
+    input or case; if none does, restore it and change the code
+    (\code{edited-expectations-message}). The edit is never refused, a test
+    the turn added is not asked about, and each file is asked about once in
+    a turn.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),
     the no-change reminder is \code{finish-no-change-reviewed-message}: make

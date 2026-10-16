@@ -585,7 +585,11 @@ run after it that did not fail — with an honest way out when the tests cannot
 run at all, and another when the code already does what was asked: a check
 that shows it. Before it ends, the check that passed is run again with each
 part of the change taken out in turn, and the parts it still passes without are
-named to the model: a check that cannot fail for a part does not test it. It answers the guard's questions; it does not
+named to the model: a check that cannot fail for a part does not test it. When
+an edit removes or rewrites an expectation of
+a test the repository already had, the model is asked once for that file, as
+it edits, which sentence of your request requires the new expectation; the
+edit itself is never refused. It answers the guard's questions; it does not
 overrule its refusals. Still denied, exactly as with a human at the prompt:
 
 - anything outside the repository, and symlinks that leave it;
