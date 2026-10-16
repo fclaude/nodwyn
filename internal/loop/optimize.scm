@@ -84,12 +84,15 @@
               (loop (cdr ids) (cons d out) (+ used (string-length d))))))))
 
 ;; The optimizer may read anything in the repository and write only under
-;; .nodwyn/.
+;; .nodwyn/: a path that starts there and has no .. in it, since the guard
+;; reads .nodwyn/../AGENTS.md as AGENTS.md.
 (define (optimizer-may-call? call)
   (let ((name (assoc-ref call 'name)))
     (cond ((member name '("fs-read" "fs-list" "index-grep" "index-search" "fs-find")) #t)
           ((member name '("fs-write" "fs-edit"))
-           (string-prefix? ".nodwyn/" (format "~a" (assoc-ref (json-parse (assoc-ref call 'args "{}")) "path" ""))))
+           (let ((path (format "~a" (assoc-ref (json-parse (assoc-ref call 'args "{}")) "path" ""))))
+             (and (string-prefix? ".nodwyn/" path)
+                  (not (member ".." (string-split path "/"))))))
           (else #f))))
 
 (define (read-init)

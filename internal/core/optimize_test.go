@@ -229,3 +229,21 @@ func TestOptimizeKeepsAnEditPendingTrustReview(t *testing.T) {
 		t.Fatal("the report did not explain pending trust")
 	}
 }
+
+// The optimizer writes only under .nodwyn/: a path that starts there and
+// climbs out with .. is refused, as the guard reads it as the file it names.
+func TestOptimizerWritesOnlyUnderNodwyn(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, "", 10)
+	for path, want := range map[string]string{
+		".nodwyn/init.scm":              "#t",
+		".nodwyn/../AGENTS.md":          "#f",
+		".nodwyn/x/../../internal/a.go": "#f",
+		"AGENTS.md":                     "#f",
+	} {
+		call := `(list (cons 'name "fs-edit") (cons 'args (json-emit (list (cons "path" "` + path + `")))))`
+		if got := r.eval(`(if (optimizer-may-call? ` + call + `) #t #f)`); got != want {
+			t.Errorf("%s: %s, want %s", path, got, want)
+		}
+	}
+}
