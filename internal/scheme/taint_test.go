@@ -82,6 +82,28 @@ func TestSourceTagsAndPropagation(t *testing.T) {
 	}
 }
 
+// A string made from a list or a vector takes the taint of what it holds,
+// however the list was built: map, quasiquote and vector-set! build them
+// without unioning their elements' taint into the container. So do the
+// output with-output-to-string captures and the message guard hands on from
+// an error that quoted a tainted value. Each of these was clean before.
+func TestTaintReachesAStringMadeFromAContainer(t *testing.T) {
+	in := withSource(t)
+	for _, src := range []string{
+		`(string-join (map (lambda (p) (read-thing p)) (list "a" "b")) "\n")`,
+		`(json-emit (map read-thing (list "a")))`,
+		`(let ((x (read-thing "a"))) (json-emit ` + "`" + `(("k" . ,x))))`,
+		`(let ((v (vector "a"))) (vector-set! v 0 (read-thing "a")) (string-join (vector->list v) ","))`,
+		`(with-output-to-string (display (read-thing "a")))`,
+		`(with-output-to-string (write (list (read-thing "a"))))`,
+		`(guard (e (#t (assoc-ref e 'message))) (+ 1 (read-thing "a")))`,
+	} {
+		if got := tainted(t, in, src).Taint.String(); got != TagFile {
+			t.Errorf("%s: taint %q, want %q", src, got, TagFile)
+		}
+	}
+}
+
 // TestTaintSupersetProperty is the plan's acceptance property: for random
 // expression trees over pure primitives, the result's taint contains the
 // union of the tainted leaves'.

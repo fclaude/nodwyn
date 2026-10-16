@@ -297,22 +297,31 @@ func (in *Interp) applyPrim(ctx context.Context, p *Prim, args []Value) (Value, 
 	}
 	v, err := p.Handler(&Call{Ctx: ctx, In: in, Name: p.Name, Args: args, Origin: OriginFrom(ctx)})
 	if err != nil {
-		return Value{}, wrap(p.Name, err)
+		// The message may quote the arguments, so a guard clause that
+		// reads it gets their taint with it.
+		se := wrap(p.Name, err)
+		se.Taint = Union(se.Taint, argsTaint(p, args))
+		return Value{}, se
 	}
 	return taintResult(p, args, v), nil
 }
 
-// taintResult is the one place provenance flows (L2, Phase 6): a result
-// inherits the union of its arguments' taint unless the primitive declares
-// itself opaque, plus the primitive's own source tag if it has one. Every
-// primitive application passes through here, so there is no second path.
+// taintResult is where a primitive's result takes provenance (L2, Phase 6):
+// the union of its arguments' taint unless the primitive declares itself
+// opaque, plus the primitive's own source tag if it has one. A list keeps
+// each element's taint on the element, so the guard can tell a field's from
+// its neighbours'; a string made from a list or a vector (string-join,
+// json-emit) takes everything the list holds, as do the output
+// with-output-to-string captures and the text of an error.
 func taintResult(p *Prim, args []Value, v Value) Value {
 	if p.Meta.TaintStrip {
 		v.Taint = Taint{}
 		return v
 	}
 	var t Taint
-	if !p.Meta.TaintOpaque {
+	if v.Kind == KString {
+		t = argsTaint(p, args)
+	} else if !p.Meta.TaintOpaque {
 		for _, a := range args {
 			t = Union(t, a.Taint)
 		}
@@ -322,6 +331,47 @@ func taintResult(p *Prim, args []Value, v Value) Value {
 	}
 	v.Taint = Union(v.Taint, t)
 	return v
+}
+
+// argsTaint is the union of the arguments' taint and of everything they
+// hold; none for an opaque primitive.
+func argsTaint(p *Prim, args []Value) Taint {
+	var t Taint
+	if p.Meta.TaintOpaque {
+		return t
+	}
+	for _, a := range args {
+		t = Union(t, DeepTaint(a))
+	}
+	return t
+}
+
+// DeepTaint is v's taint and that of everything it holds, through pairs and
+// vectors, to MaxDepth. A vector may hold itself, so each is walked once.
+func DeepTaint(v Value) Taint {
+	return deepTaint(v, 0, map[*Vector]bool{})
+}
+
+func deepTaint(v Value, depth int, seen map[*Vector]bool) Taint {
+	t := v.Taint
+	for ; depth <= MaxDepth; depth++ {
+		switch v.Kind {
+		case KPair:
+			t = Union(t, deepTaint(v.P.Car, depth+1, seen), v.P.Cdr.Taint)
+			v = v.P.Cdr
+			continue
+		case KVec:
+			if seen[v.V] {
+				return t
+			}
+			seen[v.V] = true
+			for _, item := range v.V.Items {
+				t = Union(t, deepTaint(item, depth+1, seen))
+			}
+		}
+		return t
+	}
+	return t
 }
 
 func checkArity(p *Prim, args []Value) error {

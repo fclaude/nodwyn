@@ -114,17 +114,8 @@ func taintedRoles(p *scheme.Prim, args []scheme.Value) (payload, argv scheme.Tai
 	return payload, argv
 }
 
-// deepTaint is the taint of a value and, for a list, of everything in it:
-// a list of strings built from tool output carries the taint on the
-// strings even when the list itself was assembled cleanly. Pairs are
-// followed through their cdrs too, so an alist's values (a JSON object, as
-// an MCP argument) count. Pairs are immutable, so the walk ends.
-func deepTaint(v scheme.Value) scheme.Taint {
-	t := v.Taint
-	for v.Kind == scheme.KPair {
-		t = scheme.Union(t, deepTaint(v.P.Car))
-		v = v.P.Cdr
-		t = scheme.Union(t, v.Taint)
-	}
-	return t
-}
+// deepTaint is the taint of a value and of everything in it: a list of
+// strings built from tool output carries the taint on the strings even when
+// the list itself was assembled cleanly, and an alist's values (a JSON
+// object, as an MCP argument) and a vector's items count too.
+func deepTaint(v scheme.Value) scheme.Taint { return scheme.DeepTaint(v) }

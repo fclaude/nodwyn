@@ -378,8 +378,13 @@ its result.
 | `(tainted? x)` | true if the value carries any tag |
 | `(wipe x)` `(box x)` | the same value with its tags removed. **User-originated Scheme only** — the guard denies either from model-originated code and from an agent-turn strategy (§9), which handles every tool result — and every use is logged |
 
-Propagation happens in one place, the primitive dispatch, so there is no
-second path. A primitive whose result *measures* its arguments rather than
+Propagation happens at the primitive dispatch. A list keeps each element's
+tags on the element, and a list built without a primitive (by `map`, by
+quasiquote, or holding what `vector-set!` put in a vector) may carry none of
+its own; so a string a primitive makes from a list or a vector (`string-join`,
+`json-emit`) takes the tags of everything in it, as do the output
+`with-output-to-string` captures and the message `guard` hands on from an
+error that quoted a tagged value. A primitive whose result *measures* its arguments rather than
 being made of them carries nothing: `length`, `string-length`,
 `vector-length`, every predicate (`null?`, `string?`, `even?`, …), the
 comparisons (`=`, `<`, `string=?`, `string-contains?`, …), `not`, and

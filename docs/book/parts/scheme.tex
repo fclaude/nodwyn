@@ -709,8 +709,9 @@ primitives and \code{google-doc-upload} with
 \code{index-search} over the conversation with \code{external:log}, and
 \code{index-search} over the repository and \code{index-update} with
 \code{external:file}. A handle carries \code{cred:<class>}. The tags of a
-call's arguments flow into its result, in one place, the primitive
-dispatch. A result that \emph{measures} its arguments rather than being made
+call's arguments flow into its result at the primitive dispatch, and a
+string made from a list or a vector takes the tags of everything in it, as
+do captured output and an error's message. A result that \emph{measures} its arguments rather than being made
 of them carries nothing: \code{length}, \code{string-length},
 \code{vector-length}, the predicates, the comparisons, \code{not} and
 \code{taint-of} itself.

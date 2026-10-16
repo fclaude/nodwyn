@@ -57,6 +57,9 @@ type Interp struct {
 	// loading holds the files LoadFile is evaluating, so a file that loads
 	// itself, directly or through another, is refused.
 	loading map[string]bool
+	// printed is the taint of what display and write have printed since
+	// with-output-to-string began capturing; the string it returns has it.
+	printed Taint
 }
 
 // MaxDepth is how deeply evaluation, and the reader, the printer, equal? and
@@ -406,9 +409,10 @@ func (in *Interp) Eval(ctx context.Context, x Value, env *Env) (Value, error) {
 				if len(form) == 0 {
 					return Value{}, errorf("with-output-to-string", "expected a body expression")
 				}
-				saved := in.out
+				saved, savedTaint := in.out, in.printed
 				buf := new(strings.Builder)
-				in.out = buf
+				in.out, in.printed = buf, Taint{}
+				defer func() { in.printed = savedTaint }()
 				var v Value
 				var err error
 				for i := 0; i < len(form)-1; i++ {
@@ -425,7 +429,7 @@ func (in *Interp) Eval(ctx context.Context, x Value, env *Env) (Value, error) {
 					return Value{}, err
 				}
 				_ = v
-				return Str(buf.String()), nil
+				return Value{Kind: KString, S: buf.String(), Taint: in.printed}, nil
 
 			case "cond":
 				result, err := in.condClauses(ctx, form, env)

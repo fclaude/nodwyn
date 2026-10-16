@@ -75,10 +75,12 @@ func (in *Interp) registerCore() {
 	})
 
 	in.mustRegister("display", "Print x in human form.", any1, false, func(c *Call) (Value, error) {
+		c.In.printed = Union(c.In.printed, DeepTaint(c.Args[0]))
 		_, err := io.WriteString(c.In.out, Display(c.Args[0]))
 		return Void, err
 	})
 	in.mustRegister("write", "Print x in machine form.", any1, false, func(c *Call) (Value, error) {
+		c.In.printed = Union(c.In.printed, DeepTaint(c.Args[0]))
 		_, err := io.WriteString(c.In.out, Write(c.Args[0]))
 		return Void, err
 	})

@@ -12,6 +12,9 @@ type Error struct {
 	Message   string
 	Irritants []Value
 	Cause     error // wrapped host error, if any (e.g. context.Canceled, *Denied)
+	// Taint is the provenance of what Message may quote: the arguments of
+	// the primitive that failed. guard gives it to the message it hands on.
+	Taint Taint
 }
 
 func (e *Error) Error() string {

@@ -132,7 +132,7 @@ func (in *Interp) evalGuard(ctx context.Context, form []Value, env *Env) (Value,
 		return Value{}, err
 	}
 	cond := List(
-		Cons(Sym("message"), Str(se.Message)),
+		Cons(Sym("message"), Value{Kind: KString, S: se.Message, Taint: se.Taint}),
 		Cons(Sym("irritants"), List(se.Irritants...)),
 	)
 	henv := NewEnv(env)
