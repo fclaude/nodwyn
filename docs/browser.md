@@ -861,7 +861,11 @@ forms; `modelpicker.js` the model and effort picker of the New task window, a co
 `inspectors.js` fixed snapshots from the same redacted records; `policy.js`
 policy drafts and review controls; `dom.js` the helpers that keep every string
 text. A pinned WebSocket library avoids a
-homegrown frame parser; its license is embedded in `nodwyn licenses`.
+homegrown frame parser. `nodwyn licenses` prints the notices that travel with
+the binary: the console's typefaces and the licence of every Go library linked
+into it (`licenses/go-modules.txt`, written by `python3 scripts/licenses.py`
+from `go list -deps` on each platform nodwyn is built for, and checked against
+`go.mod` by a test).
 
 ## Verification and remaining U3 work
 
