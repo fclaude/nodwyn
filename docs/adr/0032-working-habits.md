@@ -1219,3 +1219,51 @@ would otherwise have ended with none.
 `TestAWriteRoundEndsWithAReportWithoutTools` fail on the commit before this
 one; `TestCompactionGoingRoundInCirclesStopsTheTurn` now covers the report
 alone, with `compact-write-rounds` at 0.
+
+## Amendment 2026-10-15: a shorter explorer for qwen, and folds at three quarters
+
+Two knobs set by the earlier amendments were read against commit-bench's
+trusted runs of A, dsl16, dsl18m and dsl19 (qwen3.8-27b, high water 102,400,
+2026-10-14 and 15).
+
+**The explorer.** qwen's row of `plan-explore-rounds` was 16, set on 2026-10-05
+with no qwen explorer run to read. The explorer used all 16 rounds in 39 of
+48 runs. It read 571 files, 296 of them first after its eighth round, and
+the model doing the work read 313 of the 571 again itself, 154 of those 296
+among them. The deep study put the explorer at 0.13-0.15M cost-eq a task. The
+row is now 8. Expected: about half the explorer's requests and their prefill
+go, an estimated 0.05M a task. Risk: the planner sees fewer facts; the 142
+files the explorer read after its eighth round and the work never read are
+the facts it may miss, so plans and their reviews on the nine are what to
+read next.
+
+**Hygiene's pressure.** 94 of the 108 hygiene folds in those runs were
+pressure folds ("the context is filling the window", past half the high
+water), 63 to 79 of them with the context under three quarters of it. Each
+fold makes a caching server read the rest of the prompt again, and the
+model read files whose reads had been folded again 57 to 156 times an arm
+(some of them to edit them, which a fold does not cause). `hygiene-pressure`
+is now 0.75. Expected: most of those folds wait until three quarters, or do
+not happen before the turn ends or compacts, and below three quarters a
+batch still folds when it pays for its re-read or the cache is not serving.
+Risk: requests carry more context, which a working prefix cache serves
+cheaply, and a long turn may reach the compaction threshold sooner.
+
+It meets `hygiene-keep-pressure` (0.75, 2026-10-14), which holds the reads of
+files the plan will change until the turn edits them. The two are equal: below
+three quarters a held read stays and the others fold only when it pays; past
+it every due read, held ones too, folds in the same sweep, one re-read of the
+prompt where the old values made two (the others at half, the held ones at
+three quarters). The held reads fold at the share of the high water they
+did, though a context folded less may reach it sooner. Were
+`hygiene-pressure` set above `hygiene-keep-pressure`, a held read would lose its
+hold before the others fold whatever the cache; a project that raises one
+raises both.
+
+`TestTunedValuesFollowTheModelsFamily` and `TestExplorerRoundsFollowTheModelsFamily`
+(a qwen explorer is stopped after its eighth round) and
+`TestHygieneWaitsForThreeQuartersOfTheHighWater` fail on the commit before
+this one: at 0.62 of the high water a fold that does not pay waits, and a
+held read stays while the other folds because it pays, where before both
+folded because the context was past half. Its case past three quarters, the
+held and the other read folding in one sweep, passes on both.

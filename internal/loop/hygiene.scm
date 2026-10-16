@@ -29,6 +29,16 @@
 ;; yet. On commit-bench (dsl16, 2026-10-14) 31 of the 38 reads that a fold
 ;; sent the model back to were of such files: read early, folded by age, then
 ;; read again to edit them.
+;; hygiene-pressure was half the high water. On commit-bench's trusted runs of
+;; 2026-10-14 and 15 (A, dsl16, dsl18m, dsl19; high water 102,400) 94 of the
+;; 108 folds were pressure folds, 63 to 79 of them with the context under
+;; three quarters of the high water, each making the server read the rest of
+;; the prompt again, and the model then read folded files again. It is now three quarters, hygiene-keep-pressure's value (ADR
+;; 32, amended 2026-10-15); set above it, a held read would lose its hold
+;; before the others fold whatever the cache. Below three quarters a held
+;; read stays and the others fold only when it pays; past them every due
+;; read folds, held ones too, in one sweep: one re-read of the prompt where
+;; there were two.
 
 (define hygiene-age 8)            ; rounds before a read is old
 (define hygiene-stale-age 2)      ; rounds before a stale read may fold
@@ -38,7 +48,7 @@
 (define hygiene-outline-lines 40) ; outline lines kept per read
 (define hygiene-cache-share 0.25) ; the cache serves the context when it read this much of the recent prompts
 (define hygiene-cache-requests 4) ; the recent requests that say whether it does
-(define hygiene-pressure 0.5)     ; past this share of the high water, reads fold whatever the cache
+(define hygiene-pressure 0.75)    ; past this share of the high water, reads fold whatever the cache
 (define hygiene-keep-pressure 0.75) ; past this share of the high water, the reads hygiene-keep? holds fold too
 
 ;; Whether a read stays in the window for now (rules 2 and 3); the plan

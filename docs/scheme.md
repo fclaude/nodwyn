@@ -964,7 +964,7 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
 | `plan-max-revisions` | revisions after the first draft (3) |
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2): an empty reply, tool calls, a line that opens a fenced code block, or more than `plan-max-chars` (8000) characters (`plan-not-a-plan`); after the retries the last reply stands. An empty revision keeps the best plan |
-| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12, and 16 for the muse-spark, glm, qwen, deepseek and gpt-6-luna families, whose rounds hold fewer calls: a table, §9.7); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
+| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12; 16 for the muse-spark, glm, deepseek and gpt-6-luna families, whose rounds hold fewer calls; 8 for qwen, whose explorer used all 16 in most commit-bench runs while the work read again about half of what it read: a table, §9.7); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
 | `plan-earlier-requests` | in a chat's later turn, how many of the person's messages before it the gate's judge, explorer and planner read first, so a reply to the model's question or a correction is not read alone (2); 0 reads the request alone. Each is cut at `plan-earlier-cap` characters (2000). A run's turns each repeat the run's task, and read it alone |
 | `(record-compaction facts)` | record a compaction as `context.compact`, from an alist: `trigger` (`auto`, `command` or `requested`), `compacted`, `before` (the size `(context-tokens)` gave before it), `threshold` and `focus`. The size after and the note's reply are read when it is called, so call it once the handover is in place, as `compact-context` does |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded`, `required`, `carried` or `model`), `plan`, `score`, `revisions`, `reason`, and `marks`, the steps of the plan already marked, each an alist of `step`, `state` and `note` as `run-plan` and `unfinished-plan` give them; the turn's `record-step` and the window start from them. Without `marks`, a plan recorded in a turn that has marked steps of an earlier plan keeps the marks of the steps it keeps word for word, at their new numbers. An error for a step the plan does not have, another state, a step marked twice, or marks without a plan |
@@ -1054,9 +1054,15 @@ loaded after the files above in this order. Each wraps `run-calls` (and
   context anyway (it read less than `hygiene-cache-share`, a quarter, of the
   last `hygiene-cache-requests` prompts; a provider that does not say, such
   as Ollama, counts as serving it), or when the context is past
-  `hygiene-pressure` (half) of the high water. The log note of each fold says
-  which. It wraps `sub-agent`, to watch the main context only, and
-  `model-turn`, to read the cache counts of its requests.
+  `hygiene-pressure` (three quarters) of the high water. The log note of each
+  fold says which. A read `(hygiene-keep? r)` holds, which the plan language
+  says of a file its plan will change and the turn has not edited, is left
+  out of the batch until the context is past `hygiene-keep-pressure` (three
+  quarters too): below it the held read stays and the others fold only when
+  it pays, past it every due read folds in one sweep. Were
+  `hygiene-pressure` above it, a held read would lose its hold before the
+  others fold whatever the cache. It wraps `sub-agent`, to watch the main
+  context only, and `model-turn`, to read the cache counts of its requests.
 - `readdef.scm`: the tool `read-definition` (path, name) reads a function,
   method or class by name, its whole definition and line range, or the start
   and members of a long class; a shell script that only reads a file to print
@@ -1081,7 +1087,7 @@ for every model, or a table: rows of `(family . value)` and a
 
 ```scheme
 (define plan-explore-rounds
-  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 16) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
+  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 8) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
 (define reading-reminder-after '((default . 12)))
 ```
 
@@ -1096,7 +1102,10 @@ wins. The knobs that are tables are `plan-explore-rounds` (§9.5) and
 keeps that number for every model, and `0` still turns it off. The rows
 shipped come from the logs and say so in their comments (ADR 32, amended
 2026-10-05): `gpt-6.1-sol` and `claude-sonnet` have none and take the
-default, and the reminder's table has only a default row.
+default, and the reminder's table has only a default row. `qwen`'s explorer
+row is 8 since commit-bench showed it using all 16 rounds in 39 of 48 runs,
+with the work reading again about half of what it read (amended
+2026-10-15).
 
 ## 10. Not in nodwyn Scheme
 

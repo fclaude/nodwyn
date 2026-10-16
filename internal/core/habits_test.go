@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -117,6 +118,96 @@ func TestHygieneFoldsWhenItPays(t *testing.T) {
 			folded := strings.Contains(logText, `"kind":"result.fold"`)
 			if folded != (tc.why != "") || (tc.why != "" && !strings.Contains(logText, "hygiene: folded 1 reads, 6800 bytes: ")) || !strings.Contains(logText, tc.why) {
 				t.Fatalf("folded %v, want the reason %q:\n%s", folded, tc.why, logText)
+			}
+		})
+	}
+}
+
+// windowHygieneRun reads each round's paths in one reply, then answers, in a
+// session where a read two rounds old is due to fold and hold, unless "", is
+// the path hygiene-keep? holds. The window's high water is set so that the
+// context, once the reads are in, is share of it, as measured by a first run
+// with hygiene off.
+func windowHygieneRun(t *testing.T, share float64, hold string, rounds ...[]string) *rig {
+	t.Helper()
+	init := "(define hygiene-age 2) (define hygiene-min-bytes 1)"
+	if hold != "" {
+		init += fmt.Sprintf(" (define (hygiene-keep? r) (equal? (list-ref r 1) %q))", hold)
+	}
+	run := func(high int, init string) *rig {
+		var mu sync.Mutex
+		n := 0
+		r := windowRig(t, high, 0, func(fake.Request) fake.Turn {
+			mu.Lock()
+			defer mu.Unlock()
+			if n >= len(rounds) {
+				return fake.Turn{Content: "done"}
+			}
+			var calls []fake.ToolCall
+			for i, p := range rounds[n] {
+				calls = append(calls, readPath(fmt.Sprint("r", n, i), p))
+			}
+			n++
+			return fake.Turn{ToolCalls: calls}
+		})
+		for name, size := range map[string]int{"big.py": 400, "bigger.py": 600, "small.py": 2} {
+			if err := os.WriteFile(filepath.Join(r.repo, name), []byte(strings.Repeat("value = 12345678\n", size)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		r.eval(init)
+		if err := r.turn("read them"); err != "" {
+			t.Fatal(err)
+		}
+		return r
+	}
+	full := run(1_000_000, init+" (define (hygiene-sweep) #f)").evalInt("(context-tokens)")
+	return run(int(float64(full)/share), init)
+}
+
+// Reads fold whatever the cache past hygiene-pressure, three quarters of the
+// high water, which is hygiene-keep-pressure's value: below it a read
+// hygiene-keep? holds stays, and the others fold only when the fold pays;
+// past it every due read folds, held ones too, in one sweep. At half the
+// high water, 63 to 79 of the 94 folds made "whatever the cache" in
+// commit-bench's trusted runs came before three quarters (ADR 32, amended
+// 2026-10-15).
+func TestHygieneWaitsForThreeQuartersOfTheHighWater(t *testing.T) {
+	t.Parallel()
+	if got := strategyRig(t, "", 10).eval("(list hygiene-pressure hygiene-keep-pressure)"); got != "(0.75 0.75)" {
+		t.Fatalf("hygiene-pressure and hygiene-keep-pressure are %s, want 0.75 both: a held read keeps its hold until the others fold whatever the cache", got)
+	}
+	both, small := []string{"big.py", "bigger.py"}, []string{"small.py"}
+	for _, tc := range []struct {
+		name   string
+		share  float64
+		hold   string
+		rounds [][]string
+		fold   string // the start of the fold's log note, "" when nothing folds
+	}{
+		{"under three quarters a fold that does not pay waits", 0.62, "",
+			[][]string{{"big.py"}, {"bigger.py"}, small}, ""},
+		{"under three quarters the held read stays and the other folds when it pays", 0.62, "big.py",
+			[][]string{both, small, small}, "hygiene: folded 1 reads, 10200 bytes: they are "},
+		{"past three quarters the held read folds with the other in one sweep", 0.9, "big.py",
+			[][]string{both, small, small}, "hygiene: folded 2 reads, 17000 bytes: the context is filling the window"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := windowHygieneRun(t, tc.share, tc.hold, tc.rounds...)
+			var folds []string
+			for _, n := range r.notes() {
+				if strings.HasPrefix(n, "hygiene: folded") {
+					folds = append(folds, n)
+				}
+			}
+			if (tc.fold == "" && len(folds) != 0) || (tc.fold != "" && (len(folds) != 1 || !strings.HasPrefix(folds[0], tc.fold))) {
+				t.Fatalf("folds %q, want one starting %q", folds, tc.fold)
+			}
+			// A fold's reason says which side of three quarters the context
+			// was; with none, the context must be past the old half.
+			if ctx, high := r.evalInt("(context-tokens)"), r.evalInt("(assoc-ref (window-limits) 'high-water)"); tc.fold == "" && 2*ctx <= high {
+				t.Fatalf("the context is %d of a %d high water: the test needs it past half", ctx, high)
 			}
 		})
 	}

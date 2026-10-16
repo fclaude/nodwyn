@@ -28,7 +28,9 @@ like this:
     (0.5), the turn just proceeds.
   \item A read-only sub-agent labelled \code{explorer} looks at the folder
     for up to \code{plan-explore-rounds} (12; 16 for the families that ask
-    for few calls in a round, a table by model family) rounds (\code{fs-read},
+    for few calls in a round, but 8 for qwen, whose explorer used all 16 in
+    most benchmark runs while the work read half its files again: a table
+    by model family) rounds (\code{fs-read},
     \code{fs-list}, \code{index-grep}, \code{fs-find}), so the plan is not
     written blind. It reads the code at the place the request describes
     first, lists every place the change must reach and the options it finds
