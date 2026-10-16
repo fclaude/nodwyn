@@ -160,8 +160,7 @@ func (f *infoFold) observe(id string, ev log.Event) error {
 		}
 	case log.KindGuardDecision:
 		var d log.GuardDecision
-		if ev.Decode(&d) == nil && d.Path != "" && !slices.Contains(info.Changes, d.Path) && len(info.Changes) < maxChanges &&
-			(d.Decision == "allow" || (d.Decision == "confirm" && (d.Answer == "yes" || d.Answer == "turn"))) {
+		if ev.Decode(&d) == nil && d.Wrote() && !slices.Contains(info.Changes, d.Path) && len(info.Changes) < maxChanges {
 			info.Changes = append(info.Changes, d.Path)
 		}
 	case log.KindRunState:

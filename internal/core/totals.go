@@ -294,7 +294,7 @@ func (t *totalsFold) observe(ev log.Event) {
 	}
 	if ev.Kind == log.KindGuardDecision {
 		var p log.GuardDecision
-		if ev.Decode(&p) == nil && p.Path != "" && (p.Decision == "allow" || p.Decision == "confirm" && (p.Answer == "yes" || p.Answer == "turn")) {
+		if ev.Decode(&p) == nil && p.Wrote() {
 			t.Changes = slices.DeleteFunc(t.Changes, func(old log.GuardDecision) bool { return old.Path == p.Path })
 			t.Changes = append(t.Changes, p)
 		}

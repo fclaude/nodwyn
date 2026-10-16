@@ -209,7 +209,7 @@ func (t *turn) observe(ev log.Event) {
 		}
 	case log.KindGuardDecision:
 		var d log.GuardDecision
-		if ev.Decode(&d) == nil && d.Path != "" && (d.Decision == "allow" || (d.Decision == "confirm" && (d.Answer == "yes" || d.Answer == "turn"))) {
+		if ev.Decode(&d) == nil && d.Wrote() {
 			for _, w := range t.wrote {
 				if w == d.Path {
 					return
