@@ -1,22 +1,27 @@
 # Browser view
 
+## Home and a task
+
 The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
 beside it a compact monitoring summary above four bottom tabs. Worktree tasks
 also have a **Review** button which opens their changes in the centre panel.
+
+## The monitoring summary
+
 The summary keeps total task spend, current turn time, context fullness,
 turn tool calls and **Cache hit** in five fixed positions across tabs. Cache
-hit is the rounded, token-weighted share of raw prompt tokens read from cache
-across the session, matching Statistics → Totals' Token cache rate, not the
-percentage of requests hitting cache. Missing or unreported usage is excluded;
-no positive prompt total shows **unknown**, while reported zero cache reads
-give **0%**. With truncated history it covers the log that remains, as its
-tooltip explains. Other unknown figures stay as a dash. Context shows a
+hit is Statistics → Totals' Token cache rate, which [the manual](manual.md)
+defines; its tooltip says when it covers only the log that remains. Other
+unknown figures stay as a dash. Context shows a
 percentage against the recorded high water, or an estimate when no high
 water is known. A reserved warning line flags tokens, time, tool calls,
 spend or context at 90% of their displayed limit, and says when that limit
 has been reached. These are monitoring hints, not new enforcement rules.
+
+## The bottom tabs
+
 **Progress** holds the plan; **Statistics** holds this turn's budget and the
 task's totals; **Changes** still holds recorded write approvals, each
 file's kept versions and attachments; **Workspace** holds where it works,
@@ -30,12 +35,19 @@ focus. On desktop only
 the selected content scrolls, so expanding a plan step cannot move the
 summary or bottom navigation; each tab keeps its scroll position through
 redraws and tab switches. On narrow screens the summary, content and
-navigation stack with ordinary page scrolling. The plan shows the
+navigation stack with ordinary page scrolling.
+
+## The plan
+
+The plan shows the
 model's progress through
 it: the steps it marked done (with what it says shows it), the ones it
 skipped, and the next. A step folds to its title, the clause up to its
 first dash, and the mark's note waits behind the fold too, so the plan
 reads at a glance; clicking a step shows the whole of it, the note with it.
+
+## Statistics
+
 After each reply the conversation shows its tokens,
 and when the provider reports them or the model has prices, how much of the
 prompt came from the cache and what it cost (the manual, "Choosing models");
@@ -55,21 +67,19 @@ each tool call from its start to its result, the wait for your approval
 left out. Only a figure with a limit behind it is a bar (Time, Tool calls,
 Tokens used and Context, and the total spend when a spend limit is set);
 the bars come first and the rest are plain rows under them. Statistics' **Totals**
-includes a plain "Token cache rate" row: the rounded whole-session share of
-raw prompt tokens read from cache, summed across turns and models before
-dividing. Only replies reporting cache reads and prompt tokens count;
-missing or unreported usage stays out. A reported zero with positive
-prompt tokens is 0%; without a positive prompt total the row says
-"unknown". This is neither the fraction of requests hitting cache nor the
-budget-discounted token count. If history was truncated, the Totals label
-"from the log that remains" applies to this rate too. Its aggregation is
+includes a plain "Token cache rate" row (defined in [the manual](manual.md)).
+The totals' aggregation is
 kept in the daemon's derived log index (`session.totals`), together with spend,
 judge usage, speed, clocks, approved previews and attachment metadata. Recorded
 events refresh the snapshot; clock ticks extend only its open clocks while the
 task runs. Statistics also shows turn counts and, for CLI driver runs, run
 counts; their tooltips give the latest start time. Closed tasks need no resume
 to read these figures. Older daemons without this method retain the browser's
-whole-log calculation. The conversation opens at its latest indexed run. Earlier runs fetches five
+whole-log calculation.
+
+## History in a task
+
+The conversation opens at its latest indexed run. Earlier runs fetches five
 older last-reply previews at a time; a run's event pages load only when it is
 expanded, within a fixed sequence range. Closing and reopening a loaded run
 reuses its content. Failures can be retried without disabling the live task;
@@ -79,7 +89,11 @@ have separate renderers, so old choices and turn records do not change the
 current model, prompts or gauges. The Log and Plan record inspectors label
 their latest-run scope. A task without run records retains its whole
 conversation view; earlier conversation before its first run remains reachable.
-Run markers include CLI driver starts and `schedule.run`. Home’s clock opens a
+Run markers include CLI driver starts and `schedule.run`.
+
+## Schedules
+
+Home’s clock opens a
 schedule form beside the ordinary ask choices, without sending immediately.
 `Repeat…` / `Schedule…` on a task opens its saved definition and controls.
 `schedule.next` supplies the preview; displayed ISO times retain the daemon’s
@@ -93,6 +107,9 @@ Whole-task spend stays in Totals; an open scheduled task also shows This run
 and uses its per-run amount for spend warnings. The `schedule` browser check
 performs creation, reload, pause, edit, resume, run now with an actual write
 confirmation, removal and the phone layout.
+
+## Activity and compaction
+
 A compaction is
 a note behind **Activity**: what set it off, and the context's size before
 and after. Routine activity (judge requests, focused contexts, instructions
@@ -107,6 +124,9 @@ a turn that stopped short and a worktree that left uncommitted files out
 stay in view; a question is asked in its card at the end of the
 conversation. This folds the display only: `/compact [focus]` changes the
 model's context.
+
+## Other pages
+
 **Connections** (tools, credentials, workspaces, models),
 **Workspaces** and **Settings** hold the rest; Settings also creates,
 unlocks and sets the passphrase of the keychain. The
@@ -284,19 +304,15 @@ picked, it starts in the first one on the list. **Add a folder** names one
 and, in the app window, opens the system's folder chooser. Workspaces lists
 named folders and **Folders tasks used**. **Add a workspace** names another;
 **Edit** changes its name and **mounted folders** (other folders a task may
-read, or read and write, by absolute path). **Forget**, available on both
-kinds of row, removes its name and mounts after confirmation and keeps it
-out of Workspaces and Home's suggestions, even after a reload or restart.
-The folder, its files and its tasks stay as they were; old task history does
-not add it back. A matching last-folder pick is cleared. **Keep** cancels.
+read, or read and write, by absolute path). **Forget**, on both kinds
+of row and only on the computer nodwyn runs on, takes a folder out of the
+lists after a confirm; what it keeps and what brings the folder back is in
+[the manual](manual.md#forgetting-a-folder-in-the-console).
 
 **Finding a task.** The sidebar's magnifier opens a filter over every task's
 title, folder and branch, the archive included; **Escape** clears and closes
 it.
-Using the folder again restores it to the suggestions: adding it, or starting
-or resuming a task there, from the console, a paired device or a terminal.
-Forget is available only on the computer running nodwyn. A paired device
-cannot forget a folder, but may still choose a forgotten one by its path. Home offers the
+Home offers the
 first six folders; the rest are a click away on Workspaces. The name,
 mounted folders and forgotten markers are kept in `workspaces.toml` in the
 config directory, never in the folder, so a folder someone else commits
