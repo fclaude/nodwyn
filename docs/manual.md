@@ -1235,10 +1235,14 @@ sync the file, rename it, and sync its directory. Local entry and passphrase
 changes roll back in memory if publication fails; a post-rename sync error reports
 uncertain durability while retaining the published key. OAuth refresh retains a
 received token in memory when saving fails, since the provider may already have
-rotated it; the error is still reported.
+rotated it, and keeps it across reloads of the file until a save publishes it;
+the error is still reported.
 
-A daemon that has the keychain open keeps using it after the passphrase
-changes elsewhere, and asks for the new one when it next starts.
+A daemon that has the keychain open keeps injecting the keys it holds after
+the passphrase changes elsewhere, but it can no longer add or change a
+credential or refresh an OAuth2 token: the console shows the keychain as
+locked, and the new passphrase in its unlock form (or a restart) opens it
+again.
 
 The keys themselves are managed in the console, under **Connections ›
 Credentials** ([browser.md](browser.md), "Credentials"): what is stored,
@@ -1246,7 +1250,9 @@ where each may go and what uses it; adding a key and allowing it for a host,
 replacing a rotated one, connecting an OAuth2 account and removing one. From
 a terminal, `nodwyn credential` lists them and handles OAuth2 (below), and
 `:eval (credential-register "CLASS")` in a session stores a static key at a
-masked prompt.
+masked prompt. A class names one credential, whichever way it is added:
+registering a class that has a static key replaces its value (a rotated key),
+and every other way of adding one refuses a class that is taken.
 
 ### OAuth2 credentials
 

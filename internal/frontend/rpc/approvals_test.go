@@ -475,3 +475,37 @@ func TestApproveAllNeedsTheSettingAndLosesItWithIt(t *testing.T) {
 		t.Fatal("approval.dont_ask took a string")
 	}
 }
+
+// Registering a class that has a credential replaces its value instead of
+// adding a second that no lookup by class would ever find (P2-006).
+func TestRegisteringAClassAgainReplacesItsValue(t *testing.T) {
+	o := options(t)
+	store, err := keychain.Create(filepath.Join(t.TempDir(), "keychain"), keychain.FastKDF, []byte("test-passphrase"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Keychain = store
+	path, _ := start(t, o)
+	c := connect(t, path)
+	identity(t, c)
+	id := opened(t, c, t.TempDir())
+	subscribed(t, c, id, 0, 100)
+	for _, secret := range []string{"first-canary", "second-canary"} {
+		eval(c, id, `(credential-register "test-key")`)
+		p := prompt[event.SecretPrompt](t, c, event.PromptSecret)
+		c.ok("session.secret", map[string]any{"id": id, "prompt_id": p.ID, "secret": secret})
+		if r := finishEval(t, c); r.Error != "" {
+			t.Fatal(r.Error)
+		}
+	}
+	if store.Count() != 1 {
+		t.Fatalf("%d credentials, want 1", store.Count())
+	}
+	req, _ := http.NewRequest("GET", "https://example.invalid", nil)
+	if err := store.InjectHeader(store.HandleForClass("test-key").ID, "Authorization", "Bearer ", req); err != nil {
+		t.Fatal(err)
+	}
+	if got := req.Header.Get("Authorization"); got != "Bearer second-canary" {
+		t.Fatalf("the credential holds %q, want the second value", got)
+	}
+}

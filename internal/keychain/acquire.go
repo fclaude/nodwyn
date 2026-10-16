@@ -205,8 +205,13 @@ const authorizeWait = 5 * time.Minute
 // and stores it. open is given the authorization URL to show the user (the
 // command line opens a browser and prints it).
 func (st *Store) AddOAuth2(ctx context.Context, class string, g Grant, open func(string) error) (*scheme.Handle, error) {
-	if class == "" {
-		return nil, errors.New("keychain: class is required")
+	// Before the person is sent to the provider, not after.
+	st.mu.Lock()
+	st.freshLocked()
+	err := st.newClassLocked(class)
+	st.mu.Unlock()
+	if err != nil {
+		return nil, err
 	}
 	t, err := g.tokenSet()
 	if err != nil {

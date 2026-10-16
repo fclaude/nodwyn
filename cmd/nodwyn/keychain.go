@@ -117,9 +117,9 @@ func (c *cli) keychainPassphrase(args []string) error {
 		return err
 	}
 	if had {
-		fmt.Println("Changed the keychain passphrase. A daemon that has it unlocked keeps using its keys, and asks again when it next starts.")
+		fmt.Println("Changed the keychain passphrase. A daemon that has it unlocked keeps injecting the keys it holds; it cannot add keys or refresh OAuth tokens until it is unlocked again with the new passphrase in the console, or restarted.")
 	} else {
-		fmt.Println("The keychain now has a passphrase. A daemon that has it open keeps using its keys, and asks for it when it next starts.")
+		fmt.Println("The keychain now has a passphrase. A daemon that has it open keeps injecting the keys it holds; it cannot add keys or refresh OAuth tokens until it is unlocked again with the passphrase in the console, or restarted.")
 	}
 	return nil
 }

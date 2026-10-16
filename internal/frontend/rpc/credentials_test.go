@@ -310,3 +310,41 @@ func find(list []authorizationInfo, id string) authorizationInfo {
 	}
 	return authorizationInfo{}
 }
+
+// A keychain whose passphrase another process changed shows as locked and
+// opens again, in place, with the new passphrase (P2-003): the daemon would
+// otherwise be unable to add a key or refresh a token until restarted.
+func TestKeychainOpensAgainAfterItsPassphraseChangedElsewhere(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("keychain.create", map[string]any{"passphrase": "correct horse"})
+	if r := c.call("keychain.unlock", map[string]any{"passphrase": "correct horse"}); r.Error == nil {
+		t.Fatal("unlocked a keychain that is open and current")
+	}
+	other, err := keychain.Open(o.Paths.Keychain, []byte("correct horse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.SetPassphrase([]byte("battery staple")); err != nil {
+		t.Fatal(err)
+	}
+	var status keychainStatus
+	json.Unmarshal(c.ok("keychain.status", map[string]any{}), &status)
+	if !status.Stale || status.Unlocked {
+		t.Fatalf("after the passphrase changed elsewhere: %+v", status)
+	}
+	if r := c.call("credentials.add", map[string]any{"class": "github-token", "value": "x"}); r.Error == nil {
+		t.Fatal("added a key through a stale keychain")
+	}
+	if r := c.call("keychain.unlock", map[string]any{"passphrase": "correct horse"}); r.Error == nil {
+		t.Fatal("the old passphrase unlocked it")
+	}
+	status = keychainStatus{}
+	json.Unmarshal(c.ok("keychain.unlock", map[string]any{"passphrase": "battery staple"}), &status)
+	if status.Stale || !status.Unlocked {
+		t.Fatalf("after unlocking again: %+v", status)
+	}
+	c.ok("credentials.add", map[string]any{"class": "github-token", "value": "x"})
+}

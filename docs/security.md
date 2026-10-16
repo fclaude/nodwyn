@@ -139,8 +139,8 @@ parent directory. A planted `keychain.tmp` is unused. Cooperative changes retain
 the sibling lock and reread-before-change rules. For local entry changes and
 passphrase changes, a failure before publication restores the previous in-memory
 state. OAuth refresh retains a received token in memory when saving fails, because
-the provider may already have invalidated the previous token; the refresh reports
-the save error. A directory-sync failure after publication
+the provider may already have invalidated the previous token, and keeps it across
+rereads of the file until a save publishes it; the refresh reports the save error. A directory-sync failure after publication
 is reported as saved with uncertain durability; memory keeps the newly published
 key. This protocol reduces crash-loss windows; tests do not simulate power loss.
 A keychain without a passphrase remains only as private as the file and its backups.

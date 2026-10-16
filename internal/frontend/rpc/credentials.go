@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -49,7 +48,8 @@ type credentialInfo struct {
 	NeedsReauth bool       `json:"needs_reauth,omitempty"`
 	TokenHost   string     `json:"token_host,omitempty"`
 	// Shadowed means an earlier credential has the same class: a lookup by
-	// class finds that one, so this one is never sent.
+	// class finds that one, so this one is never sent. The keychain no longer
+	// stores a second of a class, but one made before that may hold them.
 	Shadowed bool `json:"shadowed,omitempty"`
 	// UsedBy names what is configured to send it: "the main model",
 	// "model fast", "MCP server linear", "Google Docs", "the judge".
@@ -151,12 +151,6 @@ type credentialAuthorizeParams struct {
 	RevokeURL    string   `json:"revoke_url,omitempty"`
 }
 
-// className is what a class added here may be: it is written into
-// bindings.toml and config.toml, and typed by people.
-var className = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
-
-const badClass = "A class is letters, digits, dots, dashes or underscores, such as github-token"
-
 func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 	switch req.Method {
 	case "credentials.list":
@@ -179,14 +173,11 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 		}
 		value := []byte(p.Value)
 		defer clear(value)
-		if !className.MatchString(p.Class) {
-			return nil, failure(-32602, badClass)
+		if !keychain.ValidClass(p.Class) {
+			return nil, failure(-32602, keychain.BadClass)
 		}
 		if len(value) == 0 {
 			return nil, failure(-32602, "The value is empty")
-		}
-		if store.HandleForClass(p.Class) != nil {
-			return nil, failure(-32000, "A credential of class "+p.Class+" already exists; replace its value instead")
 		}
 		var rows []binding.Binding
 		if p.Dest != "" || len(p.Methods) > 0 || p.Position != "" {
@@ -552,11 +543,8 @@ func (s *server) authorize(req request) (any, *rpcError) {
 		if class == "" {
 			class = profile.Name
 		}
-		if !className.MatchString(class) {
-			return nil, failure(-32602, badClass)
-		}
-		if store.HandleForClass(class) != nil {
-			return nil, failure(-32000, "A credential of class "+class+" already exists; authorize that one again, or choose another class")
+		if !keychain.ValidClass(class) {
+			return nil, failure(-32602, keychain.BadClass)
 		}
 		grant := keychain.Grant{Profile: profile, ClientID: strings.TrimSpace(p.ClientID), ClientSecret: secret, Scopes: p.Scopes}
 		info.Class, info.Provider = class, profile.Name

@@ -36,6 +36,11 @@ type keychainStatus struct {
 	// NoPassphrase is set when the open keychain has no passphrase: it
 	// opens without one, and the file is as safe as its permissions.
 	NoPassphrase bool `json:"no_passphrase,omitempty"`
+	// Stale is set when another process sealed the keychain again (its
+	// passphrase changed): the keys held in memory still work, but nothing
+	// can be added and no token refreshed until keychain.unlock is given the
+	// new passphrase, so Unlocked is false meanwhile.
+	Stale bool `json:"stale,omitempty"`
 }
 type passphraseParams struct {
 	Passphrase string `json:"passphrase"`
@@ -63,7 +68,8 @@ func (s *server) keychainStatus() keychainStatus {
 		status.Exists = true
 	}
 	if s.options.Keychain != nil {
-		status.Unlocked = true
+		status.Stale = s.options.Keychain.Stale()
+		status.Unlocked = !status.Stale
 		status.Credentials = s.options.Keychain.Count()
 		status.NoPassphrase = !s.options.Keychain.HasPassphrase()
 	}
@@ -91,7 +97,10 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 		return s.keychainPassphrase(req)
 	}
 	if s.options.Keychain != nil {
-		return nil, failure(-32000, "The keychain is already unlocked")
+		if req.Method != "keychain.unlock" || !s.options.Keychain.Stale() {
+			return nil, failure(-32000, "The keychain is already unlocked")
+		}
+		return s.keychainReopen(req)
 	}
 	path := s.options.Paths.Keychain
 	var store *keychain.Store
@@ -142,6 +151,21 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	s.options.Keychain, s.options.Bindings = store, table
+	return s.keychainStatus(), nil
+}
+
+// keychainReopen unlocks the open keychain again after its passphrase was
+// changed elsewhere, in place, so the sessions that share it carry on.
+func (s *server) keychainReopen(req request) (any, *rpcError) {
+	var p passphraseParams
+	if err := params(req.Params, &p, "passphrase"); err != nil {
+		return nil, err
+	}
+	pass := []byte(p.Passphrase)
+	defer clear(pass)
+	if err := s.options.Keychain.Reopen(pass); err != nil {
+		return nil, s.wrongPassphrase("That passphrase does not open the keychain")
+	}
 	return s.keychainStatus(), nil
 }
 

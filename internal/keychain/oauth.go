@@ -174,6 +174,15 @@ func (st *Store) Refresh(ctx context.Context, id string, observe func(Refreshed)
 		cur.oauth = &t
 		st.entries[id] = cur
 		err = st.save()
+		// A set that was not saved stays in memory, and a reload puts it
+		// back: the file's refresh token may be retired by now.
+		var published *publishedError
+		if err != nil && !errors.As(err, &published) {
+			if st.pending == nil {
+				st.pending = map[string]pendingToken{}
+			}
+			st.pending[id] = pendingToken{from: e.oauth.RefreshToken, set: t}
+		}
 	}
 	st.mu.Unlock()
 	if !ok {

@@ -43,6 +43,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"syscall"
 	"time"
@@ -131,12 +132,24 @@ type Store struct {
 	entries      map[string]entry
 	order        []string // insertion order, for deterministic sealing
 	stamp        stamp    // the file as this process last read or wrote it
-	mu           sync.Mutex
+	// pending holds a refreshed token set whose save failed, by credential
+	// id: the provider may already have retired the refresh token the file
+	// still holds, so a reload puts the set back until a save publishes it.
+	pending map[string]pendingToken
+	mu      sync.Mutex
 
 	// client and now are the HTTP client and clock of OAuth2 refresh,
 	// revocation and acquisition (ADR 24); tests replace them.
 	client *http.Client
 	now    func() time.Time
+}
+
+// pendingToken is a token set the file does not hold yet, and the refresh
+// token the file has instead, which tells a reload whether the file is
+// still the version the set came from.
+type pendingToken struct {
+	from string
+	set  tokenSet
 }
 
 // stamp identifies a version of the keychain file, so a read can tell that
@@ -363,6 +376,38 @@ func (st *Store) SetPassphrase(passphrase []byte) error {
 	return nil
 }
 
+// Stale reports whether the file was sealed again since this store opened
+// it (another process changed the passphrase, or replaced the keychain): it
+// can no longer change the keychain or refresh a token until Reopen, though
+// the keys in memory still inject.
+func (st *Store) Stale() bool {
+	raw, err := readSealed(st.path)
+	if err != nil {
+		return false
+	}
+	f, err := split(raw)
+	if err != nil {
+		return false
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return !bytes.Equal(f.salt, st.salt)
+}
+
+// Reopen opens the file again with passphrase and makes st what it holds,
+// in place, so everything that shares st carries on with the new key.
+func (st *Store) Reopen(passphrase []byte) error {
+	fresh, err := Open(st.path, passphrase)
+	if err != nil {
+		return err
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.aead, st.kdf, st.salt, st.open = fresh.aead, fresh.kdf, fresh.salt, fresh.open
+	st.entries, st.order, st.openAIHostID, st.stamp = fresh.entries, fresh.order, fresh.openAIHostID, fresh.stamp
+	return nil
+}
+
 // reloadLocked replaces the entries with what the file holds now. The
 // caller holds st.mu.
 func (st *Store) reloadLocked() error {
@@ -389,7 +434,25 @@ func (st *Store) reloadLocked() error {
 		return err
 	}
 	st.stamp = stamp
+	st.restorePending()
 	return nil
+}
+
+// restorePending puts back each refreshed token set the file still lacks.
+// A file whose refresh token is not the one the set replaced was written
+// by someone else since (a sign-in again, another process's refresh), and
+// wins.
+func (st *Store) restorePending() {
+	for id, p := range st.pending {
+		e, ok := st.entries[id]
+		if !ok || e.oauth == nil || e.oauth.RefreshToken != p.from {
+			delete(st.pending, id)
+			continue
+		}
+		t := p.set
+		e.oauth = &t
+		st.entries[id] = e
+	}
 }
 
 // freshLocked rereads the file if another process wrote it since this one
@@ -455,15 +518,40 @@ func (st *Store) lock() (func(), error) {
 // handle. It persists the store. The value is kept in memory, unexported,
 // for the Inject* sinks; it is never returned.
 func (st *Store) Add(class string, secret []byte) (*scheme.Handle, error) {
-	if class == "" {
-		return nil, errors.New("keychain: class is required")
-	}
 	return st.add(entry{class: class, created: time.Now().UTC(), value: value(append([]byte(nil), secret...))})
+}
+
+// classPattern is what a credential's class may be: it is written into
+// bindings.toml and config.toml, and typed by people.
+var classPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// BadClass says what a class may be, for whoever refused one.
+const BadClass = "A class is letters, digits, dots, dashes or underscores, such as github-token"
+
+// ValidClass reports whether class may name a credential.
+func ValidClass(class string) bool { return classPattern.MatchString(class) }
+
+// newClassLocked refuses a class that is not valid or that a credential
+// has: a lookup by class finds the first, so a second would never be sent.
+// The caller holds st.mu.
+func (st *Store) newClassLocked(class string) error {
+	if !ValidClass(class) {
+		return errors.New("keychain: " + BadClass)
+	}
+	for _, e := range st.entries {
+		if e.class == class {
+			return fmt.Errorf("keychain: a credential of class %s already exists; replace its value, or authorize it again", class)
+		}
+	}
+	return nil
 }
 
 func (st *Store) add(e entry) (*scheme.Handle, error) {
 	id := fmt.Sprintf("%x", random(8))
 	err := st.change(func() error {
+		if err := st.newClassLocked(e.class); err != nil {
+			return err
+		}
 		if _, dup := st.entries[id]; dup {
 			return errors.New("keychain: id collision")
 		}
@@ -584,18 +672,6 @@ func (st *Store) List() []Info {
 		out = append(out, st.entries[id].info(id))
 	}
 	return out
-}
-
-// Lookup returns the class and created time for id, or an error if absent.
-func (st *Store) Lookup(id string) (class string, created time.Time, err error) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.freshLocked()
-	e, ok := st.entries[id]
-	if !ok {
-		return "", time.Time{}, errNotFound
-	}
-	return e.class, e.created, nil
 }
 
 // Inject* are the only ways a value leaves the package: each writes the
@@ -765,6 +841,7 @@ func (st *Store) save() error {
 		return fmt.Errorf("keychain: write: %w", err)
 	}
 	st.stamp = stampOf(st.path)
+	st.pending = nil
 	dir, err := os.Open(filepath.Dir(st.path))
 	if err != nil {
 		return &publishedError{err}

@@ -7705,6 +7705,9 @@
         "no_passphrase": {
           "type": "boolean"
         },
+        "stale": {
+          "type": "boolean"
+        },
         "unlocked": {
           "type": "boolean"
         }

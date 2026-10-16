@@ -74,7 +74,16 @@ func (s *Session) PromptAndAdd(ctx context.Context, class string) (*scheme.Handl
 		if len(secret) == 0 {
 			return nil, errors.New("core: secret was empty or declined")
 		}
-		h, err := s.keychain.Add(class, secret)
+		// A class has one credential: registering it again is how a rotated
+		// key is pasted, so it replaces the value instead of adding a second
+		// that no lookup would ever find.
+		var h *scheme.Handle
+		var err error
+		if h = s.keychain.HandleForClass(class); h != nil {
+			err = s.keychain.Replace(h.ID, secret)
+		} else {
+			h, err = s.keychain.Add(class, secret)
+		}
 		if err != nil {
 			return nil, err
 		}

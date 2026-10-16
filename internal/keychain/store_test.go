@@ -44,9 +44,9 @@ func TestRoundTrip(t *testing.T) {
 	if st2.Count() != 1 {
 		t.Fatalf("re-open count: %d", st2.Count())
 	}
-	class, _, err := st2.Lookup(h.ID)
-	if err != nil || class != "openai-key" {
-		t.Fatalf("lookup: %q %v", class, err)
+	info, err := st2.Info(h.ID)
+	if err != nil || info.Class != "openai-key" {
+		t.Fatalf("info: %q %v", info.Class, err)
 	}
 }
 
@@ -96,9 +96,9 @@ func TestInjectBody(t *testing.T) {
 	}
 }
 
-func TestLookupMissing(t *testing.T) {
+func TestInfoMissing(t *testing.T) {
 	st := newStore(t, []byte("pass"))
-	if _, _, err := st.Lookup("nonexistent"); err == nil {
+	if _, err := st.Info("nonexistent"); err == nil {
 		t.Fatal("lookup of nonexistent id should fail")
 	}
 }
@@ -199,8 +199,8 @@ func TestSetPassphrase(t *testing.T) {
 	if err != nil || reopened.Count() != 2 || reopened.HasPassphrase() {
 		t.Fatalf("after removing it: %v", err)
 	}
-	if class, _, err := reopened.Lookup(h.ID); err != nil || class != "api-key" {
-		t.Fatalf("lookup: %q %v", class, err)
+	if info, err := reopened.Info(h.ID); err != nil || info.Class != "api-key" {
+		t.Fatalf("info: %q %v", info.Class, err)
 	}
 }
 
