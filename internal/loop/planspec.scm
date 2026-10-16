@@ -556,8 +556,7 @@
     kept))
 
 ;; Whether a command the turn ran and saw pass since the last edit (passed,
-;; run-entry's) covers cmd: it contains it, or it is the repository's whole
-;; check.
+;; run-entry's) covers what: it contains it.
 (define (plan-language-passed? passed what)
   (let any ((ps passed))
     (and (pair? ps)
@@ -569,6 +568,19 @@
 ;; The plan's steps that lack their evidence, as lines, and the steps that
 ;; have it, as (number . note), set against the change (plan-evidence) and
 ;; the runs that passed since the last edit (passed, run-entry's).
+;;
+;; The repository's whole check passing since the last edit (whole) stands
+;; for a test step's run, and for a check step's only when the step's
+;; command checks the code (check-command?: a test run, a build, a vet or a
+;; linter, a make target), as the whole check does. Another check, a
+;; generator's --check or a browser check, passes itself: the whole check
+;; need not run it. On commit-bench (dsl16, 550e3b9, c97f9a41,
+;; 20261013T224535Z-ac7eaa5c) the plan's `python3
+;; docs/book/source/generate.py && python3 docs/book/source/generate.py
+;; --check` step was met by a make validate that ran no generator (call
+;; 3217) after test edits had made the inventory stale (3211), the evidence
+;; message (3248) did not name it, and the change ended with it stale (ADR
+;; 32, amended 2026-10-15).
 (define (plan-language-check passed)
   (let* ((paths (map (lambda (st) (assoc-ref st 'path ""))
                      (filter (lambda (st) (and (member (assoc-ref st 'kind "") '("Change" "Docs" "Test"))
@@ -607,8 +619,9 @@
                                                "` on a copy of the last commit with your test file in it), so it does not show the change: make it fail there"))
                                (else #f)))
                         ((equal? kind "Check")
-                         (and (not (or (plan-language-passed? passed (assoc-ref st 'run "")) whole))
-                              (string-append label " " (assoc-ref st 'run "") ": it has not passed since your last edit")))
+                         (let ((run (assoc-ref st 'run "")))
+                           (and (not (or (plan-language-passed? passed run) (and whole (check-command? run))))
+                                (string-append label " " run ": it has not passed since your last edit"))))
                         (else #f))))
             (if problem
                 (walk (cdr ss) (+ i 1) (cons problem unmet) met)

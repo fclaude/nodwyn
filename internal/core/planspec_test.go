@@ -573,6 +573,47 @@ func TestTheRepositorysToolsAreTheRunsTheyMake(t *testing.T) {
 	}
 }
 
+// The repository's whole check passing after the last edit stands for a
+// check step that checks the code (go vet), which it runs too, and not for
+// one it need not run, such as a generator's --check: that step must pass
+// again after the last edit, and the evidence message says so. On
+// commit-bench (dsl16, c97f9a41) the plan's generate.py --check step was met
+// by a make validate that ran no generator, after test edits had made the
+// book's inventory stale, and the change ended with it stale.
+func TestAWholeCheckStandsOnlyForTheChecksItRuns(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(none test "a one-line change")
+(none docs "no document describes calc")
+(check "python3 inventory.py --check")
+(check "go vet ./...")`
+	r := trustedRigIn(t, repo, trustedTools,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("i", "bash", "-c", "true # python3 inventory.py --check"),
+		write("w2", "calc.py", "def one():\n    return 10  # the answer\n\n\ndef two():\n    return 2\n"),
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "v", Name: "validate", Args: map[string]any{}}}},
+		fake.Turn{Content: "done"}, // told step 4 has not passed since the last edit
+		shellArgs("i2", "bash", "-c", "true # python3 inventory.py --check"),
+		fake.Turn{Content: "done: validate and the inventory check pass."},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 9 {
+		t.Fatalf("%d requests, want 9; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 7)
+	if !strings.Contains(msg, "step 4 (Check) python3 inventory.py --check: it has not passed since your last edit") || strings.Contains(msg, "step 5") {
+		t.Fatalf("evidence message: %q", msg)
+	}
+	if notes, _ := planMarks(t, r); notes[5] != "evidence: Check step met" {
+		t.Fatalf("the harness's marks: %v; want step 5 marked by validate's pass", notes)
+	}
+}
+
 // A run whose exit status 0 is another command's is no evidence that a
 // test passed unless its output shows it: a run on the copy of the last
 // commit, one piped into tail, one that ends in || true or echoes $?, and

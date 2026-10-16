@@ -1103,3 +1103,50 @@ as before. At most two asks, as before. `TestSubAgentOutOfRoundsStillAnswers`,
 `TestSubAgentRepeatingItselfEndsOnlyItself` and
 `TestSubAgentWrapUpSurvivesAToolCall` now expect the tools on the wrap-up
 request, and fail on `1e595e5`.
+
+## Amendment 2026-10-15: the whole check stands only for the plan's check steps it runs
+
+Before an unattended turn ends, the plan's steps are set against what
+happened (`plan-language-check`, planspec.scm), and the repository's whole
+check passing since the last edit (`whole-check-passed?`: make validate,
+make check, make test, ...) met every Check step, whatever its command. A
+whole check runs the repository's tests, builds and linters, not every
+command a plan names: on commit-bench (dsl16, `550e3b9`, c97f9a41, session
+20261013T224535Z-ac7eaa5c) the planner's `python3
+docs/book/source/generate.py && python3 docs/book/source/generate.py
+--check` step was met by a run of make validate (call 3217) that ran no
+generator, after two test edits (3187, 3211) had changed the line counts the
+book's inventory records. The evidence message (3248) named two test steps
+and not that one, and the change ended with the inventory stale, which the
+parent's validate did not check.
+
+So the whole check stands for a Check step only when the step's command is
+one that checks the code (`check-command?`: a test run, a build, go vet, a
+linter, a make target), as the whole check does. Any other Check step, a
+generator's `--check`, a browser check or a `go generate`, is met only by a
+passing run of its own command since the last edit; until then the evidence
+message names it ("step N (Check) <command>: it has not passed since your
+last edit"), which costs a round when the model did not run it again, and
+the harness no longer marks it done. Test steps are unchanged: the whole
+check runs the tests. `TestAWholeCheckStandsOnlyForTheChecksItRuns` fails
+on `defffcd` and passes with the change.
+
+Of the 107 Check forms in the planners' final plans across the recorded
+commit-bench sessions (257), 101 are commands that check the code, which
+this leaves as they were. Of the other six, two are this generator (dsl15
+and dsl16, c97f9a41), two `go generate ./internal/frontend/rpc`, one the
+bare tool name `validate`, which the validate tool's own run (make validate)
+meets, and one `go run ./scripts/validate` (dsl16 on another model,
+8e172440), which is what make validate runs: that step would now be said
+after a pass of the validate tool alone, a round spent on a step already
+met. In that session the model ran it itself (call 1085), which meets it.
+
+- **Not built.** The evidence message is said once a turn, so a Check step
+  met when it fires stays met through later edits. The deep study's example
+  of this rule, 107251d0 under dsl19, is that case and not this one: its
+  plan's check was the planner's `go build ./... && ... && make validate`,
+  a check command, and the message had fired (call 3921) before the test
+  file that made the inventory stale (3935). For nodwyn's own tasks
+  validate now runs the inventory check (ADR 37, amended 2026-10-15); this
+  amendment covers repositories, and older snapshots of this one, whose
+  whole check does not.
