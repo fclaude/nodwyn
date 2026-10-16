@@ -209,6 +209,18 @@ check(async () => {
   assert.deepStrictEqual(sent.of("settings.model.write")[1], { server: "127-0-0-1", model: "fast", efforts: [] });
   await shows("[data-model='127-0-0-1-fast']", "no effort setting");
   step("a model with efforts and one without are listed");
+  // A test's result belongs to the form it was made in: tested, then
+  // cancelled, the next Add a model opens without it.
+  await page.click("#add-model");
+  await page.selectOption("#model-provider", "127-0-0-1");
+  await page.fill("#model-id", "tried");
+  await page.click("#model-test");
+  await page.waitForSelector("#model-form .test-result:not([data-state=pending])", { timeout: 20000 });
+  await page.click("#model-form button:text-is('Cancel')");
+  await page.click("#add-model");
+  await page.waitForSelector("#model-form");
+  assert.strictEqual(await page.locator("#model-form .test-result").count(), 0, "a cancelled form's test result showed in the next one");
+  await page.click("#model-form button:text-is('Cancel')");
 
   // ---------- the key is replaced; the same test now passes ----------
   await page.click("#provider-127-0-0-1 button:text-is('Edit')");

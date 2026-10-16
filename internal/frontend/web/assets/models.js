@@ -808,6 +808,9 @@ function modelDraft(c) {
 }
 
 function openModel(c, redraw, server = "") {
+  // A test's result is the form's it was made in: a new form starts without
+  // one, or it showed the last model's green "reply: ok".
+  ui.results.delete("form");
   ui.model = modelDraft(c);
   if (server) ui.model.server = server;
   redraw();
@@ -980,7 +983,7 @@ function modelForm(ctx, redraw, first = false) {
     first ? h("p", { class: "hint" }, "Its context length, prices and the rest of its settings are what its provider publishes, and Settings › Models changes them once it answers.") : settingsFields(f, providerOf(desk, f.server)?.provider, redraw, desk),
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
     resultLine(testing),
-    h("div", { class: "row-actions" }, save, testButton, first ? null : h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.model = null), redraw()) }, "Cancel")),
+    h("div", { class: "row-actions" }, save, testButton, first ? null : h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.model = null), ui.results.delete("form"), redraw()) }, "Cancel")),
   );
   sync();
   return form;
