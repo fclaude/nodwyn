@@ -122,6 +122,14 @@ check(async () => {
   await shoot("home-dark", { width: 1440, height: 900 }, "dark", home);
   await shoot("home-phone", { width: 390, height: 844 }, "light", home);
   await shoot("home-phone-dark", { width: 390, height: 844 }, "dark", home);
+  // The topbar's "1 needs you" is how a phone reaches the waiting task: the
+  // sidebar is a drawer there.
+  await shoot("phone-needs-you", { width: 390, height: 844 }, "light", async (page) => {
+    await page.waitForSelector("#topbar-count:not([hidden])");
+    await page.click("#topbar-count");
+    await page.waitForSelector(".ask-card");
+    assert.ok(/^#\/task\/./.test(await page.evaluate(() => location.hash)), "the pill did not open the waiting task");
+  });
   // The light palette is written once, so "Match the system" follows the
   // system's scheme with the same colours the light choice has.
   await shoot("home-system-light", { width: 1440, height: 900 }, "system", home, "light");

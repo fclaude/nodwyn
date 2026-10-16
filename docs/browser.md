@@ -449,7 +449,10 @@ the folder whose task worked last comes first; the order follows as turns
 end and tasks close. A folder shows five tasks and **Show N more**, and
 its heading folds it (this browser remembers which). The sidebar’s filter matches
 titles and folder paths in every folder and in the archive
-([ADR 39](adr/0039-named-archived-deleted-tasks.md)).
+([ADR 39](adr/0039-named-archived-deleted-tasks.md)). Only the task list
+scrolls: the search, New task, the places (Connections, Workspaces,
+Settings) and the model's state stay in view however long it is, and a
+redraw keeps the list where it was.
 
 **Switching.** A task picked from the list puts the focus in its message
 box, so the next word goes to its reply, and a word not sent is kept for
@@ -865,7 +868,9 @@ Late snapshots cannot replace a newer state. Closed/resolved sessions clear thei
 attention indicator, and disconnect clears the live-state claim. Home's Needs you
 list offers **Allow once** beside **Review** only for a plain command or write;
 a security confirmation or a send to another host offers **Review** alone, since
-its reasons, destination and diff are on the task's card.
+its reasons, destination and diff are on the task's card. On a phone, where
+the sidebar is a drawer, the topbar's "N needs you" pill is a link: to the
+task when one waits, to Home when several do.
 
 Desktop notifications are optional. In Settings › This browser › Desktop
 notifications, **Turn on** asks this browser for permission; the choice is

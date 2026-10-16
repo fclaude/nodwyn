@@ -140,6 +140,17 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
   const modelState = !conn.live ? ["bad", "offline"] : !control ? ["", "checking"] : control.state === "ready" ? ["ok", desk.running().length ? "working" : "ready"] : [control.state === "unreachable" ? "bad" : "warn", stateWords[control.state] || control.state];
   const link = (href, name, label) => h("a", { class: "nav-link", href, "aria-current": route.name === href.slice(2) ? "page" : null }, icon(name), h("span", {}, label));
 
+  // Only the task list scrolls: the places and the model's state stay where
+  // they are, and the list keeps its place through each redraw.
+  const kept = nav.querySelector(".nav-tasks")?.scrollTop || 0;
+  const tasks = h(
+    "div",
+    { class: "nav-tasks" },
+    group("Needs you", needs, true),
+    folders.length ? h("div", { class: "folders" }, folders) : null,
+    archive,
+    !needs.length && !folders.length && !archived.length ? h("p", { class: "hint", style: "padding: 0 10px" }, filter ? "No task matches." : "No tasks yet.") : null,
+  );
   nav.replaceChildren(
     ...[
     h(
@@ -150,10 +161,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     ),
     searching ? h("div", { class: "search" }, search) : null,
     h("a", { class: "new-task", href: "#/", onclick: () => setTimeout(() => document.getElementById("task")?.focus(), 0) }, icon("plus"), h("span", {}, "New task"), h("kbd", {}, "⌘N")),
-    group("Needs you", needs, true),
-    folders.length ? h("div", { class: "folders" }, folders) : null,
-    archive,
-    !needs.length && !folders.length && !archived.length ? h("p", { class: "hint", style: "padding: 0 10px" }, filter ? "No task matches." : "No tasks yet.") : null,
+    tasks,
     h("div", { class: "nav-links" }, link("#/connections", "plug", "Connections"), link("#/workspaces", "folder", "Workspaces"), link("#/settings", "sliders", "Settings")),
     h(
       "div",
@@ -164,6 +172,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     ),
     ].filter(Boolean),
   );
+  tasks.scrollTop = kept;
   if (typing) {
     search.focus();
     search.setSelectionRange(typing.start, typing.end);

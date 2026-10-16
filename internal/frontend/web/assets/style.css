@@ -171,6 +171,8 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
   background: var(--surface-2); color: var(--muted);
 }
 .pill.warn { background: var(--warn-chip); color: var(--warn-ink); }
+a.pill { text-decoration: none; }
+a.pill.warn:hover { color: var(--warn-ink); filter: brightness(1.06); }
 .pill.run { background: var(--accent-ring); color: var(--accent-link); }
 .tag {
   font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 6px;
@@ -217,10 +219,16 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .sidebar {
   width: 256px; flex-shrink: 0; display: flex; flex-direction: column; gap: 22px;
   padding: 18px 12px 14px; background: var(--sidebar); border-right: 1px solid var(--line);
-  overflow-y: auto;
+  overflow: hidden;
 }
-/* A long task list scrolls the sidebar; nothing in it is squeezed instead. */
+/* The task list is what scrolls; the search, New task, the places and the
+   model's state are always in reach, and nothing in them is squeezed. */
 .sidebar > * { flex-shrink: 0; }
+.sidebar > .nav-tasks {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 22px;
+  overflow-y: auto; margin: 0 -6px; padding: 0 6px;
+}
+.nav-tasks > * { flex-shrink: 0; }
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
 .new-task {
   display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px;
@@ -266,7 +274,7 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 }
 .nav-more:hover { background: var(--selected); color: var(--ink); }
 .nav-group.archived .nav-task .title { color: var(--muted); }
-.nav-links { display: flex; flex-direction: column; gap: 2px; margin-top: auto; }
+.nav-links { display: flex; flex-direction: column; gap: 2px; }
 .nav-link {
   display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px;
   text-decoration: none; color: var(--ink-2); font-size: 13.5px;

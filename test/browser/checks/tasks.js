@@ -18,7 +18,7 @@ check(async () => {
   const sidebar = () =>
     page.evaluate(() => {
       const titles = (el) => [...el.querySelectorAll(".nav-task .title span:last-child")].map((s) => s.textContent);
-      const needs = [...document.querySelectorAll(".sidebar > .nav-group:not(.folder)")].flatMap(titles);
+      const needs = [...document.querySelectorAll(".sidebar .nav-tasks > .nav-group:not(.folder)")].flatMap(titles);
       const folders = [...document.querySelectorAll(".folders .folder")].map((g) => ({
         name: g.querySelector(".folder-head .name").textContent,
         open: g.querySelector(".folder-head").getAttribute("aria-expanded") === "true",
@@ -248,6 +248,23 @@ check(async () => {
   assert.strictEqual(await page.isChecked("#new-task-limits"), true, "Home kept Limits unticked for the next task");
   step("a task's limits off from Home, then on and off again in the task");
 
+  // Only the task list scrolls: Settings and the model's state stay in view
+  // beside a list longer than the window, and a redraw keeps the list's place.
+  await page.setViewportSize({ width: 1440, height: 520 });
+  const frame = () =>
+    page.evaluate(() => {
+      const list = document.querySelector(".nav-tasks"), side = document.querySelector("#sidebar");
+      const bottom = (sel) => document.querySelector(sel).getBoundingClientRect().bottom;
+      return { scrolls: list.scrollHeight > list.clientHeight, sideOverflow: side.scrollHeight - side.clientHeight, links: bottom(".nav-links"), model: bottom(".model-line"), height: innerHeight, top: list.scrollTop };
+    });
+  const long = await frame();
+  assert.ok(long.scrolls, `the task list does not scroll: ${JSON.stringify(long)}`);
+  assert.ok(long.sideOverflow <= 0 && long.links <= long.height && long.model <= long.height, `the places or the model's state scrolled away: ${JSON.stringify(long)}`);
+  await page.evaluate(() => (document.querySelector(".nav-tasks").scrollTop = 60));
+  await page.evaluate(() => dispatchEvent(new HashChangeEvent("hashchange")));
+  assert.strictEqual((await frame()).top, 60, "a redraw moved the task list");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  step("only the task list scrolls in the sidebar");
   // A folded folder stays folded across a reload, in this browser.
   await page.click('.folder-head:has(.name:text-is("console"))');
   await settled("folded", (s) => !folder(s, "console").open && folder(s, "console").tasks.length === 0);

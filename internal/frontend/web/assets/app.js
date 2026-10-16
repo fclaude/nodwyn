@@ -203,6 +203,8 @@ function draw(routeChanged, what) {
   const attention = desk.needsYou().length;
   $("topbar-count").textContent = attention ? `${attention} need${attention === 1 ? "s" : ""} you` : "";
   $("topbar-count").hidden = !attention;
+  // On a phone the sidebar is a drawer, so this is the way to what waits.
+  $("topbar-count").href = attention === 1 ? `#/task/${desk.needsYou()[0].id}` : "#/";
   document.title = attention ? `(${attention}) nodwyn` : "nodwyn";
   const view = $("view");
   const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.id}` : route.name;
