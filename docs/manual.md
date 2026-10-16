@@ -2129,16 +2129,20 @@ and switches. Narrow screens use ordinary stacked sections and page
 scrolling instead of a nested scroll area.
 
 On Home, describe the task and choose its folder or worktree, model, helpers,
-judge and turn limits as usual. The clock beside Send opens **Schedule this
-task**. Choose Once, Every hour, Every day, Weekdays or Every week, its first
+judge and turn limits as usual. The clock beside Send opens **Schedule**,
+whether or not anything is typed yet: the message for each run is a required
+field there, started from what the box holds. Choose, under **Repeat**, Once,
+Every hour, Every day, Weekdays or Every week, its first
 local date and minute, and its dollar spend limit per run (0 means none).
 The preview comes from the daemon and shows its local times and offsets.
 Saving opens the task immediately; its message is sent when due. Scheduled
-tasks appear on Home with their next time or Paused.
+tasks appear on Home with their next time or Paused, and a card has **Pause
+schedule** (or **Resume schedule**) and **Run now**; Home says "Nothing
+scheduled." when there is none.
 
-On an existing task, **Repeat…** adds a schedule. **Schedule…** shows its
-message, next times and last skip, and lets you save changes, pause, resume,
-run now or remove it. Run now also works while paused and leaves the automatic
+On an existing task, **Schedule…**, whether it has a schedule or not, shows
+its message, next times and last skip, and lets you save changes, pause, resume,
+run now or remove it (after a confirm). Run now also works while paused and leaves the automatic
 next time unchanged. Resuming a paused schedule starts after now, without
 catching up the paused interval. Retiming starts the new series; changing
 only its message or spend preserves the times already handled. Removing a

@@ -1,6 +1,6 @@
 // Home: start anything, and see what needs you across every task.
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, basename } from "./dom.js";
-import { newSchedule, scheduleTime } from "./schedule.js";
+import { newSchedule, scheduleTime, scheduleActions } from "./schedule.js";
 import { summary } from "./prompts.js";
 import { keychainForm } from "./setup.js";
 import { firstModel } from "./models.js";
@@ -267,8 +267,17 @@ export function renderHome(root, ctx) {
   const schedules = h("section", { class: "home-section", "aria-label": "Scheduled tasks" }, h("h2", { class: "eyebrow" }, "Scheduled"));
   for (const item of desk.sessions.values()) if (item.schedule?.definition && !item.archived) {
     const s = item.schedule;
-    schedules.append(h("article", { class: "card" }, h("a", { href: `#/task/${item.id}` }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.definition.paused ? "Paused" : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending")));
+    const update = async (method, params = {}) => {
+      try {
+        await conn.call(method, { id: item.id, ...params });
+        await desk.refresh();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    schedules.append(h("article", { class: "card" }, h("a", { href: `#/task/${item.id}` }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.definition.paused ? "Paused" : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending"), h("div", { class: "row-actions" }, ...scheduleActions(conn, s.definition, item.archived, update))));
   }
+  if (!schedules.querySelector("article")) schedules.append(h("p", { class: "empty-note" }, "Nothing scheduled."));
   const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, schedules, done));
   // The ask being typed survives updates: while focus is in the top half,
   // only the lists below are replaced. This is decided before the composer
@@ -309,7 +318,8 @@ export function renderHome(root, ctx) {
     },
   });
   task.value = draft;
-  const ready = () => !starting && canStart && conn.live && !desk.keysLocked && !!chosen && !!task.value.trim() && !(canChoose && blocked(desk, selection()));
+  const canRun = () => !starting && canStart && conn.live && !desk.keysLocked && !!chosen && !(canChoose && blocked(desk, selection()));
+  const ready = () => canRun() && !!task.value.trim();
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: true }, icon("up", 18, 2));
   files ||= new Attachments();
   const attach = files.button("Attach");
@@ -384,7 +394,8 @@ export function renderHome(root, ctx) {
       class: "ask",
       onsubmit: startTask = async (event, scheduling = null) => {
         event.preventDefault();
-        if (!ready()) return;
+        // A schedule brings its own message, so the composer may be empty.
+        if (scheduling ? !canRun() : !ready()) return;
         starting = true;
         submit.disabled = true;
         let opened = "",
@@ -412,7 +423,7 @@ export function renderHome(root, ctx) {
           if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
           if (files.files.length) await files.upload(info.id);
           sending = true;
-          if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling, message: task.value });
+          if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling });
           else await conn.call("session.send", { id: info.id, text: task.value });
           draft = "";
           pick(null, desk);
@@ -452,10 +463,12 @@ export function renderHome(root, ctx) {
       limitsBox,
       canChoose ? picker.el : h("span", { class: "where" }, where),
       helpersSlot,
-      conn.has("schedule.set") ? h("button", { type: "button", class: "btn", "aria-label": "Schedule task", title: "Schedule task", onclick: () => {
-        if (!ready()) return;
-        newSchedule(conn, (d) => startTask(new Event("submit", { cancelable: true }), d));
-      } }, "◷") : null,
+      conn.has("schedule.set") ? h("button", { type: "button", class: "icon-btn", "aria-label": "Schedule", title: "Schedule", onclick: () => {
+        // Ready is a folder and a model that can be used: the message is asked
+        // for in the dialog, so the composer may still be empty.
+        if (!canRun()) return toast("Choose a folder and a model that can be used first.");
+        newSchedule(conn, (d) => startTask(new Event("submit", { cancelable: true }), d), task.value);
+      } }, icon("clock", 17)) : null,
       submit,
     ),
   );

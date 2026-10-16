@@ -16,8 +16,20 @@ check(async () => {
   await page.click(".save-bar button:has-text('Save')");
   await until('write approval setting saved', async () => sent.of('settings.write').length === 1 && await page.$eval('.save-bar', (el) => el.hidden));
   await page.evaluate(() => location.hash = '#/');
+  // Nothing is scheduled yet, and Home says so. The clock opens the dialog
+  // with the composer empty: the message is a field there, and required.
+  await page.waitForSelector('#task');
+  assert.ok((await page.locator('[aria-label="Scheduled tasks"]').textContent()).includes('Nothing scheduled.'), 'Home does not say that nothing is scheduled');
+  assert.strictEqual(await page.locator('button[aria-label="Schedule"] svg').count(), 1, 'the clock is not an icon like the other controls');
+  assert.strictEqual(await page.inputValue('#task'), '');
+  await page.click('button[aria-label="Schedule"]', { timeout: 5000 });
+  assert.strictEqual(await page.getAttribute('#schedule-message', 'required'), '', 'the schedule dialog does not require its message');
+  assert.strictEqual(await page.inputValue('#schedule-message'), '');
+  await page.click('button[aria-label="Close schedule"]');
+  // What was typed in the composer is where the message starts.
   await page.fill('#task', 'Write scheduled');
-  await page.click('button[aria-label="Schedule task"]', { timeout: 5000 });
+  await page.click('button[aria-label="Schedule"]', { timeout: 5000 });
+  assert.strictEqual(await page.inputValue('#schedule-message'), 'Write scheduled', 'the composer text was not carried to the dialog');
   await page.selectOption('#schedule-repeat', 'weekly');
   await page.fill('#schedule-at', '2099-10-16T09:30');
   await page.fill('#schedule-cost', '1.25');
@@ -29,6 +41,22 @@ check(async () => {
   assert.strictEqual(sent.of('session.send').filter((p) => p.id === id).length, 0, 'creation sent the message immediately');
   const def = sent.of('schedule.set').find((p) => p.id === id);
   assert.strictEqual(def.message, 'Write scheduled'); assert.strictEqual(def.cost, 1.25);
+  // Home lists it, with pause and run now on the card: pausing there sends the
+  // same request as the dialog does, and resuming undoes it.
+  const taskHash = await page.evaluate(() => location.hash);
+  await page.evaluate(() => location.hash = '#/');
+  await page.waitForSelector('[aria-label="Scheduled tasks"] article');
+  assert.ok((await page.locator('[aria-label="Scheduled tasks"] article').textContent()).includes('Next 2099-10-16 09:30'), 'the card does not say when it runs next');
+  assert.strictEqual(await page.locator('[aria-label="Scheduled tasks"] article button:text-is("Run now")').count(), 1, 'the card has no Run now');
+  await page.click('[aria-label="Scheduled tasks"] article button:text-is("Pause schedule")');
+  await until('card paused', async () => (await page.locator('[aria-label="Scheduled tasks"] article').textContent()).includes('Paused'));
+  assert.deepStrictEqual(sent.of('schedule.pause').at(-1), { id, paused: true });
+  await page.click('[aria-label="Scheduled tasks"] article button:text-is("Resume schedule")');
+  await until('card resumed', async () => (await page.locator('[aria-label="Scheduled tasks"] article').textContent()).includes('Next 2099-10-16 09:30'));
+  assert.deepStrictEqual(sent.of('schedule.pause').at(-1), { id, paused: false });
+  await page.screenshot({ path: `${out}/schedule-home.png` });
+  await page.evaluate((hash) => location.hash = hash, taskHash);
+  await page.waitForSelector('.task[data-loaded]');
   await page.reload(); await ready(page); await page.waitForSelector('.task[data-loaded]');
   await manage(); await status('Scheduled');
   assert.strictEqual(await page.inputValue('#schedule-message'), 'Write scheduled', 'saved message did not reload');
@@ -68,13 +96,21 @@ check(async () => {
   assert.match(figures, /Total spend.*\$5\.00/);
   assert.match(figures, /This run\$0\.0000/, 'this run inherited the whole-task spend');
   await manage(); await status("Scheduled"); await page.waitForFunction(() => document.querySelector(".schedule-form [role=status]")?.textContent.includes("2099")); await page.screenshot({ path: `${out}/schedule-controls.png` });
+  // Removing asks first, as every removal does: Cancel keeps it.
+  await page.click('button:text-is("Remove schedule")');
+  assert.ok((await page.locator('.schedule-dialog').textContent()).includes('Remove the schedule? The task and what it has done stay.'));
+  assert.strictEqual(sent.of('schedule.set').filter((p) => p.remove).length, 0, 'Remove schedule removed it before it was confirmed');
+  await page.click('.schedule-dialog button:text-is("Cancel")');
+  await status('Scheduled');
+  await page.click('button:text-is("Remove schedule")');
   await page.click('button:text-is("Remove schedule")'); await status('No schedule');
+  assert.strictEqual(sent.of('schedule.set').filter((p) => p.remove).length, 1);
   await close();
   await page.reload(); await ready(page); await page.waitForSelector('.task[data-loaded]');
-  await page.click('.task-actions button:text-is("Repeat…")'); await status('No schedule');
+  await page.click('.task-actions button:text-is("Schedule…")'); await status('No schedule');
   await close();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.click('.task-actions button:text-is("Repeat…")');
+  await page.click('.task-actions button:text-is("Schedule…")');
   assert.strictEqual(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'schedule controls overflow phone');
   await page.screenshot({ path: `${out}/schedule-phone.png` });
   console.log('schedule create, preview, persist, pause, edit, resume, run with approval and remove');

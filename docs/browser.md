@@ -93,14 +93,19 @@ Run markers include CLI driver starts and `schedule.run`.
 
 ## Schedules
 
-Home’s clock opens a
-schedule form beside the ordinary ask choices, without sending immediately.
-`Repeat…` / `Schedule…` on a task opens its saved definition and controls.
+Home’s clock (an icon,
+named **Schedule**) opens a schedule form beside the ordinary ask choices,
+without sending immediately: its message is a required field, started from the
+composer's text, so the clock works with the box empty, and says what is
+missing (a folder, a model) when it cannot. `Schedule…` on a task, with or
+without a schedule, opens its saved definition and controls; **Remove
+schedule** asks first.
 `schedule.next` supplies the preview; displayed ISO times retain the daemon’s
 local offset even when a browser uses another timezone. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,
 as do edits and removal. Runs discard Don’t ask and use normal approvals.
-Home lists next times and paused schedules. The daemon coalesces missed times,
+Home lists next times and paused schedules, each card with Pause or Resume and
+Run now. The daemon coalesces missed times,
 records skips and closes idle scheduled sessions after 15 minutes; see the
 manual and ADR 49 for log-lock deferral and startup requirements.
 Whole-task spend stays in Totals; an open scheduled task also shows This run

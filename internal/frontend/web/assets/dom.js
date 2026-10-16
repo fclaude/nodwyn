@@ -56,8 +56,9 @@ const paths = {
   image: ["M3.5 17l5.5-5.5 4 4 2.5-2.5 5 5"],
   pencil: ["M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z", "M13.5 8l2.5 2.5"],
   warn: ["M12 3.5L2.5 20h19z", "M12 10v4.5", "M12 17.2h.01"],
+  clock: ["M12 7.5V12l3 2"],
 };
-const circles = { search: [[11, 11, 7]], sliders: [[15, 7, 2], [9, 17, 2]], commit: [[12, 12, 3.5]], sun: [[12, 12, 4]], image: [[8.5, 9.5, 1.5]] };
+const circles = { search: [[11, 11, 7]], sliders: [[15, 7, 2], [9, 17, 2]], commit: [[12, 12, 3.5]], sun: [[12, 12, 4]], image: [[8.5, 9.5, 1.5]], clock: [[12, 12, 8.5]] };
 const rects = { stop: [[6, 6, 12, 12, 1.5]], image: [[3, 5, 18, 14, 1.5]] };
 
 export function icon(name, size = 16, width = 1.8) {

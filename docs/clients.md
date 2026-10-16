@@ -39,7 +39,7 @@ it can see the thing but not change it.
 | Resume a stored session | yes, the sidebar | yes, the chooser (paged, typing filters it) or `--resume` | yes, `--resume` | — |
 | Switch between open tasks | yes, the sidebar; several open at once | one session per process; quit and choose again | one session | — |
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
-| Create and manage schedules (ADR 49) | yes, Home’s clock and task’s **Repeat…** / **Schedule…**; paired devices can pause or run now | not built | not built | not built |
+| Create and manage schedules (ADR 49) | yes, Home’s **Schedule** clock and task’s **Schedule…**; Home’s cards pause and run now; paired devices can pause or run now | not built | not built | not built |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | daemon mode detaches and the turn goes on; local mode aborts it | aborts it | — |
