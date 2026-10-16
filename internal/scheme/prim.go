@@ -156,6 +156,11 @@ type Prim struct {
 	Name    string
 	Meta    Meta
 	Handler func(c *Call) (Value, error)
+	// SkipsAsVoid makes an optional parameter the model leaves out before
+	// one it gives arrive as void rather than its type's empty value, for a
+	// handler that must tell "not given" from #f, 0 or "" (an MCP tool,
+	// whose server applies its own default to what is not sent).
+	SkipsAsVoid bool
 }
 
 // Gate is the guard's hook at the single Scheme→Go exit. Before returns nil

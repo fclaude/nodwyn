@@ -187,8 +187,9 @@ func mcpPrim(server config.MCPServer, tool mcp.Tool, declared config.MCPTool, cl
 		meta.EgressContained, meta.EgressOnward = true, server.NetworkHosts()
 	}
 	return &scheme.Prim{
-		Name: config.ToolName(server.Name, tool.Name),
-		Meta: meta,
+		Name:        config.ToolName(server.Name, tool.Name),
+		Meta:        meta,
+		SkipsAsVoid: true,
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
 			args := map[string]any{}
 			for i, pa := range params {
@@ -196,7 +197,7 @@ func mcpPrim(server config.MCPServer, tool mcp.Tool, declared config.MCPTool, cl
 					break
 				}
 				v := c.Args[i]
-				if pa.Optional && isEmpty(v) {
+				if pa.Optional && v.Kind == scheme.KVoid {
 					continue // skipped by the model; the server applies its default
 				}
 				raw, err := scheme.ToJSONAs(v, pa.Type)
@@ -232,7 +233,7 @@ func mcpPrim(server config.MCPServer, tool mcp.Tool, declared config.MCPTool, cl
 func previewArgs(params []scheme.Param, args []scheme.Value) string {
 	var b strings.Builder
 	for i, pa := range params {
-		if i >= len(args) || (pa.Optional && isEmpty(args[i])) {
+		if i >= len(args) || (pa.Optional && args[i].Kind == scheme.KVoid) {
 			continue
 		}
 		value := args[i].S
@@ -252,22 +253,8 @@ func previewArgs(params []scheme.Param, args []scheme.Value) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func isEmpty(v scheme.Value) bool {
-	switch v.Kind {
-	case scheme.KString:
-		return v.S == ""
-	case scheme.KInt:
-		return v.I == 0
-	case scheme.KBool:
-		return scheme.Equal(v, scheme.False)
-	case scheme.KVoid:
-		return true
-	}
-	return v.IsList() && scheme.Equal(v, scheme.Nil)
-}
-
 // schemaParams reads a tool's input schema into parameters: required ones
-// first, in the schema's order where it has one, then the rest by name.
+// first, then the rest, each by name (a JSON object keeps no order).
 // Every one is a payload: the whole call is sent to the server.
 func schemaParams(raw json.RawMessage) []scheme.Param {
 	var schema struct {

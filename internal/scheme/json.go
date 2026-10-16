@@ -218,7 +218,11 @@ func (p *Prim) ArgsFromJSON(raw []byte) ([]Value, error) {
 			continue
 		}
 		for _, s := range skipped {
-			args = append(args, emptyValue(s.Type))
+			if p.SkipsAsVoid {
+				args = append(args, Void)
+			} else {
+				args = append(args, emptyValue(s.Type))
+			}
 		}
 		skipped = nil
 		v, err := FromJSON(r)

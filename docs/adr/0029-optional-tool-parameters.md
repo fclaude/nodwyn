@@ -65,3 +65,15 @@ unwrapped text, so a wrapped `go test` is still counted as a test run.
 Names the tool does not have stay errors. Ignoring a `limit` on `fs-read`
 would tell the model a bound applied that did not, and ADR 38 already refuses
 an unknown field for the same reason.
+
+## Amendment 2026-10-16: an MCP tool tells "left out" from false and 0
+
+An optional parameter the model leaves out before one it gives arrives as
+its type's empty value, and an MCP tool's handler left out of the call
+every optional argument that was empty: "", 0 or #f. A false or a 0 the
+model gave on purpose was therefore never sent, and the server applied its
+default (a delete asked to be non-recursive went out recursive). An MCP
+primitive now takes a parameter left out as void (scheme.Prim.SkipsAsVoid),
+the handler and the confirm's preview leave out only void, and false, 0
+and "" go to the server as given. Host primitives keep the typed empty
+values. The regression is `TestMCPSendsFalseAndZeroAsGiven`.

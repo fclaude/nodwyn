@@ -363,3 +363,30 @@ func TestMCPArgumentsKeepTheirShape(t *testing.T) {
 		t.Fatalf("the server got %s", got)
 	}
 }
+
+// An optional argument the model gives as false or 0 reaches the server as
+// given; one it leaves out is not sent, and the server applies its default.
+// false and 0 were taken for "left out", so a delete asked to be
+// non-recursive went out with the server's recursive default.
+func TestMCPSendsFalseAndZeroAsGiven(t *testing.T) {
+	t.Parallel()
+	server := fakemcp.New(fakemcp.Tool{Name: "post_message", Description: "Delete",
+		Schema: map[string]any{"type": "object", "properties": map[string]any{
+			"path": map[string]any{"type": "string"}, "comment": map[string]any{"type": "string"},
+			"limit": map[string]any{"type": "integer"}, "recursive": map[string]any{"type": "boolean"}}, "required": []any{"path"}},
+		Reply: func(map[string]any) (string, bool) { return "deleted", false }})
+	defer server.Close()
+	r, _ := mcpRig(t, server, true, true, nil,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "d", Name: "chat__post_message", Args: map[string]any{"path": "/x", "limit": 0, "recursive": false}}}},
+		fake.Turn{Content: "deleted"},
+	)
+	r.s.Send("delete /x, not recursively")
+	r.drain("y")
+	if len(server.Calls) != 1 {
+		t.Fatalf("calls: %+v", server.Calls)
+	}
+	got, _ := json.Marshal(server.Calls[0].Args)
+	if string(got) != `{"limit":0,"path":"/x","recursive":false}` {
+		t.Fatalf("the server got %s", got)
+	}
+}
