@@ -120,9 +120,21 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     oninput: () => {
       filter = search.value;
       rerender();
-      nav.querySelector("input[type=search]")?.focus();
+    },
+    onkeydown: (event) => {
+      if (event.key !== "Escape") return;
+      searching = false;
+      filter = "";
+      rerender();
+      nav.querySelector(".sidebar-top .icon-btn")?.focus();
     },
   });
+  // The sidebar is drawn again on every keystroke and every change on the
+  // desk. A search being typed keeps its focus and caret through that, or
+  // each key would land before the last, and the page drawn after the
+  // sidebar would take the focus for its own field.
+  const was = searching && document.activeElement?.matches?.("#sidebar input[type=search]") ? document.activeElement : null;
+  const typing = was && { start: was.selectionStart, end: was.selectionEnd };
   const control = desk.control();
   const attention = { missing: "model missing", unconfigured: "not set up", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed" };
   const modelState = !conn.live ? ["bad", "offline"] : !control ? ["", "checking"] : control.state === "ready" ? ["ok", desk.running().length ? "working" : "ready"] : attention[control.state] ? ["warn", attention[control.state]] : ["bad", "unreachable"];
@@ -152,4 +164,8 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     ),
     ].filter(Boolean),
   );
+  if (typing) {
+    search.focus();
+    search.setSelectionRange(typing.start, typing.end);
+  }
 }

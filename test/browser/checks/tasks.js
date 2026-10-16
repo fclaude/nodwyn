@@ -101,8 +101,26 @@ check(async () => {
   await settled("show more", (s) => folder(s, "receipts").tasks.length === 6 && !folder(s, "receipts").more);
   // A message in an older task makes its folder the latest active again.
   await openTask("Summarize what is in this folder");
+  // The reply box keeps the focus while the message is on its way, so the
+  // next message is typed straight in and no key lands on the page, where a
+  // bare y or n answered the next request card. The page holds the message
+  // back 400 ms, as a daemon further away would: the demo answers within a
+  // frame, before the browser moves the focus off a disabled field.
+  await page.evaluate(() => {
+    const send = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (data) {
+      if (typeof data === "string" && data.includes('"session.send"')) {
+        WebSocket.prototype.send = send;
+        setTimeout(() => send.call(this, data), 400);
+        return;
+      }
+      return send.call(this, data);
+    };
+  });
   await page.fill("#reply", "Thanks");
   await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName), "reply", "the reply box lost the focus while the message was on its way");
   await idle();
   s = await settled("receipts first after a message", (s) => s.folders.map((f) => f.name).join() === "receipts,console" && folder(s, "receipts").tasks[0] === "Summarize what is in this folder");
   step("ordered by last activity");
@@ -246,14 +264,21 @@ check(async () => {
   await page.click('.folder-head:has(.name:text-is("console"))');
   await settled("unfolded", (s) => folder(s, "console").open && folder(s, "console").tasks.length === 1);
   // A search shows its matches in every folder, the archive included.
+  // It is typed key by key, as a person types: the sidebar is drawn again
+  // on each key, and the field keeps its focus and caret through that (each
+  // key used to land before the last, and Home took the focus).
   await page.click('.sidebar-top button[aria-label="Search tasks"]');
-  await page.fill(".search input", "question 2");
+  await page.keyboard.type("question 2", { delay: 15 });
   await settled("search", (s) => s.folders.length === 1 && folder(s, "receipts").tasks.join() === "Receipt question 2");
+  assert.strictEqual(await page.$eval(".search input", (el) => el.value), "question 2", "the search did not read as typed");
+  assert.ok(await page.$eval(".search input", (el) => el === document.activeElement), "the search lost the focus while typing");
   await page.screenshot({ path: `${out}/tasks-search.png` });
 
   // A saved task with eight driver runs opens at the latest one. Older
   // runs are previews until expanded, and both directions retain fixed ends.
-  await page.fill(".search input", "");
+  // Escape clears the search and closes it.
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".search input", { state: "detached" });
   const sessions = path.join(path.dirname(path.dirname(consoleRepo)), "data", "sessions");
   const sample = fs.readdirSync(sessions).filter((f) => f.endsWith(".jsonl")).flatMap((f) => fs.readFileSync(path.join(sessions, f), "utf8").trim().split("\n").map(JSON.parse)).find((e) => e.kind === "session.start");
   const historyID = "browser-run-history", history = [], boundaries = [];

@@ -624,6 +624,9 @@ export class TaskView {
     } finally {
       this.acting = false;
       this.controls();
+      // The card answered held the focus, and it is gone: the reply box
+      // takes it, so the next answer is not a key typed into the page.
+      if (!this.el?.transcript.contains(document.activeElement)) this.focusReply();
     }
   }
 
@@ -707,7 +710,13 @@ export class TaskView {
     this.el.helpers.textContent = delegates.length ? `May hand work to: ${delegates.join(", ")}` : "";
     const canSend = this.conn.has("session.send") && open && !this.loading && !this.acting && !this.uploading && !lost;
     this.el.form.hidden = !this.conn.has("session.send") || !!this.inspecting;
-    this.el.reply.disabled = !canSend;
+    // While a message or an answer is on its way the reply box is read-only,
+    // not disabled: disabling the field being typed in drops the focus to the
+    // page, so the next message needed a click, and a bare y or n typed
+    // meanwhile answered the next request card.
+    const busyHere = this.acting || this.uploading;
+    this.el.reply.disabled = !canSend && !busyHere;
+    this.el.reply.readOnly = busyHere;
     this.el.reply.placeholder = !open
       ? "This task is saved. Resume it to continue."
       : lost

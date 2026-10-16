@@ -289,6 +289,10 @@ kinds of row, removes its name and mounts after confirmation and keeps it
 out of Workspaces and Home's suggestions, even after a reload or restart.
 The folder, its files and its tasks stay as they were; old task history does
 not add it back. A matching last-folder pick is cleared. **Keep** cancels.
+
+**Finding a task.** The sidebar's magnifier opens a filter over every task's
+title, folder and branch, the archive included; **Escape** clears and closes
+it.
 Using the folder again restores it to the suggestions: adding it, or starting
 or resuming a task there, from the console, a paired device or a terminal.
 Forget is available only on the computer running nodwyn. A paired device
