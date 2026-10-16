@@ -57,13 +57,54 @@ func TestDocx(t *testing.T) {
 
 func TestXlsx(t *testing.T) {
 	path := zipFile(t, "receipts.xlsx", map[string]string{
-		"xl/workbook.xml":          `<workbook><sheets><sheet name="September" sheetId="1"/></sheets></workbook>`,
-		"xl/sharedStrings.xml":     `<sst><si><t>Store</t></si><si><t>Amount</t></si><si><r><t>Corner </t></r><r><t>shop</t></r></si></sst>`,
-		"xl/worksheets/sheet1.xml": `<worksheet><sheetData><row><c t="s"><v>0</v></c><c t="s"><v>1</v></c></row><row><c t="s"><v>2</v></c><c><v>12.5</v></c><c t="inlineStr"><is><t>paid</t></is></c></row></sheetData></worksheet>`,
+		"xl/workbook.xml":            `<workbook xmlns:r="r"><sheets><sheet name="September" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+		"xl/_rels/workbook.xml.rels": `<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`,
+		"xl/sharedStrings.xml":       `<sst><si><t>Store</t></si><si><t>Amount</t></si><si><r><t>Corner </t></r><r><t>shop</t></r></si></sst>`,
+		"xl/worksheets/sheet1.xml":   `<worksheet><sheetData><row><c t="s"><v>0</v></c><c t="s"><v>1</v></c></row><row><c t="s"><v>2</v></c><c><v>12.5</v></c><c t="inlineStr"><is><t>paid</t></is></c></row></sheetData></worksheet>`,
 	})
 	r, err := File(context.Background(), path, "receipts.xlsx")
-	want := "## September\nStore\tAmount\nCorner shop\t12.5\tpaid\n\n"
+	want := "## September\n1: Store\tAmount\n2: Corner shop\t12.5\tpaid\n\n"
 	if err != nil || r.Text != want || r.Pages != 1 {
+		t.Fatalf("%q %v", r.Text, err)
+	}
+}
+
+// A spreadsheet does not store empty cells or rows, so a cell is placed by
+// its reference: the blank column under Notes stays blank, and the row that
+// was never stored is a gap in the numbers. Sheets come in the workbook's
+// order under its names, whichever files hold them.
+func TestXlsxPlacesCellsByReferenceAndSheetsByTheWorkbook(t *testing.T) {
+	path := zipFile(t, "book.xlsx", map[string]string{
+		"xl/workbook.xml": `<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>` +
+			`<sheet name="Summary" sheetId="2" r:id="rId2"/><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+		"xl/_rels/workbook.xml.rels": `<Relationships>` +
+			`<Relationship Id="rId1" Type="x/worksheet" Target="worksheets/sheet1.xml"/>` +
+			`<Relationship Id="rId2" Type="x/worksheet" Target="/xl/worksheets/sheet2.xml"/></Relationships>`,
+		"xl/worksheets/sheet1.xml": `<worksheet><sheetData>` +
+			`<row r="1"><c r="A1" t="inlineStr"><is><t>name</t></is></c><c r="B1" t="inlineStr"><is><t>notes</t></is></c><c r="C1" t="inlineStr"><is><t>total</t></is></c></row>` +
+			`<row r="3"><c r="A3" t="inlineStr"><is><t>x</t></is></c><c r="C3"><v>5</v></c></row>` +
+			`<row r="4"><c r="A4"/></row></sheetData></worksheet>`,
+		"xl/worksheets/sheet2.xml": `<worksheet><sheetData><row r="2"><c r="B2"><v>7</v></c></row></sheetData></worksheet>`,
+	})
+	r, err := File(context.Background(), path, "book.xlsx")
+	want := "## Summary\n2: \t7\n\n## Data\n1: name\tnotes\ttotal\n3: x\t\t5\n\n"
+	if err != nil || r.Text != want || r.Pages != 2 {
+		t.Fatalf("got %q, want %q (%v)", r.Text, want, err)
+	}
+}
+
+// Slides are in the deck's order, numbered by it, whatever their files are
+// called.
+func TestPptxFollowsThePresentationsOrder(t *testing.T) {
+	path := zipFile(t, "deck.pptx", map[string]string{
+		"ppt/presentation.xml": `<p:presentation xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst>` +
+			`<p:sldId id="258" r:id="rId3"/><p:sldId id="256" r:id="rId2"/></p:sldIdLst></p:presentation>`,
+		"ppt/_rels/presentation.xml.rels": `<Relationships><Relationship Id="rId2" Target="slides/slide1.xml"/><Relationship Id="rId3" Target="slides/slide3.xml"/></Relationships>`,
+		"ppt/slides/slide1.xml":           `<p:sld><a:p><a:r><a:t>Was first</a:t></a:r></a:p></p:sld>`,
+		"ppt/slides/slide3.xml":           `<p:sld><a:p><a:r><a:t>Was third</a:t></a:r></a:p></p:sld>`,
+	})
+	r, err := File(context.Background(), path, "deck.pptx")
+	if err != nil || r.Pages != 2 || !strings.HasPrefix(r.Text, "## Slide 1\nWas third") || !strings.Contains(r.Text, "## Slide 2\nWas first") {
 		t.Fatalf("%q %v", r.Text, err)
 	}
 }

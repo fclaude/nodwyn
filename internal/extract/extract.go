@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	zpath "path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -228,14 +229,22 @@ func docx(path string) (Result, error) {
 	return Result{Type: "docx", Text: b.String()}, nil
 }
 
-// pptx reads each slide's text in slide order.
+// pptx reads each slide's text in the order of the deck, which
+// presentation.xml gives and the numbers in the slides' file names do not
+// once slides are moved, added or deleted.
 func pptx(path string) (Result, error) {
 	r, err := openZip(path)
 	if err != nil {
 		return Result{}, err
 	}
 	defer r.Close()
-	slides := numbered(r, "ppt/slides/slide", ".xml")
+	var slides []string
+	for _, p := range orderedParts(r, "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels", "sldId") {
+		slides = append(slides, p.path)
+	}
+	if len(slides) == 0 {
+		slides = numbered(r, "ppt/slides/slide", ".xml")
+	}
 	var b strings.Builder
 	for i, name := range slides {
 		raw, err := readZip(r, name)
@@ -290,7 +299,88 @@ func numbered(r *zip.ReadCloser, prefix, suffix string) []string {
 	return out
 }
 
+// part is a document part named by a package's main part: the label it gives
+// (a sheet's name) and where it is in the zip.
+type part struct{ name, path string }
+
+// orderedParts lists, in the order main gives them, the parts its elem
+// elements (sheet, sldId) refer to by relationship id, resolved through the
+// relationships in rels. A package that does not say (no such parts) gives
+// none, and the caller goes by the file names.
+func orderedParts(r *zip.ReadCloser, main, rels, elem string) []part {
+	targets := map[string]string{}
+	if raw, err := readZip(r, rels); err == nil {
+		base := zpath.Dir(zpath.Dir(rels)) // the folder the relationships are relative to
+		_ = walkXML(raw, func(tok xml.Token) {
+			t, ok := tok.(xml.StartElement)
+			if !ok || t.Name.Local != "Relationship" {
+				return
+			}
+			var id, target string
+			external := false
+			for _, a := range t.Attr {
+				switch a.Name.Local {
+				case "Id":
+					id = a.Value
+				case "Target":
+					target = a.Value
+				case "TargetMode":
+					external = a.Value == "External"
+				}
+			}
+			if id == "" || target == "" || external {
+				return
+			}
+			if rest, ok := strings.CutPrefix(target, "/"); ok {
+				targets[id] = rest
+			} else {
+				targets[id] = zpath.Join(base, target)
+			}
+		})
+	}
+	raw, err := readZip(r, main)
+	if err != nil {
+		return nil
+	}
+	var out []part
+	_ = walkXML(raw, func(tok xml.Token) {
+		t, ok := tok.(xml.StartElement)
+		if !ok || t.Name.Local != elem {
+			return
+		}
+		var p part
+		for _, a := range t.Attr {
+			switch {
+			case a.Name.Local == "name":
+				p.name = a.Value
+			case a.Name.Local == "id" && a.Name.Space != "": // r:id, not the slide's own id
+				p.path = targets[a.Value]
+			}
+		}
+		if p.path != "" {
+			out = append(out, p)
+		}
+	})
+	return out
+}
+
+// cellColumn is the zero-based column of a cell reference such as "C12",
+// and false when it has none.
+func cellColumn(ref string) (int, bool) {
+	col, n := 0, 0
+	for _, c := range ref {
+		if c < 'A' || c > 'Z' {
+			break
+		}
+		col, n = col*26+int(c-'A')+1, n+1
+	}
+	return col - 1, n > 0
+}
+
 // xlsx reads each sheet as tab-separated rows, with shared strings resolved.
+// A row is given with its number and its cells in their columns, empty ones
+// as empty fields, since a spreadsheet does not store them; a row with no
+// cell holding anything is left out, its number a gap.
 func xlsx(path string) (Result, error) {
 	r, err := openZip(path)
 	if err != nil {
@@ -326,21 +416,25 @@ func xlsx(path string) (Result, error) {
 			}
 		})
 	}
-	names := sheetNames(r)
-	sheets := numbered(r, "xl/worksheets/sheet", ".xml")
+	// The sheets in the workbook's order and under the names it gives them,
+	// not in the order of the files' numbers, which are the order they were
+	// made in.
+	sheets := orderedParts(r, "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "sheet")
+	if len(sheets) == 0 {
+		for i, name := range numbered(r, "xl/worksheets/sheet", ".xml") {
+			sheets = append(sheets, part{name: fmt.Sprintf("Sheet %d", i+1), path: name})
+		}
+	}
 	var b strings.Builder
-	for i, name := range sheets {
-		raw, err := readZip(r, name)
+	for _, sheet := range sheets {
+		raw, err := readZip(r, sheet.path)
 		if err != nil {
 			continue
 		}
-		title := fmt.Sprintf("Sheet %d", i+1)
-		if i < len(names) {
-			title = names[i]
-		}
-		fmt.Fprintf(&b, "## %s\n", title)
+		fmt.Fprintf(&b, "## %s\n", sheet.name)
 		var row []string
 		var cellType, value string
+		var rowNumber, column int
 		inValue := false
 		var inline strings.Builder
 		_ = walkXML(raw, func(tok xml.Token) {
@@ -349,12 +443,24 @@ func xlsx(path string) (Result, error) {
 				switch t.Name.Local {
 				case "row":
 					row = row[:0]
+					rowNumber++
+					for _, a := range t.Attr {
+						if n, err := strconv.Atoi(a.Value); a.Name.Local == "r" && err == nil {
+							rowNumber = n
+						}
+					}
+					column = 0
 				case "c":
 					cellType, value = "", ""
 					inline.Reset()
 					for _, a := range t.Attr {
-						if a.Name.Local == "t" {
+						switch a.Name.Local {
+						case "t":
 							cellType = a.Value
+						case "r":
+							if col, ok := cellColumn(a.Value); ok {
+								column = col
+							}
 						}
 					}
 				case "v", "t":
@@ -374,10 +480,15 @@ func xlsx(path string) (Result, error) {
 					case "inlineStr":
 						cell = inline.String()
 					}
-					row = append(row, strings.ReplaceAll(strings.ReplaceAll(cell, "\t", " "), "\n", " "))
+					for len(row) <= column {
+						row = append(row, "")
+					}
+					row[column] = strings.ReplaceAll(strings.ReplaceAll(cell, "\t", " "), "\n", " ")
+					column++
 				case "row":
-					b.WriteString(strings.TrimRight(strings.Join(row, "\t"), "\t"))
-					b.WriteByte('\n')
+					if line := strings.TrimRight(strings.Join(row, "\t"), "\t"); line != "" {
+						fmt.Fprintf(&b, "%d: %s\n", rowNumber, line)
+					}
 				}
 			case xml.CharData:
 				if inValue {
@@ -392,22 +503,4 @@ func xlsx(path string) (Result, error) {
 		b.WriteByte('\n')
 	}
 	return Result{Type: "xlsx", Text: b.String(), Pages: len(sheets)}, nil
-}
-
-func sheetNames(r *zip.ReadCloser) []string {
-	raw, err := readZip(r, "xl/workbook.xml")
-	if err != nil {
-		return nil
-	}
-	var names []string
-	_ = walkXML(raw, func(tok xml.Token) {
-		if t, ok := tok.(xml.StartElement); ok && t.Name.Local == "sheet" {
-			for _, a := range t.Attr {
-				if a.Name.Local == "name" {
-					names = append(names, a.Value)
-				}
-			}
-		}
-	})
-	return names
 }

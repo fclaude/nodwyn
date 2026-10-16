@@ -584,3 +584,15 @@ The sessions of one repository share one store, so its index is changed under
 a file lock (`versions/lock`): a pruning session used to rewrite the index
 from what it had read and lose a version another had appended, leaving its
 object behind.
+
+## Amendment 2026-10-16: spreadsheets and decks are read in their own order
+
+A spreadsheet stores neither empty cells nor empty rows, so reading the cells of a
+row in turn shifted every value after a blank one to the left, and a sheet's
+rows lost their numbers. Each cell is now placed by its reference (`C3`), an
+empty one in between is an empty field, and a row is written with its
+number (`3: x<TAB><TAB>5`); a row with nothing in it is left out, its number a
+gap. Sheets come in the workbook's order under the names it gives them, and
+slides in `presentation.xml`'s order and numbered by it, resolved through the
+relationships parts; the numbers in the files' names, which are the order
+parts were made in, are used only for a package that has no such parts.
