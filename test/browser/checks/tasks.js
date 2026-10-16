@@ -393,4 +393,32 @@ check(async () => {
   await until("the resumed task answered", async () => (await page.locator(".transcript > .turn.user .you-text").count()) === 3);
   await page.screenshot({ path: `${out}/tasks-saved-reply.png` });
   step("a saved task is answered from its own reply box");
+
+  // The policy editor looks like the rest of the console (its buttons are
+  // buttons of the house's style), and reloading the file, which throws a
+  // draft away, asks first when there is one.
+  await page.click("#aside-tab-workspace");
+  await page.click(".links button:text-is('Policy')");
+  await page.click("button:text-is('Edit shared bindings')");
+  await page.waitForSelector("#policy-content");
+  const plain = await page.$$eval(".inspector-view button", (bs) => bs.filter((b) => !b.classList.contains("btn")).map((b) => b.textContent));
+  assert.deepStrictEqual(plain, [], `buttons outside the house style: ${plain}`);
+  const original = await page.inputValue("#policy-content");
+  const reads = sent.of("session.policy.read").length;
+  await page.click("button:text-is('Reload file and discard edits')");
+  await until("an unedited draft reloads at once", async () => sent.of("session.policy.read").length === reads + 1);
+  await page.waitForFunction(() => document.querySelector("#policy-content") && !document.querySelector(".inspector-view").textContent.includes("Reading policy through the guard"));
+  await page.fill("#policy-content", original + "\n# a long edit");
+  await page.click("button:text-is('Reload file and discard edits')");
+  await page.waitForSelector(".inspector-view .callout[role=alert] button:text-is('Keep editing')");
+  assert.strictEqual(sent.of("session.policy.read").length, reads + 1, "an edited draft was discarded without asking");
+  await page.click("button:text-is('Keep editing')");
+  assert.strictEqual(await page.inputValue("#policy-content"), original + "\n# a long edit", "Keep editing lost the draft");
+  await page.click("button:text-is('Reload file and discard edits')");
+  await page.click(".callout[role=alert] button:text-is('Discard edits')");
+  await until("the file read again after the confirm", async () => sent.of("session.policy.read").length === reads + 2);
+  await page.waitForFunction(() => document.querySelector("#policy-content") && !document.querySelector(".inspector-view").textContent.includes("Reading policy through the guard"));
+  assert.strictEqual(await page.inputValue("#policy-content"), original, "the draft was not replaced by the file");
+  await page.screenshot({ path: `${out}/tasks-policy.png` });
+  step("the policy editor asks before discarding a draft");
 });

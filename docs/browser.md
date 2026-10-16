@@ -876,7 +876,10 @@ redaction.
 The policy editor completes the current U3 scope. Its two targets are shared
 `bindings.toml` and repository `.nodwyn/allow.toml`. Reads and writes use fixed host
 primitives through the interpreter and guard, with no arbitrary path or browser
-Scheme evaluation. The editor is unavailable through read-only bridges.
+Scheme evaluation. The editor is unavailable through read-only bridges. Its
+buttons are the console's own (`.btn`), and **Reload file and discard edits**
+asks (**Discard edits** / **Keep editing**) when the draft differs from the
+file, so one slip does not lose it.
 
 Each save validates TOML and requires a one-time diff confirmation. Session/turn
 approvals cannot waive it. A revision comparison under the shared policy lock

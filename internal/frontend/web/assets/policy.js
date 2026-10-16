@@ -1,71 +1,61 @@
 // The editor holds only a selected session's draft. Authority comes from the
 // daemon's guarded operation and subsequent prompt, never these controls.
-const text = (tag, value) => {
-  const node = document.createElement(tag);
-  node.textContent = value;
-  return node;
-};
-const button = (label, action) => {
-  const node = text("button", label);
-  node.type = "button";
-  node.addEventListener("click", action);
-  return node;
-};
+import { h } from "./dom.js";
+
+const button = (label, action, cls = "") => h("button", { type: "button", class: `btn small ${cls}`.trim(), onclick: action }, label);
+
 export function policyChoices(container, read) {
   container.append(
-    text("h3", "Edit policy files"),
-    text(
-      "p",
-      "Each save requires a separate diff confirmation. Files contain permission scopes, never credential values.",
-    ),
-    button("Edit shared bindings", () => read("bindings")),
-    button("Edit repository approvals", () => read("approvals")),
+    h("h3", {}, "Edit policy files"),
+    h("p", {}, "Each save requires a separate diff confirmation. Files contain permission scopes, never credential values."),
+    h("div", { class: "row-actions" }, button("Edit shared bindings", () => read("bindings")), button("Edit repository approvals", () => read("approvals"))),
   );
 }
+
 export function renderPolicyEditor(container, state, read, save, close) {
-  container.replaceChildren(
-    text(
-      "h3",
-      state.name === "bindings"
-        ? "Shared credential bindings"
-        : "Repository standing approvals",
-    ),
-    text(
+  const again = () => renderPolicyEditor(container, state, read, save, close);
+  const parts = [
+    h("h3", {}, state.name === "bindings" ? "Shared credential bindings" : "Repository standing approvals"),
+    h(
       "p",
+      {},
       state.name === "bindings"
         ? "Persistent shared policy. Sessions reload bindings before egress."
         : "Persistent repository policy. New or resumed sessions load this file; existing sessions retain their current approvals.",
     ),
-  );
-  if (state.error) container.append(text("p", state.error));
-  if (state.saved)
-    container.append(
-      text("p", "Policy saved. Reload the file before another edit."),
-    );
+  ];
+  if (state.error) parts.push(h("p", { class: "warning", role: "alert" }, state.error));
+  if (state.saved) parts.push(h("p", {}, "Policy saved. Reload the file before another edit."));
   if (state.doc && !state.saved) {
-    container.append(
-      text(
-        "p",
-        state.doc.Exists
-          ? "Editing an existing file."
-          : "This save will create the policy file.",
+    parts.push(h("p", {}, state.doc.Exists ? "Editing an existing file." : "This save will create the policy file."));
+    const input = h("textarea", { id: "policy-content", rows: 15, spellcheck: false, oninput: () => (state.draft = input.value) });
+    input.value = state.draft;
+    parts.push(h("label", { for: "policy-content" }, "Policy TOML"), input, h("div", { class: "row-actions" }, button("Review and save", save, "dark")));
+  } else if (!state.error && !state.saved) parts.push(h("p", {}, "Reading policy through the guard…"));
+  // Reloading throws the edits away, so with edits made it asks first: the
+  // button beside "Review and save" is one slip from losing a long draft.
+  const edited = () => !!state.doc && !state.saved && state.draft !== state.doc.Content;
+  if (state.discarding && edited())
+    parts.push(
+      h(
+        "div",
+        { class: "callout", role: "alert" },
+        h("span", {}, "Discard your edits and read the file again?"),
+        h("div", { class: "row-actions" }, button("Discard edits", () => { state.discarding = false; read(state.name); }, "dark"), button("Keep editing", () => { state.discarding = false; again(); }, "ghost")),
       ),
     );
-    const label = text("label", "Policy TOML");
-    const input = document.createElement("textarea");
-    input.id = "policy-content";
-    input.rows = 15;
-    input.spellcheck = false;
-    input.value = state.draft;
-    input.addEventListener("input", () => {
-      state.draft = input.value;
-    });
-    label.htmlFor = input.id;
-    container.append(label, input, button("Review and save", save));
-  } else if (!state.error && !state.saved)
-    container.append(text("p", "Reading policy through the guard…"));
-  container.append(
-    button("Reload file and discard edits", () => read(state.name)),
-    button("View current policy", close),
-  );
+  else
+    parts.push(
+      h(
+        "div",
+        { class: "row-actions" },
+        button("Reload file and discard edits", () => {
+          if (!edited()) return read(state.name);
+          state.discarding = true;
+          again();
+        }),
+        button("View current policy", close),
+      ),
+    );
+  container.replaceChildren(...parts);
 }
