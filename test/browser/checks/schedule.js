@@ -2,19 +2,14 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, start, line, launch, watch, requests, until, check } = require("../lib");
+const { out, requests, until, ready, desk, check } = require("../lib");
 check(async () => {
-  const demo = start(process.env.DEMO, ["-seed", "-pace=0"]);
-  const [url] = await line(demo, /URL (\S+)/);
-  const [repo] = await line(demo, /REPO (\S+)/);
-  const browser = await launch();
-  const page = watch(await browser.newPage({ viewport: { width: 1440, height: 1000 }, timezoneId: "Pacific/Honolulu" }));
+  const { url, repo, page } = await desk({ timezoneId: "Pacific/Honolulu" });
   const sent = requests(page);
-  const ready = () => page.waitForSelector("html[data-ready]");
   const manage = () => page.click('.task-actions button:text-is("Schedule…")');
   const close = () => page.click('button[aria-label="Close schedule"]');
   const status = async (text) => until(text, async () => (await page.locator('.schedule-status').textContent()).includes(text));
-  await page.goto(url); await ready();
+  await page.goto(url); await ready(page);
   await page.evaluate(() => location.hash = '#/settings');
   await page.waitForSelector('#section-approval');
   await page.click("[id='set-approval.writes-ask']");
@@ -34,7 +29,7 @@ check(async () => {
   assert.strictEqual(sent.of('session.send').filter((p) => p.id === id).length, 0, 'creation sent the message immediately');
   const def = sent.of('schedule.set').find((p) => p.id === id);
   assert.strictEqual(def.message, 'Write scheduled'); assert.strictEqual(def.cost, 1.25);
-  await page.reload(); await ready(); await page.waitForSelector('.task[data-loaded]');
+  await page.reload(); await ready(page); await page.waitForSelector('.task[data-loaded]');
   await manage(); await status('Scheduled');
   assert.strictEqual(await page.inputValue('#schedule-message'), 'Write scheduled', 'saved message did not reload');
   await page.click('button:text-is("Pause schedule")'); await status('Paused');
@@ -75,7 +70,7 @@ check(async () => {
   await manage(); await status("Scheduled"); await page.waitForFunction(() => document.querySelector(".schedule-form [role=status]")?.textContent.includes("2099")); await page.screenshot({ path: `${out}/schedule-controls.png` });
   await page.click('button:text-is("Remove schedule")'); await status('No schedule');
   await close();
-  await page.reload(); await ready(); await page.waitForSelector('.task[data-loaded]');
+  await page.reload(); await ready(page); await page.waitForSelector('.task[data-loaded]');
   await page.click('.task-actions button:text-is("Repeat…")'); await status('No schedule');
   await close();
   await page.setViewportSize({ width: 390, height: 844 });

@@ -3,7 +3,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const { execFileSync } = require("child_process");
-const { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, shows, until, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, shows, until, step, ready, check } = require("../lib");
 
 check(async () => {
   // The real path: the folder the phone types is compared with the forgotten
@@ -37,7 +37,6 @@ check(async () => {
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = watch(await phone.newPage());
   const sent = requests(page);
-  const step = (m) => console.log("step:", m);
   // An unpaired browser learns it is one when its socket is refused.
   expectError(/^WebSocket connection to 'ws:\/\/desk\.test:\d+\/socket' failed: .*403$/);
   await page.goto(`http://desk.test:${port}/`);
@@ -50,7 +49,7 @@ check(async () => {
   await page.fill("#pair-code", code);
   await page.fill("#pair-device", "phone");
   await page.click("button[type=submit]");
-  await page.waitForSelector("html[data-ready]", { timeout: 10000 });
+  await ready(page);
   await page.waitForSelector("#task");
   assert.match(fs.readFileSync(`${root}/config/nodwyn/devices.toml`, "utf8"), /name = "phone"/, "devices.toml names the phone");
   step("paired as phone");

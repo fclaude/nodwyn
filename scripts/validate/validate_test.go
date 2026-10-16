@@ -564,3 +564,49 @@ func TestTheToolDescriptionDoesNotClaimTheBooksAreBuilt(t *testing.T) {
 		t.Errorf("the description should say the books are not built: %s", doc)
 	}
 }
+
+// Every browser check is run by run.sh with no arguments and described in
+// the README: the lists drifted (the README lacked schedule, retrieval and
+// conversation-search, AGENTS.md six checks) until a session ran only the
+// checks it was told of and missed the one that covers its change.
+func TestEveryBrowserCheckIsRunAndDescribed(t *testing.T) {
+	files, err := filepath.Glob("../../test/browser/checks/*.js")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no browser checks found: %v", err)
+	}
+	runSh, err := os.ReadFile("../../test/browser/run.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	readme, err := os.ReadFile("../../test/browser/README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents, err := os.ReadFile("../../AGENTS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var all string
+	for _, line := range strings.Split(string(runSh), "\n") {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), `chromium) all="`); ok {
+			all, _, _ = strings.Cut(rest, `"`)
+		}
+	}
+	ran := strings.Fields(all)
+	for _, f := range files {
+		name := strings.TrimSuffix(filepath.Base(f), ".js")
+		if !slices.Contains(ran, name) {
+			t.Errorf("run.sh does not run the check %s", name)
+		}
+		if !strings.Contains(string(readme), "| `"+name+"` |") {
+			t.Errorf("test/browser/README.md has no row for the check %s", name)
+		}
+	}
+	if len(ran) != len(files) {
+		t.Errorf("run.sh runs %d checks and %d files are in checks/: %v", len(ran), len(files), ran)
+	}
+	// AGENTS.md sends a session to the directory, not to a list that drifts.
+	if !strings.Contains(string(agents), "test/browser/checks/") {
+		t.Error("AGENTS.md does not point at test/browser/checks/")
+	}
+}

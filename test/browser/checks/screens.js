@@ -3,7 +3,7 @@
 // what each shot asserts is what its view shows, its background, and what
 // the actions in it did.
 const assert = require("assert");
-const { out, start, line, launch, watch, shows, until, check } = require("../lib");
+const { out, start, line, launch, watch, shows, until, ready, check } = require("../lib");
 
 check(async () => {
   const demo = start(process.env.DEMO, ["-seed", "-pace=0"]);
@@ -21,7 +21,7 @@ check(async () => {
     demo.stdin.write("\n");
     const [ticket] = await line(demo, /TICKET (\S+)/, "stdout", from);
     await page.goto(`${base}/#ticket=${ticket}`);
-    await page.waitForSelector("html[data-ready]", { timeout: 10000 });
+    await ready(page);
     await look(page);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     const want = theme === "light" ? "rgb(245, 242, 234)" : "rgb(23, 22, 19)";
@@ -268,7 +268,7 @@ check(async () => {
       location.hash = "#/connections/models";
       location.reload();
     });
-    await page.waitForSelector("html[data-ready]");
+    await ready(page);
     await page.waitForFunction(() => !document.querySelector("#view").textContent.includes("Checking the configured models"), null, { timeout: 5000 });
   });
 });

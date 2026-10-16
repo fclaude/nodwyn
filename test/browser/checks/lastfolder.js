@@ -5,22 +5,16 @@
 // origin this browser has never seen — so the pick that carries over there
 // is the daemon's, not any browser's.
 const assert = require("assert");
-const { out, start, line, tempDir, launch, watch, requests, until, check } = require("../lib");
+const { out, start, line, tempDir, watch, requests, until, step, ready, desk, check } = require("../lib");
 
 check(async () => {
   // One root for both runs, as an app restart reuses its setup.
   const root = tempDir("nodwyn-demo-");
-  const demo = start(process.env.DEMO, ["-seed", "-pace=0", "-dir", root]);
-  const step = (m) => console.log("step:", m);
-  const [url] = await line(demo, /URL (\S+)/);
-  const [consoleRepo] = await line(demo, /REPO (\S+)/);
+  const { demo, url, repo: consoleRepo, ctx, page } = await desk({ args: ["-seed", "-pace=0", "-dir", root], viewport: { width: 1440, height: 900 } });
   const receipts = consoleRepo.replace(/\/console$/, "/receipts");
-  const browser = await launch();
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const page = watch(await ctx.newPage());
   const pressed = () => page.$eval("#work-in button.chip[aria-pressed=true]", (b) => b.title);
   const home = async () => {
-    await page.waitForSelector("html[data-ready]", { timeout: 15000 });
+    await ready(page);
     await page.waitForSelector("#work-in button.chip[aria-pressed=true]");
   };
   const pick = async (folder) => {
@@ -75,7 +69,7 @@ check(async () => {
   const fresh = watch(await ctx.newPage());
   const sent = requests(fresh);
   await fresh.goto(restarted);
-  await fresh.waitForSelector("html[data-ready]", { timeout: 15000 });
+  await ready(fresh);
   await fresh.waitForSelector("#work-in button.chip[aria-pressed=true]");
   assert.ok(sent.of("workspace.active").length, "the fresh window never asked the daemon for the folder picked last");
   assert.strictEqual(
@@ -103,7 +97,7 @@ check(async () => {
   assert.strictEqual(fs.readFileSync(marker, "utf8"), "keep this file\n");
   assert.strictEqual(await fresh.locator("#sidebar a.nav-task").count(), tasksBefore, "forgetting removed task history");
   await fresh.reload();
-  await fresh.waitForSelector("html[data-ready]");
+  await ready(fresh);
   assert.strictEqual(await row(receipts).count(), 0, "task history resurrected the forgotten folder");
   await fresh.evaluate(() => (location.hash = "#/"));
   await fresh.waitForSelector("#work-in");
@@ -122,7 +116,7 @@ check(async () => {
   await row(receipts).getByRole("button", { name: "Forget", exact: true }).click();
   await row(receipts).waitFor({ state: "detached" });
   await fresh.reload();
-  await fresh.waitForSelector("html[data-ready]");
+  await ready(fresh);
   assert.strictEqual(await row(receipts).count(), 0, "a named workspace came back from its task history");
   assert.strictEqual(fs.readFileSync(marker, "utf8"), "keep this file\n");
   step("forgetting unnamed and named folders persists without deleting files or tasks; adding restores them");

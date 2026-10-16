@@ -43,16 +43,21 @@ are faster.
   nothing either way: say so. Setup whose errors are ignored (an unchecked
   `os.WriteFile`) lets a test pass on a state that never existed.
 - **The console** (`internal/frontend/web/assets`: JS, CSS): Go's tests do not
-  run it. Run its browser check, `bash test/browser/run.sh <check>`: a
-  check is each file in `test/browser/checks`, and `test/browser/README.md`
-  says what each proves, so pick the one that exercises your page;
-  screenshots land in `test/browser/out/<check>`,
+  run it. Run its browser check, `bash test/browser/run.sh <check>`: one
+  per file in `test/browser/checks/`, each described in `test/browser/README.md`
+  (`ls test/browser/checks`; with no name `run.sh` runs them all, which
+  `make browser` does too, in about 30 s; screenshots land in
+  `test/browser/out/<check>`),
   and extend the check to the states your change adds: a setting off, after
   a save, the new action, the page that links to it. The
   check performs the new action and checks what it did (the request sent,
   the state after it): one that only finds an element passes on a feature
   that does nothing. If Chromium is missing: `cd test/browser && npx
-  playwright install chromium`.
+  playwright install chromium`. `nodwyn app` opens a WebKit window, which
+  Chromium does not show the faults of: for a layout or CSS change also run
+  `BROWSER=webkit bash test/browser/run.sh` (`screens`, `approve`, `tasks`)
+  when Playwright's WebKit is installed (`npx playwright install webkit`); it
+  says so and runs nothing when it is not.
   To look by hand: `go run ./test/browser/demo -seed` prints a launch URL.
 - **What a client can do** (the console, the TUI, line mode, a CLI
   command): its row in `docs/clients.md` changes in the same commit.

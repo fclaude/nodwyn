@@ -16,7 +16,7 @@
 //   chosen wrongly, and cancelled back to the model without saving anything.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, runtimeDir, launch, watch, requests, shows, until, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, shows, until, step, check } = require("../lib");
 
 check(async () => {
   const root = tempDir("nodwyn-firstmodel-");
@@ -34,7 +34,6 @@ check(async () => {
   const browser = await launch();
   const page = watch(await browser.newPage({ viewport: { width: 1280, height: 1000 } }));
   const sent = requests(page);
-  const step = (m) => console.log("step:", m);
   const configFile = `${root}/config/nodwyn/config.toml`;
   const config = () => fs.readFileSync(configFile, "utf8");
   const bindings = () => fs.readFileSync(`${root}/config/nodwyn/bindings.toml`, "utf8");

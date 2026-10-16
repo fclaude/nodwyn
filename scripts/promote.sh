@@ -2,8 +2,8 @@
 # Promote the working-tree build to nodwyn-stable (ADR 12/13).
 #   scripts/promote.sh
 # The stable binary's version is the commit it was built from, so a dirty
-# tree is refused. Runs the acceptance suite and the selfcheck, then swaps
-# the binaries.
+# tree is refused. Runs the acceptance suite, the console's browser checks and
+# the selfcheck, then swaps the binaries.
 # nodwyn-stable is the webview build, so `nodwyn-stable app` started without a
 # terminal (a desktop launcher) opens a window. Where it cannot be built (Linux
 # without WebKitGTK) it is the browser build, and promote says so.
@@ -27,6 +27,9 @@ if ! scripts/webview-env.sh check; then
 fi
 
 make accept
+# Go's tests do not run the console's JavaScript, and nodwyn-stable is what a
+# person works in: a commit that leaves the console blank must not reach it.
+make browser
 make "$target" VERSION="$id"
 scripts/selfcheck.sh bin/nodwyn
 

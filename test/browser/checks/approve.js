@@ -14,14 +14,10 @@
 // idle and takes a message.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, launch, watch, expectError, requests, shows, until, check } = require("../lib");
+const { out, tempDir, expectError, requests, shows, until, step, ready, desk, check } = require("../lib");
 
 check(async () => {
-  const demo = start(process.env.DEMO, ["-seed", "-pace=0"]);
-  const [url] = await line(demo, /URL (\S+)/);
-  const [repo] = await line(demo, /REPO (\S+)/);
-  const browser = await launch();
-  const page = watch(await browser.newPage({ viewport: { width: 1440, height: 1000 } }));
+  const { url, repo, page } = await desk();
   const sent = requests(page);
   let socket, approveReplyID = null, heldApproveReply = null, failNextApprove = false;
   let approvalEventSeen = false, approvalInfoIDs = new Set(), heldApprovalInfo = null;
@@ -52,10 +48,9 @@ check(async () => {
       else ws.send(message);
     });
   });
-  const step = (m) => console.log("step:", m);
   const transcript = () => page.innerText(".transcript");
   await page.goto(url);
-  await page.waitForSelector("html[data-ready]", { timeout: 15000 });
+  await ready(page);
   await page.click(".nav-task.dotted");
   await page.waitForSelector(".task[data-loaded]");
   const id = decodeURIComponent((await page.evaluate(() => location.hash)).replace("#/task/", ""));
@@ -510,9 +505,7 @@ check(async () => {
       return { pill: document.querySelector(".task-head .pill")?.textContent, stop: button("Stop")?.disabled, close: button("Close")?.disabled };
     });
   const settles = (what, want) =>
-    until(what, async () => JSON.stringify(await head()) === JSON.stringify(want)).catch(async (e) => {
-      throw new Error(`${e.message}: ${JSON.stringify(await head())}`);
-    });
+    until(what, async () => JSON.stringify(await head()) === JSON.stringify(want), head);
   const withImage = async (text) => {
     await page.evaluate(() => (location.hash = "#/"));
     await page.waitForSelector("#task");
@@ -569,7 +562,7 @@ check(async () => {
     await until("the transport setting saved", async () => sent.of("settings.write").length === beforeSave + 1 && await page.$eval(".save-bar", (el) => el.hidden));
     assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "policy.allow_insecure_http": allow } });
     await page.reload();
-    await page.waitForSelector("html[data-ready]");
+    await ready(page);
     await page.waitForSelector(`[id='set-policy.allow_insecure_http-${allow || "default"}'][aria-pressed=true]`);
   }
   step("credential transport setting defaults off, saves on and off, and survives reload");

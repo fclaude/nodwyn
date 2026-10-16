@@ -6,15 +6,10 @@
 // and the model then counts the image it was sent.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, launch, watch, until, check } = require("../lib");
+const { out, tempDir, until, step, ready, desk, check } = require("../lib");
 
 check(async () => {
-  const demo = start(process.env.DEMO, ["-seed", "-pace=0"]);
-  const [url] = await line(demo, /URL (\S+)/);
-  const [repo] = await line(demo, /REPO (\S+)/);
-  const browser = await launch();
-  const page = watch(await browser.newPage({ viewport: { width: 1440, height: 1000 } }));
-  const step = (m) => console.log("step:", m);
+  const { url, repo, page } = await desk();
   const shot = `${tempDir("nodwyn-shot-")}/shot.png`;
   fs.writeFileSync(shot, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"));
   const notes = `${tempDir("nodwyn-notes-")}/notes.txt`;
@@ -22,7 +17,7 @@ check(async () => {
   const chips = () => page.$$eval(".ask .attach-list .attach-chip .name", (els) => els.map((e) => e.textContent));
 
   await page.goto(url);
-  await page.waitForSelector("html[data-ready]", { timeout: 15000 });
+  await ready(page);
   // A route there and back is a full redraw, which puts the composer's
   // shared attach input back in the page after the desk's first redraws.
   await page.evaluate(() => { location.hash = "#/workspaces"; location.hash = "#/"; });

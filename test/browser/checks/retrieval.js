@@ -4,19 +4,13 @@
 // Workspace tab, and the Workspaces page's line for the index with its
 // Forget, and earlier tasks turned on there showing in the task.
 const assert = require("assert");
-const { start: run, line, launch, watch, requests, until, check } = require("../lib");
+const { out, line, requests, until, step, ready, desk, check } = require("../lib");
 
 check(async () => {
-  const demo = run(process.env.DEMO, ["-seed", "-pace=0"]);
-  const step = (m) => console.log("step:", m);
-  const [url] = await line(demo, /URL (\S+)/);
-  const [repo] = await line(demo, /REPO (\S+)/);
-  const browser = await launch();
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const page = watch(await ctx.newPage());
+  const { url, repo, page } = await desk();
   const sent = requests(page);
   await page.goto(url);
-  await page.waitForSelector("html[data-ready]", { timeout: 15000 });
+  await ready(page);
   await page.click(`button.chip[title="${repo}"]`);
   await page.fill("#task", "Where are the session list's rows drawn, and what did we say about them?");
   await page.press("#task", "Control+Enter");
@@ -84,6 +78,6 @@ check(async () => {
   panel = await workspace(/Search index\nbuilt at the first search/);
   assert.match(panel, /Earlier tasks\nsearched by the model/, panel);
   assert.match(panel, /Search index\nbuilt at the first search/, panel);
-  await page.screenshot({ path: `${process.argv[2]}/retrieval-workspace.png` });
+  await page.screenshot({ path: `${out}/retrieval-workspace.png` });
   step("earlier tasks turned on for the folder show in the task");
 });

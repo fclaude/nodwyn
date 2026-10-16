@@ -7,7 +7,7 @@
 // without a passphrase is open without anyone unlocking it.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, runtimeDir, launch, watch, requests, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, step, ready, check } = require("../lib");
 const env = { ...process.env };
 const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
 check(async () => {
@@ -40,7 +40,6 @@ check(async () => {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = watch(await context.newPage());
   const sent = requests(page);
-  const step = (m) => console.log("step:", m);
   const go = (hash) => page.evaluate((h) => (location.hash = h), hash);
 
   // The OpenAI action is refused by a synthetic RPC reply, before it can
@@ -247,7 +246,7 @@ check(async () => {
   await page.focus("#keychain-pass");
   await page.keyboard.type("family ");
   releaseStartup();
-  await page.waitForSelector("html[data-ready]");
+  await ready(page);
   assert.strictEqual(await page.evaluate(() => document.activeElement?.id), "keychain-pass", "startup moved password focus to chat");
   await page.keyboard.type("passphrase");
   assert.strictEqual(await page.inputValue("#keychain-pass"), "family passphrase", "startup dropped part of the password");

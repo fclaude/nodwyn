@@ -9,7 +9,7 @@
 // being edited keep what was typed through them.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, runtimeDir, launch, watch, requests, shows, until, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, shows, until, step, check } = require("../lib");
 
 check(async () => {
   const root = tempDir("nodwyn-first-");
@@ -24,7 +24,6 @@ check(async () => {
   const browser = await launch();
   const page = watch(await browser.newPage({ viewport: { width: 1280, height: 860 } }));
   const sent = requests(page);
-  const step = (m) => console.log("step:", m);
   // The console's socket goes through here, so that replies to
   // versions.list can be held back while `holding` is set: a History list
   // answered after the panel was redrawn. While `pausing` is set, everything

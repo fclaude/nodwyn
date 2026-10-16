@@ -50,3 +50,27 @@ read nor written. This trusts no file the person has not: promote refuses a
 dirty tree, so the files accepted are the committed ones the candidate was
 built from. It also proves the candidate's trust review and acceptance work
 end to end.
+
+## Amendment 2026-10-16 (the browser checks, and WebKit)
+
+Promotion ran `make accept` only, which does not run the console's
+JavaScript: the sixteen browser checks (`test/browser`) ran when a session
+called validate (ADR 37), so a commit made without validate could leave the
+console blank and become the person's daily `nodwyn-stable`. `make browser`
+(`bash test/browser/run.sh`) is now a step of `scripts/promote.sh`, between
+accept and the build; it fails, saying how to install it, when Node or
+Playwright's Chromium is missing. It is not part of `make accept`, which
+the Gitea workflow and the GitHub mirror also run, because their runners are
+Alpine containers on which a Playwright Chromium was never shown to run
+(an unverified step there would be red or skipped for the wrong reason); the
+workflow is unchanged.
+
+The checks run Chromium, and `nodwyn app` opens WebKit (WebKitGTK, WKWebView),
+whose layout and CSS support differ. `BROWSER=webkit` (`bash test/browser/run.sh`
+or `make browser`) runs `screens`, `approve` and `tasks` in Playwright's
+WebKit, with screenshots under `out/webkit/`. It is a separate download, so it
+is in neither validate nor promote: where it is not installed the run says so
+and runs nothing (exit 0). It was run on no machine for this amendment, since
+WebKit was not installed on the one used: only the missing-WebKit path was run,
+and the WebKit launch itself is untried. The other checks stay Chromium-only (`remote` maps a host name
+with a Chromium flag).

@@ -77,7 +77,7 @@ This is the spine. Read these in order and you have read the system.
 | `cmd/nodwyn-schema` | generates `docs/protocol.schema.json` | `main.go` |
 | `dev/`, `.nodwyn/` | this repository's own tools and standing approvals | `dev/go.scm` |
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
-| `test/browser` | the console's checks in headless Chromium | `README.md` |
+| `test/browser` | the console's checks in headless Chromium (`make browser`; `BROWSER=webkit` runs some in WebKit) | `README.md` |
 | `test/release`, `test/sessions` | the release publisher's tests against a fake Gitea, and recorded session logs the replay tests read | `test_release.py`; `README.md` |
 | `scripts/validate` | what `validate` runs and checks for a change ([ADR 37](adr/0037-validate-before-done.md)) | `main.go` |
 | `test/fakes/ollama` | scriptable fake of the model server; `serve` runs it for the selfcheck | `ollama.go` |
@@ -224,7 +224,7 @@ servers (W3b) live.
 
 ```bash
 make build                       # bin/nodwyn (and bin/nodwyn-egress) from the working tree
-make promote                     # accept + selfcheck, then ~/.local/bin/nodwyn-stable (ADR 12/13)
+make promote                     # accept + browser checks + selfcheck, then ~/.local/bin/nodwyn-stable (ADR 12/13)
                                  # and nodwyn-egress beside it
 ```
 

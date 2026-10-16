@@ -8,7 +8,11 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const { chromium } = require("playwright");
+const { chromium, webkit } = require("playwright");
+
+// The browser the check runs in: Chromium, or WebKit with BROWSER=webkit
+// (run.sh), which is the engine of the window `nodwyn app` opens.
+const engine = process.env.BROWSER === "webkit" ? webkit : chromium;
 
 const kids = [];
 const browsers = [];
@@ -118,7 +122,7 @@ function freePort() {
 }
 
 async function launch(options) {
-  const browser = await chromium.launch(options);
+  const browser = await engine.launch(options);
   browsers.push(browser);
   return browser;
 }
@@ -162,6 +166,30 @@ function requests(page) {
   return sent;
 }
 
+// step marks progress in the check's log.
+const step = (message) => console.log("step:", message);
+
+// ready waits until the desk's first refresh is drawn and the models have
+// answered, which the console marks with <html data-ready>.
+function ready(page, timeout = 30000) {
+  return page.waitForSelector("html[data-ready]", { timeout });
+}
+
+// desk starts the demo's world (the seeded one, whose scripted model
+// answers at once, unless args say otherwise), reads the launch URL and the
+// folder the demo printed on its `repo` line, and opens a watched page, in
+// a browser of its own, with the context options given (a desktop-sized
+// viewport unless one is). It opens no URL: some checks set up first, and
+// then `await page.goto(url); await ready(page)`.
+async function desk({ args = ["-seed", "-pace=0"], repo = "REPO", viewport = { width: 1440, height: 1000 }, ...context } = {}) {
+  const demo = start(process.env.DEMO, args);
+  const [url] = await line(demo, /URL (\S+)/);
+  const [dir] = await line(demo, new RegExp(`${repo} (\\S+)`));
+  const browser = await launch();
+  const ctx = await browser.newContext({ viewport, ...context });
+  return { demo, url, repo: dir, browser, ctx, page: watch(await ctx.newPage()) };
+}
+
 // shows fails unless the element at selector shows each of texts.
 async function shows(page, selector, ...texts) {
   const text = await page.innerText(selector);
@@ -169,12 +197,18 @@ async function shows(page, selector, ...texts) {
 }
 
 // until asks ready every 50 ms until it returns something truthy, and
-// returns that; after limit ms it fails, saying what never happened.
-async function until(what, ready, limit = 10000) {
+// returns that; after limit ms it fails, saying what never happened and, if
+// a describe function is given (in place of limit, or after it), what it
+// returns then, which is what the page showed instead.
+async function until(what, ready, limit = 10000, describe = null) {
+  if (typeof limit === "function") [limit, describe] = [10000, limit];
   for (const end = Date.now() + limit; ; await new Promise((r) => setTimeout(r, 50))) {
     const got = await ready();
     if (got) return got;
-    if (Date.now() > end) throw new Error(`no ${what} after ${limit} ms`);
+    if (Date.now() > end) {
+      const shown = describe ? `: ${JSON.stringify(await describe())}` : "";
+      throw new Error(`no ${what} after ${limit} ms${shown}`);
+    }
   }
 }
 
@@ -213,4 +247,4 @@ function check(body) {
   })();
 }
 
-module.exports = { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, shows, until, check };
+module.exports = { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, step, ready, desk, shows, until, check };

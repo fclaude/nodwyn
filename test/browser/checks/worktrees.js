@@ -6,7 +6,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, start: run, line, launch, watch, requests, shows, until, check } = require("../lib");
+const { out, watch, requests, shows, until, step, ready, desk, check } = require("../lib");
 
 // Held replies make races and refusals deterministic without a real daemon
 // failure. The legacy opener also runs these guards on the unchanged code.
@@ -160,15 +160,8 @@ async function reviewSafeguards(page) {
 }
 
 check(async () => {
-  const demo = run(process.env.DEMO, ["-pace=0"]);
-  const step = (m) => console.log("step:", m);
-  const [url] = await line(demo, /URL (\S+)/);
-  const [repo] = await line(demo, /GIT (\S+)/);
-  const browser = await launch();
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const page = watch(await ctx.newPage());
+  const { url, repo, ctx, page } = await desk({ args: ["-pace=0"], repo: "GIT" });
   const sent = requests(page);
-  const ready = (p = page) => p.waitForSelector("html[data-ready]", { timeout: 15000 });
   const idle = (p = page) => p.waitForFunction(() => document.querySelector(".task-head .pill")?.textContent === "Idle", null, { timeout: 15000 });
   const loaded = (p = page) => p.waitForSelector(".task[data-loaded]", { timeout: 15000 });
   const reads = () => sent.filter((r) => r.method === "session.subscribe" || r.method === "log.read").length;
@@ -181,7 +174,7 @@ check(async () => {
   };
 
   await page.goto(url);
-  await ready();
+  await ready(page);
   const sandbox = watch(await ctx.newPage(), "review safeguards");
   await sandbox.goto(url.replace(/#.*$/, "") + "#/settings");
   await ready(sandbox);

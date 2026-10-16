@@ -3,12 +3,10 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, start, line, launch, watch, requests, until, check } = require("../lib");
+const { out, requests, until, ready, desk, check } = require("../lib");
 
 check(async () => {
-  const demo = start(process.env.DEMO, ["-seed", "-pace=0"]);
-  const [url] = await line(demo, /URL (\S+)/);
-  const [repo] = await line(demo, /REPO (\S+)/);
+  const { url, repo, page } = await desk();
   const sessions = path.join(repo, "../../data/sessions");
   const sample = fs.readdirSync(sessions).filter((s) => s.endsWith('.jsonl')).flatMap((s) => fs.readFileSync(path.join(sessions,s),'utf8').trim().split('\n').map(JSON.parse)).find((e) => e.kind === 'session.start');
   const spans = {};
@@ -39,8 +37,6 @@ check(async () => {
   fixture('search-earlier',repo,true);
   fixture('search-worktree',repo,false,true);
   fixture('search-unrelated',repo.replace(/\/console$/,'/receipts'));
-  const browser=await launch();
-  const page=watch(await browser.newPage({viewport:{width:1440,height:1000}}));
   const sent=requests(page);
   let failSearch=false,failContext=false,holdQuery='',held=null,heldReady=false;
   await page.routeWebSocket('**/socket',async(ws)=>{
@@ -67,7 +63,7 @@ check(async () => {
     await page.fill('#conversation-query',query);await page.selectOption('#conversation-scope',scope);
     await page.click('.conversation-search-form button[type=submit]');
   };
-  await page.goto(url);await page.waitForSelector('html[data-ready]');
+  await page.goto(url);await ready(page);
   await go('#/task/search-anchor');await page.waitForSelector('.task[data-loaded]');
   await page.click('a[aria-label="Search conversation"]');await page.waitForSelector('#conversation-query');
   await search('starling-lantern');
@@ -112,7 +108,7 @@ check(async () => {
   assert.ok((await page.locator('.search-results').textContent()).includes('Archived'));
   assert.strictEqual(await page.locator('.search-task script').count(),0,'a task title became markup');
   assert.strictEqual(sent.of('workspace.save').length,0,'human search enabled model access');
-  await page.reload();await page.waitForSelector('html[data-ready]');
+  await page.reload();await ready(page);
   await until('project search after reload',async()=>await page.locator('.search-task').count()===2);
   assert.strictEqual(await page.inputValue('#conversation-scope'),'earlier');
   await search('unfindableword');await page.waitForSelector('.search-status:text-is("No matching conversation found.")');

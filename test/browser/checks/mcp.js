@@ -2,18 +2,14 @@
 // asks every call, without a standing answer; a read tool is gathered
 // silently.
 const assert = require("assert");
-const { out, start, line, launch, watch, requests, shows, check } = require("../lib");
+const { out, line, requests, shows, step, ready, desk, check } = require("../lib");
 
 check(async () => {
-  const demo = start(process.env.DEMO, ["-seed", "-pace=0"]);
-  const [url] = await line(demo, /URL (\S+)/);
+  const { demo, url, page } = await desk();
   const [mcp] = await line(demo, /MCP (\S+)/);
-  const browser = await launch();
-  const page = watch(await browser.newPage({ viewport: { width: 1440, height: 1000 } }));
   const sent = requests(page);
-  const step = (m) => console.log("step:", m);
   await page.goto(url);
-  await page.waitForSelector("html[data-ready]", { timeout: 15000 });
+  await ready(page);
   await page.evaluate(() => (location.hash = "#/connections"));
   await page.click("button:has-text('Add a server')");
   await page.fill("#mcp-name", "chat");

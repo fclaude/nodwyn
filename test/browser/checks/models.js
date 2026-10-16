@@ -43,7 +43,7 @@
 //   fails there, and nothing is ever asked of the other model.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, runtimeDir, launch, watch, requests, until, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, until, step, ready, check } = require("../lib");
 
 check(async () => {
   const root = tempDir("nodwyn-models-");
@@ -79,7 +79,6 @@ check(async () => {
   const browser = await launch();
   const page = watch(await browser.newPage({ viewport: { width: 1280, height: 1000 } }));
   const sent = requests(page);
-  const step = (m) => console.log("step:", m);
   // saveDefault chooses a default model and effort in Settings and waits for
   // the page to have finished with it. The toast is the last thing before
   // the settings page redraws itself, and that redraw replaces whatever page
@@ -667,7 +666,7 @@ check(async () => {
   await go("#/");
   await page.evaluate(() => localStorage.setItem("nodwyn-new-task-model", JSON.stringify({ name: "127-0-0-1-fast", effort: "" })));
   await page.reload();
-  await page.waitForSelector("html[data-ready]", { timeout: 20000 });
+  await ready(page);
   assert.ok(!(await page.innerText("#new-task-model")).includes("no longer in your list"), "a choice kept for the next task on the model that became the default is said to be gone: " + (await page.innerText("#new-task-model")));
   assert.strictEqual(await page.inputValue("#new-task-model-model"), "control", "the kept choice does not show the model that is now the default");
   await page.fill("#task", "Anything");

@@ -4,22 +4,15 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, start: run, line, launch, watch, requests, until, check } = require("../lib");
+const { out, requests, until, step, ready, desk, check } = require("../lib");
 
 check(async () => {
-  const demo = run(process.env.DEMO, ["-seed", "-pace=0"]);
-  const step = (m) => console.log("step:", m);
-  const [url] = await line(demo, /URL (\S+)/);
-  const [consoleRepo] = await line(demo, /REPO (\S+)/);
+  const { url, repo: consoleRepo, ctx, page } = await desk();
   const repos = { console: consoleRepo, receipts: consoleRepo.replace(/\/console$/, "/receipts") };
-  const browser = await launch();
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const page = watch(await ctx.newPage());
   const sent = requests(page);
   const fail = (why) => {
     throw new Error(why);
   };
-  const ready = () => page.waitForSelector("html[data-ready]", { timeout: 15000 });
   // What the sidebar shows: the tasks waiting for an answer, each folder with
   // its tasks in order, and the archive.
   const sidebar = () =>
@@ -38,7 +31,7 @@ check(async () => {
   // settled waits until the sidebar shows what ok wants, and returns it.
   const settled = async (what, ok) => {
     let last;
-    await until(what, async () => ok((last = await sidebar()))).catch((e) => fail(`${e.message}: ${JSON.stringify(last)}`));
+    await until(what, async () => ok((last = await sidebar())), () => last);
     return last;
   };
   const folder = (s, name) => s.folders.find((f) => f.name === name);
@@ -63,7 +56,7 @@ check(async () => {
   const button = (label) => page.click(`.task-actions button:text-is("${label}")`);
 
   await page.goto(url);
-  await ready();
+  await ready(page);
   // A refresh of the list that a newer one overtakes waits for it: whoever
   // awaited the older finds what the newer list holds. A task just started
   // was otherwise "No such task" now and then. Drawn with the console's own
@@ -132,7 +125,7 @@ check(async () => {
   assert.ok(sent.of("session.totals").some((p) => p.id === locationID(page.url())), "the console never requested session.totals");
   const totalsBeforeReload = await page.locator('[data-totals]').textContent();
   await page.reload();
-  await ready();
+  await ready(page);
   await page.waitForSelector('.task[data-loaded]');
   await page.click('#aside-tab-statistics');
   assert.strictEqual(await page.locator('[data-totals]').textContent(), totalsBeforeReload, "reopening changed the indexed totals");
@@ -186,7 +179,7 @@ check(async () => {
   assert.deepStrictEqual(sent.of("session.archive"), [{ id: renamed[0].id, archived: true }]);
   await page.screenshot({ path: `${out}/tasks-archived.png` });
   await page.reload();
-  await ready();
+  await ready(page);
   s = await settled("archived after reload", (s) => s.archived?.n === "1" && s.archived.tasks.includes("Receipts overview") && !folder(s, "receipts").tasks.includes("Receipts overview"));
   await button("Unarchive");
   s = await settled("unarchived", (s) => !s.archived && folder(s, "receipts").tasks.includes("Receipts overview"));
@@ -208,7 +201,7 @@ check(async () => {
   await settled("deleted", (s) => !folder(s, "receipts").tasks.includes("Receipt question 1"));
   assert.strictEqual(sent.of("session.delete").length, 1, "one delete");
   await page.reload();
-  await ready();
+  await ready(page);
   s = await settled("deleted after reload", (s) => folder(s, "receipts") && !folder(s, "receipts").tasks.includes("Receipt question 1") && folder(s, "receipts").tasks.includes("Receipts overview"));
   step("deleted");
 
@@ -239,7 +232,7 @@ check(async () => {
   await until("the limits turned on", async () => !(await page.$("#no-limits")) && (await limitsTick()).checked && (await limitsTick()).enabled);
   assert.deepStrictEqual(sent.of("session.limits.set"), [{ id: sent.of("session.send").at(-1).id, on: true }], "one choice, for this task");
   await page.reload();
-  await ready();
+  await ready(page);
   await openTask("Run as long as it needs");
   await until("the limits read from the daemon after a reload", async () => (await limitsTick()).checked && (await limitsTick()).enabled);
   assert.strictEqual(await page.$("#no-limits"), null, "the badge came back after a reload with the limits on");
@@ -249,7 +242,7 @@ check(async () => {
   // Each choice, the one it opened with included, is a line in the
   // conversation, read back from the log.
   const limitsLines = () => page.$eval(".transcript", (el) => (el.textContent.match(/Limits: (on|off)/g) || []).join());
-  await until("the choices in the conversation", async () => (await limitsLines()) === "Limits: off,Limits: on,Limits: off").catch(async (e) => fail(`${e.message}: ${await limitsLines()}`));
+  await until("the choices in the conversation", async () => (await limitsLines()) === "Limits: off,Limits: on,Limits: off", limitsLines);
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#new-task-limits");
   assert.strictEqual(await page.isChecked("#new-task-limits"), true, "Home kept Limits unticked for the next task");
@@ -259,7 +252,7 @@ check(async () => {
   await page.click('.folder-head:has(.name:text-is("console"))');
   await settled("folded", (s) => !folder(s, "console").open && folder(s, "console").tasks.length === 0);
   await page.reload();
-  await ready();
+  await ready(page);
   await settled("folded after reload", (s) => folder(s, "console") && !folder(s, "console").open);
   await page.click('.folder-head:has(.name:text-is("console"))');
   await settled("unfolded", (s) => folder(s, "console").open && folder(s, "console").tasks.length === 1);
@@ -299,7 +292,7 @@ check(async () => {
     record("run.state", { task: "History paging", status: "completed", turns: 1, max_turns: 1 });
   }
   fs.writeFileSync(path.join(sessions, `${historyID}.jsonl`), history.map((e) => JSON.stringify(e)).join("\n") + "\n", { mode: 0o600 });
-  await page.reload(); await ready();
+  await page.reload(); await ready(page);
   const begin = sent.of("log.read").length;
   await page.evaluate((id) => location.hash = `#/task/${id}`, historyID);
   await page.waitForSelector('.task[data-loaded]');
@@ -338,7 +331,7 @@ check(async () => {
   await page.fill('#reply', "Thanks"); await page.press('#reply', 'Enter'); await idle();
   await until("live reply after latest-run load", async () => (await page.locator('.transcript > .turn.agent').last().textContent()).includes("Glad that helps"));
   assert.strictEqual(await page.locator('.transcript > .turn.user .you-text').count(), 2, "live delivery lost or duplicated a user message");
-  await page.reload(); await ready(); await page.waitForSelector('.task[data-loaded]');
+  await page.reload(); await ready(page); await page.waitForSelector('.task[data-loaded]');
   assert.strictEqual(await page.locator('.transcript > .turn.user .you-text').count(), 2, "reopening lost the human follow-up to the latest run");
   step("latest run, lazy earlier pages, fixed ranges and live delivery");
 

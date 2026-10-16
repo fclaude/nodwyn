@@ -2,7 +2,7 @@ MODULE  := github.com/fclaude/nodwyn
 VERSION := $(shell git describe --always --dirty --abbrev=12 --exclude='*' 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build build-webview egress app test lint exfil accept validate promote selfcheck smoke book expert clean
+.PHONY: build build-webview egress app test lint exfil browser accept validate promote selfcheck smoke book expert clean
 
 build: egress
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
@@ -33,6 +33,12 @@ lint:
 
 exfil:
 	go test -race $(GO_TEST_FLAGS) ./test/exfil/...
+
+## browser: the console's browser checks (test/browser; needs Node and Playwright's Chromium,
+## and fails without them). BROWSER=webkit make browser runs a subset in WebKit, the engine of
+## `nodwyn app`, if it is installed (test/browser/README.md)
+browser:
+	bash test/browser/run.sh
 
 ## accept: everything a candidate must pass before promotion (ADR 13)
 accept: lint test exfil
