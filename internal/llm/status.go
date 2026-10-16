@@ -104,7 +104,16 @@ func Hint(err error) string {
 		// A chat-completions model is sent images unless its entry says it
 		// takes none (ADR 22, amended 2026-10-05), so the first image is how a
 		// model that cannot read one is found.
-		if strings.Contains(strings.ToLower(se.Body), "image") {
+		// Anthropic's own refusals of a picture it takes ("image exceeds 5 MB
+		// maximum", a side over its pixel limit) name the image too, and the
+		// advice for those is the opposite: the model reads images, this one
+		// is too big.
+		if body := strings.ToLower(se.Body); strings.Contains(body, "image") {
+			for _, size := range []string{"exceeds", "too large", "too big", "maximum", "pixels", "dimension"} {
+				if strings.Contains(body, size) {
+					return "The server refused an image as too large (many providers take at most 5 MB, and a limited number of pixels on a side): scale it down or compress it, and send it again. The model reads images; nothing needs changing in Settings"
+				}
+			}
 			return "The server refused an image: this model may not take images. Choose one that does from the picker under the message box, and set Takes images to No for this one in Settings › Models"
 		}
 		return "The server refused the request. If the effort is the cause, choose another effort, or the model's default, from the picker under the message box"

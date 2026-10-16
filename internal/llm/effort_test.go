@@ -118,6 +118,22 @@ func TestARefusedImageSaysTheModelMayTakeNone(t *testing.T) {
 	}
 }
 
+// A picture a model reads but the provider finds too big is not a model that
+// takes no images: the hint says to scale it down and leaves Settings alone
+// (P2-066).
+func TestARefusedImageThatIsTooBigSaysToScaleItDown(t *testing.T) {
+	for _, body := range []string{
+		`{"type":"error","error":{"type":"invalid_request_error","message":"messages.0.content.1.image.source.base64: image exceeds 5 MB maximum: 8388608 bytes > 5242880 bytes"}}`,
+		`{"error":{"message":"image dimensions exceed the maximum allowed size of 8000 pixels"}}`,
+	} {
+		err := &StatusError{Provider: "anthropic", Status: http.StatusBadRequest, Text: "400 Bad Request", Body: body}
+		hint := Hint(err)
+		if !strings.Contains(hint, "too large") || !strings.Contains(hint, "scale it down") || strings.Contains(hint, "Takes images to No") {
+			t.Errorf("body %s: hint %q", body, hint)
+		}
+	}
+}
+
 // A provider's refusal says which it was, and one that sending again cannot
 // fix is not retried: a wrong key, a missing model or a refused field ends
 // the turn at once, with what to do about it, where a server error is tried
