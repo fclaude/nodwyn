@@ -191,6 +191,22 @@ func TestGitLandLeavesAStagedRefusedFileOut(t *testing.T) {
 	}
 }
 
+// A file named like a pattern is only itself: git took the names as globs,
+// so taking a refused file named id_* out of the index took id_map.py, a
+// source file, with it, and it was silently not committed.
+func TestGitLandTakesNamesLiterally(t *testing.T) {
+	r := newLandRig(t)
+	r.write(r.tree, "id_*", "key\n")
+	r.write(r.tree, "id_map.py", "MAP = {}\n")
+	r.git(r.tree, "add", "-A", "-f")
+	if _, err := r.land("Add the id map"); err != nil {
+		t.Fatal(err)
+	}
+	if files := r.git(r.tree, "show", "--name-only", "--format=", "HEAD"); files != "id_map.py" {
+		t.Fatalf("committed: %q", files)
+	}
+}
+
 // A staged rename lands as one: git status gives its two paths in one record
 // unless asked not to, and the second path read as a record of its own.
 func TestGitLandLandsAStagedRename(t *testing.T) {

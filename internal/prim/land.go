@@ -137,6 +137,9 @@ func land(ctx context.Context, o Options, message string) (string, error) {
 		return "", errors.New("this session has no worktree of its own; its work is in the folder itself")
 	}
 	env := append(scrubEnv(append(append([]string(nil), o.EnvAllow...), landEnvAllow...)),
+		// Names from status are names, not patterns: a file called * would
+		// otherwise match every file, the refused ones included.
+		"GIT_LITERAL_PATHSPECS=1",
 		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_ASKPASS=true", "SSH_ASKPASS=true")
 	if _, set := os.LookupEnv("GIT_SSH_COMMAND"); !set {
 		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
