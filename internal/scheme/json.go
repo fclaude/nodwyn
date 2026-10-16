@@ -26,7 +26,7 @@ func FromJSON(raw []byte) (Value, error) {
 // ToJSON renders a value with the json-emit mapping.
 func ToJSON(v Value) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := jsonEncode(&buf, v); err != nil {
+	if err := jsonEncode(&buf, v, 0); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -266,7 +266,7 @@ func (in *Interp) registerJSON() {
 	})
 	in.mustRegister("json-emit", "Render a value as compact JSON text.", []Param{{Name: "v", Type: "any"}}, false, func(c *Call) (Value, error) {
 		var buf bytes.Buffer
-		if err := jsonEncode(&buf, c.Args[0]); err != nil {
+		if err := jsonEncode(&buf, c.Args[0], 0); err != nil {
 			return Value{}, errorf(c.Name, "%v", err)
 		}
 		return Str(buf.String()), nil
@@ -339,7 +339,10 @@ func jsonFromToken(dec *json.Decoder, tok json.Token) (Value, error) {
 	return Value{}, fmt.Errorf("unexpected token %v", tok)
 }
 
-func jsonEncode(buf *bytes.Buffer, v Value) error {
+func jsonEncode(buf *bytes.Buffer, v Value, depth int) error {
+	if depth > MaxDepth {
+		return fmt.Errorf("cannot emit a value nested more than %d deep", MaxDepth)
+	}
 	switch v.Kind {
 	case KNil:
 		buf.WriteString("[]")
@@ -378,7 +381,7 @@ func jsonEncode(buf *bytes.Buffer, v Value) error {
 				b, _ := json.Marshal(it.P.Car.S)
 				buf.Write(b)
 				buf.WriteByte(':')
-				if err := jsonEncode(buf, it.P.Cdr); err != nil {
+				if err := jsonEncode(buf, it.P.Cdr, depth+1); err != nil {
 					return err
 				}
 			}
@@ -390,7 +393,7 @@ func jsonEncode(buf *bytes.Buffer, v Value) error {
 			if i > 0 {
 				buf.WriteByte(',')
 			}
-			if err := jsonEncode(buf, it); err != nil {
+			if err := jsonEncode(buf, it, depth+1); err != nil {
 				return err
 			}
 		}

@@ -548,3 +548,61 @@ func TestRawStrings(t *testing.T) {
 		t.Fatalf("round trip: %v %s", err, Write(v))
 	}
 }
+
+// TestRunawayRecursionIsAnError: a recursion that never ends, a value that
+// holds itself or is nested past MaxDepth, a file that loads itself and a datum nested past MaxDepth are
+// each an error the program can catch, and the interpreter goes on working.
+// Without the limit each one is a Go stack overflow, which ends the process:
+// the daemon and every session in it. The stack cap makes that a quick,
+// unmistakable failure here; MaxDepth's nesting fits well inside it.
+func TestRunawayRecursionIsAnError(t *testing.T) {
+	old := debug.SetMaxStack(256 << 20)
+	defer debug.SetMaxStack(old)
+	in := New()
+	eval(t, in, `(define (runaway n) (+ 1 (runaway n)))`)
+	for _, src := range []string{
+		`(runaway 1)`,
+		`(define (through-map n) (map (lambda (x) (through-map x)) '(1))) (through-map 1)`,
+	} {
+		if _, err := in.EvalString(context.Background(), src); err == nil || !strings.Contains(err.Error(), "recursion too deep") {
+			t.Fatalf("%s: %v", src, err)
+		}
+	}
+	if got := Write(eval(t, in, `(guard (e (#t 'caught)) (runaway 1))`)); got != "caught" {
+		t.Fatalf("guard should catch the recursion error, got %s", got)
+	}
+	// The count of nested evaluations is back to zero: a legal recursion
+	// almost as deep as the limit still runs.
+	if got := Write(eval(t, in, `(define (down n) (if (= n 0) 0 (+ 1 (down (- n 1))))) (down 9000)`)); got != "9000" {
+		t.Fatalf("a recursion inside the limit: %s", got)
+	}
+
+	eval(t, in, `(define a (vector 0)) (vector-set! a 0 a) (define b (vector 0)) (vector-set! b 0 b)`)
+	if got := Write(eval(t, in, `(list (equal? a a) (equal? a b))`)); got != "(#t #f)" {
+		t.Fatalf("equal? on vectors that hold themselves: %s", got)
+	}
+	if w := Write(eval(t, in, `a`)); !strings.HasPrefix(w, "#(#(#(") || !strings.Contains(w, "#(...)") {
+		t.Fatal("a vector that holds itself should print cut short")
+	}
+	eval(t, in, `(define deep (let loop ((n 20000) (acc '())) (if (= n 0) acc (loop (- n 1) (list acc)))))`)
+	if _, err := in.EvalString(context.Background(), `(json-emit deep)`); err == nil || !strings.Contains(err.Error(), "nested more than") {
+		t.Fatalf("json-emit of a list nested 20000 deep: %v", err)
+	}
+	if got := Write(eval(t, in, `(equal? deep deep)`)); got != "#t" {
+		t.Fatalf("equal? of a deep list with itself: %s", got)
+	}
+
+	self := filepath.Join(t.TempDir(), "self.scm")
+	if err := os.WriteFile(self, []byte(`(load "`+self+`")`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.EvalString(context.Background(), `(load "`+self+`")`); err == nil || !strings.Contains(err.Error(), "loaded again") {
+		t.Fatalf("a file that loads itself: %v", err)
+	}
+	if _, err := Read(strings.Repeat("(", 200_000) + strings.Repeat(")", 200_000)); err == nil || !strings.Contains(err.Error(), "nested more than") {
+		t.Fatalf("a datum nested past the limit: %v", err)
+	}
+	if got := Write(eval(t, in, `(+ 1 2)`)); got != "3" {
+		t.Fatalf("the interpreter should go on working: %s", got)
+	}
+}

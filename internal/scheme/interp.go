@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 )
 
 //go:embed all:prelude
@@ -47,7 +48,24 @@ type Interp struct {
 	// reloadNotes instead of applied (ADR 9).
 	reloading   bool
 	reloadNotes []string
+
+	// depth counts the Evals in progress, nested ones included. Tail calls
+	// loop inside one Eval and do not add to it; MaxDepth bounds it, so a
+	// runaway recursion is an error the program can catch, not a Go stack
+	// overflow, which ends the process and every session in it.
+	depth atomic.Int64
+	// loading holds the files LoadFile is evaluating, so a file that loads
+	// itself, directly or through another, is refused.
+	loading map[string]bool
 }
+
+// MaxDepth is how deeply evaluation, and the reader, the printer, equal? and
+// json-emit, may nest. A nested Eval takes one to five kilobytes of Go stack
+// (more when it recurses through a primitive such as map), so the limit costs
+// at most some 50 MB, far inside Go's gigabyte even with sub-agents nested
+// above it. Tail calls do not nest, and the default loop's own walks are tail
+// calls, so only a recursion over thousands of items that is not one meets it.
+const MaxDepth = 10_000
 
 // BeginReload starts re-running an init file over this interpreter:
 // register-tool replaces the body of a tool whose name, description and
@@ -165,6 +183,16 @@ func (in *Interp) LoadFile(ctx context.Context, path string) error {
 	if !filepath.IsAbs(path) && in.baseDir != "" {
 		path = filepath.Join(in.baseDir, path)
 	}
+	if abs, err := filepath.Abs(path); err == nil {
+		if in.loading[abs] {
+			return fmt.Errorf("%s: loaded again while it is being loaded", path)
+		}
+		if in.loading == nil {
+			in.loading = map[string]bool{}
+		}
+		in.loading[abs] = true
+		defer delete(in.loading, abs)
+	}
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -227,6 +255,11 @@ func bindParams(c *Closure, args []Value) (*Env, error) {
 // Eval evaluates x in env. Tail positions loop instead of recursing, so
 // tail-recursive Scheme runs in constant Go stack (docs/scheme.md §3).
 func (in *Interp) Eval(ctx context.Context, x Value, env *Env) (Value, error) {
+	if in.depth.Add(1) > MaxDepth {
+		in.depth.Add(-1)
+		return Value{}, errorf("eval", "recursion too deep: more than %d nested evaluations", MaxDepth)
+	}
+	defer in.depth.Add(-1)
 	for {
 		switch x.Kind {
 		case KSymbol:

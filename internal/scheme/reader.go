@@ -58,6 +58,7 @@ type reader struct {
 	pos          int
 	line, col    int
 	unterminated bool // an open #| comment ran to EOF
+	depth        int  // lists, vectors and quotes open around the datum being read
 }
 
 func (r *reader) eof() bool { return r.pos >= len(r.src) }
@@ -140,6 +141,11 @@ func isDelimiter(c rune) bool {
 }
 
 func (r *reader) datum() (Value, error) {
+	if r.depth >= MaxDepth {
+		return Value{}, r.errf("nested more than %d deep", MaxDepth)
+	}
+	r.depth++
+	defer func() { r.depth-- }()
 	r.skipSpace()
 	if r.eof() {
 		return Value{}, ErrIncomplete

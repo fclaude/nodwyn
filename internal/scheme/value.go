@@ -217,21 +217,31 @@ func Eqv(a, b Value) bool {
 	return false
 }
 
-// Equal implements equal?: structural equality.
-func Equal(a, b Value) bool {
+// Equal implements equal?: structural equality. Values nested past MaxDepth
+// are not equal unless they are the same object, so two vectors that hold
+// themselves compare without end only in Scheme's specification.
+func Equal(a, b Value) bool { return equal(a, b, 0) }
+
+func equal(a, b Value, depth int) bool {
 	for {
+		if depth > MaxDepth {
+			return Eqv(a, b)
+		}
 		switch {
 		case a.Kind == KPair && b.Kind == KPair:
-			if !Equal(a.P.Car, b.P.Car) {
+			if !equal(a.P.Car, b.P.Car, depth+1) {
 				return false
 			}
 			a, b = a.P.Cdr, b.P.Cdr
 		case a.Kind == KVec && b.Kind == KVec:
+			if a.V == b.V {
+				return true
+			}
 			if len(a.V.Items) != len(b.V.Items) {
 				return false
 			}
 			for i := range a.V.Items {
-				if !Equal(a.V.Items[i], b.V.Items[i]) {
+				if !equal(a.V.Items[i], b.V.Items[i], depth+1) {
 					return false
 				}
 			}
@@ -243,23 +253,38 @@ func Equal(a, b Value) bool {
 }
 
 // Write renders v in machine form (strings quoted), as the reader reads it.
-func Write(v Value) string { var sb strings.Builder; print(&sb, v, true, nil); return sb.String() }
+func Write(v Value) string {
+	var sb strings.Builder
+	print(&sb, v, true, nil, 0)
+	return sb.String()
+}
 
 // Display renders v in human form (strings as their text).
-func Display(v Value) string { var sb strings.Builder; print(&sb, v, false, nil); return sb.String() }
+func Display(v Value) string {
+	var sb strings.Builder
+	print(&sb, v, false, nil, 0)
+	return sb.String()
+}
 
 // WriteWithStrings renders v like Write, transforming each string before quoting.
 // It also visits strings in pairs and vectors, without changing the value.
 func WriteWithStrings(v Value, transform func(string) string) string {
 	var sb strings.Builder
-	print(&sb, v, true, transform)
+	print(&sb, v, true, transform, 0)
 	return sb.String()
 }
 
 // String implements fmt.Stringer as Write.
 func (v Value) String() string { return Write(v) }
 
-func print(sb *strings.Builder, v Value, write bool, transform func(string) string) {
+// print writes v at the given nesting depth. Past MaxDepth it writes "..."
+// instead: a vector can hold itself (vector-set!), and printing it would
+// otherwise never end.
+func print(sb *strings.Builder, v Value, write bool, transform func(string) string, depth int) {
+	if depth > MaxDepth {
+		sb.WriteString("...")
+		return
+	}
 	switch v.Kind {
 	case KNil:
 		sb.WriteString("()")
@@ -292,12 +317,12 @@ func print(sb *strings.Builder, v Value, write bool, transform func(string) stri
 				sb.WriteByte(' ')
 			}
 			first = false
-			print(sb, v.P.Car, write, transform)
+			print(sb, v.P.Car, write, transform, depth+1)
 			v = v.P.Cdr
 		}
 		if v.Kind != KNil {
 			sb.WriteString(" . ")
-			print(sb, v, write, transform)
+			print(sb, v, write, transform, depth+1)
 		}
 		sb.WriteByte(')')
 	case KProc:
@@ -316,7 +341,7 @@ func print(sb *strings.Builder, v Value, write bool, transform func(string) stri
 			if i > 0 {
 				sb.WriteByte(' ')
 			}
-			print(sb, el, write, transform)
+			print(sb, el, write, transform, depth+1)
 		}
 		sb.WriteByte(')')
 	case KVoid:

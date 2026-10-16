@@ -107,6 +107,16 @@ already does.
   `let`/`let*` body, `cond` clause, `and`/`or`, and either branch of `if` is
   in tail position. A loop written as a tail-recursive function runs in
   constant stack space.
+- **Nesting is bounded.** Evaluations nested inside each other (calls not in
+  tail position, recursion through a primitive such as `map`) are limited to
+  10,000; past that the evaluation raises `eval: recursion too deep: more than
+  10000 nested evaluations`, an ordinary error `guard` can catch. The reader
+  refuses a datum nested deeper than that, `json-emit` refuses a value nested
+  deeper, `equal?` treats values nested deeper as equal only when they are the
+  same object, and the printer writes `...` past that depth, so a vector that
+  holds itself (`vector-set!`) prints, compares and emits without end. `load`
+  refuses a file that is already being loaded. Without these bounds a runaway
+  recursion overflowed Go's stack, which ends the whole process.
 
 ### Special forms
 
