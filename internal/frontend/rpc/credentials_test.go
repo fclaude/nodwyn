@@ -3,9 +3,11 @@ package rpc
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -347,4 +349,48 @@ func TestKeychainOpensAgainAfterItsPassphraseChangedElsewhere(t *testing.T) {
 		t.Fatalf("after unlocking again: %+v", status)
 	}
 	c.ok("credentials.add", map[string]any{"class": "github-token", "value": "x"})
+}
+
+// A provider that is slow to answer a revocation holds up that one call, not
+// the daemon: another client's methods are answered meanwhile (P2-005).
+func TestSlowRevocationDoesNotHoldTheDaemon(t *testing.T) {
+	provider := fakeoauth.New("console-client")
+	defer provider.Close()
+	asked, release := make(chan struct{}), make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		close(asked)
+		<-release
+	}))
+	defer slow.Close()
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("keychain.create", map[string]any{"no_passphrase": true})
+	var started authorizationInfo
+	json.Unmarshal(c.ok("credentials.authorize", map[string]any{"provider": "custom", "class": "drive", "client_id": provider.ClientID,
+		"auth_url": provider.AuthURL(), "token_url": provider.TokenURL(), "revoke_url": slow.URL + "/revoke", "scopes": []string{"files"}}), &started)
+	provider.Browser(started.URL)
+	list := waitAuthorization(t, c, started.ID)
+	id := list.Credentials[0].ID
+
+	removed := make(chan json.RawMessage, 1)
+	go func() { removed <- c.ok("credentials.remove", map[string]any{"id": id, "revoke": true}) }()
+	<-asked
+	other := connect(t, path)
+	other.hello()
+	answered := make(chan struct{})
+	go func() {
+		other.ok("keychain.status", map[string]any{})
+		close(answered)
+	}()
+	select {
+	case <-answered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the daemon answered no one while a revocation was pending")
+	}
+	unblock()
+	<-removed
 }

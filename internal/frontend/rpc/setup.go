@@ -76,9 +76,7 @@ func (s *server) keychainStatus() keychainStatus {
 // costs a moment, so guessing over the socket is no faster than at the
 // terminal; other methods do not wait for it.
 func (s *server) wrongPassphrase(message string) *rpcError {
-	s.mu.Unlock()
-	time.Sleep(time.Second)
-	s.mu.Lock()
+	s.slow("", func() { time.Sleep(time.Second) })
 	return failure(-32000, message)
 }
 
@@ -122,7 +120,8 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
-		store, err = keychain.Create(path, keychain.DefaultKDF, pass)
+		// Deriving the key takes a moment: not under the lifecycle lock.
+		s.slow("", func() { store, err = keychain.Create(path, keychain.DefaultKDF, pass) })
 	} else {
 		var p passphraseParams
 		if err := params(req.Params, &p, "passphrase"); err != nil {
@@ -131,7 +130,7 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 		pass := []byte(p.Passphrase)
 		defer clear(pass)
 		// An empty passphrase opens a keychain that has none.
-		store, err = keychain.Open(path, pass)
+		s.slow("", func() { store, err = keychain.Open(path, pass) })
 		if err != nil {
 			if _, statErr := os.Stat(path); statErr != nil {
 				return nil, failure(-32000, "There is no keychain yet; create one")
@@ -141,6 +140,9 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 	}
 	if err != nil {
 		return nil, failure(-32000, err.Error())
+	}
+	if s.options.Keychain != nil {
+		return nil, failure(-32000, "The keychain is already unlocked")
 	}
 	table, err := binding.Load(s.options.Paths.Bindings)
 	if err != nil {
@@ -159,7 +161,9 @@ func (s *server) keychainReopen(req request) (any, *rpcError) {
 	}
 	pass := []byte(p.Passphrase)
 	defer clear(pass)
-	if err := s.options.Keychain.Reopen(pass); err != nil {
+	var err error
+	s.slow("", func() { err = s.options.Keychain.Reopen(pass) })
+	if err != nil {
 		return nil, s.wrongPassphrase("That passphrase does not open the keychain")
 	}
 	return s.keychainStatus(), nil
@@ -193,13 +197,17 @@ func (s *server) keychainPassphrase(req request) (any, *rpcError) {
 		if len(current) == 0 {
 			return nil, failure(-32602, "Give the keychain's current passphrase")
 		}
-		if _, err := keychain.Open(s.options.Paths.Keychain, current); err != nil {
+		var err error
+		s.slow("", func() { _, err = keychain.Open(s.options.Paths.Keychain, current) })
+		if err != nil {
 			return nil, s.wrongPassphrase("That is not the keychain's current passphrase")
 		}
 	} else if len(current) > 0 {
 		return nil, failure(-32602, "The keychain has no passphrase yet; give only the new one")
 	}
-	if err := store.SetPassphrase(pass); err != nil {
+	var err error
+	s.slow("", func() { err = store.SetPassphrase(pass) })
+	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}
 	return s.keychainStatus(), nil

@@ -27,6 +27,7 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 	_ = s.bindModelLists()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	s.ctx = ctx
 	if err := s.ensureScheduler(); err != nil {
 		return err
 	}
@@ -77,13 +78,19 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 	}
 	cancel()
 	<-stopped
+	// The sessions are closed beside the wait for the methods still running:
+	// a method waiting inside a session (an image's confirm, for ten minutes)
+	// ends when the session closes, and one waiting on the network ends with
+	// s.ctx.
+	closed := make(chan error, 1)
+	go func() { closed <- s.close() }()
 	workers.Wait()
 	<-schedulerDone
 	if s.schedulerLock != nil {
 		defer s.schedulerLock.Close()
 		defer syscall.Flock(int(s.schedulerLock.Fd()), syscall.LOCK_UN)
 	}
-	return errors.Join(serveErr, s.close())
+	return errors.Join(serveErr, <-closed)
 }
 func (s *server) connection(ctx context.Context, conn net.Conn) {
 	reader := bufio.NewScanner(conn)

@@ -279,7 +279,7 @@ func (s *server) probeServers(entries []registryEntry) map[string]serverProbe {
 	asked := make([]serverProbe, len(ask))
 	var wg sync.WaitGroup
 	for i, m := range ask {
-		wg.Go(func() { asked[i] = probe(m) })
+		wg.Go(func() { asked[i] = probe(s.base(), m) })
 	}
 	wg.Wait()
 	s.mu.Lock()
@@ -298,7 +298,7 @@ func (s *server) probeServers(entries []registryEntry) map[string]serverProbe {
 var probeClient = &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{Proxy: http.ProxyFromEnvironment}}
 
 // probe asks m's server for the models it lists, without a credential.
-func probe(m config.Model) serverProbe {
+func probe(parent context.Context, m config.Model) serverProbe {
 	found := serverProbe{at: time.Now()}
 	base, err := url.Parse(m.URL)
 	if err != nil {
@@ -311,7 +311,7 @@ func probe(m config.Model) serverProbe {
 	if provider == "ollama" {
 		endpoint = strings.TrimRight(m.URL, "/") + "/api/tags"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -442,7 +442,7 @@ func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 	}
 	// As the probes do, the request runs without the lifecycle lock.
 	s.mu.Unlock()
-	names, err := offered(srv, authorize)
+	names, err := offered(s.base(), srv, authorize)
 	s.mu.Lock()
 	if err != nil {
 		return nil, failure(-32000, err.Error())
@@ -450,16 +450,20 @@ func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 	return names, nil
 }
 
-func offered(srv config.Server, authorize func(*http.Request) error) ([]string, error) {
+func offered(parent context.Context, srv config.Server, authorize func(*http.Request) error) ([]string, error) {
 	base := strings.TrimRight(srv.URL, "/")
 	host := base
 	if u, err := url.Parse(base); err == nil {
 		host = u.Host
 	}
 	if providerName(srv.Provider) != "ollama" {
-		return listed(srv, host, authorize)
+		return listed(parent, srv, host, authorize)
 	}
-	response, err := listClient.Get(base + "/api/tags")
+	request, err := http.NewRequestWithContext(parent, http.MethodGet, base+"/api/tags", nil)
+	if err != nil {
+		return nil, err
+	}
+	response, err := listClient.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("%s does not answer", host)
 	}
@@ -486,7 +490,7 @@ func offered(srv config.Server, authorize func(*http.Request) error) ([]string, 
 // listed is what a chat-completions or an Anthropic server lists, asked as a
 // model's requests are (llm.OpenAI.Models, llm.Anthropic.Models), with what to
 // do when it refuses.
-func listed(srv config.Server, host string, authorize func(*http.Request) error) ([]string, error) {
+func listed(parent context.Context, srv config.Server, host string, authorize func(*http.Request) error) ([]string, error) {
 	// A key that is not sent (the keychain is locked, the binding refuses it)
 	// is said as such, not as a server that does not answer.
 	var unsent error
@@ -500,7 +504,7 @@ func listed(srv config.Server, host string, authorize func(*http.Request) error)
 	if providerName(srv.Provider) == "anthropic" {
 		lister = llm.NewAnthropic(srv.URL, wrapped)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), listClient.Timeout)
+	ctx, cancel := context.WithTimeout(parent, listClient.Timeout)
 	defer cancel()
 	models, err := lister.Models(ctx)
 	var se *llm.StatusError

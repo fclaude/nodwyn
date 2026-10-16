@@ -217,3 +217,30 @@ listens on the port it had the last time when it is free, kept in the data
 directory as `console-port`, and on a new one, kept for next time,
 otherwise. A cookie from an earlier run holds that run's session token,
 which the new run does not take, so reusing the port pairs nothing.
+
+## Amendment 2026-10-16: slow work is done outside the lifecycle lock
+
+Every method runs under one lock, and some held it for what only waits: a
+revocation sent to a provider (up to 15 s), the key derivation of
+`keychain.create`, `keychain.unlock` and `keychain.passphrase`, the wait for
+an OpenAI consent page (its discovery document is fetched first), a session
+winding down in `session.close` and `run.resume`, and the making of a session
+in `run.start`, `run.resume` and a scheduled run, though `session.open` and
+`session.resume` already let go for it. While one of them waited, every other
+client's `session.answer` and `session.send` waited too.
+
+- **One helper, `server.slow(id, work)`, lets go of the lock for the slow
+  part**, as the model probes do, and every such method uses it. A task named
+  by `id` is marked as being resumed meanwhile, so a second resume or a
+  scheduled run of it waits for the first.
+- **Closing a session leaves it out of the list first**, then winds it down
+  outside the lock.
+- **Serve closes the sessions beside the wait for the methods still running**,
+  not after it, and the waits a method makes on the network (a model test, the
+  models a server offers, an image pull) end with Serve's context. A method
+  waiting inside a session, such as an image's confirm, ends when the session
+  closes. A session a method makes after shutdown began is closed at once.
+  Before, the daemon waited for the longest of them, 10 to 30 minutes.
+
+Not changed: the `settings.*` methods still hold the lock while they wait for
+`config.toml`'s own lock, which a session holds only for the moment of a save.

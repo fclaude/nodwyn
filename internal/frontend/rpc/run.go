@@ -87,7 +87,8 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		options.AutoApprove = p.AutoApprove
 		options.Unattended = p.Unattended
 		options.JudgeApprove = p.Judge
-		session, err := core.New(options)
+		var session *core.Session
+		s.slow("", func() { session, err = core.New(options) })
 		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
@@ -149,12 +150,6 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	}
 	state.Unattended, state.AutoApprove, state.Judge = p.Unattended, p.AutoApprove, p.Judge
 	if open {
-		owned.driver.Stop()
-		owned.driver.Wait()
-		if err := owned.session.Close(); err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-		<-owned.drained
 		delete(s.sessions, p.ID)
 	}
 	options := s.options
@@ -162,7 +157,19 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	options.Repo = ""
 	options.NoConfirm = false
 	options.AutoApprove, options.Unattended, options.JudgeApprove = p.AutoApprove, p.Unattended, p.Judge
-	session, err := core.Resume(options, p.ID)
+	var session *core.Session
+	var closeErr error
+	s.slow(p.ID, func() {
+		if open {
+			closeErr = s.wind(owned)
+		}
+		if closeErr == nil {
+			session, err = core.Resume(options, p.ID)
+		}
+	})
+	if closeErr != nil {
+		return nil, failure(-32000, closeErr.Error())
+	}
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}

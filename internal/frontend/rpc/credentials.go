@@ -218,10 +218,14 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 		}
 		revoked := false
 		if p.Revoke {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			// The provider is asked without the lifecycle lock: it may take the
+			// whole timeout to answer.
 			var err error
-			revoked, err = store.Revoke(ctx, p.ID)
-			cancel()
+			s.slow("", func() {
+				ctx, cancel := context.WithTimeout(s.base(), 15*time.Second)
+				defer cancel()
+				revoked, err = store.Revoke(ctx, p.ID)
+			})
 			if err != nil {
 				// The command line's way out is --local; here it is a
 				// removal without revoking.
@@ -561,6 +565,14 @@ func (s *server) authorize(req request) (any, *rpcError) {
 	consent := make(chan string, 1)
 	early := make(chan error, 1)
 	key := info.ID
+	// Registered before the provider is asked for anything, so an
+	// authorization that ends at once is not lost, and the consent page is
+	// filled in when it exists.
+	if s.authorizations == nil {
+		s.authorizations = map[string]*authorization{}
+	}
+	registered := &authorization{info: info, cancel: cancel}
+	s.authorizations[key] = registered
 	go func() {
 		id, err := run(ctx, func(url string) error {
 			consent <- url
@@ -584,15 +596,23 @@ func (s *server) authorize(req request) (any, *rpcError) {
 		}
 		a.info.State, a.info.Credential = "done", id
 	}()
-	select {
-	case url := <-consent:
-		info.URL = url
-	case err := <-early:
-		return nil, failure(-32000, strings.TrimPrefix(err.Error(), "keychain: "))
+	// For OpenAI the consent page exists only after its discovery document
+	// is fetched, so the wait is without the lifecycle lock; the page polls
+	// credentials.list meanwhile.
+	var url string
+	var failed error
+	s.slow("", func() {
+		select {
+		case url = <-consent:
+		case failed = <-early:
+		}
+	})
+	if failed != nil {
+		delete(s.authorizations, key)
+		return nil, failure(-32000, strings.TrimPrefix(failed.Error(), "keychain: "))
 	}
-	if s.authorizations == nil {
-		s.authorizations = map[string]*authorization{}
+	if registered.ended.IsZero() {
+		registered.info.URL = url
 	}
-	s.authorizations[key] = &authorization{info: info, cancel: cancel}
-	return info, nil
+	return registered.info, nil
 }

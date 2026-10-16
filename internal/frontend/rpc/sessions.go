@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,53 @@ type server struct {
 	// resuming holds, for each task being resumed without the lock, a
 	// channel closed when that resume is done.
 	resuming map[string]chan struct{}
+	// ctx ends when Serve is told to stop, and every wait on the network a
+	// method makes without the lock ends with it (base). closing is set once
+	// the sessions are being closed, which a session made after that does not
+	// outlive (own).
+	ctx     context.Context
+	closing bool
 }
+
+// base is the context of work a method starts on its own: it ends at
+// shutdown, so a slow provider or a long download does not keep the daemon
+// from closing its sessions.
+func (s *server) base() context.Context {
+	if s.ctx == nil {
+		return context.Background()
+	}
+	return s.ctx
+}
+
+// slow runs work without the lifecycle lock, as the model probes do: making
+// a session can take a while (a worktree is checked out, with the repository's
+// hooks and filters), winding one down waits for its turn, and a key
+// derivation or a call to a provider takes seconds, so other methods go on
+// meanwhile. Serve closes the sessions only after every method has returned,
+// so one made meanwhile is not missed. A task named by id is marked as being
+// resumed while work runs, so a second resume or scheduled run of it waits
+// for this one instead of racing it; work is then to start, resume or close
+// that task.
+func (s *server) slow(id string, work func()) {
+	var done chan struct{}
+	if id != "" {
+		done = make(chan struct{})
+		if s.resuming == nil {
+			s.resuming = make(map[string]chan struct{})
+		}
+		s.resuming[id] = done
+	}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if id != "" {
+			delete(s.resuming, id)
+			close(done)
+		}
+	}()
+	work()
+}
+
 type sessionInfo struct {
 	ID           string    `json:"id"`
 	Repo         string    `json:"repo"`
@@ -389,14 +436,9 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	options.Delegates = delegates
 	options.Limits = limits
 	options.Worktree = req.Method == "worktree.open"
-	// Making a session can take a while (a worktree is checked out, with
-	// the repository's hooks and filters), so it is made without the
-	// lifecycle lock, as the model probes run: other methods go on, and the
-	// session joins the list once it exists. Serve closes the sessions only
-	// after every method has returned, so one made meanwhile is not missed.
-	s.mu.Unlock()
-	session, err := core.New(options)
-	s.mu.Lock()
+	var session *core.Session
+	var err error
+	s.slow("", func() { session, err = core.New(options) })
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}
@@ -429,17 +471,10 @@ func (s *server) resume(req request, _ *peer) (any, *rpcError) {
 	options := s.options
 	options.Repo = ""
 	// As open does, without the lifecycle lock: a resume may make the
-	// task's worktree again. A second resume of the task waits for this one.
-	done := make(chan struct{})
-	if s.resuming == nil {
-		s.resuming = make(map[string]chan struct{})
-	}
-	s.resuming[id] = done
-	s.mu.Unlock()
-	session, resumeErr := core.Resume(options, id)
-	s.mu.Lock()
-	delete(s.resuming, id)
-	close(done)
+	// task's worktree again.
+	var session *core.Session
+	var resumeErr error
+	s.slow(id, func() { session, resumeErr = core.Resume(options, id) })
 	if resumeErr != nil {
 		return nil, failure(-32000, resumeErr.Error())
 	}
@@ -612,11 +647,11 @@ func (s *server) closeSession(req request, _ *peer) (any, *rpcError) {
 	if err != nil {
 		return nil, err
 	}
-	owned.driver.Stop()
-	owned.driver.Wait()
-	closeErr := owned.session.Close()
-	<-owned.drained
+	// The session leaves the list at once; winding it down waits for its turn,
+	// which no other client should wait for.
 	delete(s.sessions, id)
+	var closeErr error
+	s.slow(id, func() { closeErr = s.wind(owned) })
 	if closeErr != nil {
 		return nil, failure(-32000, closeErr.Error())
 	}
@@ -843,6 +878,16 @@ func (s *server) readRuns(req request, _ *peer) (any, *rpcError) {
 }
 
 func (s *server) own(session *core.Session, drivers ...*run.Driver) {
+	if s.closing {
+		// Made while the daemon was shutting down: nothing will close it
+		// later.
+		go func() {
+			for range session.Events() {
+			}
+		}()
+		_ = session.Close()
+		return
+	}
 	var driver *run.Driver
 	if len(drivers) > 0 {
 		driver = drivers[0]
@@ -869,21 +914,34 @@ func (s *server) own(session *core.Session, drivers ...*run.Driver) {
 		s.watch.update(session, false)
 	}()
 }
+
+// wind stops a session's run, closes it and waits for its events to drain.
+// It waits for the turn, so it runs outside the lifecycle lock (slow).
+func (s *server) wind(owned ownedSession) error {
+	owned.driver.Stop()
+	owned.driver.Wait()
+	err := owned.session.Close()
+	<-owned.drained
+	return err
+}
+
+// close ends the authorizations and closes every session. Serve runs it
+// beside the wait for the methods still running, since closing a session is
+// what ends a wait inside one (an attachment's confirm).
 func (s *server) close() error {
 	s.mu.Lock()
+	s.closing = true
 	for _, a := range s.authorizations {
 		a.cancel()
 	}
+	open := s.sessions
+	s.sessions = make(map[string]ownedSession)
 	s.mu.Unlock()
 	var first error
-	for id, owned := range s.sessions {
-		owned.driver.Stop()
-		owned.driver.Wait()
-		if err := owned.session.Close(); err != nil && first == nil {
+	for _, owned := range open {
+		if err := s.wind(owned); err != nil && first == nil {
 			first = err
 		}
-		<-owned.drained
-		delete(s.sessions, id)
 	}
 	return first
 }

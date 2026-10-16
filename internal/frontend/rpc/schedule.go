@@ -354,16 +354,9 @@ func (s *server) executeSchedule(id string, def log.SessionSchedule, run log.Sch
 		options.AutoApprove = false
 		options.Unattended = false
 		options.JudgeApprove = false
-		done := make(chan struct{})
-		if s.resuming == nil {
-			s.resuming = map[string]chan struct{}{}
-		}
-		s.resuming[id] = done
-		s.mu.Unlock()
-		session, resumeErr := core.Resume(options, id)
-		s.mu.Lock()
-		delete(s.resuming, id)
-		close(done)
+		var session *core.Session
+		var resumeErr error
+		s.slow(id, func() { session, resumeErr = core.Resume(options, id) })
 		if resumeErr != nil {
 			return resumeErr
 		}

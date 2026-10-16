@@ -284,7 +284,7 @@ func (s *server) containerState(list []config.MCPServer) mcpRuntime {
 		if !server.Contained() {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(s.base(), 20*time.Second)
 		present, err := rt.ImagePresent(ctx, server.Image)
 		cancel()
 		switch {
@@ -309,7 +309,7 @@ func (s *server) pull(server config.MCPServer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(s.base(), 30*time.Minute)
 	defer cancel()
 	if err := rt.Pull(ctx, server.Image, io.Discard); err != nil {
 		return false, err
