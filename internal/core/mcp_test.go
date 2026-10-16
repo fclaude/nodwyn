@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -334,5 +335,31 @@ func TestMCPServerWithAnOAuth2Credential(t *testing.T) {
 	}
 	if fakeoauth.HasToken(logb.String()) {
 		t.Fatal("a token reached the log")
+	}
+}
+
+// An MCP server gets an argument as the model wrote it: the json-emit
+// mapping read an array of arrays that start with a string as an object's
+// entries, and an empty object as an empty array, which a server's schema
+// then refused. The tool's schema says which each argument is.
+func TestMCPArgumentsKeepTheirShape(t *testing.T) {
+	t.Parallel()
+	// The rig turns on post_message; this one takes rows and options.
+	server := fakemcp.New(fakemcp.Tool{Name: "post_message", Description: "Load rows",
+		Schema: map[string]any{"type": "object", "properties": map[string]any{"rows": map[string]any{"type": "array"}, "options": map[string]any{"type": "object"}}, "required": []any{"rows", "options"}},
+		Reply:  func(map[string]any) (string, bool) { return "loaded", false }})
+	defer server.Close()
+	r, _ := mcpRig(t, server, true, true, nil,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "l", Name: "chat__post_message", Args: map[string]any{"rows": []any{[]any{"a", "b"}, []any{"c", "d"}}, "options": map[string]any{}}}}},
+		fake.Turn{Content: "loaded"},
+	)
+	r.s.Send("load the rows")
+	r.drain("y")
+	if len(server.Calls) != 1 {
+		t.Fatalf("calls: %+v", server.Calls)
+	}
+	got, _ := json.Marshal(server.Calls[0].Args)
+	if string(got) != `{"options":{},"rows":[["a","b"],["c","d"]]}` {
+		t.Fatalf("the server got %s", got)
 	}
 }

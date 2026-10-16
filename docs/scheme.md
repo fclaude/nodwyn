@@ -295,7 +295,12 @@ Mapping, in both directions:
 
 `json-emit` treats a proper list whose elements are all pairs with string
 cars as an object and any other proper list as an array. Consequently `'()`
-emits `[]`, and there is no way to emit `{}` in v0.
+emits `[]`, there is no way to emit `{}`, and parsed JSON does not always
+come back as it was: an array of arrays that each start with a string
+(`[["a","b"]]`) parses to a list that emits as an object (`{"a":["b"]}`).
+An MCP tool's arguments are written by its schema instead: an argument the
+schema calls an array is emitted as one, and one it calls an object as an
+object, `{}` when empty, so a server gets them as the model wrote them.
 Procedures, handles, vectors, void, symbols other than `null`, and a NaN or
 infinite float cannot be emitted.
 

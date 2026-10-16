@@ -32,6 +32,36 @@ func ToJSON(v Value) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ToJSONAs renders v as ToJSON does, but writes its top level as the type a
+// tool's schema gives it: "list" an array, even of elements that look like
+// an object's entries, and "alist" an object, {} when it is empty. The
+// json-emit mapping cannot tell (("a" "b")) from {"a":["b"]}, nor () from
+// {}; a schema can, so an MCP server gets an argument as the model wrote it.
+func ToJSONAs(v Value, typ string) ([]byte, error) {
+	switch {
+	case typ == "alist" && v.Kind == KNil:
+		return []byte("{}"), nil
+	case typ == "list" && (v.Kind == KPair || v.Kind == KNil):
+		items, ok := v.Slice()
+		if !ok {
+			return nil, fmt.Errorf("cannot emit improper list %s", Write(v))
+		}
+		var buf bytes.Buffer
+		buf.WriteByte('[')
+		for i, it := range items {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			if err := jsonEncode(&buf, it, 1); err != nil {
+				return nil, err
+			}
+		}
+		buf.WriteByte(']')
+		return buf.Bytes(), nil
+	}
+	return ToJSON(v)
+}
+
 // ToolSchema is the JSON-schema view of a primitive's parameters, for the
 // model's tool list (ADR 4: the schema and the guard read the same Meta).
 type ToolSchema struct {

@@ -199,7 +199,7 @@ func mcpPrim(server config.MCPServer, tool mcp.Tool, declared config.MCPTool, cl
 				if pa.Optional && isEmpty(v) {
 					continue // skipped by the model; the server applies its default
 				}
-				raw, err := scheme.ToJSON(v)
+				raw, err := scheme.ToJSONAs(v, pa.Type)
 				if err != nil {
 					return scheme.Value{}, fmt.Errorf("argument %s: %w", pa.Name, err)
 				}
