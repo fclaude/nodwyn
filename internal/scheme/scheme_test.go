@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -604,5 +605,25 @@ func TestRunawayRecursionIsAnError(t *testing.T) {
 	}
 	if got := Write(eval(t, in, `(+ 1 2)`)); got != "3" {
 		t.Fatalf("the interpreter should go on working: %s", got)
+	}
+}
+
+// A primitive's own deadline, under a turn that goes on, is that call
+// failing, and guard catches it, as the plan gate's judge fallback needs;
+// the turn's own cancellation still passes through guard.
+func TestGuardCatchesAPrimitivesOwnTimeout(t *testing.T) {
+	in := New()
+	if err := in.Register(&Prim{Name: "slow-judge", Meta: Meta{Doc: "d", Host: true}, Handler: func(c *Call) (Value, error) {
+		return Value{}, fmt.Errorf("judge: %w", context.DeadlineExceeded)
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := Write(eval(t, in, `(guard (e (#t 'planned-anyway)) (slow-judge))`)); got != "planned-anyway" {
+		t.Fatalf("a primitive's own timeout: %s", got)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := in.EvalString(ctx, `(guard (e (#t 'caught)) (slow-judge))`); err == nil {
+		t.Fatal("guard caught a timeout after the turn was cancelled")
 	}
 }

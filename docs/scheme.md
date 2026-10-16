@@ -167,8 +167,10 @@ An error not caught by any clause unwinds to the host, which reports it (the
 REPL prints it, the agent loop feeds it back to the model as the tool result).
 
 A primitive the guard denies raises `<name>: denied: <reason>` (`fs-read: denied: …`). Denials and
-cancellations (an abort, a timeout) pass through `guard` untouched: a program
-cannot hide that it was refused, and an abort always unwinds. So do the agent
+the turn's own cancellation (an abort, the turn's deadline) pass through
+`guard` untouched: a program cannot hide that it was refused, and an abort
+always unwinds. A primitive's own timeout while the turn goes on (a judge's
+ten seconds, an MCP call's two minutes) is an ordinary error `guard` catches. So do the agent
 loop's stops (§9): a spent budget, the tool-call limit, a progress stop and a
 log that can no longer be written end the turn whatever the strategy's `guard`
 clauses say.

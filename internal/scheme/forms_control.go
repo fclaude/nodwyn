@@ -151,9 +151,12 @@ func (in *Interp) evalGuard(ctx context.Context, form []Value, env *Env) (Value,
 }
 
 // Catchable reports whether a Scheme program may handle err. A denial, a
-// Halt and a cancellation are not: a program cannot hide that it was
-// refused, keep going after the harness stopped it, or outlive an abort.
-// A host primitive that goes on past one file's error asks it too.
+// Halt and the turn's own cancellation are not: a program cannot hide that
+// it was refused, keep going after the harness stopped it, or outlive an
+// abort. A primitive's own deadline, under a turn that goes on (a judge's
+// ten seconds, an MCP call's two minutes), is that call failing, which a
+// strategy may handle: the plan gate plans anyway when the judge does not
+// answer. A host primitive that goes on past one file's error asks it too.
 func Catchable(ctx context.Context, err error) bool {
 	var d *Denied
 	if errors.As(err, &d) {
@@ -163,10 +166,7 @@ func Catchable(ctx context.Context, err error) bool {
 	if errors.As(err, &h) {
 		return false
 	}
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
-	return true
+	return ctx.Err() == nil
 }
 
 // branchResult describes a selected clause without positional return flags.
