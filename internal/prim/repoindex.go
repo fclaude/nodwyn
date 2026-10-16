@@ -38,8 +38,9 @@ const (
 	indexSearchTime = 10 * time.Second
 	indexUpdateTime = 60 * time.Second
 	// Stored chunks that no tree has named for this long are removed by
-	// index-update.
-	indexKeep = 7 * 24 * time.Hour
+	// index-update, and by a search that read a file, at most this often.
+	indexKeep         = 7 * 24 * time.Hour
+	indexCollectEvery = time.Hour
 	// Lines shown of each chunk found, and characters of each line.
 	indexShown   = 3
 	indexLineCut = 200
@@ -53,7 +54,13 @@ type repoIndex struct {
 	pin   guard.RepoPin
 	store retrieval.Store
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// passed is the state of each file (by its path in the tree) as this
+	// session found it searchable: a file in the same state has no need of
+	// the path and denylist checks again, which resolve links and cost most
+	// of a search of an unchanged tree. A session has one guard, so what
+	// passed it stays passed; another session checks for itself.
+	passed   map[string]retrieval.FileState
 	manifest []byte // the manifest the index below was built from
 	index    retrieval.Index
 	chunks   []indexedChunk // by document number
@@ -112,7 +119,17 @@ func (x *repoIndex) refresh(c *scheme.Call, bound time.Duration, add string) (nl
 			seen[rel] = true
 			abs := filepath.Join(x.o.Root, filepath.FromSlash(rel))
 			info, err := os.Lstat(abs)
-			if err != nil || !searchableFile(ctx, x.pin, deny, read, abs, x.o.MaxReadBytes) {
+			searchable := err == nil
+			if searchable && x.passed[rel] != stateOf(info, "") {
+				if searchable = searchableFile(ctx, x.pin, deny, read, abs, x.o.MaxReadBytes); searchable {
+					if x.passed == nil {
+						x.passed = map[string]retrieval.FileState{}
+					}
+					x.passed[rel] = stateOf(info, "")
+				}
+			}
+			if !searchable {
+				delete(x.passed, rel)
 				sum.Skipped++
 				drop(rel)
 				continue
@@ -158,10 +175,10 @@ func (x *repoIndex) refresh(c *scheme.Call, bound time.Duration, add string) (nl
 			// reaches the store.
 			redacted := redact.Redact(value.S, nil).Text
 			hash := retrieval.Hash(redacted)
-			if !x.store.Has(hash) {
-				if err := x.store.Put(hash, retrieval.Chunks(redacted)); err != nil {
-					return nil, err
-				}
+			if x.store.Has(hash) {
+				x.store.Touch(hash)
+			} else if err := x.store.Put(hash, retrieval.Chunks(redacted)); err != nil {
+				return nil, err
 			}
 			// The state is taken after the read, so a change made while
 			// reading shows next time.
@@ -315,6 +332,12 @@ func (x *repoIndex) search(c *scheme.Call, query string, limit int, under string
 	if sum.Read > 0 || sum.Removed > 0 {
 		x.record(sum)
 	}
+	if sum.Read > 0 {
+		// Every file edited leaves its old chunks behind, and a search is
+		// all the use most sessions make of the index: it cleans up too, off
+		// the manifest's lock (refresh has released it).
+		_ = x.store.CollectDue(time.Now().Add(-indexKeep), indexCollectEvery)
+	}
 	if err := x.load(m); err != nil {
 		return "", err
 	}
@@ -392,6 +415,7 @@ func (x *repoIndex) forget(ctx context.Context, rel string) {
 		return m.Encode()
 	})
 	x.manifest = nil
+	delete(x.passed, rel)
 }
 
 // update brings the index up to date, adding path (relative to the root)

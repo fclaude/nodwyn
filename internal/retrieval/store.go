@@ -119,12 +119,36 @@ func (s Store) Put(hash string, chunks []Chunk) error {
 	return os.Rename(tmp.Name(), path)
 }
 
+// Touch makes the chunks stored under hash as young as a write would, for a
+// refresh that reuses them: one a manifest is about to name must not be
+// older than a concurrent Collect's cut.
+func (s Store) Touch(hash string) {
+	now := time.Now()
+	_ = os.Chtimes(s.chunkPath(hash), now, now)
+}
+
+// CollectDue is Collect, unless one ran less than every ago: searches call
+// it, since every edited file leaves a stored chunk behind it, and the walk
+// of the store is not worth doing at each of them.
+func (s Store) CollectDue(before time.Time, every time.Duration) error {
+	if info, err := os.Stat(filepath.Join(s.Dir, collectedMarker)); err == nil && time.Since(info.ModTime()) < every {
+		return nil
+	}
+	return s.Collect(before)
+}
+
+// collectedMarker is a file whose modification time is when Collect last ran.
+const collectedMarker = "collected"
+
 // Collect removes the manifests of trees that are gone (a removed
 // worktree) and the stored chunks that no manifest names and nothing
 // wrote since before. It is called while the caller holds no manifest's
 // lock, so a chunk written for a manifest not yet published is younger
 // than before and stays.
 func (s Store) Collect(before time.Time) error {
+	if err := os.MkdirAll(s.Dir, 0o700); err == nil {
+		_ = os.WriteFile(filepath.Join(s.Dir, collectedMarker), nil, 0o600)
+	}
 	named := map[string]bool{}
 	manifests, _ := filepath.Glob(filepath.Join(s.Dir, "trees", "*.json"))
 	for _, path := range manifests {

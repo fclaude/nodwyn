@@ -682,3 +682,17 @@ size: a task whose first turn printed 40,000 words of test output had an
 index its own decoder refused, so its `.mem` was rebuilt from the whole log
 on every read. They are read as numbers up to 2^31-1, the width the postings
 store.
+
+Stored chunks are collected by a search too. Each edit of a file leaves its
+old chunks in the store, and a session that only searches never called
+`index-update`, which was the one place that removed them. A search that read
+a file now runs the collection, at most once an hour (a marker file in the
+store records the last), after the manifest's lock is released; a refresh that
+reuses a stored chunk touches it, so a collection cannot take one a manifest
+is about to name. The files' path and denylist checks, which resolve links and
+cost 0.5 s a search of 5,000 files, run for a file the session has not found
+searchable in its present state, not for each file at every search: a session
+has one guard, and another session checks for itself. (1,500 files: 214 ms for
+a search of an unchanged tree, 11 ms after.) Not done: the in-memory index is
+still rebuilt from every chunk when any file changed, and the denylist still
+resolves its directories for each file it is asked about.
