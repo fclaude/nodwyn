@@ -1043,7 +1043,10 @@ tools are offered only at the level that lets content leave:
 content = "full"
 ```
 
-and only to sessions started after that key was stored. The plan gate
+and only to sessions started after that key was stored. `full` applies to
+every project on this computer, proprietary ones included: it is a setting of
+yours in `config.toml`, not of a repository (a repository's own files cannot
+turn it on, and a per-project switch is not built). The plan gate
 does not need them, and works at the default `plan` level.
 
 `register-check` in `.nodwyn/init.scm` adds your own tightening-only guard

@@ -120,7 +120,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 - Whether to build a scheme subagent / multi-agent loop — out of v0 scope. *(Built after v0 as user code, ADR 27.)*
 - Whether embeddings are worth building — deferred; structural index first.
 - Whether the harness should support GUI — no; TUI only. *(Revised by ADR 21 and ADR 30: a browser console and a desktop app, clients of the same protocol as the TUI.)*
-- Whether Jev should ever be allowed to see argument content — *revised by ADR 19*: yes, after redaction, at a level the user chooses; raw tool results are opt-in per repository because of retention.
+- Whether Jev should ever be allowed to see argument content — *revised by ADR 19*: yes, after redaction, at a level the user chooses; raw tool results (`full`) are a machine-wide opt-in in `config.toml`, never per repository, because of retention.
 
 ---
 

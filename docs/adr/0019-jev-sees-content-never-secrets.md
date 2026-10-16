@@ -37,9 +37,10 @@ to the judge.
    - `plan+summaries` — plus the model's own summaries of tool results it
      cites in the plan (never raw results);
    - `full` — plus raw tool results and file contents referenced by the
-     plan; opt-in per repository in `.nodwyn/allow.toml` (`jev = "full"`),
-     because it is the level at which proprietary code is retained
-     elsewhere.
+     plan. It is the level at which proprietary code is retained elsewhere,
+     so it is the person's to switch on: a machine-wide setting in
+     `config.toml`, not a per-repository one (amended 2026-10-16: this text
+     said "opt-in per repository in `.nodwyn/allow.toml`"; that was not built).
 
 4. **Every call is logged** as `jev.req` (new kind): content level, byte
    count, a hash of the payload, the redaction events it triggered, and the
@@ -164,3 +165,22 @@ would only bring revisions, and the gate records the best plan whatever
 its score; whether a request needs a plan is the noul's to say. None of it
 was measured against the judge itself, which no test calls: the fake judge
 shows what is sent, and the sessions above are the cases to replay.
+
+## Amendment 2026-10-16: `full` is a machine-wide setting, and was never per repository
+
+§3 said `full` was an opt-in per repository, in `.nodwyn/allow.toml`
+(`jev = "full"`), and SPEC repeated it. Nothing reads such a key: the only
+source is `judge.content` in `config.toml` (`judgeContent` in
+`internal/core/judge_choice.go`, ADR 46, ADR 47), so setting it once applies to
+every repository on the machine, with no gate per repository. ADR 46 and ADR 47
+neither amended the text nor recorded the gate as not built.
+
+It stays machine-wide and person-only, and the per-repository opt-in is not
+built. A switch in `allow.toml` would be written by whoever can commit to the
+repository, a stranger's clone included, and ADR 45 decides that such a file
+grants nothing until the person reviews its revision; a switch that widens what
+leaves the machine is the last thing a clone should carry. A person who wants
+the gate per repository can have it as a setting of the person's own, in
+`workspaces.toml` beside the folder's other settings (as `earlier_tasks` is,
+ADR 22), which is not built either. Until then, set `judge.content = "full"`
+knowing it applies to every project, proprietary ones included.
