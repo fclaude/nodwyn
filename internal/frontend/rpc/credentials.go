@@ -12,6 +12,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // The methods in this file manage the keychain's credentials without a
@@ -186,7 +187,11 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 				return nil, err
 			}
 		}
-		h, err := store.Add(p.Class, value)
+		// A change waits for the keychain's file lock, which a token refresh
+		// holds across its request to the provider: not under the lifecycle lock.
+		var h *scheme.Handle
+		var err error
+		s.slow("", func() { h, err = store.Add(p.Class, value) })
 		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
@@ -204,7 +209,9 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 		if len(value) == 0 {
 			return nil, failure(-32602, "The value is empty")
 		}
-		if err := store.Replace(p.ID, value); err != nil {
+		var err error
+		s.slow("", func() { err = store.Replace(p.ID, value) })
+		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
 		return s.credentials(), nil
@@ -233,8 +240,12 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 				msg := strings.Replace(err.Error(), "delete it with --local to drop it anyway", "remove it without revoking to drop it anyway", 1)
 				return nil, failure(-32000, msg)
 			}
-		} else if err := store.Delete(p.ID); err != nil {
-			return nil, failure(-32000, err.Error())
+		} else {
+			var err error
+			s.slow("", func() { err = store.Delete(p.ID) })
+			if err != nil {
+				return nil, failure(-32000, err.Error())
+			}
 		}
 		// The class's rows go with its credential, so the next credential
 		// given the class does not inherit what this one was allowed; a
