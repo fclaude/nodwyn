@@ -109,8 +109,9 @@ func (s Store) searchTasks(tasks []SessionInfo, query string, limit int, what, h
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "[the %d best of %d events in %s, best first, under the turns that hold them; %s]\n", found(groups), events, what, how)
+	read := s.eventReader()
 	writeTurns(&b, logs, groups, func(i int) string { return taskLine(tasks[i]) + ", " }, func(i int, seq uint64) (string, error) {
-		ev, err := s.eventAt(tasks[i].ID, seq)
+		ev, err := read.at(tasks[i].ID, seq)
 		return eventText(ev), err
 	})
 	return b.String(), nil
@@ -135,7 +136,38 @@ func (s Store) recallTask(project, task string, seq uint64, start, count int64, 
 
 // eventAt is the event at seq in session id's log, redacted for display.
 func (s Store) eventAt(id string, seq uint64) (log.Event, error) {
-	page, err := s.ReadLog(id, seq-1, seq, 1)
+	return s.eventReader().at(id, seq)
+}
+
+// eventReader reads events of several logs, loading each log's index (a read
+// and a parse of its whole file) once however many of its events are read:
+// a search shows up to 20 hits, often of one task.
+type eventReader struct {
+	s       Store
+	indexes map[string]cachedIndex
+}
+
+type cachedIndex struct {
+	idx       logIndex
+	truncated bool
+}
+
+func (s Store) eventReader() *eventReader {
+	return &eventReader{s: s, indexes: map[string]cachedIndex{}}
+}
+
+// at is the event at seq in session id's log, redacted for display.
+func (r *eventReader) at(id string, seq uint64) (log.Event, error) {
+	page, err := r.s.readLog(id, seq-1, seq, 1, func(id string, fresh bool) (logIndex, bool, error) {
+		if c, ok := r.indexes[id]; ok && !fresh {
+			return c.idx, c.truncated, nil
+		}
+		idx, truncated, err := r.s.index(id)
+		if err == nil {
+			r.indexes[id] = cachedIndex{idx, truncated}
+		}
+		return idx, truncated, err
+	})
 	if err != nil {
 		return log.Event{}, err
 	}

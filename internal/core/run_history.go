@@ -145,11 +145,13 @@ func (s Store) ReadLatestRun(id string, through uint64, limit int) (LogPage, err
 	if limit < 1 || limit > 1000 {
 		return LogPage{}, fmt.Errorf("core: log limit must be between 1 and 1000")
 	}
+	read := s.eventReader()
 	for attempt := 0; ; attempt++ {
 		idx, truncated, err := s.index(id)
 		if err != nil {
 			return LogPage{}, err
 		}
+		read.indexes[id] = cachedIndex{idx, truncated} // the context events below are read through it
 		if through == 0 {
 			through = idx.Seq
 		}
@@ -165,7 +167,7 @@ func (s Store) ReadLatestRun(id string, through uint64, limit int) (LogPage, err
 			for i, ev := range page.Context {
 				// An earlier run's setup is read from the log.
 				if ev.Payload == nil {
-					if ev, err = s.eventAt(id, ev.Seq); err != nil {
+					if ev, err = read.at(id, ev.Seq); err != nil {
 						return LogPage{}, err
 					}
 				}

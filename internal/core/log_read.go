@@ -28,11 +28,17 @@ type LogPage struct {
 // page is read from the log's index (log_index.go): from the nearest mark
 // before it, not from the log's first event.
 func (s Store) ReadLog(id string, after, through uint64, limit int) (LogPage, error) {
+	return s.readLog(id, after, through, limit, func(id string, _ bool) (logIndex, bool, error) { return s.index(id) })
+}
+
+// readLog is ReadLog with where the index comes from: indexOf, which is
+// told when the one it gave before was stale and must be built again.
+func (s Store) readLog(id string, after, through uint64, limit int, indexOf func(id string, fresh bool) (logIndex, bool, error)) (LogPage, error) {
 	if limit < 1 || limit > 1000 {
 		return LogPage{}, fmt.Errorf("core: log limit must be between 1 and 1000")
 	}
 	for attempt := 0; ; attempt++ {
-		idx, truncated, err := s.index(id)
+		idx, truncated, err := indexOf(id, attempt > 0)
 		if err != nil {
 			return LogPage{}, err
 		}

@@ -71,10 +71,11 @@ func (s Store) SearchConversations(id, scope, query string, limit int) (Conversa
 	groups, events := rankTurns(logs, query, limit)
 	result.SearchedEvents = events
 	positions := map[int]int{}
+	read := s.eventReader()
 	for _, g := range groups {
 		turn := ConversationTurn{Heading: redact.Redact(g.head, nil).Text, Matches: []ConversationMatch{}}
 		for _, hit := range g.hits {
-			ev, err := s.eventAt(tasks[g.log].ID, hit.doc.Seq)
+			ev, err := read.at(tasks[g.log].ID, hit.doc.Seq)
 			if err != nil {
 				result.Unavailable++
 				continue
