@@ -377,3 +377,33 @@ func TestOpenAtReadsOnlyFromTheIndexedEnd(t *testing.T) {
 		t.Fatalf("after the cut and an append: %d events, %v", len(evs), err)
 	}
 }
+
+// fullDisk writes half of its first line and fails, as a disk that fills
+// does, then takes whatever comes.
+type fullDisk struct {
+	bytes.Buffer
+	failed bool
+}
+
+func (d *fullDisk) Write(p []byte) (int, error) {
+	if !d.failed {
+		d.failed = true
+		d.Buffer.Write(p[:len(p)/2])
+		return len(p) / 2, errors.New("no space left on device")
+	}
+	return d.Buffer.Write(p)
+}
+
+// After a line that was only partly written, nothing more is: the next line
+// would be glued to the partial one, and the whole log could no longer be
+// read, listed or resumed.
+func TestAFailedWriteIsNotFollowedByAGluedLine(t *testing.T) {
+	disk := &fullDisk{}
+	w := New(disk, "s")
+	if _, err := w.Append(KindNote, Note{Text: "first"}); err == nil {
+		t.Fatal("a failed write was reported as written")
+	}
+	if _, err := w.Append(KindNote, Note{Text: "second"}); err == nil {
+		t.Fatalf("an event was written after a partial line: %q", disk.String())
+	}
+}

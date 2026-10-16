@@ -136,6 +136,12 @@ type Writer struct {
 	seq     uint64
 	filter  Filter
 	now     func() time.Time
+	// broken is why an earlier event could not be written and the log not
+	// put back as it was: every later Append returns it, as one more line
+	// would be glued to a partial one or repeat a seq, and Read could no
+	// longer read the log. Open and OpenAt, which cut a torn tail, start a
+	// Writer that is not broken.
+	broken error
 }
 
 // Option configures a Writer.
@@ -319,16 +325,46 @@ func (w *Writer) Append(kind Kind, payload any) (Event, error) {
 		return Event{}, fmt.Errorf("log: marshal event: %w", err)
 	}
 	line = append(line, '\n')
+	if w.broken != nil {
+		return Event{}, w.broken
+	}
+	// A file's size before the line is where it is cut back to when the
+	// line, or its sync, fails (a full disk): the event is then simply not
+	// written, and the next one can be.
+	file, _ := w.w.(cuttable)
+	size := int64(-1)
+	if file != nil {
+		if st, err := file.Stat(); err == nil {
+			size = st.Size()
+		}
+	}
 	if _, err := w.w.Write(line); err != nil {
-		return Event{}, fmt.Errorf("log: write: %w", err)
+		return Event{}, w.undo(file, size, fmt.Errorf("log: write: %w", err))
 	}
 	if w.syncer != nil {
 		if err := w.syncer.Sync(); err != nil {
-			return Event{}, fmt.Errorf("log: fsync: %w", err)
+			return Event{}, w.undo(file, size, fmt.Errorf("log: fsync: %w", err))
 		}
 	}
 	w.seq = ev.Seq
 	return ev, nil
+}
+
+// cuttable is a log file that can be cut back to an earlier size.
+type cuttable interface {
+	Stat() (os.FileInfo, error)
+	Truncate(int64) error
+	Sync() error
+}
+
+// undo puts the log back as it was before a line that failed, or, when it
+// cannot, marks the Writer broken. It returns err.
+func (w *Writer) undo(file cuttable, size int64, err error) error {
+	if file != nil && size >= 0 && file.Truncate(size) == nil && file.Sync() == nil {
+		return err
+	}
+	w.broken = fmt.Errorf("%w; the log could not be put back as it was, so nothing more is written to it until it is opened again", err)
+	return w.broken
 }
 
 // Close closes the underlying file, if any.
