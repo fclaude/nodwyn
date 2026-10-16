@@ -58,10 +58,9 @@ the newer cache does not revive the older cache. Summary edits reset derived
 sticky-elision decisions, then the budget policy recomputes from source. This
 makes revocation effective rather than leaving an old cached omission in place.
 
-Recipes from `window-v2` on record this policy (new sessions record
-`window-v15`, which adds later window features such as attached images,
-a run's carried plan, the model's thinking on its replies, and the request
-and its plan in the conversation rather than the system prompt);
+Recipes from `window-v2` on record this policy (new sessions record the
+current one, `window.RecipeVersion`, whose comment in
+`internal/window/replay.go` says what each version added);
 historical `window-v1` requests retain their original policy. Replaying an
 earlier request uses only the log prefix before
 that request, so a later revocation cannot change what the model originally saw.

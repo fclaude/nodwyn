@@ -912,8 +912,9 @@ Summary records now have typed `from`, `through`, `source_hash` and `text`
 payloads. `summary.drop` names `summary_seq`. These are durable history, not
 permission or mutation RPCs. The first editing surface is the local `nodwyn
 summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
-Recipes from `window-v2` on are summary-aware; new runtimes record `window-v17`,
-and exact replay supports every recipe from `window-v1` to it. Version 16
+Recipes from `window-v2` on are summary-aware; new runtimes record the
+current one (`window.RecipeVersion`, memory.md), and exact replay supports
+every recipe from `window-v1` to it. Version 16
 omits the matching tool results when their assistant call batch is elided,
 and protects the calls while any result is recent. `llm.req.elided` includes
 those omitted results. Version 17 cuts a result too large to show at line
@@ -921,7 +922,7 @@ ends and names the lines it leaves out (`[... lines A-B of the file left
 out here, …: read them with fs-read, start A, count N ...]`, or `of this
 result` for other tools). Earlier recipes retain their exact historical
 shape, even where a trim left orphaned tool messages; a resumed runtime uses
-v18. Version 18 gives a reply's signed reasoning back with it: `llm.resp`
+the current recipe. Version 18 gives a reply's signed reasoning back with it: `llm.resp`
 has `blocks`, each `{type, thinking?, signature?, data?, before?, origin?}`
 as an Anthropic reply gave it, or as a Responses reply's encrypted reasoning
 (`type` `reasoning`, `data` the encrypted content) for a model with
