@@ -41,10 +41,15 @@ func editedRegions(path, before, after string) string {
 	case len(midA)+len(midB) > editMiddle:
 		runs = append(runs, [2]int{pre, len(b) - suf})
 	default:
+		ops, ok := myers(midA, midB)
+		if !ok {
+			runs = append(runs, [2]int{pre, len(b) - suf})
+			break
+		}
 		// Walk the edit script with the line of b it has reached: a
 		// deletion is a change at that line, an insertion the line itself.
 		at, open := pre, false
-		for _, o := range myers(midA, midB) {
+		for _, o := range ops {
 			switch o.kind {
 			case ' ':
 				open = false

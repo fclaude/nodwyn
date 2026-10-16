@@ -264,6 +264,19 @@ func (WritePreview) Check(_ context.Context, p *scheme.Prim, args []scheme.Value
 	return guard.Decision{Verdict: guard.Confirm, Reason: reason, Detail: detail}
 }
 
+// errTooLargeToEdit is why readEditable refuses a file.
+var errTooLargeToEdit = errors.New("too large to edit or replace here")
+
+// readEditable reads a file fs-edit or an fs-write preview works on. Files
+// past maxVersionFile are refused, as no version of one can be kept: a 500 MB
+// log was read whole and scanned for credentials several times over.
+func readEditable(abs string) ([]byte, error) {
+	if st, err := os.Stat(abs); err == nil && st.Size() > maxVersionFile {
+		return nil, fmt.Errorf("%s is %s: %w (at most %s)", filepath.Base(abs), byteCount(int(st.Size())), errTooLargeToEdit, byteCount(maxVersionFile))
+	}
+	return os.ReadFile(abs)
+}
+
 // previewWrite renders the diff an fs-write would produce.
 func previewWrite(pin guard.RepoPin, args []scheme.Value) string {
 	if len(args) < 2 || args[0].Kind != scheme.KString || args[1].Kind != scheme.KString {
@@ -273,9 +286,11 @@ func previewWrite(pin guard.RepoPin, args []scheme.Value) string {
 	if abs == "" {
 		return "" // RepoPin denies it
 	}
-	old, err := os.ReadFile(abs)
+	old, err := readEditable(abs)
 	newText := args[1].S
 	switch {
+	case errors.Is(err, errTooLargeToEdit):
+		return fmt.Sprintf("%s: the file is too large to show a diff (%v)", args[0].S, err)
 	case err != nil:
 		return fmt.Sprintf("new file %s (%d lines, %d bytes)\n%s", args[0].S, strings.Count(newText, "\n"), len(newText), Unified(args[0].S, "", newText, 3))
 	case string(old) == newText:
@@ -516,7 +531,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 		if abs == "" {
 			return ""
 		}
-		cur, err := os.ReadFile(abs)
+		cur, err := readEditable(abs)
 		if err != nil {
 			return "cannot read " + args[0].S + ": " + err.Error()
 		}
@@ -554,7 +569,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			cur, err := os.ReadFile(abs)
+			cur, err := readEditable(abs)
 			if err != nil {
 				return scheme.Value{}, err
 			}

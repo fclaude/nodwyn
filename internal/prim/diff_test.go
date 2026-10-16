@@ -1,6 +1,8 @@
 package prim
 
 import (
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -35,7 +37,11 @@ func TestMyersEditScriptIsCorrect(t *testing.T) {
 		a, b := strings.Fields(c[0]), strings.Fields(c[1])
 		var rebuilt []string
 		ai := 0
-		for _, o := range myers(a, b) {
+		ops, ok := myers(a, b)
+		if !ok {
+			t.Fatalf("%v: no script", c)
+		}
+		for _, o := range ops {
 			switch o.kind {
 			case ' ':
 				if a[ai] != o.line {
@@ -52,5 +58,50 @@ func TestMyersEditScriptIsCorrect(t *testing.T) {
 		if strings.Join(rebuilt, " ") != c[1] || ai != len(a) {
 			t.Fatalf("%v: script does not produce b: %v", c, rebuilt)
 		}
+	}
+}
+
+// Two files of 3,000 lines with nothing in common took 564 MB for one diff,
+// since a full copy of the search state was kept for every edit. The state
+// kept now is what each round can have reached, and a change past
+// maxDiffEdits is summarised: this one is, in a few MB.
+func TestUnifiedOfAFullRewriteIsBoundedInMemory(t *testing.T) {
+	var a, b strings.Builder
+	for i := 0; i < 3000; i++ {
+		fmt.Fprintf(&a, "old line %d\n", i)
+		fmt.Fprintf(&b, "new line %d\n", i)
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	got := Unified("f", a.String(), b.String(), 3)
+	runtime.ReadMemStats(&after)
+	if !strings.Contains(got, "diff too large to show") {
+		t.Fatalf("a rewrite of 6,000 changed lines: %.200q", got)
+	}
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 32<<20 {
+		t.Fatalf("the diff allocated %d MB", alloc>>20)
+	}
+}
+
+// A change of a few lines in a long file still shows as one hunk, whatever
+// the file's size, and a change big enough to be worth reading still diffs.
+func TestUnifiedFindsASmallEditInALongFileAndABigOneInAShortFile(t *testing.T) {
+	var a, b []string
+	for i := 0; i < 2900; i++ {
+		a = append(a, fmt.Sprintf("line %d", i))
+		b = append(b, fmt.Sprintf("line %d", i))
+	}
+	b[1500] = "changed"
+	got := Unified("f", strings.Join(a, "\n")+"\n", strings.Join(b, "\n")+"\n", 1)
+	if want := "@@ -1500,3 +1500,3 @@\n line 1499\n-line 1500\n+changed\n line 1501\n"; !strings.HasSuffix(got, want) || strings.Count(got, "@@") != 2 {
+		t.Fatalf("got %q", got)
+	}
+	var c, d strings.Builder
+	for i := 0; i < 1000; i++ {
+		fmt.Fprintf(&c, "old %d\n", i)
+		fmt.Fprintf(&d, "new %d\n", i)
+	}
+	if got := Unified("f", c.String(), d.String(), 3); strings.Contains(got, "too large") || strings.Count(got, "\n-old") != 1000 {
+		t.Fatalf("a 2,000-edit rewrite: %.200q", got)
 	}
 }

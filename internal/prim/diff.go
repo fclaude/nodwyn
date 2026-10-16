@@ -7,15 +7,15 @@ import (
 
 // Unified renders a unified diff of a → b with n lines of context. It is
 // used for fs-write confirmation prompts, so the user sees exactly what
-// changes before saying yes. Inputs above maxDiffLines fall back to a
-// summary.
+// changes before saying yes. Inputs above maxDiffLines, and changes of more
+// than maxDiffEdits lines, fall back to a summary.
 func Unified(name, a, b string, n int) string {
 	al := splitLines(a)
 	bl := splitLines(b)
-	if len(al)+len(bl) > maxDiffLines {
+	ops, ok := diffOps(al, bl)
+	if !ok {
 		return fmt.Sprintf("--- %s (%d lines)\n+++ %s (%d lines)\n(diff too large to show)\n", name, len(al), name, len(bl))
 	}
-	ops := myers(al, bl)
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "--- %s\n+++ %s\n", name, name)
 	// Group ops into hunks separated by more than 2n unchanged lines.
@@ -52,7 +52,14 @@ func Unified(name, a, b string, n int) string {
 	return sb.String()
 }
 
-const maxDiffLines = 6000
+const (
+	maxDiffLines = 6000
+	// maxDiffEdits bounds how many lines may differ. The search keeps a row
+	// of state for each edit, so memory grows with its square: 2,500 edits
+	// take about 13 MB, where a full rewrite of two 3,000-line files, 6,000
+	// edits, took 564 MB.
+	maxDiffEdits = 2500
+)
 
 type op struct {
 	kind byte // ' ', '-', '+'
@@ -106,54 +113,94 @@ func splitLines(s string) []string {
 	return lines
 }
 
-// myers computes a shortest edit script (Myers 1986, forward-only with
-// full trace) — fine for the file sizes a confirm prompt shows.
-func myers(a, b []string) []op {
-	n, m := len(a), len(b)
-	maxD := n + m
-	if maxD == 0 {
-		return nil
+// diffOps is the edit script from a to b, or false when it is too large to
+// compute. The lines the two share at both ends are set aside first: an edit
+// in the middle of a long file then costs what it changes, not what the file
+// holds.
+func diffOps(a, b []string) ([]op, bool) {
+	if len(a)+len(b) > maxDiffLines {
+		return nil, false
 	}
-	offset := maxD
-	v := make([]int, 2*maxD+2)
-	var trace [][]int
+	prefix := 0
+	for prefix < len(a) && prefix < len(b) && a[prefix] == b[prefix] {
+		prefix++
+	}
+	suffix := 0
+	for suffix < len(a)-prefix && suffix < len(b)-prefix && a[len(a)-1-suffix] == b[len(b)-1-suffix] {
+		suffix++
+	}
+	middle, ok := myers(a[prefix:len(a)-suffix], b[prefix:len(b)-suffix])
+	if !ok {
+		return nil, false
+	}
+	ops := make([]op, 0, prefix+len(middle)+suffix)
+	for i := 0; i < prefix; i++ {
+		ops = append(ops, op{' ', a[i], i, i})
+	}
+	for _, o := range middle {
+		o.ai += prefix
+		o.bi += prefix
+		ops = append(ops, o)
+	}
+	for i := suffix; i > 0; i-- {
+		ops = append(ops, op{' ', a[len(a)-i], len(a) - i, len(b) - i})
+	}
+	return ops, true
+}
+
+// myers computes a shortest edit script (Myers 1986, forward-only with a
+// trace) in memory that grows with the square of the edits, not with their
+// number times the input: each round keeps only the diagonals it can have
+// reached. It gives up, false, past maxDiffEdits.
+func myers(a, b []string) ([]op, bool) {
+	n, m := len(a), len(b)
+	maxD := min(n+m, maxDiffEdits)
+	if n+m == 0 {
+		return nil, true
+	}
+	offset := maxD + 1
+	v := make([]int32, 2*maxD+3)
+	// trace[d] holds v before round d for the diagonals -d-1 to d+1.
+	trace := make([][]int32, 0, 64)
 	found := false
 	for d := 0; d <= maxD && !found; d++ {
-		snapshot := make([]int, len(v))
-		copy(snapshot, v)
-		trace = append(trace, snapshot)
+		trace = append(trace, append([]int32(nil), v[offset-d-1:offset+d+2]...))
 		for k := -d; k <= d; k += 2 {
 			var x int
 			if k == -d || (k != d && v[offset+k-1] < v[offset+k+1]) {
-				x = v[offset+k+1]
+				x = int(v[offset+k+1])
 			} else {
-				x = v[offset+k-1] + 1
+				x = int(v[offset+k-1]) + 1
 			}
 			y := x - k
 			for x < n && y < m && a[x] == b[y] {
 				x++
 				y++
 			}
-			v[offset+k] = x
+			v[offset+k] = int32(x)
 			if x >= n && y >= m {
 				found = true
 				break
 			}
 		}
 	}
+	if !found {
+		return nil, false
+	}
 	// Backtrack.
 	var ops []op
 	x, y := n, m
 	for d := len(trace) - 1; d >= 0; d-- {
 		vv := trace[d]
+		at := func(k int) int { return int(vv[k+d+1]) }
 		k := x - y
 		var prevK int
-		if k == -d || (k != d && vv[offset+k-1] < vv[offset+k+1]) {
+		if k == -d || (k != d && at(k-1) < at(k+1)) {
 			prevK = k + 1
 		} else {
 			prevK = k - 1
 		}
-		prevX := vv[offset+prevK]
+		prevX := at(prevK)
 		prevY := prevX - prevK
 		for x > prevX && y > prevY {
 			x--
@@ -173,5 +220,5 @@ func myers(a, b []string) []op {
 	for i, j := 0, len(ops)-1; i < j; i, j = i+1, j-1 {
 		ops[i], ops[j] = ops[j], ops[i]
 	}
-	return ops
+	return ops, true
 }
