@@ -227,7 +227,12 @@ The server may also set \code{dialect = "cerebras"} alongside
 before starting \nodwyn{}: Cerebras reads assistant thinking in history as
 \code{reasoning} and rejects the default \code{reasoning\_content}.
 Omitting the dialect or using \code{"compatible"} preserves the existing
-encoding. \code{dialect = "responses"} sends each request to OpenAI's
+encoding, and keeps a reply's \code{reasoning\_details} (OpenRouter's
+reasoning as the model's provider gave it, often encrypted) when it carries
+them: the log keeps the array as it came, and later requests send it back on
+that reply, in place of its thinking text, to the same server and model only
+(\adr{9}, amended 2026-10-15). \code{dialect = "responses"} sends each
+request to OpenAI's
 Responses API (\code{POST /responses}) instead: some of its reasoning models,
 gpt-6.1-sol among them, take an effort beside tools only there. The effort goes
 as \code{reasoning.effort}, \code{store} is false, and a reply's thinking is

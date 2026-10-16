@@ -926,11 +926,14 @@ has `blocks`, each `{type, thinking?, signature?, data?, before?, origin?}`
 as an Anthropic reply gave it, or as a Responses reply's encrypted reasoning
 (`type` `reasoning`, `data` the encrypted content) for a model with
 `keep_reasoning`, whose `origin` names the server and model it goes back to
-(`before` is how many of its calls came first), and the window leaves out
-the blocks of a reply made before a fold or an elision of an earlier
-entry. The recorded `max_result_tokens` is the window's cap as sized for the
-model: a 48th of the high water when the window grows with a large context,
-up to 16,384, unless `config.toml` sets it.
+(`before` is how many of its calls came first), or as a chat-completions
+reply's `reasoning_details` (`type` `reasoning_details`, `data` the whole
+array as the JSON text it came as, with its `origin`; ADR 9, amended
+2026-10-15), and the window leaves out the blocks of a reply made before a
+fold or an elision of an earlier entry. A client shows none of them. The
+recorded `max_result_tokens` is the window's cap as sized for the model: a
+48th of the high water when the window grows with a large context, up to
+16,384, unless `config.toml` sets it.
 
 
 ### Prompt scope metadata

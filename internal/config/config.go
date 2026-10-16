@@ -246,7 +246,9 @@ type Model struct {
 	// gpt-6.1-sol false is the setting to use: in six runs of one task it
 	// saved no time, output or tool calls and solved the task the same way
 	// (ADR 9, amended 2026-10-07); a later model may differ. true is for openai
-	// servers with dialect = "responses" only.
+	// servers with dialect = "responses" only. A chat-completions reply's
+	// reasoning_details (OpenRouter's) need no setting: they are kept whenever
+	// a reply carries them (ADR 9, amended 2026-10-15).
 	KeepReasoning bool `toml:"keep_reasoning"`
 	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
 	// per million tokens, in USD, for estimating what a request cost when
@@ -963,7 +965,7 @@ func (m Model) validate() error {
 		return errors.New("cache_control is for openai and anthropic servers; ollama keeps its own prompt cache")
 	}
 	if m.KeepReasoning && (m.Provider != "openai" || m.Dialect != llm.ChatResponses) {
-		return errors.New(`keep_reasoning is for openai servers with dialect = "responses": only the Responses API gives reasoning back to keep`)
+		return errors.New(`keep_reasoning is for openai servers with dialect = "responses", whose reasoning comes back only when asked for; a chat-completions reply's reasoning_details are kept without it`)
 	}
 	for name, p := range map[string]*float64{"price_input": m.PriceInput, "price_cached_input": m.PriceCachedInput, "price_output": m.PriceOutput} {
 		if p != nil && (*p < 0 || math.IsNaN(*p) || math.IsInf(*p, 0)) {
