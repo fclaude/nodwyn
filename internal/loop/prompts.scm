@@ -447,6 +447,20 @@
    (expectation-lines lines)
    "\nWhich sentence of the request requires the new expectation, for that input or case? A rule the request states in general words does not cover an input it does not name. If none does, restore the line and change the code to meet it; if one does, say which in your answer. Answer in a line beside your next call. This is asked once for each test file."))
 
+;; What the finish review asks of the lines of a change that no test ran
+;; (strategy.scm, finish-review-points). The loop knows which commands passed
+;; and none of them says which lines ran. On commit-bench 3422faf1 (dsl20r
+;; r3) shipped a branch whose condition tested the wrong variable, so it could
+;; never be true, with a plan that gave no position cases and tests that never
+;; reached the edge; the same hidden test had failed three earlier builds
+;; (ADR 32, amended 2026-10-16).
+(define (finish-uncovered-lines-message check)
+  (string-append
+   (if (string-empty? check)
+       "Your last test run"
+       (string-append "Your check (" (if (> (string-length check) 160) (string-append (substring check 0 160) "…") check) ")"))
+   " passed, which does not show that a test ran each line you changed. Run the tests of the files you changed once with coverage (go test -coverprofile=$TMPDIR/cover.out and go tool cover -func, pytest --cov, ...), name the changed lines no test executed, and for each add a test that executes it or delete the line. A branch no case reaches (a condition that cannot be true, a skip nothing exercises) is the usual one. If coverage cannot run here, read the change line by line against your tests and name those lines instead."))
+
 ;; The parts of a condition the change no longer checks (strategy.scm,
 ;; change-dropped-conditions), a point of the finish review. On commit-bench
 ;; dsl19 turned `Jev.Enabled() && ...` into `state == stateReady`, as its
@@ -613,7 +627,15 @@
    " A step that says all it should in its name needs no dash. A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."
    " Say what the code should do as behaviour, in which cases and with what result, not as code to type: whoever carries the plan out reads the code and writes it, and a function name or signature quoted from memory that the code does not have misleads them."
    " Where the request or the code leaves a detail open (which helper or function to call, a literal's type or format, which of several fixes), name the options and what will decide between them (the definition to read, the code nearby to imitate, the request's example), and leave the choice to whoever carries the plan out, who can run the code: a choice made by reading alone is the one most often wrong. Copy the request's own examples, names and formats word for word."
-   " Every name the request lists for what the change must produce or touch (a header, a flag, a field, a command, a file) appears in a step, spelled as the request spells it; if you think one is already there under another name, keep it anyway: the step names both, and a Test: step checks the request's own spelling, so a run shows whether they are the same."))
+   " Every name the request lists for what the change must produce or touch (a header, a flag, a field, a command, a file) appears in a step, spelled as the request spells it; if you think one is already there under another name, keep it anyway: the step names both, and a Test: step checks the request's own spelling, so a run shows whether they are the same."
+   ;; 94f5cac4 and 3422faf1 (ADR 32, amended 2026-10-16): the first plan
+   ;; copied "count 0 stays and means default" as a step, a behaviour the
+   ;; request never states, and the run rewrote an existing test to match;
+   ;; the second said only "drop an overlapping token", with no case for a
+   ;; token inside the other, crossing its start or crossing its end, and
+   ;; the tests never reached the edge the hidden test checks.
+   " A step carries only what the request states. Behaviour it does not state goes on an unnumbered line after the steps, \"Assumptions: ...\", each checked against the existing tests the exploration found before any step relies on it; an assumption an existing test contradicts is dropped."
+   " For each rule the request states, list its cases: one per clause, and for a range, an overlap or an edge one per position (inside, crossing the start, crossing the end, equal, empty)."))
 
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)

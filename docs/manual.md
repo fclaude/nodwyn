@@ -586,7 +586,9 @@ run at all, and another when the code already does what was asked: a check
 that shows it. Before it ends, the check that passed is run again with each
 part of the change taken out in turn, and the parts it still passes without are
 named to the model: a check that cannot fail for a part does not test it. When
-an edit removes or rewrites an expectation of
+a change adds a branch and nothing measured coverage, the model is also asked
+to run the tests once with coverage and to add a test for each changed line
+none ran, or delete it. And when an edit removes or rewrites an expectation of
 a test the repository already had, the model is asked once for that file, as
 it edits, which sentence of your request requires the new expectation; the
 edit itself is never refused. It answers the guard's questions; it does not
@@ -836,7 +838,9 @@ what it checks and why it fails on today's code, "fails today: …"),
 `Docs:` (each document the change makes wrong or incomplete) and, last,
 `Check:` (the command that shows the whole change works); a plan with no
 test or no doc to change says why in a step (`Test: none — only docs
-change`). The judge scores the gate's plans against it, and `plan-write`
+change`); behaviour your request does not state goes on an `Assumptions:` line
+after the steps, checked against the existing tests, not in a step. The judge
+scores the gate's plans against it, and `plan-write`
 turns down a plan without it, saying what is missing, at most twice in a
 turn: the third is recorded as written, with what it still lacks. The plan
 panel shows each step folded to its title, the clause up to its first dash

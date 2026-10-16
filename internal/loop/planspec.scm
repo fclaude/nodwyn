@@ -6,6 +6,7 @@
 ;;         (fails-today "the flag is unknown") (run "go test ./src -run TestVerboseFlag"))
 ;;   (docs "README.md" "the flags section lists --verbose")
 ;;   (names "--verbose" "Verbose")
+;;   (assumes "-q wins when both flags are given" "TestFlagsLastWins expects the same")
 ;;   (check "go test ./...")
 ;;
 ;; so what a plan says is a set of things the harness can look for: the
@@ -267,6 +268,10 @@
    "\n(none test \"why there is no test\") or (none docs \"why no document changes\")"
    "\n(names \"name\" ...) — every name the request gives for something the change must write into a file (a header, a flag, a field, a new function, a key), spelled as the request spells it; not a function or file the change only edits, not a phrase or a message the request quotes, and not words of the request's instructions to you (such as a line to end your answer with)"
    "\n(context \"name\" ...) — the other names the request gives that read as code: what the change only uses or edits; nothing else"
+   ;; 94f5cac4 and 3422faf1 (ADR 32, amended 2026-10-16): see plan-shape in
+   ;; prompts.scm. The form is the "Assumptions:" line there; a step never
+   ;; carries unstated behaviour, and the test steps list a rule's cases.
+   "\n(assumes \"behaviour the request does not state\" \"the existing test or code you checked it against, and what it showed\") — a step carries only what the request states; anything else goes here, and no step relies on it until an existing test was checked against it: an assumption a test contradicts is dropped"
    "\nEvery name of the request that reads as code (session-id, cache_key, output_index) appears in names or context. If you think one is already in the code under another name, keep it in names anyway: the change is checked for the request's own spelling."
    "\nSay what the code should do as behaviour, in which cases and with what result, not as code to type. Where the request or the code leaves a detail open (which helper to call, a literal's format, which of several fixes), name the options and what will decide between them inside the step, and leave the choice to whoever carries the plan out. Copy the request's own examples, names and formats word for word."
    ;; dsl19's planner read "judge requires ready" as "judge equals ready" and
@@ -274,6 +279,7 @@
    ;; executor followed the step against its own doubts (commit-bench
    ;; c80b38ac; ADR 32, amended 2026-10-15).
    "\nWhen a step changes an existing condition, it names each part of the old condition and says whether that part stays."
+   "\nFor each rule the request states, the test steps list its cases: one per clause, and for a range, an overlap or an edge one per position (inside, crossing the start, crossing the end, equal, empty)."
    "\nFor example:"
    "\n(change \"src/flags.go\" \"parseFlags\" \"accept --verbose and set Verbose\")"
    "\n(test \"src/flags_test.go\" \"TestVerboseFlag\" \"--verbose sets Verbose and -q does not\" (fails-today \"the flag is unknown\") (run \"go test ./src -run TestVerboseFlag\"))"
@@ -324,7 +330,7 @@
   (let* ((head (plan-form-head form))
          (s (if head (plan-form-strings form) '()))
          (where (string-append "form " (number->string i))))
-    (cond ((not head) (string-append where " is not a list that starts with change, test, docs, check, none, names or context"))
+    (cond ((not head) (string-append where " is not a list that starts with change, test, docs, check, none, names, context or assumes"))
           ((equal? head "change")
            (if (null? s) (string-append where ": change needs its file")
                (list (cons 'kind "Change") (cons 'path (car s))
@@ -353,10 +359,14 @@
                        (cons 'what (if (pair? s) (car s) "")))
                  (string-append where ": none takes test or docs, then why"))))
           ((member head '("names" "context")) (list (cons 'kind head) (cons 'list s)))
-          (else (string-append where " starts with " head ", which is none of change, test, docs, check, none, names or context")))))
+          ((equal? head "assumes")
+           (if (null? s) (string-append where ": assumes needs the behaviour it assumes")
+               (list (cons 'kind head)
+                     (cons 'list (list (if (pair? (cdr s)) (string-append (car s) " (checked against: " (cadr s) ")") (car s)))))))
+          (else (string-append where " starts with " head ", which is none of change, test, docs, check, none, names, context or assumes")))))
 
-;; A plan's text read as data: (steps names context problems), or #f when it
-;; is not readable as forms at all.
+;; A plan's text read as data: (steps names context problems assumptions), or
+;; #f when it is not readable as forms at all.
 ;; A chunk of a plan read with up to three closing parentheses added, or #f.
 (define (plan-language-read-chunk t)
   (let try ((t t) (left 3))
@@ -382,14 +392,15 @@
 (define (plan-language-read text)
   (let ((forms (plan-language-forms text)))
     (and forms (pair? forms) (pair? (car forms))
-         (let walk ((fs forms) (i 1) (steps '()) (names '()) (context '()) (problems '()))
+         (let walk ((fs forms) (i 1) (steps '()) (names '()) (context '()) (problems '()) (assumptions '()))
            (if (null? fs)
-               (list (reverse steps) names context (reverse problems))
+               (list (reverse steps) names context (reverse problems) assumptions)
                (let ((st (plan-language-step (car fs) i)))
-                 (cond ((string? st) (walk (cdr fs) (+ i 1) steps names context (cons st problems)))
-                       ((equal? (assoc-ref st 'kind "") "names") (walk (cdr fs) (+ i 1) steps (append names (assoc-ref st 'list '())) context problems))
-                       ((equal? (assoc-ref st 'kind "") "context") (walk (cdr fs) (+ i 1) steps names (append context (assoc-ref st 'list '())) problems))
-                       (else (walk (cdr fs) (+ i 1) (cons st steps) names context problems)))))))))
+                 (cond ((string? st) (walk (cdr fs) (+ i 1) steps names context (cons st problems) assumptions))
+                       ((equal? (assoc-ref st 'kind "") "names") (walk (cdr fs) (+ i 1) steps (append names (assoc-ref st 'list '())) context problems assumptions))
+                       ((equal? (assoc-ref st 'kind "") "context") (walk (cdr fs) (+ i 1) steps names (append context (assoc-ref st 'list '())) problems assumptions))
+                       ((equal? (assoc-ref st 'kind "") "assumes") (walk (cdr fs) (+ i 1) steps names context problems (append assumptions (assoc-ref st 'list '()))))
+                       (else (walk (cdr fs) (+ i 1) (cons st steps) names context problems assumptions)))))))))
 
 ;; Every string a plan holds, for the names check.
 (define (plan-language-said steps names context)
@@ -420,7 +431,7 @@
          (known (filter (lambda (n) (guard (e (else #f)) (head-has-name n))) absent)))
     (when (pair? known)
       (log-note (string-append "plan language: names the code already has, put in the plan's context: " (string-join known ", "))))
-    (list (car read) (cadr read) (append (caddr read) known) (list-ref read 3))))
+    (list (car read) (cadr read) (append (caddr read) known) (list-ref read 3) (list-ref read 4))))
 
 ;; What is wrong with a read plan as a whole.
 (define (plan-language-problems steps names context)
@@ -440,13 +451,16 @@
 
 ;; The plan written out as numbered steps, as the window and the console show
 ;; a plan, with the names after them.
-(define (plan-language-text steps names context)
+(define (plan-language-text steps names context assumptions)
   (let walk ((ss steps) (i 1) (out '()))
     (if (null? ss)
         (string-join (append (reverse out)
                              (if (pair? names) (list (string-append "Names the change produces, as the request spells them: "
                                                                     (string-join (map (lambda (n) (string-append "\"" n "\"")) names) ", ") ".")) '())
-                             (if (pair? context) (list (string-append "Names it only uses: " (string-join context ", ") ".")) '()))
+                             (if (pair? context) (list (string-append "Names it only uses: " (string-join context ", ") ".")) '())
+                             ;; One unnumbered line: a plan's steps are its numbered lines.
+                             (if (pair? assumptions) (list (string-append "Assumptions, which the request does not state (check each against the existing tests before relying on it): "
+                                                                          (string-join assumptions "; ") ".")) '()))
                      "\n")
         (let* ((st (car ss)) (kind (assoc-ref st 'kind "")) (n (number->string i))
                (line (cond ((assoc-ref st 'none #f) (string-append n ". " kind ": none — " (assoc-ref st 'what "")))
@@ -488,7 +502,7 @@
                  (set! plan-spec-context (caddr read))
                  (when (pair? problems)
                    (log-note (string-append "plan language: kept with problems: " (string-join problems "; "))))
-                 (plan-language-text (car read) (cadr read) (caddr read))))))))
+                 (plan-language-text (car read) (cadr read) (caddr read) (list-ref read 4))))))))
 
 ;; A plan the model writes with plan-write may be forms too.
 (define plan-language-base-write plan-write-answer)
@@ -499,7 +513,7 @@
         (begin (set! plan-spec (car read))
                (set! plan-spec-names (cadr read))
                (set! plan-spec-context (caddr read))
-               (plan-language-base-write call (list (cons "plan" (plan-language-text (car read) (cadr read) (caddr read))))))
+               (plan-language-base-write call (list (cons "plan" (plan-language-text (car read) (cadr read) (caddr read) (list-ref read 4))))))
         (let ((answer (plan-language-base-write call args)))
           ;; A plan the model writes in prose replaces the planner's forms:
           ;; set against the old forms, its steps were said to lack evidence

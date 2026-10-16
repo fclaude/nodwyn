@@ -782,6 +782,62 @@
                      (filter (lambda (p) (pair? (filter (lambda (l) (equal? (assoc-ref l "path" "") p)) lines)))
                              fresh)))))))
 
+;; Source files whose lines a coverage tool reports, by extension; a project
+;; may redefine the list.
+(define coverage-extensions
+  '(".go" ".py" ".js" ".jsx" ".ts" ".tsx" ".rs" ".java" ".kt" ".rb" ".php" ".c" ".cc" ".cpp" ".h" ".cs"))
+
+(define (coverage-source? path)
+  (and (not (test-file-path? path))
+       (let any ((exts coverage-extensions))
+         (and (pair? exts) (or (string-suffix? (car exts) path) (any (cdr exts)))))))
+
+;; The lines the change adds to source files (coverage-source?): those the
+;; diff git shows, and the whole of a touched source file the diff does not
+;; show (a new, untracked one).
+(define (added-source-lines touched)
+  (let walk ((ls (string-split (guard (e (else "")) (format "~a" (git-diff "."))) "\n")) (source? #f) (seen '()) (out '()))
+    (cond ((null? ls)
+           (append (reverse out)
+                   (apply append
+                          (map (lambda (p) (string-split (guard (e (else "")) (format "~a" (fs-read p))) "\n"))
+                               (filter (lambda (p) (and (coverage-source? p) (not (member p seen)))) touched)))))
+          ((string-prefix? "+++ " (car ls))
+           (let* ((raw (substring (car ls) 4 (string-length (car ls))))
+                  (path (if (string-prefix? "b/" raw) (substring raw 2 (string-length raw)) raw)))
+             (walk (cdr ls) (coverage-source? path) (cons path seen) out)))
+          ((and source? (string-prefix? "+" (car ls)))
+           (walk (cdr ls) source? seen (cons (substring (car ls) 1 (string-length (car ls))) out)))
+          (else (walk (cdr ls) source? seen out)))))
+
+;; Words that make an added line a branch or a condition, in the languages of
+;; coverage-extensions. A match in a comment or a name only asks once more.
+(define branch-words
+  '("if " "if(" "else" "elif" "&&" "||" "switch" "case " "? " " and " " or " "except" "unless "))
+
+(define (branchy? lines)
+  (let any ((ls lines))
+    (and (pair? ls)
+         (or (let word ((ws branch-words))
+               (and (pair? ws) (or (string-contains? (car ls) (car ws)) (word (cdr ws)))))
+             (any (cdr ls))))))
+
+;; Whether a command line measured coverage: go test -cover, pytest --cov, nyc,
+;; c8.
+(define (coverage-run? line)
+  (or (string-contains? line "cover") (string-contains? line "--cov") (string-contains? line "nyc") (string-contains? line "c8 ")))
+
+;; Whether the finish review asks for the changed lines no test ran: the
+;; turn changed a source file (touched: the repository paths it changed, by
+;; the file tools or as git shows them), the lines it added hold a branch or a
+;; condition, and no command run since its last edit (ran) measured coverage,
+;; so nothing in the turn says which lines a test executed. check-without
+;; takes out whole hunks; a dead branch lives inside one the check needs.
+(define (uncovered-lines-due? touched ran)
+  (and (pair? (filter coverage-source? touched))
+       (not (let any ((cs ran)) (and (pair? cs) (or (coverage-run? (car cs)) (any (cdr cs))))))
+       (branchy? (added-source-lines touched))))
+
 ;; The finish review: what an unattended turn's change lacks, gathered when
 ;; the turn first ends with a change and no reminder of its evidence is due,
 ;; and said in one message (finish-review-message), once a turn: the new
@@ -808,7 +864,12 @@
 ;; runs as shown keeps them and the files it edited by hand): a run's result
 ;; or figures, an amendment date, a paragraph pasted twice, entries added by
 ;; hand to a generated file.
-(define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits)
+;; With them, when the latest run since the last edit passed and nothing in
+;; the turn measured coverage, it asks for the lines of the change that no
+;; test executed (uncovered-lines-due?): the loop knows which commands passed
+;; and none of them says which lines ran. On commit-bench 3422faf1 (dsl20r r3)
+;; a dead branch got through every check and the diff review.
+(define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits touched)
   (let* ((plan (if (and plan-language (pair? plan-spec))
                    (let ((check (plan-language-check passed)))
                      (plan-language-mark (cadr check))
@@ -842,7 +903,10 @@
             (if (pair? defs) (list (finish-removed-definitions-message defs)) '())
             (if (pair? lines) (list (finish-removed-expectations-message lines)) '())
             (if (pair? dropped) (list (finish-dropped-conditions-message dropped)) '())
-            (if (pair? claims) (list (finish-unshown-claims-message claims)) '()))))
+            (if (pair? claims) (list (finish-unshown-claims-message claims)) '())
+            (if (and quiet (uncovered-lines-due? touched ran))
+                (list (finish-uncovered-lines-message (if passing (command-line passing) "")))
+                '()))))
 
 ;; Whether the host offers a primitive hidden from the model, as the analyses
 ;; of a git work tree are.
@@ -1084,7 +1148,8 @@
                                     (memq outcome '(passed kept))
                                     (append ran base-ran) ran-all
                                     (or (and passing (whole-check? passing)) (whole-check-passed? passed))
-                                    passed shown hand-edits)))
+                                    passed shown hand-edits
+                                    (append written (map git-state-path new-lines)))))
                        (and (pair? points)
                             (begin (add-message (finish-review-message points))
                                    (loop (ask-model) edited tested failed-runs offered reminders scripts written excused 0

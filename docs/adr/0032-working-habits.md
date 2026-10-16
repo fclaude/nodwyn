@@ -1583,3 +1583,59 @@ already had). No model was run: whether the rule or the question changes what
 a model does is for the next benchmark. Not built: refusing or reverting the
 edit; the question for a test deleted or rewritten through the shell (the
 finish review names it).
+
+## Amendment 2026-10-16: plans keep unstated behaviour apart, and the review asks for the lines no test ran
+
+Two more losses of the same review (2026-10-16, `muse-review`):
+
+- **94f5cac4**, the plan: "count 0 stays and means default" was written as a
+  step although the request never states it, and the exploration's report had
+  listed `TestReadRanges` as testing "start 0/count 0 errors" and quoted the
+  `count must be at least 1` check. A behaviour the request lacks, planned as
+  if it were stated, is what the run then rewrote a test to match.
+- **3422faf1** (dsl20r, third replicate): `mergeFindings` held a dead branch,
+  `f.Class == ClassUnknownEntropy && curIsBlock`, which tests the wrong
+  variable. The plan said only "drop an overlapping unknown-entropy token",
+  with no positions; the probes covered a token inside the other and one
+  crossing its start, never one crossing its end; the diff review missed it.
+  The same test failed in dsl15, an earlier Muse dsl16 build and OpenCode.
+
+So:
+
+- **Plans copy only what the request states.** The planner's prose shape
+  (`plan-shape`), the plan language (`plan-language-shape`) and `plan-write`'s
+  description say: a step carries only what the request states; behaviour it
+  does not state goes on an unnumbered line after the steps, "Assumptions:
+  ...", each checked against the existing tests the exploration found before
+  a step relies on it, and one a test contradicts is dropped; for each rule
+  the request states, the cases are listed by clause, and for a range, an
+  overlap or an edge by position: inside, crossing the start, crossing the
+  end, equal, empty. In the plan language the line is a part like `names` and
+  `context`: `(assumes "behaviour" "the test or code it was checked
+  against")`, written out as one unnumbered line (a plan's steps are its
+  numbered lines, so the marks and the console are unchanged). Nothing checks
+  it. `TestThePlannerKeepsUnstatedBehaviourApartAndListsCases`.
+- **The finish review asks for the changed lines no test ran.** When the
+  latest run since the last edit passed, a source file (`coverage-extensions`)
+  was changed, the lines the change adds hold a branch or a condition
+  (`branch-words`, read from `git-diff` and from new files) and no command run
+  since the last edit measured coverage (`coverage-run?`), the review adds
+  `finish-uncovered-lines-message`: the check passed, which does not show a
+  test ran each changed line; run the tests of the changed files once with
+  coverage, name the changed lines none executed, and add a test that
+  executes each or delete it; if coverage cannot run, read the change against
+  the tests. The loop knows which commands passed and none of them says which
+  lines ran, so it asks the model to run coverage once rather than parse a
+  tool's output. check-without takes out whole hunks and a dead branch lives
+  inside a hunk the check needs, which is why 3422faf1's review was quiet.
+  Gated on an added branch so a straight-line change does not cost a review of
+  its own: none of the earlier finish-review tests adds one, and none changed.
+  `TestTheReviewAsksForTheChangedLinesNoTestRan`,
+  `TestTestFilesAndBranchesAreToldApart`.
+
+No model was run. The review's point costs a round (the coverage run and what
+follows) in each turn that adds a branch and passes; a benchmark run is the
+measure of whether that buys the tests it asks for. Not built: reading
+coverage output in the loop; a check that an assumption was compared with a
+test; the report's other candidates (gate work, sandbox paths, re-reads after
+folds).

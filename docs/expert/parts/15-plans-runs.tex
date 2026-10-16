@@ -83,6 +83,19 @@ test of behaviour that already works; a \code{Docs:} step each file a
 person or a later session reads that the change makes wrong or incomplete;
 and the last step, \code{Check:}, the command that shows the whole change
 works. A plan with no test or no doc to change says so in a step, and why.
+A step carries only what the request states: behaviour the request does not
+state goes on an unnumbered line after the steps, ``Assumptions: \ldots'',
+and is checked against the existing tests before a step relies on it, and
+one a test contradicts is dropped. For each rule the request states, the
+plan lists the cases by clause and, for a range, an overlap or an edge, by
+position: inside, crossing the start, crossing the end, equal, empty. (A
+planner that writes its plan as forms puts such a line in an
+\code{assumes} form; the unnumbered line is no step, so marks and the
+console are unchanged.) On one benchmark task a plan copied ``count 0
+stays and means default'', which the request never stated, and the run
+rewrote an existing test to match; on another a plan said only ``drop an
+overlapping token'', and the tests never reached a token crossing the end.
+
 \begin{txt}
 1. Change: internal/prim/fs.go fsEdit — take an optional edits list.
 2. Test: internal/prim/fs_test.go TestEditsApplyInOrder — the second edit
@@ -232,7 +245,12 @@ evidence:
     documents and comments that nothing in the turn showed
     (\code{change-claims}): a run's result or figures no passing run
     printed, an amendment date no command printed, a paragraph pasted twice,
-    entries added by hand to a generated file. After it the turn is
+    entries added by hand to a generated file. And when the check passed, the
+    change added a branch or a condition to a source file and nothing in the
+    turn measured coverage, it asks for the changed lines no test executed:
+    run the tests of the changed files once with coverage, and add a test
+    that executes each of those lines or delete it
+    (\code{finish-uncovered-lines-message}). After it the turn is
     accepted: the model's next answer ends it, and the reminders above are
     not asked again.
   \item As a test file is edited, not only at the finish: after a round whose
