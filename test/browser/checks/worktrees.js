@@ -7,7 +7,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
-const { out, watch, requests, shows, openOptions, until, step, ready, desk, check } = require("../lib");
+const { out, watch, requests, shows, openOptions, taskMenu, until, step, ready, desk, check } = require("../lib");
 
 // Held replies make races and refusals deterministic without a real daemon
 // failure. The legacy opener also runs these guards on the unchanged code.
@@ -451,7 +451,7 @@ check(async () => {
 
   // A closed task is read from its log, as before; its worktree, which holds
   // what it wrote, stays.
-  await page.click('.task-actions button:text-is("Close")');
+  await taskMenu(page, "Close");
   await page.waitForSelector('.task-actions button:text-is("Resume")');
   await openTask(page, "Write second");
   const closedReads = reads();
@@ -523,7 +523,7 @@ check(async () => {
 
   // A closed task is not read: its worktree is read while it is open, so the
   // tab says to resume it, asks nothing and shows no refusal.
-  await page.click('.task-actions button:text-is("Close")');
+  await taskMenu(page, "Close");
   await page.waitForSelector('.task-actions button:text-is("Resume")');
   const asked = sent.of("worktree.diff").length;
   await shows(page, ".task-main .inspector-view .review", "Resume this task to review its changes");

@@ -3,7 +3,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, requests, until, ready, desk, check } = require("../lib");
+const { out, requests, openTaskMenu, until, ready, desk, check } = require("../lib");
 
 check(async () => {
   const { url, repo, page } = await desk();
@@ -65,7 +65,7 @@ check(async () => {
   };
   await page.goto(url);await ready(page);
   await go('#/task/search-anchor');await page.waitForSelector('.task[data-loaded]');
-  await page.click('a[aria-label="Search conversation"]');await page.waitForSelector('#conversation-query');
+  await openTaskMenu(page);await page.click('a[aria-label="Search conversation"]');await page.waitForSelector('#conversation-query');
   await search('starling-lantern');
   await until('task search results',async()=>await page.locator('.search-task').count()===1);
   assert.strictEqual(await page.locator('.search-task').getAttribute('data-task'),'search-anchor');

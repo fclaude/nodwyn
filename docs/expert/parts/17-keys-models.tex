@@ -419,7 +419,7 @@ Where you see it:
     at a time and fetching their contents only on expansion. Older renderers
     do not change the live model or prompts; read failures can be retried.
     Inspectors label their latest-run scope; totals remain whole-task. The task
-    header's Search finds messages and tool results in this task or other tasks
+    header menu's Search finds messages and tool results in this task or other tasks
     of its project, grouped by task and turn. A match opens bounded, read-only
     history; Open task returns to current interaction (\adr{51}). A task
     without run records keeps its full conversation. Scheduled messages and
@@ -439,13 +439,11 @@ Where you see it:
     measures prompt-token share, not the percentage of requests hitting
     cache or the budget's discounted token count. If history was truncated,
     the Totals label ``from the log that remains'' applies to the rate too
-    (\adr{9}). A compact summary above every tab keeps five figures available:
-    total spend, turn time, context fullness, tool calls and ``Cache hit''.
-    Cache hit is this same token-weighted rate without opening Statistics,
-    not a percentage of requests; it likewise distinguishes ``unknown'' from
-    0\% and covers only retained history, as its tooltip explains. Progress
-    holds the plan, Workspace includes retained project notes, and smaller
-    bottom-tab labels and tighter spacing keep the four detail tabs on one
+    (\adr{9}). A compact summary above every tab keeps three figures available:
+    total spend, turn time and context fullness; the tool calls and the
+    cache rate are in Statistics. Progress
+    holds the plan, Workspace includes retained project notes, and the four
+    tabs, above the content, stay on one
     row at both desktop panel widths, retaining visible keyboard focus.
     Navigation stays outside the desktop content's scroll area. A worktree
     task's Review button opens its actual branch diff in the centre; Home's

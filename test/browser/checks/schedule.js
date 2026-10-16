@@ -2,11 +2,11 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, requests, openOptions, until, ready, desk, check } = require("../lib");
+const { out, requests, openOptions, taskMenu, until, ready, desk, check } = require("../lib");
 check(async () => {
   const { url, repo, page } = await desk({ timezoneId: "Pacific/Honolulu" });
   const sent = requests(page);
-  const manage = () => page.click('.task-actions button:text-is("Schedule…")');
+  const manage = () => taskMenu(page, "Schedule…");
   const close = () => page.click('button[aria-label="Close schedule"]');
   const status = async (text) => until(text, async () => (await page.locator('.schedule-status').textContent()).includes(text));
   await page.goto(url); await ready(page);
@@ -71,7 +71,7 @@ check(async () => {
   await status('Paused');
   await page.click('button:text-is("Resume schedule")'); await status('Scheduled');
   await close();
-  await page.click('.task-actions button:text-is("Close")');
+  await taskMenu(page, "Close");
   await page.waitForSelector('.task-actions button:text-is("Resume")');
   // Earlier priced work belongs to the task total, not to the next run.
   const logPath = path.join(repo, '../../data/sessions', `${id}.jsonl`);
@@ -109,10 +109,10 @@ check(async () => {
   assert.strictEqual(sent.of('schedule.set').filter((p) => p.remove).length, 1);
   await close();
   await page.reload(); await ready(page); await page.waitForSelector('.task[data-loaded]');
-  await page.click('.task-actions button:text-is("Schedule…")'); await status('No schedule');
+  await manage(); await status('No schedule');
   await close();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.click('.task-actions button:text-is("Schedule…")');
+  await manage();
   assert.strictEqual(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'schedule controls overflow phone');
   await page.screenshot({ path: `${out}/schedule-phone.png` });
   console.log('schedule create, preview, persist, pause, edit, resume, run with approval and remove');

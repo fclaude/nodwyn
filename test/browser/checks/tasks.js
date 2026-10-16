@@ -4,7 +4,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, requests, openOptions, until, step, ready, desk, check } = require("../lib");
+const { out, requests, openOptions, taskMenu, until, step, ready, desk, check } = require("../lib");
 
 check(async () => {
   const { url, repo: consoleRepo, ctx, page } = await desk();
@@ -53,7 +53,7 @@ check(async () => {
     await page.waitForFunction((t) => document.querySelector(".task-head h1")?.textContent === t, title);
   };
   const locationID = (url) => decodeURIComponent(url.split("#/task/")[1]);
-  const button = (label) => page.click(`.task-actions button:text-is("${label}")`);
+  const button = (label) => (label === "Resume" ? page.click(`.task-actions button:text-is("${label}")`) : taskMenu(page, label));
 
   await page.goto(url);
   await ready(page);
@@ -170,9 +170,18 @@ check(async () => {
 
   // Archive: an open task is closed first; then it leaves its folder for
   // the archive, and Unarchive brings it back.
-  if (await page.$('.task-actions button:text-is("Archive")')) await fail("an open task offers Archive");
+  if (await page.$('.task-actions .menu-item:text-is("Archive")')) await fail("an open task offers Archive");
+  // The heading offers the one action for the state the task is in (nothing
+  // for an idle open task: Stop shows only while it works) and a menu of the
+  // rest.
+  const headActions = () => page.$$eval(".task-actions > *", (els) => els.map((e) => (e.classList.contains("more") ? "menu" : e.textContent.trim())));
+  const menuItems = () => page.$$eval(".task-actions .menu-item", (els) => els.map((e) => e.textContent.trim()));
+  assert.deepStrictEqual(await headActions(), ["menu"], "an idle open task offers more than its menu");
+  assert.deepStrictEqual(await menuItems(), ["Search", "Schedule…", "Close"]);
   await button("Close");
-  await page.waitForSelector('.task-actions button:text-is("Archive")');
+  await page.waitForSelector('.task-actions .menu-item:text-is("Archive")', { state: "attached" });
+  assert.deepStrictEqual(await headActions(), ["Resume", "menu"], "a saved task offers its Resume and a menu");
+  assert.deepStrictEqual(await menuItems(), ["Search", "Schedule…", "Archive", "Delete…"]);
   await button("Archive");
   s = await settled("archived", (s) => !folder(s, "receipts").tasks.includes("Receipts overview") && s.archived?.n === "1");
   if (!s.archived.tasks.includes("Receipts overview") || !(await page.$('.task-head .badge:text-is("archived")'))) await fail(`archive: ${JSON.stringify(s.archived)}`);
@@ -189,7 +198,7 @@ check(async () => {
   // Delete asks first; Cancel keeps the task, Delete removes it for good.
   await openTask("Receipt question 1");
   await button("Close");
-  await page.waitForSelector('.task-actions button:text-is("Delete…")');
+  await page.waitForSelector('.task-actions .menu-item:text-is("Delete…")', { state: "attached" });
   await button("Delete…");
   await page.click('.delete-confirm button:text-is("Cancel")');
   if (await page.$(".delete-confirm")) await fail("Cancel left the question");

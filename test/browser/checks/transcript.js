@@ -171,7 +171,6 @@ check(async () => {
             commands: [...task.el.transcript.querySelectorAll(".call .args")].map((node) => node.textContent),
             decisions: [...task.el.transcript.querySelectorAll(".call .stat")].map((node) => node.textContent),
             rows, empty: task.el.side.querySelector(".aside-panel")?.textContent,
-            cache: task.el.side.querySelector('[data-monitor="cache"]')?.textContent,
             requests: requests.filter((r) => ["session.subscribe", "log.read"].includes(r.method)),
           };
         };
@@ -975,14 +974,12 @@ check(async () => {
       const task = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(task.root);
       const figure = () => {
-        const summary = task.el.side.querySelector('[data-monitor="cache"]');
-        const hit = summary?.textContent ?? null;
-        const hint = summary?.title;
+        // The summary keeps spend, time and context; the cache rate is Totals'.
         task.tab = "statistics";
         task.aside();
         const panel = task.el.side.querySelector("[data-totals]");
         const row = [...(panel?.querySelectorAll(".kv") || [])].find((n) => n.firstElementChild.textContent === "Token cache rate");
-        return { value: row?.lastElementChild.textContent ?? null, title: row?.title, scope: panel?.querySelector("h2").textContent, hit, hint, redrawn: task.el.side.querySelector('[data-monitor="cache"]')?.textContent ?? null };
+        return { value: row?.lastElementChild.textContent ?? null, title: row?.title, scope: panel?.querySelector("h2").textContent, inSummary: !!task.el.side.querySelector('[data-monitor="cache"]') };
       };
       const rates = {};
       for (const id of Object.keys(logs)) {
@@ -1060,11 +1057,11 @@ check(async () => {
       task.busy = true;
       const oldTime = task.el.side.querySelector('[data-monitor="time"]')?.textContent;
       const tallied = task.tallied;
-      const cacheNode = task.el.side.querySelector('[data-monitor="cache"]');
+      const spendNode = task.el.side.querySelector('[data-monitor="spend"]');
       await sleep(1100);
       task.meters();
       const ticked = task.el.side.querySelector('[data-monitor="time"]')?.textContent !== oldTime;
-      const reused = task.tallied === tallied && task.el.side.querySelector('[data-monitor="cache"]') === cacheNode && cacheNode?.textContent === "0%";
+      const reused = task.tallied === tallied && task.el.side.querySelector('[data-monitor="spend"]') === spendNode && spendNode?.textContent.includes("0.42");
       task.busy = false;
       task.tab = "workspace";
       task.aside();
@@ -1111,7 +1108,6 @@ check(async () => {
       task.tab = "statistics"; task.aside();
       const text = () => task.root.querySelector('[data-totals]')?.textContent || "";
       const initial = text();
-      const cache = task.root.querySelector('[data-monitor=cache]').textContent;
       task.tab = "changes"; task.aside();
       const changes = task.root.querySelector('.aside-panel').textContent;
       task.tab = "statistics"; task.aside();
@@ -1129,7 +1125,7 @@ check(async () => {
       await task.open("new-indexed");
       release?.({ ...snapshot, cost: 99 });
       await stale;
-      out.indexedTotals = { initial, cache, changes, updated, stale: task.totalSnapshot?.cost, requests: sent.filter((s) => s.method === "session.totals").length };
+      out.indexedTotals = { initial, changes, updated, stale: task.totalSnapshot?.cost, requests: sent.filter((s) => s.method === "session.totals").length };
       task.dispose();
     }
     {
@@ -1182,7 +1178,7 @@ check(async () => {
     const task = window.monitorFixture;
     const body = task.el.side.querySelector(".aside-panel");
     const bar = task.el.side.querySelector(".aside-tabs");
-    const result = { overflow: getComputedStyle(body).overflowY, body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), width: task.el.side.getBoundingClientRect().width, sideways: document.documentElement.scrollWidth > window.innerWidth };
+    const result = { overflow: getComputedStyle(body).overflowY, tabHeight: bar.querySelector("[role=tab]").getBoundingClientRect().height, body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), width: task.el.side.getBoundingClientRect().width, sideways: document.documentElement.scrollWidth > window.innerWidth };
     task.dispose();
     delete window.monitorFixture;
     return result;
@@ -1195,7 +1191,7 @@ check(async () => {
     want(r.loaded && !r.failed && r.completed, `newerSessionReplayLoadsHistoryAndStatistics ${state}: replay reaches completion: ${JSON.stringify(r)}`);
     want(r.commands.join(";") === replay.commands.join(";"), `newerSessionReplayLoadsHistoryAndStatistics ${state}: nested commands retained on read rows: ${JSON.stringify(r.commands)}`);
     want(r.decisions[0]?.includes("standing approval") && r.decisions[1]?.includes("you allowed once"), `newerSessionReplayLoadsHistoryAndStatistics ${state}: approval receipts retained: ${JSON.stringify(r.decisions)}`);
-    want(r.rows["Total spend"] === "$0.080" && r.rows["Total running time"] === "11 s" && r.rows["Total working time"] === "10 s" && r.rows["Model wait"] === "2.0 s" && r.rows["Tool time"] === "3.0 s" && r.rows["Model speed"] === "100.0 tok/s · 2 requests" && r.rows["Token cache rate"] === "25%" && r.cache === "25%", `newerSessionReplayLoadsHistoryAndStatistics ${state}: independently calculated Statistics: ${JSON.stringify(r.rows)}`);
+    want(r.rows["Total spend"] === "$0.080" && r.rows["Total running time"] === "11 s" && r.rows["Total working time"] === "10 s" && r.rows["Model wait"] === "2.0 s" && r.rows["Tool time"] === "3.0 s" && r.rows["Model speed"] === "100.0 tok/s · 2 requests" && r.rows["Token cache rate"] === "25%", `newerSessionReplayLoadsHistoryAndStatistics ${state}: independently calculated Statistics: ${JSON.stringify(r.rows)}`);
     want(r.requests.length === 2 && r.requests[0].method === (state === "open" ? "session.subscribe" : "log.read") && r.requests[1].method === "log.read" && r.requests[1].params.after === 5 && r.requests[1].params.through === 12, `newerSessionReplayLoadsHistoryAndStatistics ${state}: fixed watermark paging: ${JSON.stringify(r.requests)}`);
   }
   want(replay.empty.loaded && !replay.empty.failed && replay.empty.empty === "Nothing has run yet." && Object.keys(replay.empty.rows).length === 0, `newerSessionReplayLoadsHistoryAndStatistics: genuinely empty history stays empty: ${JSON.stringify(replay.empty)}`);
@@ -1206,7 +1202,7 @@ check(async () => {
   const delivered = results.newerSessionLiveAndReopenedStatisticsAgree;
   for (const [state, r] of Object.entries(delivered)) {
     for (const view of [r, r.reopened, r.closed]) {
-      want(view.loaded && !view.failed && view.errors.length === 0 && view.completed && JSON.stringify(view.rows) === JSON.stringify(replay.open.rows) && view.cache === "25%", `newerSessionLiveAndReopenedStatisticsAgree ${state}: live/queued, reopened and saved Statistics agree: ${JSON.stringify(view)}`);
+      want(view.loaded && !view.failed && view.errors.length === 0 && view.completed && JSON.stringify(view.rows) === JSON.stringify(replay.open.rows), `newerSessionLiveAndReopenedStatisticsAgree ${state}: live/queued, reopened and saved Statistics agree: ${JSON.stringify(view)}`);
       want(view.commands.join(";") === replay.commands.join(";") && view.decisions.join(";") === replay.open.decisions.join(";"), `newerSessionLiveAndReopenedStatisticsAgree ${state}: duplicate delivery retains one call and its receipt: ${JSON.stringify(view)}`);
     }
   }
@@ -1267,10 +1263,10 @@ check(async () => {
   want(s.closed && s.closedOnce, "session closure lost or duplicated its queued text, or left the reply enabled");
   const cache = results.sessionCacheRate;
   for (const [id, rate] of Object.entries(cache)) {
-    want(rate.hit === rate.value && rate.redrawn === rate.value, `Summary cache hit matches Totals before and after redraw for ${id}: ${JSON.stringify(rate)}`);
-    want(/token-weighted/.test(rate.hint) && /not the percentage of requests/.test(rate.hint) && /unreported usage/.test(rate.hint), `Summary cache hit explains its denominator for ${id}: ${rate.hint}`);
+    want(!rate.inSummary, `the cache rate is in Statistics, not the summary, for ${id}`);
+    want(/share of raw prompt tokens/.test(rate.title) && /not the share of requests hitting cache/.test(rate.title) && /unreported usage/.test(rate.title), `Totals' cache rate explains its denominator for ${id}: ${rate.title}`);
   }
-  want(cache.retained.hint?.startsWith("From the log that remains."), "Summary cache hit identifies truncated history");
+  want(/from the log that remains/.test(cache.retained.scope), `Totals identifies truncated history: ${cache.retained.scope}`);
   want(cache.weighted.value === "10%", `session token cache rate: token-weighted across turns and models, without output or budget discounts: ${JSON.stringify(cache.weighted)}`);
   want(cache.mixed.value === "67%", `session token cache rate: unknown and unreported replies excluded, percentage rounded: ${JSON.stringify(cache.mixed)}`);
   want(cache.zero.value === "0%" && cache.full.value === "100%", `session token cache rate: reported zero (cache writes are not reads) and full cache: ${JSON.stringify({ zero: cache.zero, full: cache.full })}`);
@@ -1292,15 +1288,15 @@ check(async () => {
   // a tenth: 100 + 800, then 30 - 20 + 20 / 10 + 10.
   want(early.folded.tokens?.text === "Tokens used922 / 2,000,000", `tokens used counts prompts, replies and cached tokens at a tenth: ${JSON.stringify(early.folded)}`);
   const m = results.monitor;
-  want(m.initial.join() === "—,—,—,—,unknown", `monitor reserves five slots with unknown cache usage: ${JSON.stringify(m.initial)}`);
-  want(m.before.overflow && m.before.summary?.bottom <= m.before.body.top && m.before.body.bottom <= m.before.bar.top, `monitor and bottom tabs surround scrollable plan: ${JSON.stringify(m.before)}`);
+  want(m.initial.join() === "—,—,—", `monitor reserves three slots: spend, time and context: ${JSON.stringify(m.initial)}`);
+  want(m.before.overflow && m.before.summary?.bottom <= m.before.bar.top && m.before.bar.bottom <= m.before.body.top, `monitor and the tabs above it sit over the scrollable plan: ${JSON.stringify(m.before)}`);
   want(m.expanded.summary?.top === m.before.summary?.top && m.expanded.bar.top === m.before.bar.top, "expanding a plan does not move summary or tabs");
   want(m.redrawn.scroll === 160 && m.redrawn.sideScroll === 0 && m.redrawn.bar.top === m.before.bar.top, `redraw keeps content scroll and fixed navigation: ${JSON.stringify(m.redrawn)}`);
-  want(m.before.slots.length === 5 && m.before.slots.every((s) => s.top >= m.before.summary.top && s.bottom <= m.before.summary.bottom && s.left >= m.before.summary.left && s.right <= m.before.summary.right), "all five monitoring slots stay inside the summary");
-  want(m.updated[0]?.includes("0.42") && m.updated[2] === "50%" && m.updated[3] === "1 / 80" && m.updated[4] === "0%" && m.ticked && m.reused, `summary updates on events and clock ticks outside Progress: ${JSON.stringify(m)}`);
-  want(m.workspace.join() === m.updated.join() || (m.workspace[0] === m.updated[0] && m.workspace[2] === m.updated[2] && m.workspace[3] === m.updated[3] && m.workspace[4] === m.updated[4]), "summary stays visible in Workspace");
+  want(m.before.slots.length === 3 && m.before.slots.every((s) => s.top >= m.before.summary.top && s.bottom <= m.before.summary.bottom && s.left >= m.before.summary.left && s.right <= m.before.summary.right), "all three monitoring slots stay inside the summary");
+  want(m.updated[0]?.includes("0.42") && m.updated[2] === "50%" && m.ticked && m.reused, `summary updates on events and clock ticks outside Progress: ${JSON.stringify(m)}`);
+  want(m.workspace.join() === m.updated.join() || (m.workspace[0] === m.updated[0] && m.workspace[2] === m.updated[2]), "summary stays visible in Workspace");
   want(m.returned.scroll === 160 && m.warning?.includes("Tokens"), `tab return preserves scroll and warns about near token limit: ${JSON.stringify(m.returned)} ${m.warning}`);
-  want(m.mobile.overflow === "visible" && m.mobile.body.bottom <= m.mobile.bar.top && m.mobile.width <= 390 && !m.mobile.sideways, `phone stacks content without nested scrolling: ${JSON.stringify(m.mobile)}`);
+  want(m.mobile.overflow === "visible" && m.mobile.bar.bottom <= m.mobile.body.top && m.mobile.tabHeight >= 44 && m.mobile.width <= 390 && !m.mobile.sideways, `phone stacks content without nested scrolling: ${JSON.stringify(m.mobile)}`);
   const tb = results.tabs;
   want(tb.names.join() === "Progress,Changes,Statistics,Workspace" && tb.first === "Progress", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
   want(tb.live.join() === "Plan", `Progress tab panels: ${JSON.stringify(tb.live)}`);
@@ -1315,7 +1311,7 @@ check(async () => {
   want(Object.values(tb.inspector).every(Boolean), `change inspector states and stale replies: ${JSON.stringify(tb.inspector)}`);
   want(Object.values(results.runHistoryFailures).every(Boolean), `history retry and task-switch states: ${JSON.stringify(results.runHistoryFailures)}`);
   const indexed = results.indexedTotals;
-  want(indexed.initial.includes("Turns8") && indexed.initial.includes("Runs2") && indexed.initial.includes("12 s") && indexed.initial.includes("50.0 tok/s") && indexed.cache === "75%", `indexed totals without their conversation: ${JSON.stringify(indexed)}`);
+  want(indexed.initial.includes("Turns8") && indexed.initial.includes("Runs2") && indexed.initial.includes("12 s") && indexed.initial.includes("50.0 tok/s") && indexed.initial.includes("Token cache rate75%"), `indexed totals without their conversation: ${JSON.stringify(indexed)}`);
   want(indexed.changes.includes("earlier.txt") && indexed.changes.includes("earlier.md"), `indexed Changes without old events: ${JSON.stringify(indexed)}`);
   want(indexed.updated.includes("Turns9") && indexed.updated.includes("2.00") && indexed.requests >= 3 && indexed.stale === 4, `live indexed totals and stale replies: ${JSON.stringify(indexed)}`);
   const c = results.clocks;

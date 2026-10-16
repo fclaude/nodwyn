@@ -193,7 +193,31 @@ check(async () => {
   // system's scheme with the same colours the light choice has.
   await shoot("home-system-light", { width: 1440, height: 900 }, "system", home, "light");
   await shoot("home-system-dark", { width: 1440, height: 900 }, "system", home, "dark");
-  await shoot("phone", { width: 390, height: 844 }, "light", task);
+  // On a phone the approval is the screen's job: the heading is short, the
+  // reply box (which could only say to answer first) is out of the way, the
+  // whole card is in view and every control is large enough to touch.
+  await shoot("phone", { width: 390, height: 844 }, "light", async (page) => {
+    await task(page);
+    const layout = await page.evaluate(() => {
+      const box = (el) => el.getBoundingClientRect();
+      const card = box(document.querySelector(".ask-card"));
+      return {
+        reply: getComputedStyle(document.querySelector("form.reply")).display,
+        head: box(document.querySelector(".task-head")).height,
+        top: box(document.querySelector(".topbar")).height,
+        menu: box(document.querySelector(".task-actions .more > summary")).height,
+        tab: box(document.querySelector(".aside-tabs [role=tab]")).height,
+        stop: !![...document.querySelectorAll(".task-actions > button")].find((b) => b.textContent.trim() === "Stop"),
+        cardBottom: card.bottom,
+        height: innerHeight,
+      };
+    });
+    assert.strictEqual(layout.reply, "none", "the dead reply box takes the phone's room while a request waits");
+    assert.ok(layout.head + layout.top <= 200, `the heading takes ${layout.head + layout.top} px of the phone`);
+    assert.ok(layout.menu >= 44 && layout.tab >= 44, `a control is smaller than 44 px: ${JSON.stringify(layout)}`);
+    assert.ok(layout.stop, "Stop is not offered while the task waits for an answer");
+    assert.ok(layout.cardBottom <= layout.height, `the request card runs off the phone: ${JSON.stringify(layout)}`);
+  });
   const inspector = async (page) => {
     await task(page);
     await page.click(".task-aside [role=tab]:has-text('Changes')");

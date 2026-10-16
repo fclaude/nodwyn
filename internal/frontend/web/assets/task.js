@@ -71,6 +71,7 @@ export class TaskView {
     this.acting = false;
     this.renaming = false; // the heading is a field for the task's name
     this.deleting = false; // the heading asks whether to delete the task
+    this.menuOpen = false; // the heading's menu of rarer actions is open
     this.renameBox = null;
     this.uploading = false; // attachments on their way, an image perhaps waiting for its confirm
     this.changing = false; // a model or effort is being changed (session.model.set)
@@ -90,6 +91,12 @@ export class TaskView {
       shortcut(this.el?.transcript.querySelector(".ask-card"), event);
     };
     document.addEventListener("keydown", this.onKey);
+    this.onAway = (event) => {
+      if (!this.menuOpen || event.target.closest?.(".more")) return;
+      this.menuOpen = false;
+      this.root.querySelector(".more")?.removeAttribute("open");
+    };
+    document.addEventListener("click", this.onAway);
   }
 
   // ---------- lifecycle ----------
@@ -329,6 +336,7 @@ export class TaskView {
     views.delete(this);
     this.unlisten();
     document.removeEventListener("keydown", this.onKey);
+    document.removeEventListener("click", this.onAway);
   }
   // keeps says whether this view can be shown again for task id as it is,
   // without reading the conversation again: the task is open and still
@@ -731,6 +739,9 @@ export class TaskView {
     if (!this.el) return;
     const open = !!this.item?.open;
     const prompt = !!this.activePrompt();
+    // On a phone the card that asks gets the screen: the reply box, which
+    // would only say to answer it first, is out of the way (style.css).
+    this.root.classList.toggle("asking", prompt);
     const lost = open && this.info?.model?.unavailable;
     const delegates = this.info?.delegates || [];
     this.el.helpers.hidden = !open || !delegates.length;
@@ -1004,34 +1015,44 @@ export class TaskView {
     const item = this.item;
     const home = this.desk.home;
     const st = this.status();
+    // One primary action for the state the task is in, and one menu for the
+    // rest: Stop while it works, Resume once it is saved; Search, Schedule,
+    // Close, Archive and Delete are rarer, and Close or Delete beside the
+    // other ghost buttons read as no different from Search.
     const actions = h("div", { class: "task-actions" });
-    if (this.conn.has("conversation.search") && this.conn.has("log.context")) actions.append(h("a", { class: "btn ghost", href: `#/search/${encodeURIComponent(item.id)}`, "aria-label": "Search conversation" }, "Search"));
-    if (this.conn.has("schedule.read") && (this.conn.has("schedule.set") || item.schedule?.definition)) actions.append(h("button", { type: "button", class: "btn ghost", onclick: () => manageSchedule(this.conn, item.id, async () => { await this.desk.refresh(); if (this.item?.id === item.id) { this.item = this.desk.sessions.get(item.id) || item; this.header(); if (this.item.open) await this.loadInfo(); } }) }, "Schedule…"));
     const button = (label, iconName, handler, cls = "") => h("button", { type: "button", class: `btn ${cls}`, disabled: !this.conn.live || this.acting, onclick: handler }, iconName ? icon(iconName, 15) : null, label);
+    const menu = [];
+    // An item of the menu: choosing it folds the menu away first, so the
+    // redraw that follows its action does not leave it open.
+    const entry = (label, handler, { danger = false, disabled = false, title = "" } = {}) =>
+      h("button", { type: "button", class: `menu-item${danger ? " danger" : ""}`, disabled: disabled || !this.conn.live || this.acting, title: title || undefined, onclick: () => { this.menuOpen = false; handler(); } }, label);
+    if (this.conn.has("conversation.search") && this.conn.has("log.context")) menu.push(h("a", { class: "menu-item", href: `#/search/${encodeURIComponent(item.id)}`, "aria-label": "Search conversation", onclick: () => (this.menuOpen = false) }, "Search"));
+    if (this.conn.has("schedule.read") && (this.conn.has("schedule.set") || item.schedule?.definition)) menu.push(entry("Schedule…", () => manageSchedule(this.conn, item.id, async () => { await this.desk.refresh(); if (this.item?.id === item.id) { this.item = this.desk.sessions.get(item.id) || item; this.header(); if (this.item.open) await this.loadInfo(); } })));
     // A run comes from nodwyn run (ADR 35): Stop ends it, and a message
     // afterwards goes on with the task as a chat. A request waiting outside
-    // a turn, an image's confirm, is stopped too: it is declined.
-    if (item.open && this.conn.has("session.abort")) {
-      const stop = button("Stop", "stop", () => this.act("session.abort", "Stopping…"));
-      stop.disabled = stop.disabled || (!this.busy && !this.activePrompt());
-      actions.append(stop);
-    }
+    // a turn, an image's confirm, is stopped too: it is declined. It is shown
+    // only while there is something to stop.
+    if (item.open && this.conn.has("session.abort") && (this.busy || this.activePrompt())) actions.append(button("Stop", "stop", () => this.act("session.abort", "Stopping…")));
     const keysLocked = !item.open && this.desk.keysLocked;
     if (!item.open && this.conn.has("session.resume")) {
       const resume = button("Resume", "up", () => this.resume(), "dark");
       resume.disabled = resume.disabled || keysLocked;
       actions.append(resume);
     }
-    if (item.open && this.conn.has("session.close")) {
-      const close = button("Close", "", () => this.act("session.close", "Closing the task; its conversation is kept."), "ghost");
-      close.disabled = close.disabled || this.busy || !!this.activePrompt();
-      close.title = "Close the task. Its conversation is kept and can be resumed.";
-      actions.append(close);
-    }
+    if (item.open && this.conn.has("session.close")) menu.push(entry("Close", () => this.act("session.close", "Closing the task; its conversation is kept."), { disabled: this.busy || !!this.activePrompt(), title: "Close the task. Its conversation is kept and can be resumed." }));
     // A closed task is archived or deleted (ADR 39); an open one is closed
     // first, so a task that can ask is never put away.
-    if (!item.open && this.conn.has("session.archive")) actions.append(button(item.archived ? "Unarchive" : "Archive", "", () => this.archive(!item.archived), "ghost"));
-    if (!item.open && this.conn.has("session.delete")) actions.append(button("Delete…", "", () => { this.deleting = true; this.header(); }, "danger"));
+    if (!item.open && this.conn.has("session.archive")) menu.push(entry(item.archived ? "Unarchive" : "Archive", () => this.archive(!item.archived)));
+    if (!item.open && this.conn.has("session.delete")) menu.push(entry("Delete…", () => { this.deleting = true; this.header(); }, { danger: true }));
+    if (menu.length) {
+      const more = h(
+        "details",
+        { class: "more", open: this.menuOpen, ontoggle: () => (this.menuOpen = more.open), onkeydown: (event) => { if (event.key === "Escape") { this.menuOpen = false; more.open = false; more.querySelector("summary").focus(); } } },
+        h("summary", { class: "btn ghost", "aria-label": "More actions", title: "More actions" }, icon("more", 20, 3)),
+        h("div", { class: "more-pop", role: "group", "aria-label": "More actions" }, menu),
+      );
+      actions.append(more);
+    }
     const title = item.title || item.first_message || "Untitled task";
     const meta = h(
       "div",
@@ -1274,7 +1295,7 @@ export class TaskView {
       ? h("button", { type: "button", class: "btn small review-open", "aria-expanded": String(this.inspecting === "review"), "aria-controls": "task-inspector", onclick: () => this.openReview() }, this.reviewLabel())
       : null;
     const reviewFocused = side.querySelector(".review-open:focus");
-    side.replaceChildren(...[this.monitorPanel(), review, body, bar].filter(Boolean));
+    side.replaceChildren(...[this.monitorPanel(), review, bar, body].filter(Boolean));
     if (reviewFocused) review?.focus({ preventScroll: true });
     body.scrollTop = this.asideScroll.get(tabs[at].id) || 0;
     if (focusing) side.querySelector(`#${focusing.id}`)?.focus();
@@ -1323,22 +1344,21 @@ export class TaskView {
       return panel;
     }
     const p = turn.tail[at].payload;
+    // Where the plan came from matters only when the judge said something
+    // about it; "drafted", "not needed" and "judge unavailable" are the
+    // plan gate's own codes and told a reader nothing.
     const judged =
-      p.noul === "plan"
-        ? p.score
-          ? `scored ${Number(p.score).toFixed(2)} by the judge`
-          : "drafted"
-        : p.noul === "proceed"
-          ? "not needed"
-          : p.noul === "required"
-            ? p.score
-              ? `required, scored ${Number(p.score).toFixed(2)}`
-              : "required for this run"
-            : p.noul === "carried"
-              ? "carried over from an earlier turn"
-              : p.noul === "model"
-                ? "written by the model"
-                : "judge unavailable";
+      p.noul === "plan" && p.score
+        ? `scored ${Number(p.score).toFixed(2)} by the judge`
+        : p.noul === "required"
+          ? p.score
+            ? `required, scored ${Number(p.score).toFixed(2)}`
+            : "required for this run"
+          : p.noul === "carried"
+            ? "carried over from an earlier turn"
+            : p.noul === "model"
+              ? "written by the model"
+              : "";
     const steps = planSteps(p.plan);
     // The model's marks, the latest per step: those a carried plan brings
     // from the run's earlier turns, then those since (plan.step). A mark is
@@ -1347,7 +1367,7 @@ export class TaskView {
     for (const m of p.marks || []) marks.set(m.step, m);
     for (const e of turn.tail.slice(at + 1)) if (e.kind === "plan.step") marks.set(e.payload.step, e.payload);
     const done = [...marks.values()].filter((m) => m.state === "done").length;
-    const note = steps.length && marks.size ? `${done} of ${steps.length} done · ${judged}` : judged;
+    const note = steps.length && marks.size ? `${done} of ${steps.length} done${judged ? ` · ${judged}` : ""}` : judged;
     panel.append(h("h2", {}, "Plan", h("span", { class: "note" }, note)));
     if (steps.length) {
       const next = marks.size ? steps.findIndex((_, i) => !marks.has(i + 1)) : -1;
@@ -1388,11 +1408,13 @@ export class TaskView {
     } else if (p.reason) panel.append(h("p", { class: "hint" }, p.reason));
     return panel;
   }
-  // Five fixed slots keep monitoring independent of the plan's length.
-  // Unknown values stay unknown, and context is fullness, not token usage.
+  // Three fixed slots keep monitoring independent of the plan's length: what
+  // a task costs, how long the turn has run and how full the context is. The
+  // tool calls and the cache rate are in Statistics. Unknown values stay
+  // unknown, and context is fullness, not token usage.
   monitorPanel() {
     const panel = h("section", { class: "task-monitor", "aria-label": "Task monitoring" });
-    for (const [key, label] of [["spend", "Total spend"], ["time", "Turn time"], ["context", "Context"], ["calls", "Tool calls"], ["cache", "Cache hit"]])
+    for (const [key, label] of [["spend", "Total spend"], ["time", "Turn time"], ["context", "Context"]])
       panel.append(h("div", { class: "monitor-stat" }, h("span", { class: "monitor-label" }, label), h("strong", { class: "monitor-value", dataset: { monitor: key } }, "—")));
     panel.append(h("div", { class: "monitor-warning" }));
     this.fillMonitor(panel);
@@ -1404,11 +1426,11 @@ export class TaskView {
     const budgets = this.info?.budgets;
     const context = contextGauge(this.events());
     const values = {
-      spend: totals ? `${totals.unpriced ? "at least " : ""}${usd(totals.cost, totals.estimated)}` : "—",
+      // A model nothing prices has spent nothing the log can show, which
+      // "at least $0.0000" said in the first slot of every task.
+      spend: totals ? (totals.unpriced && !totals.cost ? "unpriced" : `${totals.unpriced ? "at least " : ""}${usd(totals.cost, totals.estimated)}`) : "—",
       time: "—",
       context: context.est ? (context.high ? `${Math.round(100 * context.est / context.high)}%` : `~${context.est.toLocaleString()}`) : "—",
-      calls: "—",
-      cache: totals?.cache.prompt > 0 ? `${Math.round((100 * totals.cache.cached) / totals.cache.prompt)}%` : "unknown",
     };
     const warnings = [];
     const near = (label, used, limit) => {
@@ -1421,7 +1443,6 @@ export class TaskView {
       const elapsed = start ? Math.max(0, until - start) : 0;
       values.time = minutes(elapsed);
       const calls = turn.tail.filter((e) => e.kind === "tool.call").length;
-      values.calls = `${calls}${budgets?.tool_calls?.soft ? ` / ${budgets.tool_calls.soft.toLocaleString()}` : ""}`;
       let tokens = 0;
       for (const e of turn.tail) {
         if (e.kind !== "llm.resp") continue;
@@ -1440,7 +1461,6 @@ export class TaskView {
     panel.querySelector('[data-monitor="spend"]').title = `${totals?.unpriced ? "Lower bound: some requests are unpriced. " : ""}${this.truncated ? "From the log that remains. " : ""}${budgets?.cost?.soft ? `Spend limit: ${usd(budgets.cost.soft / 1e6, false)}.` : "Task-wide model and judge spend."}`;
     panel.querySelector('[data-monitor="time"]').title = "Current turn's elapsed time, including waits for your answer.";
     panel.querySelector('[data-monitor="context"]').title = `${context.agent ? `${context.agent}'s context. ` : ""}${context.high ? `Estimated fullness against ${context.high.toLocaleString()} tokens; older context is trimmed beyond this high water.` : "Context estimate; no high water recorded."}`;
-    panel.querySelector('[data-monitor="cache"]').title = `${this.truncated ? "From the log that remains. " : ""}The token-weighted share of raw prompt tokens read from the provider's cache across the session, not the percentage of requests hitting cache; missing or unreported usage stays out, and without a positive prompt total the rate is unknown.`;
     const warning = panel.querySelector(".monitor-warning");
     warning.textContent = warnings.join(" · ");
     warning.title = warning.textContent;

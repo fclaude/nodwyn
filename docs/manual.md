@@ -2102,17 +2102,23 @@ The README has the details; `--budget-cost USD` sets it for one session or
 run.
 
 The console's right panel keeps a compact summary above its content:
-total task spend, current turn time (including waits for your answer),
-context fullness, this turn's tool calls against their configured limit,
-and **Cache hit**. The five positions stay reserved even before a figure is
-known. Cache hit is Statistics' Totals' Token cache rate, defined below, for the
-session so far. For the other figures, a dash means unknown, not zero. Context is a percentage of its
+total task spend, current turn time (including waits for your answer) and
+context fullness. The three positions stay reserved even before a figure is
+known. This turn's tool calls against their configured limit are in
+Statistics' **This turn**, and the cache rate is Statistics' **Token cache
+rate** (Totals): raw prompt tokens read from cache divided by raw prompt tokens
+across replies that report both, not the percentage of requests hitting cache.
+Missing or unreported usage stays out; no positive prompt total shows
+**unknown**, and reported zero cache reads give **0%**; it covers only retained
+history when the log was truncated, as Totals says. A task whose requests have
+no known price shows **unpriced** for spend. For the other
+figures, a dash means unknown, not zero. Context is a percentage of its
 recorded high water, or a token estimate if no high water is known. A
 reserved warning line flags tokens, time, tool calls, spend or context
 when they reach 90% of the displayed limit, and says when they reach it;
 the configured budgets still decide when to ask or stop.
 
-The bottom tabs are **Progress**, for the plan; **Changes**, still for
+The tabs above the content are **Progress**, for the plan; **Changes**, still for
 approved previews, attachments and file recovery; **Statistics**, for all
 turn and task figures; and **Workspace**, for the folder, branch, access,
 tools, Details and retained project notes. A worktree task has a **Review**
@@ -2141,7 +2147,7 @@ tasks appear on Home with their next time or Paused, and a card has **Pause
 schedule** (or **Resume schedule**) and **Run now**; Home says "Nothing
 scheduled." when there is none.
 
-On an existing task, **Schedule…**, whether it has a schedule or not, shows
+On an existing task, **Schedule…** in its **⋯** menu, whether it has a schedule or not, shows
 its message, next times and last skip, and lets you save changes, pause, resume,
 run now or remove it (after a confirm). Run now also works while paused and leaves the automatic
 next time unchanged. Resuming a paused schedule starts after now, without

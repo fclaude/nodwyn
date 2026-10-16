@@ -70,7 +70,10 @@ check(async () => {
   assert.deepStrictEqual(sent.of("session.open"), [{ repo: `${root}/work` }], "the task opened in the folder added");
   await shows(page, ".ask-card .fine", "as phone");
   step("approval shown on the phone, naming it");
-  // In the conversation the phone sees the model, and may not change it.
+  // In the conversation the phone sees the model, and may not change it. On a
+  // phone's width the reply box is out of the way while a request waits, so
+  // this is read at the width of a tablet, which this paired device also is.
+  await page.setViewportSize({ width: 800, height: 844 });
   await page.waitForSelector("#task-model summary");
   assert.strictEqual(await page.isVisible("#task-model-model"), false, "the phone's model fields start collapsed");
   await shows(page, ".reply-opts .mp-notes", "chosen on the computer nodwyn runs on");
@@ -81,6 +84,7 @@ check(async () => {
   await shows(page, ".reply-opts .mp-notes", "chosen on the computer nodwyn runs on");
   assert.strictEqual(sent.of("session.model.set").length, 0, "the phone asked to change a model");
   assert.strictEqual(await page.isVisible(".reply-opts .limits-toggle"), false, "the phone is offered a task's Limits");
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: `${out}/phone-approve.png` });
   await page.click(".ask-card .btn.accent");
   // The answered write folds into its Edited group, so the verdict sits

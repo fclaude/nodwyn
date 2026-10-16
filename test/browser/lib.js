@@ -202,6 +202,17 @@ async function openOptions(page) {
   if (!(await page.$eval("#new-task-options", (el) => el.open))) await page.click("#new-task-options > summary");
 }
 
+// openTaskMenu opens the task heading's menu of rarer actions (Search,
+// Schedule, Close, Archive, Delete) if it is closed; taskMenu then chooses an
+// entry of it.
+async function openTaskMenu(page) {
+  if (!(await page.$eval(".task-actions .more", (el) => el.open))) await page.click(".task-actions .more > summary");
+}
+async function taskMenu(page, label) {
+  await openTaskMenu(page);
+  await page.click(`.task-actions .menu-item:text-is("${label}")`);
+}
+
 // until asks ready every 50 ms until it returns something truthy, and
 // returns that; after limit ms it fails, saying what never happened and, if
 // a describe function is given (in place of limit, or after it), what it
@@ -253,4 +264,4 @@ function check(body) {
   })();
 }
 
-module.exports = { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, step, ready, desk, shows, openOptions, until, check };
+module.exports = { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, step, ready, desk, shows, openOptions, openTaskMenu, taskMenu, until, check };

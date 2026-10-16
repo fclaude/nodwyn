@@ -5,18 +5,28 @@
 The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
-beside it a compact monitoring summary above four bottom tabs. Worktree tasks
+beside it a compact monitoring summary above four tabs. Worktree tasks
 also have a **Review** button which opens their changes in the centre panel.
+
+The task's heading shows the one action for the state the task is in, **Stop**
+while it works (it is not there when there is nothing to stop) or **Resume**
+once it is saved, and one **⋯** menu for the rarer ones: **Search**,
+**Schedule…**, **Close** (an open task), **Archive** or **Unarchive** and
+**Delete…** (a saved one).
 
 ## The monitoring summary
 
-The summary keeps total task spend, current turn time, context fullness,
-turn tool calls and **Cache hit** in five fixed positions across tabs. Cache
-hit is Statistics → Totals' Token cache rate, which [the manual](manual.md)
-defines; its tooltip says when it covers only the log that remains. Other
-unknown figures stay as a dash. Context shows a
-percentage against the recorded high water, or an estimate when no high
-water is known. A reserved warning line flags tokens, time, tool calls,
+The summary keeps total task spend, current turn
+time and context fullness in three fixed positions across tabs; the tool
+calls are in Statistics › This turn and the cache rate is Statistics →
+Totals' **Token cache rate**: the rounded, token-weighted share of raw prompt
+tokens read from cache across the session, not the percentage of requests
+hitting cache (missing or unreported usage is excluded; no positive prompt
+total shows **unknown**, reported zero cache reads give **0%**; with truncated
+history it covers the log that remains). A task whose requests the log cannot
+price shows **unpriced** for spend, not "at least $0.0000". Other unknown
+figures stay as a dash. Context shows a percentage against the recorded high
+water, or an estimate when no high water is known. A reserved warning line flags tokens, time, tool calls,
 spend or context at 90% of their displayed limit, and says when that limit
 has been reached. These are monitoring hints, not new enforcement rules.
 
@@ -29,11 +39,11 @@ the tools it was offered, Details inspectors and retained project notes.
 **Review** replaces the centre conversation with a worktree task's actual
 changes since it branched, to comment on; **Close review** restores the
 conversation and its reply draft. It stays separate from Changes' approval
-previews and recovery tools. Smaller tab labels and tighter spacing keep the
-four detail tabs on one row at both desktop panel widths, with visible keyboard
-focus. On desktop only
+previews and recovery tools. The four tabs sit above what they switch, at 12.5
+px on desktop and 44 px tall on a phone, on one row at both desktop panel
+widths, with visible keyboard focus. On desktop only
 the selected content scrolls, so expanding a plan step cannot move the
-summary or bottom navigation; each tab keeps its scroll position through
+summary or the tabs; each tab keeps its scroll position through
 redraws and tab switches. On narrow screens the summary, content and
 navigation stack with ordinary page scrolling.
 
@@ -97,9 +107,10 @@ Home’s **Options › Schedule…** opens a schedule form beside the ordinary a
 choices, without sending immediately: its message is a required field, started
 from the composer's text, so it works with the box empty. When a task cannot
 start yet (no folder, a locked keychain, a model that cannot be used) the
-button is disabled and says why. `Schedule…` on a task, with or without a
-schedule, opens its saved definition and controls; **Remove schedule** asks
-first.
+button is disabled and says why. **Schedule…** in a task's **⋯** menu, with or without a schedule, opens its
+saved definition and controls; **Remove schedule** asks first. The dialog is
+titled **Schedule** here and on Home: scheduling has that one name, and
+**Repeat** is only the field for how often.
 `schedule.next` supplies the preview; displayed ISO times retain the daemon’s
 local offset even when a browser uses another timezone. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,

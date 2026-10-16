@@ -43,7 +43,7 @@
 //   fails there, and nothing is ever asked of the other model.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, runtimeDir, launch, watch, requests, openOptions, until, step, ready, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, openOptions, taskMenu, until, step, ready, check } = require("../lib");
 
 check(async () => {
   const root = tempDir("nodwyn-models-");
@@ -510,7 +510,7 @@ check(async () => {
   // Close the first task; it is resumed after its model is removed, below.
   await go(`#/task/${fastId}`);
   await page.waitForSelector(".task[data-loaded]");
-  await page.click(".task-actions button:text-is('Close')");
+  await taskMenu(page, "Close");
   await page.waitForSelector(".task-actions button:text-is('Resume')");
   await shows(".task-meta", "fast, as it was left");
   step("a closed task shows the model it was left on");
@@ -658,7 +658,7 @@ check(async () => {
   await go(`#/task/${fastId}`);
   await page.waitForSelector(".task[data-loaded]");
   await page.click(".task-actions button:text-is('Resume')");
-  await page.waitForSelector(".task-actions button:text-is('Close')");
+  await page.waitForSelector(".task-actions .menu-item:text-is('Close')", { state: "attached" });
   await page.waitForSelector("#task-model-model", { state: "attached" });
   await go("#/settings/models");
   await page.waitForSelector("#default-model");
@@ -702,7 +702,7 @@ check(async () => {
   await until("the conversation's picker to have read the change", async () => (await page.$$eval("#task-model-model option", (os) => os.map((o) => o.value))).includes("127-0-0-1-fast"));
   assert.strictEqual(await page.inputValue("#task-model-model"), "127-0-0-1-fast", "the conversation did not return to its entry");
   assert.ok(!(await noteText()).includes("no longer in your list"), "the conversation on the entry is said to be gone: " + (await noteText()));
-  await page.click(".task-actions button:text-is('Close')");
+  await taskMenu(page, "Close");
   await page.waitForSelector(".task-actions button:text-is('Resume')");
   step("with the default moved back, the conversation names its entry again");
 

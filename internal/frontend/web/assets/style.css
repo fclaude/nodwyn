@@ -400,6 +400,24 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .task-meta strong { font-weight: 500; color: var(--ink); }
 .task-meta .mono { font-size: 12px; }
 .task-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* The heading's rarer actions: one menu, so the one action for the task's
+   state (Stop, Resume) is not one of six equal buttons. */
+.more { position: relative; }
+.more > summary { list-style: none; padding: 0 8px; }
+.more > summary::-webkit-details-marker { display: none; }
+.more[open] > summary { background: var(--selected); }
+.more-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 6; min-width: 200px; padding: 6px;
+  display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; box-shadow: var(--shadow);
+}
+.menu-item {
+  display: flex; align-items: center; height: 36px; padding: 0 12px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--ink); font-size: 13.5px; text-align: left; text-decoration: none; white-space: nowrap;
+}
+.menu-item:hover:not(:disabled) { background: var(--selected); color: var(--ink); }
+.menu-item.danger { color: var(--bad); }
+.callout.load-failed { align-items: center; justify-content: space-between; }
 .title-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .title-row h1 { min-width: 0; }
 /* The pencil shows where a pointer can hover, and always on a touch screen. */
@@ -646,13 +664,14 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
    move monitoring or navigation. A narrow screen stacks them normally. */
 .aside-panel { display: flex; flex-direction: column; gap: 28px; flex: 1; min-height: 0; overflow-y: auto; }
 .aside-panel > .panel { flex-shrink: 0; }
-.task-monitor { flex-shrink: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.task-monitor { flex-shrink: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .monitor-stat { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .monitor-label { font-size: 11px; color: var(--faint); }
 .monitor-value { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .monitor-warning { grid-column: 1 / -1; height: 16px; line-height: 16px; font-size: 11px; color: var(--warn-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.task-aside .aside-tabs { flex-shrink: 0; flex-wrap: nowrap; gap: 0; border-bottom: 0; border-top: 1px solid var(--line); padding-top: 8px; }
-.task-aside .tabs button { padding: 7px 2px; font-size: 10px; white-space: nowrap; }
+/* The tabs sit above what they switch, large enough to read and to touch. */
+.task-aside .aside-tabs { flex-shrink: 0; flex-wrap: nowrap; gap: 0; justify-content: space-between; }
+.task-aside .tabs button { padding: 8px 4px; font-size: 12.5px; white-space: nowrap; }
 .panel { display: flex; flex-direction: column; gap: 10px; }
 .panel h2 {
   margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
@@ -1069,7 +1088,16 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .ask { padding: 14px; }
   .ask textarea { font-size: 16px; }
   .task-head { padding: 12px 16px; gap: 8px; }
-  .task-head h1 { font-size: 19px; }
+  .task-head h1 { font-size: 19px; -webkit-line-clamp: 1; }
+  .task-head .titles { flex-basis: 100%; }
+  .task-actions { margin-left: auto; }
+  .task-actions .btn { height: 44px; }
+  .task-actions .more > summary { width: 44px; padding: 0; }
+  .menu-item { height: 44px; }
+  .task-aside .tabs button { min-height: 44px; font-size: 13px; }
+  /* What the task asks is the phone's whole screen: the reply box, which
+     would only say to answer it first, stays out of the way. */
+  .task.asking form.reply { display: none; }
   .task-meta .mono, .task-meta .started { display: none; }
   .task-head .pill { height: 28px; }
   .transcript { padding: 18px 16px 12px; }

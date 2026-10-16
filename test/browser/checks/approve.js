@@ -91,7 +91,7 @@ check(async () => {
     }));
   const before = await planPanel();
   assert.deepStrictEqual(before.steps.map((s) => s.split(":")[0]), ["Change", "Test", "Docs", "Check"], "the plan's steps");
-  assert.strictEqual(before.head, "Plan2 of 4 done · drafted");
+  assert.strictEqual(before.head, "Plan2 of 4 done");
   assert.deepStrictEqual(before.items, ["done fold alt", "done fold alt", "next fold alt", ""]);
   // A step longer than its title folds: the title stands on the chevron's
   // line, the whole step and the mark's note wait hidden until the step is
@@ -306,7 +306,7 @@ check(async () => {
   await page.click(".task-aside [role=tab]:has-text('Progress')");
   const marked = await planPanel();
   assert.deepStrictEqual(marked.steps, before.steps, "the plan's steps after the approvals");
-  assert.strictEqual(marked.head, "Plan3 of 4 done · drafted");
+  assert.strictEqual(marked.head, "Plan3 of 4 done");
   assert.deepStrictEqual(marked.items, ["done fold alt", "done fold alt", "skipped fold alt", "done fold"]);
   // The Check step's title is its whole text; marked with a note, the note
   // goes behind its fold, and the title stays when it opens.
@@ -531,7 +531,8 @@ check(async () => {
     await settles("Stop while the image's confirm waits", { pill: "Waiting for you", stop: false, close: true });
     return decodeURIComponent((await page.evaluate(() => location.hash)).replace("#/task/", ""));
   };
-  const idle = { pill: "Idle", stop: true, close: false };
+  // Stop is shown only while there is something to stop.
+  const idle = { pill: "Idle", stop: undefined, close: false };
   const denied = await withImage("Describe this screenshot");
   await page.click(".ask-card button[data-key='N']");
   await settles("the task idle after the image was denied", idle);
