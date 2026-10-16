@@ -337,3 +337,20 @@ binding check as any request, so a server whose key is bound for `POST` only
 is not sent it (a binding names the method); it expires the session itself.
 The regressions are `TestExpiredSessionIsStartedAgain` (`internal/mcp`) and
 `TestClosingASessionEndsItsRemoteMCPSessions`.
+
+## Amendment 2026-10-16: servers connect at once, and one with no tool on is stopped
+
+A session connected its servers one after another, each with its own
+timeout (10 seconds for a remote one, 60 for a contained start and tool
+list), so a task or a scheduled run waited for the sum: three contained
+servers that start in 20 seconds each held the first message for a minute.
+The servers now connect at once and their tools are registered afterwards,
+in the order `mcp.toml` lists them, since the interpreter is not written to
+from two goroutines and the tool list should not depend on who answered
+first. A contained server that is approved but has every tool off was
+registered as ready with no tools and its container and proxy stayed up for
+the whole task; it is now stopped as soon as its tool list is read, and its
+details say so. The regressions are
+`TestMCPServersConnectAtOnceAndRegisterInConfigOrder` (the servers' first
+requests wait for each other, and the first server fails on the unchanged
+code) and `TestContainedServerWithNoToolOnIsStopped`.

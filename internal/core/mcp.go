@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/binding"
@@ -48,30 +49,59 @@ func (s *Session) MCP() []MCPServer {
 
 const mcpConnectTimeout = 10 * time.Second
 
+// mcpConnection is a server connected and its tools read: its status is
+// final, or register offers its tools and returns the status then.
+type mcpConnection struct {
+	status   MCPServer
+	register func() MCPServer // nil when status is final
+}
+
+// connectMCP connects the servers at once, so a task waits for the slowest
+// and not for the sum of them (three cold contained starts took a minute),
+// and registers their tools afterwards in the order mcp.toml lists them:
+// the interpreter is not written to from two goroutines, and the tool list
+// does not depend on which server answered first.
 func (s *Session) connectMCP() {
 	servers, err := config.LoadMCP(config.MCPFile(s.opts.Paths))
 	if err != nil {
 		s.mcp = []MCPServer{{Name: "mcp.toml", State: "error", Detail: err.Error()}}
 		return
 	}
+	var wanted []config.MCPServer
 	for _, server := range servers {
 		// A server is the project's: a worktree's session has the
 		// repository's (ADR 34).
-		if !server.In(s.project()) {
-			continue
+		if server.In(s.project()) {
+			wanted = append(wanted, server)
 		}
-		s.mcp = append(s.mcp, s.connectServer(server))
+	}
+	connected := make([]mcpConnection, len(wanted))
+	var wg sync.WaitGroup
+	for i, server := range wanted {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			connected[i] = s.connectServer(server)
+		}()
+	}
+	wg.Wait()
+	for _, c := range connected {
+		status := c.status
+		if c.register != nil {
+			status = c.register()
+		}
+		s.mcp = append(s.mcp, status)
 	}
 }
 
-func (s *Session) connectServer(server config.MCPServer) MCPServer {
+func (s *Session) connectServer(server config.MCPServer) mcpConnection {
 	if server.Contained() {
 		return s.connectContained(server)
 	}
 	status := MCPServer{Name: server.Name, Host: server.Host(), Tools: []string{}}
-	fail := func(err error) MCPServer {
+	fail := func(err error) mcpConnection {
 		status.State, status.Detail = "error", err.Error()
-		return status
+		return mcpConnection{status: status}
 	}
 	var authorize func(*http.Request) error
 	if server.Credential != "" {
@@ -92,13 +122,15 @@ func (s *Session) connectServer(server config.MCPServer) MCPServer {
 	return s.offer(ctx, server, client, status, nil)
 }
 
-// offer reads a connected server's tools, compares their manifest with the
-// approved one and registers the tools the person turned on. before, when
-// set, runs before every call.
-func (s *Session) offer(ctx context.Context, server config.MCPServer, client *mcp.Client, status MCPServer, before func() error) MCPServer {
-	fail := func(err error) MCPServer {
+// offer reads a connected server's tools and compares their manifest with
+// the approved one; for a server that is to be offered, the connection's
+// register adds the tools the person turned on. before, when set, runs
+// before every call. Nothing is registered here, so servers can be offered
+// at once.
+func (s *Session) offer(ctx context.Context, server config.MCPServer, client *mcp.Client, status MCPServer, before func() error) mcpConnection {
+	fail := func(err error) mcpConnection {
 		status.State, status.Detail = "error", err.Error()
-		return status
+		return mcpConnection{status: status}
 	}
 	if _, err := client.Initialize(ctx); err != nil {
 		return fail(err)
@@ -111,25 +143,28 @@ func (s *Session) offer(ctx context.Context, server config.MCPServer, client *mc
 	switch {
 	case server.Manifest == "":
 		status.State, status.Detail = "unapproved", "review its tools in Connections before nodwyn offers any"
-		return status
+		return mcpConnection{status: status}
 	case server.Manifest != status.Manifest:
 		status.State, status.Detail = "changed", "its tool list changed since you approved it: review it in Connections"
-		return status
+		return mcpConnection{status: status}
 	}
 	status.State = "ready"
-	for _, tool := range tools {
-		declared, ok := server.Tools[tool.Name]
-		if !ok || !declared.On {
-			continue
+	return mcpConnection{status: status, register: func() MCPServer {
+		for _, tool := range tools {
+			declared, ok := server.Tools[tool.Name]
+			if !ok || !declared.On {
+				continue
+			}
+			p := mcpPrim(server, tool, declared, client, before)
+			if err := s.interp.Register(p); err != nil {
+				status.State, status.Detail = "error", err.Error()
+				return status
+			}
+			status.Tools = append(status.Tools, p.Name)
 		}
-		p := mcpPrim(server, tool, declared, client, before)
-		if err := s.interp.Register(p); err != nil {
-			return fail(err)
-		}
-		status.Tools = append(status.Tools, p.Name)
-	}
-	sort.Strings(status.Tools)
-	return status
+		sort.Strings(status.Tools)
+		return status
+	}}
 }
 
 // mcpPrim makes one MCP tool a primitive. Every call sends its arguments to

@@ -238,14 +238,16 @@ func (r *egressRecorder) close() {
 	}
 }
 
-// connectContained starts a contained server for this session, checks its
-// manifest and registers the tools the person turned on. A server whose
-// tools are not offered is stopped at once.
-func (s *Session) connectContained(server config.MCPServer) MCPServer {
+// connectContained starts a contained server for this session and checks its
+// manifest; the connection's register adds the tools the person turned on. A
+// server whose tools are not offered, because it is unapproved or changed or
+// has every tool off, is stopped at once: it would hold its memory and its
+// proxy for the whole task with nothing to call it.
+func (s *Session) connectContained(server config.MCPServer) mcpConnection {
 	status := MCPServer{Name: server.Name, Host: containedDest(server), Transport: config.TransportContainer, Network: server.NetworkHosts(), Tools: []string{}}
-	fail := func(state string, err error) MCPServer {
+	fail := func(state string, err error) mcpConnection {
 		status.State, status.Detail = state, err.Error()
-		return status
+		return mcpConnection{status: status}
 	}
 	rt, err := ContainerRuntime(s.opts)
 	if err != nil {
@@ -278,18 +280,28 @@ func (s *Session) connectContained(server config.MCPServer) MCPServer {
 	if server.Credential != "" {
 		before = func() error { return s.recheckContained(server) }
 	}
-	status = s.offer(ctx, server, client, status, before)
-	if status.State != "ready" {
-		if status.State == "error" {
-			status.Detail += stderrDetail(c)
+	offered := s.offer(ctx, server, client, status, before)
+	if offered.register == nil {
+		if offered.status.State == "error" {
+			offered.status.Detail += stderrDetail(c)
 		}
 		running.close()
-		return status
+		return offered
 	}
-	s.mcpMu.Lock()
-	s.contained = append(s.contained, running)
-	s.mcpMu.Unlock()
-	return status
+	return mcpConnection{status: offered.status, register: func() MCPServer {
+		status := offered.register()
+		if len(status.Tools) == 0 {
+			if status.State == "ready" {
+				status.Detail = "none of its tools is on, so nodwyn stopped it"
+			}
+			running.close()
+			return status
+		}
+		s.mcpMu.Lock()
+		s.contained = append(s.contained, running)
+		s.mcpMu.Unlock()
+		return status
+	}}
 }
 
 // containedCredential checks a contained server's credential against the
