@@ -122,6 +122,15 @@ func (l *Loop) install() error {
 			Handler: l.runPlanPrim,
 		},
 		{
+			Name: "turn-plan",
+			Meta: scheme.Meta{
+				Doc:    "The plan recorded in this turn, as run-plan gives a run's: an alist of plan (the text), steps, marks (each an alist of step, state and note, in step order) and next (the first unmarked step, or #f). #f when this turn has recorded none. A compaction records it again in the new context, so the window still shows it.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.turnPlanPrim,
+		},
+		{
 			Name: "unfinished-plan",
 			Meta: scheme.Meta{
 				Doc:    "The plan a turn that did not finish left to this one, read from the log, as run-plan gives a run's: an alist of plan, steps, marks and next. A turn did not finish when an error, a limit or the person's Stop ended it (turn.end outcome error, stopped, hard_budget, spend_limit or canceled), or when nothing ended it; its plan, with every mark made since, goes on through such turns. #f when the latest turn that ended finished (outcome completed, or none recorded), or no turn since recorded a plan.",
@@ -541,7 +550,7 @@ func (l *Loop) recordPlan(c *scheme.Call) (scheme.Value, error) {
 	}
 	if strings.TrimSpace(gp.Plan) != "" {
 		t := l.turn
-		t.steps, t.marks, t.notes = gp.Steps(), map[int]string{}, map[int]string{}
+		t.steps, t.marks, t.notes, t.plan = gp.Steps(), map[int]string{}, map[int]string{}, gp.Plan
 		for _, m := range gp.Marks {
 			t.marks[m.Step], t.notes[m.Step] = m.State, m.Note
 		}
@@ -727,6 +736,24 @@ func (l *Loop) runPlanPrim(c *scheme.Call) (scheme.Value, error) {
 		return scheme.False, nil
 	}
 	return planAlist(plan, marks), nil
+}
+
+// turnPlanPrim is (turn-plan): the plan this turn recorded, with its marks.
+func (l *Loop) turnPlanPrim(c *scheme.Call) (scheme.Value, error) {
+	t, err := l.active(c)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if strings.TrimSpace(t.plan) == "" {
+		return scheme.False, nil
+	}
+	var marks []log.PlanStep
+	for step := 1; step <= len(t.steps); step++ {
+		if state := t.marks[step]; state != "" {
+			marks = append(marks, log.PlanStep{Step: step, Of: len(t.steps), State: state, Note: t.notes[step]})
+		}
+	}
+	return planAlist(t.plan, marks), nil
 }
 
 // unfinishedPlanPrim is (unfinished-plan), read from the log like

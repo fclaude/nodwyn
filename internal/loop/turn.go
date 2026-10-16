@@ -26,6 +26,7 @@ type turnState struct {
 	steps []string
 	marks map[int]string
 	notes map[int]string // what each mark said, kept for a plan written again
+	plan  string         // the plan's text, for turn-plan
 }
 
 // parked reports whether an open context holds calls still waiting for an

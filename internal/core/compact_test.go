@@ -692,3 +692,32 @@ func TestACutHandoverNoteIsAskedForAgain(t *testing.T) {
 		t.Fatalf("hand-over:\n%s", handover)
 	}
 }
+
+// A compaction in a turn with a plan keeps the plan in front of the model:
+// the window shows a plan recorded in the context it sends, and the
+// narrowing left it behind, while the reminders went on saying "your plan
+// is in front of you". It is recorded again, with its marks, in the new
+// context.
+func TestCompactionKeepsTheTurnsPlan(t *testing.T) {
+	t.Parallel()
+	r := judgedRig(t, nil, "",
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("s", 1, "done", "edited main.go")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "big.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
+		fake.Turn{Content: "NOTE: step 1 is done; the test is next."},
+		fake.Turn{Content: "done"},
+	)
+	writeTokens(t, r.repo, "big.txt", 1000)
+	r.compactAfter(1700)
+	if e := r.turn("make main.go print hello"); e != "" {
+		t.Fatal(e)
+	}
+	if n := r.narrowings(); n != 1 {
+		t.Fatalf("%d narrowings, want 1", n)
+	}
+	last := string(r.srv.Requests[len(r.srv.Requests)-1].Raw)
+	if !strings.Contains(last, "TestGreeting") || !strings.Contains(last, "edited main.go") {
+		t.Fatalf("the request after the compaction lost the plan or its mark:\n%.2000s", last)
+	}
+}

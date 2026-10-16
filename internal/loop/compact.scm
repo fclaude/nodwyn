@@ -102,10 +102,16 @@
                           (cons 'threshold (and (equal? trigger "auto") compact-threshold))
                           (cons 'focus focus))))))
     (if note
-        (begin (narrow-context (session-system-prompt) "compaction" '((lasting . #t)))
-               (add-message (compact-handover-prompt request note))
-               (record #t)
-               #t)
+        (let ((plan (turn-plan)))
+          (narrow-context (session-system-prompt) "compaction" '((lasting . #t)))
+          (add-message (compact-handover-prompt request note))
+          ;; The window shows a plan recorded in the context it sends, and
+          ;; the narrowing left the turn's plan behind, while the reminders
+          ;; go on saying it is in front of the model: it is recorded
+          ;; again, with its marks, in the new context.
+          (when plan (plan-carry plan))
+          (record #t)
+          #t)
         (begin (add-message "Never mind the handover note; continue the task.")
                (record #f)
                #f))))
