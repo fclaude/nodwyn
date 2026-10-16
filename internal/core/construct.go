@@ -273,7 +273,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	for _, m := range s.workspace.Mounts {
 		po.Mounts = append(po.Mounts, guard.Mount{Path: m.Path, Write: m.Access == "write"})
 	}
-	po.Versions = &prim.Versions{Dir: s.versionsDir(), Skip: prim.InGitWorkTree(o.Repo), Record: func(v prim.Version) {
+	po.Versions = &prim.Versions{Dir: s.versionsDir(), Skip: prim.GitHoldsPath(o.Repo), Record: func(v prim.Version) {
 		_, _ = s.Record(log.KindFileVersion, log.FileVersion{Path: v.Path, Hash: v.Hash, Bytes: v.Bytes})
 	}}
 	// A ranged fs-read stays under the window's cut for one tool result

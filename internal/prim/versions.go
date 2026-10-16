@@ -240,13 +240,13 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// InGitWorkTree reports, for root's Versions.Skip, whether git is the undo
+// GitHoldsPath is root's Versions.Skip: it reports whether git is the undo
 // for a path: it is inside the git work tree at root, tracked, and neither
 // the index nor the work tree changes it, so git gives its content back.
 // Since writes go ahead without asking (ADR 35), an uncommitted change, an
 // untracked or ignored file, and a file git cannot be asked about keep a
 // version: git could not restore them.
-func InGitWorkTree(root string) func(string) bool {
+func GitHoldsPath(root string) func(string) bool {
 	if !isGitWorkTree(root) {
 		return func(string) bool { return false }
 	}

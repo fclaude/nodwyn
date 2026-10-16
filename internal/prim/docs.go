@@ -261,10 +261,7 @@ func readDocument(abs, name string, limit int64) ([]byte, error) {
 func runPandoc(ctx, turn context.Context, o Options, prog string, input []byte, args ...string) ([]byte, string, error) {
 	cmd := exec.CommandContext(ctx, prog, args...)
 	cmd.Dir = o.Root
-	cmd.Env = scrubEnv(o.EnvAllow)
-	if o.Scratch != "" {
-		cmd.Env = append(cmd.Env, "TMPDIR="+o.Scratch)
-	}
+	cmd.Env = childEnv(o)
 	cmd.Stdin = bytes.NewReader(input)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }

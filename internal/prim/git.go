@@ -285,20 +285,30 @@ func runGit(parent context.Context, o Options, args ...string) (string, error) {
 	return runGitLimit(parent, o, o.MaxOutput, args...)
 }
 
+// gitCommand is git run in dir with env: no pager, no colour, no filesystem
+// monitor, the settings in config (key=value) on top, and a process group of
+// its own that cancelling ctx kills whole. Both runners of git, runGitLimit
+// and the lander's, start from it.
+func gitCommand(ctx context.Context, dir string, env, config, args []string) *exec.Cmd {
+	full := []string{"--no-pager", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "color.ui=false"}
+	for _, kv := range config {
+		full = append(full, "-c", kv)
+	}
+	cmd := exec.CommandContext(ctx, "git", append(full, args...)...)
+	cmd.Dir = dir
+	cmd.Env = env
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = 5 * time.Second
+	return cmd
+}
+
 // runGitLimit is runGit with its own cap on what it returns: a file's whole
 // content (cat-file) must not be cut at the size of a tool's answer.
 func runGitLimit(parent context.Context, o Options, limit int, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(parent, gitTimeout)
 	defer cancel()
-	full := []string{"--no-pager", "--no-optional-locks",
-		"-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "color.ui=false"}
-	full = append(full, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Dir = o.Root
-	cmd.Env = append(scrubEnv(o.EnvAllow), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-	cmd.WaitDelay = 5 * time.Second
+	cmd := gitCommand(ctx, o.Root, append(scrubEnv(o.EnvAllow), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0"), []string{"core.pager=cat"}, args)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &capped{buf: &stdout, n: limit}
 	cmd.Stderr = &capped{buf: &stderr, n: 4096}

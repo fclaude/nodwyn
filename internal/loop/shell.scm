@@ -33,7 +33,8 @@
     (and (pair? v) (assoc-ref v "status" #f)
          (let ((out (format "~a" (assoc-ref v "stdout" "")))
                (err (format "~a" (assoc-ref v "stderr" ""))))
-           (string-append (format "exit ~a" (assoc-ref v "status" ""))
+           (string-append (let ((st (assoc-ref v "status" "")))
+                            (if (integer? st) (format "exit ~a" st) (format "~a" st)))
                           (if (equal? out "") "" (string-append "\n" (shell-clip out)))
                           (if (equal? err "") "" (string-append "\n[stderr]\n" (shell-clip err))))))))
 

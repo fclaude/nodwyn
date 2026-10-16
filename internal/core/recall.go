@@ -572,14 +572,17 @@ func eventText(ev log.Event) string {
 // recorded.
 func resultText(value string) string {
 	var shell struct {
-		Status *json.Number `json:"status"`
-		Stdout *string      `json:"stdout"`
-		Stderr *string      `json:"stderr"`
+		Status any     `json:"status"` // an exit code, or why it did not end ("timed out after 10m0s")
+		Stdout *string `json:"stdout"`
+		Stderr *string `json:"stderr"`
 	}
 	d := json.NewDecoder(strings.NewReader(value))
 	d.UseNumber()
 	if d.Decode(&shell) == nil && shell.Status != nil && (shell.Stdout != nil || shell.Stderr != nil) {
-		text := "exit " + shell.Status.String()
+		text := fmt.Sprint(shell.Status)
+		if _, ended := shell.Status.(json.Number); ended {
+			text = "exit " + text
+		}
 		if shell.Stdout != nil && *shell.Stdout != "" {
 			text += "\n" + *shell.Stdout
 		}

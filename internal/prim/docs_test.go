@@ -78,7 +78,7 @@ func exportHarness(t *testing.T, pandoc string, mounts ...guard.Mount) *harness 
 	o.Pandoc = pandoc
 	o.Mounts = mounts
 	logger := recorder{nlog.New(h.logBuf, "test")}
-	o.Versions = &Versions{Dir: VersionsDir(root), Skip: InGitWorkTree(root), Record: func(v Version) {
+	o.Versions = &Versions{Dir: VersionsDir(root), Skip: GitHoldsPath(root), Record: func(v Version) {
 		logger.Record(nlog.KindFileVersion, nlog.FileVersion{Path: v.Path, Hash: v.Hash, Bytes: v.Bytes})
 	}}
 	if err := Register(h.in, o); err != nil {

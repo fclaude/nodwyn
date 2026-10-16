@@ -116,7 +116,7 @@ func (ts *Terms) environment(o Options) ([]string, error) {
 	}
 	var env []string
 	locale := false
-	for _, kv := range scrubEnv(o.EnvAllow) {
+	for _, kv := range childEnv(o) {
 		switch {
 		case strings.HasPrefix(kv, "TERM="), strings.HasPrefix(kv, "TMUX_TMPDIR="):
 			continue
@@ -126,9 +126,6 @@ func (ts *Terms) environment(o Options) ([]string, error) {
 		env = append(env, kv)
 	}
 	env = append(env, "TERM=xterm-256color", "TMUX_TMPDIR="+ts.tmuxDir)
-	if o.Scratch != "" {
-		env = append(env, "TMPDIR="+o.Scratch)
-	}
 	if !locale {
 		lang := "C.UTF-8"
 		if runtime.GOOS == "darwin" {
@@ -249,14 +246,7 @@ func (t *term) wait() {
 func (t *term) stop() {
 	t.stopOnce.Do(func() {
 		if !t.exited() {
-			_ = syscall.Kill(-t.cmd.Process.Pid, syscall.SIGHUP)
-			deadline := time.Now().Add(procStopGrace)
-			for time.Now().Before(deadline) && !t.exited() {
-				time.Sleep(20 * time.Millisecond)
-			}
-			if !t.exited() {
-				_ = syscall.Kill(-t.cmd.Process.Pid, syscall.SIGKILL)
-			}
+			stopProcessGroup(t.cmd.Process.Pid, syscall.SIGHUP, t.exited)
 		}
 		_ = t.ptmx.Close()
 		t.emu.CloseInput()
@@ -353,10 +343,12 @@ func parseKey(spec string) (termemu.Key, error) {
 	return termemu.Key{}, bad
 }
 
-// send runs a write to the program's input, which waits for the program to
-// read it: one that does not (it is busy, or has stopped reading) fails the
-// call instead of hanging the session.
-func (t *term) send(ctx context.Context, write func()) error {
+// sendBounded runs a write to a program's input, which waits for the program
+// to read it: one that does not (it is busy, or has stopped reading) fails
+// the call instead of hanging the session, and an abort ends the wait. The
+// write itself ends when the program reads, or exits. look says how to see
+// what the program is doing.
+func sendBounded(ctx context.Context, id, look string, write func()) error {
 	done := make(chan struct{})
 	go func() { write(); close(done) }()
 	select {
@@ -365,7 +357,7 @@ func (t *term) send(ctx context.Context, write func()) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(termSendCap):
-		return fmt.Errorf("%s is not reading its input; look at it with term-screen", t.id)
+		return fmt.Errorf("%s is not reading its input; %s", id, look)
 	}
 }
 
@@ -540,16 +532,9 @@ func termPrims(o Options, ts *Terms) []*scheme.Prim {
 				if err != nil {
 					return scheme.Value{}, err
 				}
-				items, err := c.List(1)
+				args, err := stringList(c, 1)
 				if err != nil {
 					return scheme.Value{}, err
-				}
-				args := make([]string, len(items))
-				for i, it := range items {
-					if it.Kind != scheme.KString {
-						return scheme.Value{}, errors.New("args must be a list of strings")
-					}
-					args[i] = it.S
 				}
 				size := [2]int64{termDefaultCols, termDefaultRows}
 				for i := range size {
@@ -607,7 +592,7 @@ func termPrims(o Options, ts *Terms) []*scheme.Prim {
 				// line discipline turns into the newline a program reads.
 				text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\r"), "\n", "\r")
 				began := time.Now()
-				if err := t.send(c.Ctx, func() { t.emu.SendText(text) }); err != nil {
+				if err := sendBounded(c.Ctx, t.id, "look at it with term-screen", func() { t.emu.SendText(text) }); err != nil {
 					return scheme.Value{}, err
 				}
 				return t.answer(c.Ctx, began, termTypeCap, termTypeQuiet)
@@ -645,7 +630,7 @@ func termPrims(o Options, ts *Terms) []*scheme.Prim {
 					}
 				}
 				began := time.Now()
-				if err := t.send(c.Ctx, func() {
+				if err := sendBounded(c.Ctx, t.id, "look at it with term-screen", func() {
 					for _, k := range keys {
 						t.emu.SendKey(k)
 					}

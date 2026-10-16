@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/detect/l1"
@@ -122,13 +120,7 @@ func (l lander) records(dir string, args ...string) (string, error) {
 func (l lander) run(dir string, combined bool, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(l.ctx, landTimeout)
 	defer cancel()
-	full := append([]string{"--no-pager", "-c", "core.fsmonitor=false", "-c", "core.editor=true", "-c", "sequence.editor=true", "-c", "color.ui=false"}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Dir = dir
-	cmd.Env = l.env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-	cmd.WaitDelay = 5 * time.Second
+	cmd := gitCommand(ctx, dir, l.env, []string{"core.editor=true", "sequence.editor=true"}, args)
 	var out []byte
 	var err error
 	if combined {

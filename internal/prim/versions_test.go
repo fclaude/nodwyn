@@ -31,7 +31,7 @@ func TestReadVersionRejectsLinkedObject(t *testing.T) {
 func TestVersionsKeepListReadAndPrune(t *testing.T) {
 	root := t.TempDir()
 	var recorded []Version
-	v := &Versions{Dir: VersionsDir(root), Skip: InGitWorkTree(root), Record: func(x Version) { recorded = append(recorded, x) }}
+	v := &Versions{Dir: VersionsDir(root), Skip: GitHoldsPath(root), Record: func(x Version) { recorded = append(recorded, x) }}
 	file := filepath.Join(root, "notes.md")
 	if err := v.Keep(file); err != nil || len(recorded) != 0 {
 		t.Fatal("kept a file that does not exist", err)
@@ -75,7 +75,7 @@ func TestVersionsInGitKeepWhatGitCannotRestore(t *testing.T) {
 	os.WriteFile(filepath.Join(root, ".gitignore"), []byte("local.conf\n"), 0o600)
 	os.WriteFile(filepath.Join(root, "local.conf"), []byte("mine\n"), 0o600)
 	os.WriteFile(filepath.Join(root, "new.txt"), []byte("draft\n"), 0o600)
-	v := &Versions{Dir: VersionsDir(root), Skip: InGitWorkTree(root)}
+	v := &Versions{Dir: VersionsDir(root), Skip: GitHoldsPath(root)}
 	kept := func(name string) bool {
 		t.Helper()
 		abs := filepath.Join(root, name)
@@ -97,7 +97,7 @@ func TestVersionsInGitKeepWhatGitCannotRestore(t *testing.T) {
 			t.Errorf("%s: no version kept of what git cannot restore", name)
 		}
 	}
-	if InGitWorkTree(t.TempDir())(filepath.Join(root, "plants.txt")) {
+	if GitHoldsPath(t.TempDir())(filepath.Join(root, "plants.txt")) {
 		t.Fatal("skipped outside a git work tree")
 	}
 }

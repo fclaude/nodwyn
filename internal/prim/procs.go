@@ -25,6 +25,7 @@ const (
 	procSettle     = 1 * time.Second // how long shell-start waits for first output
 	procMaxWait    = 60              // seconds shell-read may wait
 	procStopGrace  = 2 * time.Second // SIGTERM, then SIGKILL
+	procMaxText    = termMaxText     // the most one shell-send types
 )
 
 // Procs holds a session's background processes.
@@ -47,7 +48,7 @@ type proc struct {
 
 	mu         sync.Mutex
 	changed    chan struct{} // closed and replaced whenever output or state changes
-	buf        []byte        // the latest procBufferSize bytes of output
+	buf        []byte        // the latest output: at least the last procBufferSize bytes, trimmed in batches
 	total      int64         // bytes ever written
 	cursor     int64         // bytes already returned by a read
 	done       bool
@@ -59,8 +60,11 @@ func (p *proc) Write(b []byte) (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.buf = append(p.buf, b...)
-	if over := len(p.buf) - procBufferSize; over > 0 {
-		p.buf = append(p.buf[:0:0], p.buf[over:]...)
+	// Trimmed in place once there is a buffer's worth too much, not by
+	// copying the whole buffer on every write once it is full: a watcher
+	// printing a line at a time was throttled to about 2,000 lines a second.
+	if len(p.buf) > 2*procBufferSize {
+		p.buf = p.buf[:copy(p.buf, p.buf[len(p.buf)-procBufferSize:])]
 	}
 	p.total += int64(len(b))
 	p.signal()
@@ -76,12 +80,13 @@ func (p *proc) signal() {
 // take returns the output not yet read, at most limit bytes of it, and what
 // the read should say about bytes dropped from the buffer or left for later.
 func (p *proc) take(limit int) (text string, dropped, left int64) {
-	start := p.total - int64(len(p.buf))
+	kept := p.buf[max(0, len(p.buf)-procBufferSize):]
+	start := p.total - int64(len(kept))
 	if p.cursor < start {
 		dropped = start - p.cursor
 		p.cursor = start
 	}
-	chunk := p.buf[p.cursor-start:]
+	chunk := kept[p.cursor-start:]
 	if limit > 0 && len(chunk) > limit {
 		left = int64(len(chunk) - limit)
 		chunk = chunk[:limit]
@@ -158,32 +163,16 @@ func (p *proc) read(ctx context.Context, wait time.Duration, limit int) (string,
 // waits a moment more for the kill to be seen, so what it reports next is
 // that the process ended, not that it still runs.
 func (p *proc) stop() {
-	p.mu.Lock()
-	done := p.done
-	p.mu.Unlock()
-	if done || p.cmd.Process == nil {
+	if p.cmd.Process == nil || p.exited() {
 		return
 	}
-	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
-	if p.ended(procStopGrace) {
-		return
-	}
-	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
-	p.ended(time.Second)
+	stopProcessGroup(p.cmd.Process.Pid, syscall.SIGTERM, p.exited)
 }
 
-// ended reports whether the process ended within d.
-func (p *proc) ended(d time.Duration) bool {
-	deadline := time.Now().Add(d)
-	for {
-		p.mu.Lock()
-		done := p.done
-		p.mu.Unlock()
-		if done || !time.Now().Before(deadline) {
-			return done
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+func (p *proc) exited() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.done
 }
 
 func (ps *Procs) get(id string) (*proc, error) {
@@ -225,10 +214,7 @@ func (ps *Procs) start(o Options, name string, args []string) (*proc, error) {
 	// A bash -c line reports its pipeline's failure, as shell-exec's does.
 	cmd := exec.Command(name, pipefail(name, args)...)
 	cmd.Dir = o.Root
-	cmd.Env = scrubEnv(o.EnvAllow)
-	if o.Scratch != "" {
-		cmd.Env = append(cmd.Env, "TMPDIR="+o.Scratch)
-	}
+	cmd.Env = childEnv(o)
 	cmd.Stdout, cmd.Stderr = p, p
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdin, err := cmd.StdinPipe()
@@ -284,16 +270,9 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 				if err != nil {
 					return scheme.Value{}, err
 				}
-				items, err := c.List(1)
+				args, err := stringList(c, 1)
 				if err != nil {
 					return scheme.Value{}, err
-				}
-				args := make([]string, len(items))
-				for i, it := range items {
-					if it.Kind != scheme.KString {
-						return scheme.Value{}, errors.New("args must be a list of strings")
-					}
-					args[i] = it.S
 				}
 				p, err := ps.start(o, name, args)
 				if err != nil {
@@ -345,7 +324,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 		{
 			Name: "shell-send",
 			Meta: scheme.Meta{
-				Doc: "Type text into a background process's input, as if at its keyboard: end a line with \\n. Returns what it printed in the next second.",
+				Doc: "Type text into a background process's input, as if at its keyboard: end a line with \\n. At most 16 KiB. Returns what it printed in the next second.",
 				Params: []scheme.Param{
 					{Name: "id", Type: "string", Doc: "the id shell-start returned"},
 					{Name: "text", Type: "string", Doc: "the text to send, usually ending in \\n", Role: "payload"},
@@ -372,8 +351,15 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 				if done {
 					return scheme.Value{}, fmt.Errorf("%s has exited; its output is still readable with shell-read", id)
 				}
-				if _, err := io.WriteString(p.stdin, text); err != nil {
-					return scheme.Value{}, fmt.Errorf("%s: %w", id, err)
+				if len(text) > procMaxText {
+					return scheme.Value{}, fmt.Errorf("text is %d bytes; shell-send sends at most %d", len(text), procMaxText)
+				}
+				var werr error
+				if err := sendBounded(c.Ctx, id, "see what it printed with shell-read", func() { _, werr = io.WriteString(p.stdin, text) }); err != nil {
+					return scheme.Value{}, err
+				}
+				if werr != nil {
+					return scheme.Value{}, fmt.Errorf("%s: %w", id, werr)
 				}
 				out, err := p.read(c.Ctx, procSettle, o.MaxOutput)
 				if err != nil {

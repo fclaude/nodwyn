@@ -196,7 +196,7 @@ func TestShellExec(t *testing.T) {
 	}
 	// output cap
 	v = h.mustEval(t, `(shell-exec "sh" '("-c" "yes | head -c 100000"))`)
-	if !strings.Contains(scheme.Write(v), "[output truncated at 4 KiB]") {
+	if !strings.Contains(scheme.Write(v), "omitted: only the first 2 KiB and the last 2 KiB of the output are kept]") {
 		t.Fatalf("cap: %s", scheme.Write(v))
 	}
 	// missing program is an error, not a status
