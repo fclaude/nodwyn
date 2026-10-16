@@ -680,7 +680,10 @@ func (c *Chat) choice(ev event.Choice) {
 	for {
 		line, ok := c.lines.read("[" + strings.Join(keys, "/") + "] ")
 		if !ok {
-			return // the session declines it when it closes
+			// Nobody is left to answer, and the session closes only when
+			// the turn waiting on this answer has ended: stop the turn.
+			c.Session.Abort()
+			return
 		}
 		line = strings.TrimSpace(line)
 		if !slices.Contains(keys, line) {
