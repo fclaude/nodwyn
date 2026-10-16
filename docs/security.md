@@ -69,6 +69,9 @@ gets the same checks. Shell scripts with variables or substitutions cannot
 inherit standing approval and retain their ordinary confirmation and hard
 triggers. `ArgvTrigger` independently asks a person about explicit outside paths,
 including flag values; the session's scratch directory retains its exception.
+The home directory as the shell spells it (`~`, `~/…`, `$HOME`, `${HOME}`,
+`~name`) counts as outside, and `$TMPDIR` as the scratch directory; any other
+variable is read as written.
 It reads a shell's `-c` line word by word, variables, substitutions, subshells
 and redirection targets included, so a path anywhere in the line is seen; a
 line it cannot split is read as one word. A program in a Python environment's

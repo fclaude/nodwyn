@@ -343,3 +343,16 @@ over a question on every search for the environment.
 with the change. `TestArgvTriggerLetsAnEnvironmentsInterpreterRun` asked
 about `cat` on the environment's interpreter, a read now let through; it asks
 about `cp` over it instead.
+
+## Amendment 2026-10-16: the argv trigger reads the home directory as the shell does
+
+The argv trigger joined every word that was not absolute to the repository,
+so `cat ~/.aws/credentials`, `cat $HOME/.netrc` and `cd ~` read as paths
+inside it and asked no person, while the same path written in full got the
+security confirm. The standing-approval reader already refused these
+spellings, so the two disagreed. The trigger now spells `~`, `~/…`, `$HOME`
+and `${HOME}` as the home directory and `~name` as outside, before judging a
+word, and `$TMPDIR` and `${TMPDIR}` as the session's scratch directory, which
+`shell-exec` gives as `TMPDIR`, so that spelling stays unasked. Other
+variables are read as written. The regression cases are in
+`TestArgvTriggerReadsAScriptWordByWord`.

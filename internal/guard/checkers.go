@@ -361,7 +361,7 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		if devices[tok] {
 			return
 		}
-		path := argumentPath(tok, a.Root, false)
+		path := argumentPath(a.spelled(tok), a.Root, false)
 		if path == "" || a.inScratch(path) || (ok != nil && ok(path)) {
 			return
 		}
@@ -427,6 +427,33 @@ var declares = map[string]bool{"export": true, "declare": true, "typeset": true,
 // inScratch reports whether path, absolute and without a parent component,
 // lies in the session's scratch directory, written with a trailing slash or
 // not: "<scratch>/" was asked about on the benchmark.
+// spelled is tok with each word that starts at the home or the temporary
+// directory written as the shell would expand it: ~, ~/…, $HOME and ${HOME}
+// as the home directory, ~name as another's (outside, whoever it is), and
+// $TMPDIR and ${TMPDIR} as the scratch directory, which shell-exec gives as
+// TMPDIR. Read as written they were words relative to the repository, so
+// cat ~/.aws/credentials never asked a person. Other variables stay as
+// written.
+func (a ArgvTrigger) spelled(tok string) string {
+	home, _ := os.UserHomeDir()
+	parts := strings.Split(tok, "=")
+	for i, word := range parts {
+		for _, v := range []struct{ name, dir string }{{"$HOME", home}, {"${HOME}", home}, {"$TMPDIR", a.Scratch}, {"${TMPDIR}", a.Scratch}} {
+			if v.dir != "" && (word == v.name || strings.HasPrefix(word, v.name+"/")) {
+				word = v.dir + strings.TrimPrefix(word, v.name)
+			}
+		}
+		switch {
+		case (word == "~" || strings.HasPrefix(word, "~/")) && home != "":
+			word = home + strings.TrimPrefix(word, "~")
+		case strings.HasPrefix(word, "~"):
+			word = "/" + word
+		}
+		parts[i] = word
+	}
+	return strings.Join(parts, "=")
+}
+
 func (a ArgvTrigger) inScratch(path string) bool {
 	return a.Scratch != "" && filepath.IsAbs(path) && !slices.Contains(strings.Split(path, string(filepath.Separator)), "..") &&
 		within(resolveExisting(filepath.Clean(path)), resolveExisting(a.Scratch))

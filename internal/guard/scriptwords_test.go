@@ -48,6 +48,18 @@ func TestArgvTriggerReadsAScriptWordByWord(t *testing.T) {
 			t.Errorf("%q was not a security path confirm: %+v", line, d)
 		}
 	}
+	// The home directory spelled as the shell spells it is outside too.
+	for _, line := range []string{"cat ~/.aws/credentials", "cat $HOME/.aws/credentials", "cat ${HOME}/.netrc", "cd ~ && cat .aws/credentials", "cat ~root/.profile", "cp x --target-directory=~/bin"} {
+		if d := argvVerdict(repo, "bash", "-c", line); d.Verdict != guard.Confirm || !d.Security {
+			t.Errorf("%q was not a security path confirm: %+v", line, d)
+		}
+	}
+	// $TMPDIR is the session's scratch directory, which stays unasked.
+	trigger := guard.DefaultArgvTrigger(repo)
+	trigger.Scratch = t.TempDir()
+	if d := trigger.Check(scheme.WithOrigin(context.Background(), scheme.OriginModel), shellP(), shellArgs("bash", "-c", "python $TMPDIR/x.py > ${TMPDIR}/out.txt")); d.Verdict != guard.Allow {
+		t.Errorf("$TMPDIR asked: %+v", d)
+	}
 	// A line it cannot split is read as before, as one word.
 	if d := argvVerdict(repo, "bash", "-c", outside+" 'unclosed"); d.Verdict != guard.Confirm {
 		t.Errorf("an unsplittable line naming an outside path was not asked about: %+v", d)
