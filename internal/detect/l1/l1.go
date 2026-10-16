@@ -39,7 +39,7 @@ const (
 // Finding is one candidate secret in s: the class it was classified as and
 // its [Start,End) byte range. Findings never overlap; Scan returns them in
 // order of appearance, whatever their class, so a caller may walk them once
-// from left to right (Redact does).
+// from left to right (redact.Redact does).
 type Finding struct {
 	Class string
 	Start int
@@ -356,25 +356,6 @@ func (s *Scanner) isUnknownEntropy(t string) bool {
 		}
 	}
 	return false
-}
-
-// Redact replaces each finding in text with "[REDACTED <class>]". Findings
-// do not overlap, so substitution is a single left-to-right pass. Phase 7's
-// ingress redactor uses this.
-func (s *Scanner) Redact(text string) (string, []Finding) {
-	fs := s.Scan(text)
-	if len(fs) == 0 {
-		return text, nil
-	}
-	var b strings.Builder
-	last := 0
-	for _, f := range fs {
-		b.WriteString(text[last:f.Start])
-		b.WriteString("[REDACTED " + f.Class + "]")
-		last = f.End
-	}
-	b.WriteString(text[last:])
-	return b.String(), fs
 }
 
 // entropy returns the Shannon entropy of b in bits per byte.

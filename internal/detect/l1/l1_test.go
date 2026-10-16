@@ -68,18 +68,20 @@ func TestEmbeddedInContext(t *testing.T) {
 	}
 }
 
-// TestKeyEndingASentenceIsRedacted: the texts a probe on 2026-10-05 found
+// TestKeyEndingASentenceIsFound: the texts a probe on 2026-10-05 found
 // unredacted. The full stop joined the key into one token run, the run as a
 // whole matched no rule, and so the key was neither redacted nor checked.
-func TestKeyEndingASentenceIsRedacted(t *testing.T) {
+// The finding covers the key and not the full stop.
+func TestKeyEndingASentenceIsFound(t *testing.T) {
 	s := New()
-	for in, want := range map[string]string{
-		"The token is ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4.": "The token is [REDACTED github-token].",
-		"ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4.":              "[REDACTED github-token].",
-		"The bucket key is AKIAABCDEFGHIJKLMNOP.":                    "The bucket key is [REDACTED aws-access-key].",
+	for _, c := range []struct{ in, secret, class string }{
+		{"The token is ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4.", "ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4", ClassGitHub},
+		{"ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4.", "ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4", ClassGitHub},
+		{"The bucket key is AKIAABCDEFGHIJKLMNOP.", "AKIAABCDEFGHIJKLMNOP", ClassAWS},
 	} {
-		if got, _ := s.Redact(in); got != want {
-			t.Errorf("%q: got %q, want %q", in, got, want)
+		fs := s.Scan(c.in)
+		if len(fs) != 1 || fs[0].Class != c.class || c.in[fs[0].Start:fs[0].End] != c.secret {
+			t.Errorf("%q: got %+v, want %s covering %q", c.in, fs, c.class, c.secret)
 		}
 	}
 }
@@ -267,25 +269,9 @@ func TestAllowlist(t *testing.T) {
 	}
 }
 
-// TestRedact: Phase 7's redactor uses this; verify the substitution.
-func TestRedact(t *testing.T) {
-	s := New()
-	in := `header "Authorization: Bearer sk-ant-api03-AbCdEfGhIjKlMnOp" and aws AKIAIOSFODNN7EXAMPLE`
-	out, fs := s.Redact(in)
-	if len(fs) != 2 {
-		t.Fatalf("Redact: got %d findings, want 2 (%+v)", len(fs), fs)
-	}
-	if !strings.Contains(out, "[REDACTED anthropic-key]") || !strings.Contains(out, "[REDACTED aws-access-key]") {
-		t.Errorf("Redact: output missing placeholders: %q", out)
-	}
-	if strings.Contains(out, "sk-ant") || strings.Contains(out, "AKIA") {
-		t.Errorf("Redact: secret still present: %q", out)
-	}
-}
-
 // TestFindingsAreOrderedAndDisjoint: a credential before a PEM block used to
-// come after it in Scan's result, and Redact sliced backwards over it and
-// panicked. Whatever the mix, findings are in order of appearance and none
+// come after it in Scan's result, and the redactor sliced backwards over it
+// and panicked (redact.TestRedactAKeyAheadOfAPrivateKey). Whatever the mix, findings are in order of appearance and none
 // overlaps the next.
 func TestFindingsAreOrderedAndDisjoint(t *testing.T) {
 	s := New()
@@ -306,19 +292,12 @@ func TestFindingsAreOrderedAndDisjoint(t *testing.T) {
 				t.Errorf("%q: findings %+v and %+v are out of order or overlap", in, fs[i-1], fs[i])
 			}
 		}
-		if out, _ := s.Redact(in); strings.Contains(out, "AKIA") || strings.Contains(out, "MIIEvQ") || strings.Contains(out, "ghp_") {
-			t.Errorf("%q: Redact left a credential in %q", in, out)
-		}
 	}
 
 	got := s.Scan("AKIAIOSFODNN7EXAMPLE\n" + pem)
 	want := []Finding{{ClassAWS, 0, 20}, {ClassPEM, 21, 21 + len(pem)}}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("a key before a block: got %+v, want %+v", got, want)
-	}
-	out, _ := s.Redact("AKIAIOSFODNN7EXAMPLE\n" + pem)
-	if out != "[REDACTED aws-access-key]\n[REDACTED pem]" {
-		t.Errorf("Redact: %q", out)
 	}
 }
 
@@ -351,9 +330,6 @@ func TestATokenAcrossAPEMEdge(t *testing.T) {
 	fs := s.Scan(in)
 	if len(fs) != 1 || fs[0].Class != ClassPEM || fs[0].Start != len("KEY=") || fs[0].End != len(in) {
 		t.Fatalf("got %+v, want one block from the start of the key", fs)
-	}
-	if out, _ := s.Redact(in); out != "KEY=[REDACTED pem]" {
-		t.Errorf("Redact: %q", out)
 	}
 	// The residual that touches a block is dropped, not made part of it:
 	// nothing redacts it, so the text beside the block stays as it was.
@@ -435,6 +411,5 @@ func FuzzScan(f *testing.F) {
 			}
 			prev = fnd.End
 		}
-		_, _ = s.Redact(data)
 	})
 }

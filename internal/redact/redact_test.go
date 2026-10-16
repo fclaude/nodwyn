@@ -70,6 +70,24 @@ func TestRedactACredentialInsideAPrivateKey(t *testing.T) {
 	}
 }
 
+// The texts a probe on 2026-10-05 found unredacted: a full stop after a key
+// joined it into one token run, so the key was neither redacted nor checked.
+// A key pasted against a private key's header is replaced with the block.
+func TestRedactAKeyEndingASentenceOrTouchingABlock(t *testing.T) {
+	pem := "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----"
+	for in, want := range map[string]string{
+		"The token is ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4.": "The token is [REDACTED github-token].",
+		"ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4.":              "[REDACTED github-token].",
+		"The bucket key is AKIAABCDEFGHIJKLMNOP.":                    "The bucket key is [REDACTED aws-access-key].",
+		"KEY=sk-ant-api03-AbCdEfGhIj" + pem:                          "KEY=[REDACTED pem]",
+		"AKIAIOSFODNN7EXAMPLE\n" + pem:                               "[REDACTED aws-access-key]\n[REDACTED pem]",
+	} {
+		if got := Redact(in, l1.New()); got.Text != want {
+			t.Errorf("%q: got %q, want %q", in, got.Text, want)
+		}
+	}
+}
+
 func TestRedactNone(t *testing.T) {
 	got := Redact("nothing secret here", l1.New())
 	if got.Text != "nothing secret here" || len(got.Events) != 0 {
