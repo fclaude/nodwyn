@@ -16,9 +16,10 @@ import (
 )
 
 // The model searches its own conversation and finds a result it saw
-// earlier, redacted as it was recorded, without finding its own search;
-// recall brings the result back whole, in ranges, and a reply with the
-// seq of its call's result (ADR 50).
+// earlier, redacted as it was recorded, under the turn still going on,
+// without finding its own search; recall brings the result back whole, in
+// ranges, a reply with the seq of its call's result, and the turn's
+// message with what the turn did once it ended (ADR 50, ADR 51).
 func TestModelSearchesAndRecallsItsConversation(t *testing.T) {
 	t.Parallel()
 	const canary = "sk-ant-abcdefgh1234"
@@ -37,7 +38,7 @@ func TestModelSearchesAndRecallsItsConversation(t *testing.T) {
 	if len(r.srv.Requests) != 3 {
 		t.Fatalf("%d requests", len(r.srv.Requests))
 	}
-	var readSeq, replySeq uint64
+	var readSeq, replySeq, askedSeq uint64
 	events, err := log.Read(bytes.NewReader(r.logb.Bytes()))
 	if err != nil {
 		t.Fatal(err)
@@ -49,6 +50,8 @@ func TestModelSearchesAndRecallsItsConversation(t *testing.T) {
 		}
 		_ = json.Unmarshal(ev.Payload, &p)
 		switch {
+		case ev.Kind == log.KindUserMsg:
+			askedSeq = ev.Seq
 		case ev.Kind == log.KindToolResult && p.ID == "read":
 			readSeq = ev.Seq
 		case ev.Kind == log.KindLLMResp && len(p.ToolCalls) == 1 && p.ToolCalls[0].ID == "read":
@@ -68,7 +71,8 @@ func TestModelSearchesAndRecallsItsConversation(t *testing.T) {
 		}
 	}
 	heading := fmt.Sprintf(`seq %d, the result of fs-read {"path":"note.txt"}`, readSeq)
-	if !strings.Contains(shown, heading) || !strings.Contains(shown, "  1: the frobnicator failed with code 7731") {
+	turn := fmt.Sprintf("turn seq %d-, not finished · asked \"why did it fail?\"\n", askedSeq)
+	if !strings.Contains(shown, turn+"  "+heading+"\n    1: the frobnicator failed with code 7731\n") {
 		t.Fatalf("the search did not show the read: %q", shown)
 	}
 	if strings.Contains(shown, "index-search") || strings.Contains(shown, "nothing else") {
@@ -97,6 +101,12 @@ func TestModelSearchesAndRecallsItsConversation(t *testing.T) {
 	reply := eval(fmt.Sprintf("(recall %d)", replySeq))
 	if !strings.Contains(reply, `fs-read {"path":"note.txt"}`) || !strings.Contains(reply, fmt.Sprintf("[the result of fs-read is seq %d]", readSeq)) {
 		t.Fatalf("a reply and where its result is: %q", reply)
+	}
+	asked := eval(fmt.Sprintf("(recall %d)", askedSeq))
+	for _, want := range []string{"why did it fail?\n\n[what the turn of seq ", "\noutcome completed", "\nanswer  done\n[the events it holds]\n", "\n" + heading + "\n"} {
+		if !strings.Contains(asked, want) {
+			t.Fatalf("the turn's message does not show %q: %q", want, asked)
+		}
 	}
 	taint, err := r.s.Eval(t.Context(), fmt.Sprintf("(taint-of (recall %d))", readSeq))
 	if err != nil || !strings.Contains(taint.String(), "external:log") {
@@ -167,6 +177,9 @@ func TestRecallReadsAResumedTasksWholeLog(t *testing.T) {
 	var searched int
 	if _, err := fmt.Sscanf(found.S, "[the 20 best of %d events", &searched); err != nil || searched < 1600 {
 		t.Fatalf("a search of the whole conversation, at most 20 found: %q (%v)", found.S[:min(200, len(found.S))], err)
+	}
+	if _, err := os.Stat(memPath(o.Paths.SessionsDir, id)); err != nil {
+		t.Fatalf("the words of the conversation are not beside its log: %v", err)
 	}
 	gizmo, err := s.Eval(t.Context(), `(index-search "Gizmo" "conversation")`)
 	if err != nil || !strings.Contains(gizmo.S, `the result of fs-read {"path":"gizmo.go"}, in the explorer's context`) {

@@ -62,9 +62,9 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(fs-list path)} & a directory's names; directories end with \code{/} \\
 \code{(fs-find path glob)} & file names matching a glob, at most 500 \\
 \code{(index-grep path regex [glob [context]])} & search contents with a regular expression \\
-\code{(index-search query scope [limit [path]])} & search by words, best match first: the repository's files (\code{scope} \code{"repo"}) from an index nodwyn keeps, the conversation (\code{"conversation"}), elided and folded results included, or, when the person allows it, the project's earlier tasks (\code{"earlier"}) (ADR 50) \\
+\code{(index-search query scope [limit [path]])} & search by words, best match first: the repository's files (\code{scope} \code{"repo"}) from an index nodwyn keeps, the conversation (\code{"conversation"}), elided and folded results included, or, when the person allows it, the project's earlier tasks (\code{"earlier"}) (ADR 50); events under the turns that hold them, each turn in a line from its card (ADR 51) \\
 \code{(index-update [path])} & bring the repository's index up to date, or add a directory git ignores (ADR 50) \\
-\code{(recall seq [start [count [task]]])} & one event of the conversation, or of an earlier task, by its seq, as the log recorded it, in lines like a ranged \code{fs-read} (ADR 50) \\
+\code{(recall seq [start [count [task]]])} & one event of the conversation, or of an earlier task, by its seq, as the log recorded it, in lines like a ranged \code{fs-read} (ADR 50); a turn's first message with what the turn did and its events (ADR 51) \\
 \code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree: what changed, since the last commit or since \code{against}, and the commit HEAD is on; read-only, no approval \\
 \code{(keep-passing)} & keep the changes as a test run passed on them (hidden): an unattended turn that a hard limit or the progress guard stops has its files put back to it, and what they held saved \\
 \code{(shell-exec cmd args)} & run a program with a list of arguments, no shell, in the folder (irreversible) \\
@@ -81,8 +81,6 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(judge-available?)} & whether the task has a judge now whose key is stored (the plan gate asks it) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions; the second is also the model's tool \\
-\code{(memory-search query [scope [exact]])} & earlier turns and compaction notes of this task, or with \code{\"project\"} and the person's leave of the repository's tasks, ranked by shared words; with exact, the logs scanned for the words (ADR 51); also the model's tool \\
-\code{(memory-read id)} & one result whole, a turn with its events; also the model's tool \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, as the system prompt carries it \\
 \code{(request-context)} & what the latest request answers: the agent's last answer before it, and the names of the files attached to it (the loop's; Chapter~\ref{ch:turn}) \\
 \code{(workspace)} & the folder's mounted folders \\

@@ -31,8 +31,9 @@ func cost(usd float64) *float64 { return &usd }
 // what it cost, its plan with the marks made, the files it wrote, the
 // commands it ran and how each ended, its errors and the start of its
 // answer; a compaction's note is an episode covering the conversation since
-// the one before; a turn nothing ended is closed by the next message, or by
-// a resume, and says so.
+// the one before, naming the reply that holds it; a turn nothing ended is
+// closed by the next message, or by a resume, and says so. A card's head is
+// the card in one line, and Open names the turn still open.
 func TestFolderMakesTurnCardsAndEpisodes(t *testing.T) {
 	e := &events{t: t}
 	e.add(log.KindSessionStart, log.SessionStart{Repo: "/r"})
@@ -61,8 +62,10 @@ func TestFolderMakesTurnCardsAndEpisodes(t *testing.T) {
 	var got []Entry
 	for _, ev := range e.evs {
 		got = append(got, f.Observe(ev)...)
-		if ev.Seq == 14 && f.Open() {
+		if from, asked := f.Open(); ev.Seq == 14 && from != 0 {
 			t.Fatal("a turn is open after its turn.end")
+		} else if ev.Seq == 15 && (from != 15 || asked != "Now look at the schema drift") {
+			t.Fatalf("the open turn: %d %q", from, asked)
 		}
 	}
 	if len(got) != 4 {
@@ -88,8 +91,11 @@ func TestFolderMakesTurnCardsAndEpisodes(t *testing.T) {
 	if strings.Contains(card.Text, "secret.env") {
 		t.Fatal("a write the guard denied is on the card")
 	}
+	if card.Head != `completed · 12s · $0.05 · asked "Fix the flaky TestPagerOrder. It fails one run in ten."` {
+		t.Fatalf("the card's head: %q", card.Head)
+	}
 	episode := got[1]
-	if episode.Level != LevelEpisode || episode.From != 1 || episode.Through != 18 || !strings.Contains(episode.Text, "the note: pager fixed, schema next") || !strings.Contains(episode.Text, "90000 tokens") {
+	if episode.Level != LevelEpisode || episode.From != 1 || episode.Through != 18 || episode.Note != 16 || !strings.Contains(episode.Text, "the note: pager fixed, schema next") || !strings.Contains(episode.Text, "90000 tokens") {
 		t.Fatalf("the compaction's episode: %+v", episode)
 	}
 	if f.EpisodeFrom != 19 {
@@ -100,47 +106,6 @@ func TestFolderMakesTurnCardsAndEpisodes(t *testing.T) {
 	}
 	if interrupted := got[3]; interrupted.ID != "m:s1:19-19:1" || !strings.Contains(interrupted.Text, "outcome interrupted") {
 		t.Fatalf("the turn a resume closed: %+v", interrupted)
-	}
-	session, from, through, level, err := ParseID(card.ID)
-	if err != nil || session != "s1" || from != 2 || through != 14 || level != LevelTurn {
-		t.Fatalf("ParseID(%q): %q %d %d %d %v", card.ID, session, from, through, level, err)
-	}
-	for _, bad := range []string{"", "m:s1:2-14", "x:s1:2-14:1", "m:s1:14-2:1", "m:s1:0-2:1"} {
-		if _, _, _, _, err := ParseID(bad); err == nil {
-			t.Fatalf("ParseID(%q) took it", bad)
-		}
-	}
-}
-
-// An identifier is found by its parts and by itself whole, the commonest
-// words count for nothing, and a rarer word shared with the query ranks
-// higher than a common one.
-func TestRankingByWords(t *testing.T) {
-	terms := strings.Join(Terms("TestPagerOrder HTTPServer schema_drift v2 the a"), " ")
-	for _, want := range []string{"testpagerorder test pager order", "httpserver http server", "schemadrift schema drift"} {
-		if !strings.Contains(terms, want) {
-			t.Fatalf("Terms: %q does not hold %q", terms, want)
-		}
-	}
-	if strings.Contains(" "+terms+" ", " the ") {
-		t.Fatalf("Terms kept a stop word: %q", terms)
-	}
-	texts := []string{
-		"asked fix the build\nran go test (exit 0)",
-		"asked fix the flaky pager order test\nwrote pager/pager.go",
-		"asked update the docs for the build",
-		"asked look at the build again",
-	}
-	hits := NewIndex(texts).Search("why is TestPagerOrder flaky in the build", 3)
-	if len(hits) == 0 || hits[0].Doc != 1 {
-		t.Fatalf("the card about the pager is not first: %+v", hits)
-	}
-	if hits := NewIndex(texts).Search("the of and", 3); len(hits) != 0 {
-		t.Fatalf("stop words ranked something: %+v", hits)
-	}
-	long := strings.Repeat("filler words here ", 40) + "the reconnect race was in desk.js" + strings.Repeat(" more filler", 40)
-	if s := Snippet(long, "reconnect race", 120); !strings.Contains(s, "reconnect race") || len(s) > 130 {
-		t.Fatalf("Snippet: %q", s)
 	}
 }
 
@@ -158,7 +123,7 @@ func TestEpisodeOfACompactionThatNamesNoNote(t *testing.T) {
 	for _, ev := range e.evs {
 		got = append(got, f.Observe(ev)...)
 	}
-	if len(got) != 1 || !strings.Contains(got[0].Text, "the handover note") || strings.Contains(got[0].Text, "an earlier reply") {
+	if len(got) != 1 || !strings.Contains(got[0].Text, "the handover note") || strings.Contains(got[0].Text, "an earlier reply") || got[0].Note != 3 {
 		t.Fatalf("the episode: %+v", got)
 	}
 }

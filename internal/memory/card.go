@@ -1,9 +1,10 @@
-// Package memory is what a task remembers of its history, and how it is
-// searched (ADR 51). Entries are made from a session log's events: a card
-// for each turn, made here in Go and costing nothing, and an episode for
-// each note the model wrote when it compacted the conversation. They are a
-// derived view of the log, never recorded in it: whatever reads the log can
-// make them again.
+// Package memory is what a task remembers of its history (ADR 51). Entries
+// are made from a session log's events: a card for each turn, made here in
+// Go and costing nothing, and an episode for each note the model wrote when
+// it compacted the conversation. They are a derived view of the log, never
+// recorded in it: whatever reads the log can make them again. index-search
+// shows the events it finds under their turns' cards, and recall of a
+// turn's first message shows its card (ADR 50, amended).
 package memory
 
 import (
@@ -23,9 +24,9 @@ const (
 	LevelEpisode = 2
 )
 
-// Entry is one thing memory can find. Its ID names the session, the span of
-// the log it comes from and its level, so making it again from the same log
-// gives the same ID.
+// Entry is a turn's card or an episode. Its ID names the session, the span
+// of the log it comes from and its level, so making it again from the same
+// log gives the same ID, which replaces it.
 type Entry struct {
 	ID      string    `json:"id"`
 	Level   int       `json:"level"`
@@ -34,7 +35,11 @@ type Entry struct {
 	Through uint64    `json:"through"`
 	Start   time.Time `json:"start"`
 	End     time.Time `json:"end"`
-	Text    string    `json:"text"`
+	// Head is a card in one line: how the turn ended and what was asked.
+	Head string `json:"head,omitempty"`
+	// Note is an episode's note, the seq of the reply that holds it.
+	Note uint64 `json:"note,omitempty"`
+	Text string `json:"text"`
 }
 
 // EntryID is the ID of the entry of level for a session's span.
@@ -42,28 +47,17 @@ func EntryID(session string, from, through uint64, level int) string {
 	return fmt.Sprintf("m:%s:%d-%d:%d", session, from, through, level)
 }
 
-// ParseID reads an entry's ID back.
-func ParseID(id string) (session string, from, through uint64, level int, err error) {
-	parts := strings.Split(id, ":")
-	if len(parts) != 4 || parts[0] != "m" {
-		return "", 0, 0, 0, fmt.Errorf("memory: %q is not an entry id (m:SESSION:FROM-THROUGH:LEVEL)", id)
-	}
-	if _, err := fmt.Sscanf(parts[2]+":"+parts[3], "%d-%d:%d", &from, &through, &level); err != nil || from == 0 || through < from {
-		return "", 0, 0, 0, fmt.Errorf("memory: %q is not an entry id (m:SESSION:FROM-THROUGH:LEVEL)", id)
-	}
-	return parts[1], from, through, level, nil
-}
-
 // What a card keeps of each part of a turn.
 const (
-	maxAsked    = 1500
-	maxAnswer   = 1200
-	maxNote     = 6000
-	maxFiles    = 12
-	maxRan      = 8
-	maxErrors   = 5
-	maxLineLen  = 160
-	noteReplies = 8 // the replies kept to find a compaction's note
+	maxAsked     = 1500
+	maxAnswer    = 1200
+	maxNote      = 6000
+	maxFiles     = 12
+	maxRan       = 8
+	maxErrors    = 5
+	maxLineLen   = 160
+	maxHeadAsked = 160
+	noteReplies  = 8 // the replies kept to find a compaction's note
 )
 
 // State is what a Folder carries from one turn to the next: where, and
@@ -104,9 +98,15 @@ type turn struct {
 	unknown bool // a reply's cost was not known
 }
 
-// Open reports whether a turn has begun and not ended: the point after an
-// event where Open is false is one an index may fold to.
-func (f *Folder) Open() bool { return f.turn != nil }
+// Open is the turn begun and not ended: the seq of the message that began
+// it and what it asked, 0 when there is none. A point after an event where
+// none is open is one a log's memory may fold to.
+func (f *Folder) Open() (from uint64, asked string) {
+	if f.turn == nil {
+		return 0, ""
+	}
+	return f.turn.from, oneLine(f.turn.asked)
+}
 
 // Observe takes the next event and returns the entries it completes.
 func (f *Folder) Observe(ev log.Event) []Entry {
@@ -172,7 +172,7 @@ func (f *Folder) Observe(ev log.Event) []Entry {
 			if r.seq == noteSeq && strings.TrimSpace(r.text) != "" {
 				from := min(f.EpisodeFrom, ev.Seq)
 				text := fmt.Sprintf("compaction note (%s), written when the conversation reached %d tokens:\n%s", p.Trigger, p.Before, clip(r.text, maxNote))
-				out = append(out, Entry{ID: EntryID(f.Session, from, ev.Seq, LevelEpisode), Level: LevelEpisode, Session: f.Session, From: from, Through: ev.Seq, Start: f.EpisodeStart, End: ev.TS, Text: text})
+				out = append(out, Entry{ID: EntryID(f.Session, from, ev.Seq, LevelEpisode), Level: LevelEpisode, Session: f.Session, From: from, Through: ev.Seq, Start: f.EpisodeStart, End: ev.TS, Note: noteSeq, Text: text})
 				break
 			}
 		}
@@ -253,22 +253,20 @@ func (t *turn) observe(ev log.Event) {
 func (f *Folder) close(through uint64, end time.Time, outcome, why string) Entry {
 	t := f.turn
 	f.turn = nil
-	var b strings.Builder
-	fmt.Fprintf(&b, "asked   %s\n", oneLine(t.asked))
-	took := end.Sub(t.start).Round(time.Second)
-	fmt.Fprintf(&b, "outcome %s", outcome)
+	ended := outcome
 	if why != "" {
-		fmt.Fprintf(&b, ": %s", firstLine(why))
+		ended += ": " + firstLine(why)
 	}
-	fmt.Fprintf(&b, " · %s", took)
+	ended += " · " + end.Sub(t.start).Round(time.Second).String()
 	if t.cost > 0 {
 		at := ""
 		if t.unknown {
 			at = "at least "
 		}
-		fmt.Fprintf(&b, " · %s$%.2f", at, t.cost)
+		ended += fmt.Sprintf(" · %s$%.2f", at, t.cost)
 	}
-	b.WriteString("\n")
+	var b strings.Builder
+	fmt.Fprintf(&b, "asked   %s\noutcome %s\n", oneLine(t.asked), ended)
 	if t.plan != "" {
 		var steps []string
 		for i, step := range (log.GatePlan{Plan: t.plan}).Steps() {
@@ -292,7 +290,8 @@ func (f *Folder) close(through uint64, end time.Time, outcome, why string) Entry
 	if t.answer != "" {
 		fmt.Fprintf(&b, "answer  %s\n", oneLine(t.answer))
 	}
-	return Entry{ID: EntryID(f.Session, t.from, through, LevelTurn), Level: LevelTurn, Session: f.Session, From: t.from, Through: through, Start: t.start, End: end, Text: strings.TrimRight(b.String(), "\n")}
+	head := fmt.Sprintf("%s · asked %q", ended, clip(oneLine(t.asked), maxHeadAsked))
+	return Entry{ID: EntryID(f.Session, t.from, through, LevelTurn), Level: LevelTurn, Session: f.Session, From: t.from, Through: through, Start: t.start, End: end, Head: head, Text: strings.TrimRight(b.String(), "\n")}
 }
 
 // list joins items, the first max of them and how many more.

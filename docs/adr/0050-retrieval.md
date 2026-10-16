@@ -636,3 +636,31 @@ in `internal/frontend/tui`, `TestRetrievalLinesLiveAndReplayed` in
   measured after R4, if R4 is kept.
 - Splitting chunks with Go's own parser (`go/parser`, no new dependency)
   instead of the line rule, if Go results are cut badly.
+
+## Amendment 2026-10-15: the words beside each log, the results under their turns (ADR 51)
+
+ADR 51, built the same day in another session, keeps a card for each turn
+and each compaction's note beside each log, as `<id>.mem`, and gave the
+model `memory-search` and `memory-read` to search them. Two searches of
+earlier tasks were one too many; they are now one, this ADR's.
+
+- §8's conversation index and §9's per-process cache are gone. The words
+  of a log's events are kept in its `.mem`, beside its cards, to the end of
+  its last whole turn, folded from where they end and checked against the
+  log as its index is (ADR 51's amendment); the events after are folded at
+  the search. A search decodes the postings of its own words only and
+  keeps nothing after. §9's "`<id>.ridx` beside each log ... the step to
+  take if the memory or the first search matters" is this step: on the
+  person's 78 logs the first search wrote 10.2 MB in 1.3 seconds, where
+  the cache took 3.6 seconds and held 87 MB per process, and a later one
+  took 18 to 19 milliseconds, in any process.
+- The conversation's and earlier tasks' results are grouped by the turn
+  that holds each event, the turn in a line from its card; a compaction's
+  note is named as one. `recall` of a turn's first message adds the card
+  and the seq of every event the turn holds.
+- A person at a terminal searches a repository's tasks with
+  `nodwyn memory search` and recalls with `nodwyn memory recall`, whatever
+  the switch of §9, which decides what the model reads.
+- Not changed: the scopes, the switch, the repository index (§2 to §7),
+  the kinds of event ranked and how they are weighed, and §13's measures.
+

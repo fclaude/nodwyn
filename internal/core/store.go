@@ -282,9 +282,6 @@ func (s Store) Delete(id string) error {
 	infoCache.mu.Lock()
 	delete(infoCache.entries, path)
 	infoCache.mu.Unlock()
-	earlierCache.mu.Lock()
-	delete(earlierCache.entries, path)
-	earlierCache.mu.Unlock()
 	return nil
 }
 

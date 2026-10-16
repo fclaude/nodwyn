@@ -589,9 +589,9 @@ Primitive & What it does \\
 \code{(fs-list path)} & a directory's names, sorted; directories end in \code{/} \\
 \code{(fs-find path glob)} & file names under a directory matching a glob, at most 500 \\
 \code{(index-grep path pattern [glob [context]])} & search contents with an RE2 regular expression, walked and matched in Go \\
-\code{(index-search query scope [limit [path]])} & search by words, best match first: \code{scope} \code{"repo"} ranks chunks of the files git lists from an index kept in nodwyn's data directory, read again through \code{fs-read}; \code{"conversation"} the session's messages, replies, calls and results, those the window elided or folded included, read from the log; \code{"earlier"} the project's other tasks, when the person allows it (\adr{50}) \\
+\code{(index-search query scope [limit [path]])} & search by words, best match first: \code{scope} \code{"repo"} ranks chunks of the files git lists from an index kept in nodwyn's data directory, read again through \code{fs-read}; \code{"conversation"} the session's messages, replies, calls and results, those the window elided or folded included, read from the log; \code{"earlier"} the project's other tasks, when the person allows it (\adr{50}); events are shown under the turns that hold them, each turn in a line from its card (\adr{51}) \\
 \code{(index-update [path])} & bring the repository's index up to date, or add a directory git ignores, and say what it holds (\adr{50}) \\
-\code{(recall seq [start [count [task]]])} & one event of the conversation, or of an earlier task, by its seq, the \code{N} of \code{[elided seq=N]}, as the log recorded it, in lines as a ranged \code{fs-read} reads a file (\adr{50}) \\
+\code{(recall seq [start [count [task]]])} & one event of the conversation, or of an earlier task, by its seq, the \code{N} of \code{[elided seq=N]}, as the log recorded it, in lines as a ranged \code{fs-read} reads a file (\adr{50}); a turn's first message with what the turn did and the events it holds (\adr{51}) \\
 \code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree only: status, and the changes since the last commit or since \code{against}; the commit HEAD is on; read-only, no approval \\
 \code{(keep-passing)} & keep the changes as a test run passed on them, for a turn nobody reads that a hard limit or the progress guard stops; the core then puts the files back to it and saves what they held \\
 \code{(shell-exec cmd args)} & run a program and wait for it; irreversible \\
@@ -604,8 +604,6 @@ Primitive & What it does \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a new Google Doc; only with a stored \code{google} credential, and asks or not as \code{docs.google\_upload} says (unset: the first call asks which) \\
 \code{(scratch-dir)}, \code{(repository)}, \code{(workspace)} & the session's scratch directory; the repository's root; its mounted folders \\
 \code{(project-notes)}, \code{(project-notes-save text)} & this repository's notes kept across sessions; the second is also the model's tool \\
-\code{(memory-search query [scope [exact]])} & this task's earlier turns and compaction notes, or with \code{\"project\"} and the person's leave the repository's other tasks', ranked by shared words, or its logs scanned for the words as written (\adr{51}); also the model's tool \\
-\code{(memory-read id)} & one of those whole, with a turn's events from the log; also the model's tool \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, its instructions for coding agents, which the system prompt carries \\
 \code{(worktree)} & \code{\#f}, or the git worktree made for this session: its repository, branch, base branch and base commit (\adr{34}) \\
 \code{(git-land message)} & in a worktree session only: commit, rebase onto the newest base, push by fast-forward and move the local base branch, in one irreversible step \\
@@ -1118,7 +1116,7 @@ A session adds these:
 
 \begin{txt}
 Files        fs-read fs-write fs-edit fs-list fs-find index-grep
-Retrieval    index-search index-update recall memory-search memory-read
+Retrieval    index-search index-update recall
 Git          git-status git-diff                   (in a git work tree)
 Processes    shell-exec shell-start shell-read shell-send shell-stop
 Documents    doc-export; google-doc-upload             (with a google credential)

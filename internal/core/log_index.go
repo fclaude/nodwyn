@@ -303,12 +303,18 @@ func lineHash(line []byte) string {
 func saveIndex(dir, id string, idx logIndex) error { return writeDerived(dir, id, ".idx", idx) }
 
 // writeDerived writes v as JSON beside session id's log, as <id><ext>, whole
-// or not at all: a temporary file renamed into place.
+// or not at all.
 func writeDerived(dir, id, ext string, v any) error {
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
+	return writeDerivedBytes(dir, id, ext, raw)
+}
+
+// writeDerivedBytes writes raw beside session id's log, as <id><ext>, whole
+// or not at all: a temporary file renamed into place.
+func writeDerivedBytes(dir, id, ext string, raw []byte) error {
 	tmp, err := os.CreateTemp(dir, id+ext+".*")
 	if err != nil {
 		return err

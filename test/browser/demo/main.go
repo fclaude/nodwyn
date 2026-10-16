@@ -455,8 +455,8 @@ func planStep(id string, step int, state, note string) fake.ToolCall {
 
 // respond is the scripted model. A request offering no tools is the planner;
 // otherwise the reply depends on how many tool rounds this ask has had.
-// recalled finds the first event a conversation search gave.
-var recalled = regexp.MustCompile(`\nseq (\d+), `)
+// recalled finds an event a conversation search gave, under its turn.
+var recalled = regexp.MustCompile(`\n\s+seq (\d+), `)
 
 func respond(req fake.Request) fake.Turn {
 	// Recipe v15 (ADR 9 amended 2026-10-04) carries the person's request

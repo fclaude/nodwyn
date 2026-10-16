@@ -1,11 +1,14 @@
 # ADR 0051: Task memory: turn cards and notes, searched by words, and later by meaning
 
-- Status: accepted; search by words over turn cards and compaction notes
-  (§1, §3, §4, §5's keyword half, §6, §7) implemented 2026-10-15; the rest
+- Status: accepted; turn cards and compaction notes (§1 to §4)
+  implemented 2026-10-15, searched first with tools of their own (§5 to §7)
+  and, the same day, through ADR 50's `index-search` and `recall`, with the
+  words of every event kept beside each log (see the amendment); the rest
   not built (see "Not built")
 - Date: 2026-10-15
 - Amends: 9 (memory across sessions is no longer only project notes), 50
-  (its leave for earlier tasks also covers their memory)
+  (the words it ranks are kept in each log's `.mem`, and what it finds is
+  shown under its turns; see the amendment)
 
 ## Context
 
@@ -67,7 +70,7 @@ an in-memory ranking cover it. ADR 39's "a view of the logs, not a second
 database" holds: nothing is only in `.mem`. A pure-Go SQLite could replace
 the files later under the same rule.
 
-### 5. Ranking: words now, meaning later, fused
+### 5. Ranking: words now, meaning later, fused (superseded by the amendment)
 Entries are ranked by BM25 over their own text. A word is lower-cased and
 an identifier also split where its case changes and at its underscores
 (`TestPagerOrder` is found by "pager"), and the commonest English words
@@ -77,7 +80,7 @@ as the turn that did the work (seen on the person's 73 sessions). Vectors
 from the shipped model (§9), fused with this ranking by reciprocal rank
 fusion, are not built.
 
-### 6. An exact scan for what no card kept
+### 6. An exact scan for what no card kept (superseded by the amendment)
 `(memory-search words "project" #t)` finds the words as written, in any
 case, in the events `index-search` reads (messages, attachments, plans,
 summaries, replies with their calls, tool output, a shell's as the model
@@ -85,7 +88,7 @@ read it) of the task, or with leave the project's tasks, newest first: each log 
 mark's span at a time, through its index, so a long log is read only as far
 as needed. Each place names the card of its turn.
 
-### 7. The model searches with two read-only tools: its task always, the project's with leave
+### 7. The model searches with two read-only tools: its task always, the project's with leave (superseded by the amendment)
 `memory-search` (query, scope `"task"`, the default, or `"project"`,
 exact) returns at most 8 results: id, level, task, when and a snippet.
 `memory-read` opens one: the card or note whole, a turn's events from the
@@ -178,7 +181,87 @@ across marks, `memory-read`, and the tools in a session: this task's memory
 always, the project's refused while earlier tasks are off, allowed when
 turned on, a read of another task's entry refused again once turned off).
 
+Replaced the same day by the amendment: §5's ranking of cards, §6's scan
+and §7's tools, with the tests of them.
+
 Not built, in the order proposed: §11's questions and measurement; §9 the
 shipped model and fused ranking; the console's search inside conversations,
 a task's History panel and Settings › Search (with ADR 49 §11); §8 and §10.
 A run's handover as an episode comes with ADR 49 §8.
+
+## Amendment 2026-10-15: one search, its words beside each log
+
+The first slice landed beside ADR 50, built the same day in another
+session, and gave the model two ways to search earlier tasks:
+`index-search` with `"earlier"` ranked events and held their words in
+memory per process (87 MB and 3.6 seconds for the first search, in each
+process), and `memory-search` ranked cards from small files beside each log.
+ADR 50 had the right tools and the person's switch; this ADR had the levels
+and a store that grows with the log. The person chose one search with both.
+
+1. **One family of tools.** `memory-search` and `memory-read` are no
+   longer primitives or tools: `index-search` (its `"conversation"` and
+   `"earlier"` scopes) and `recall` are the model's (ADR 50 §1), and every
+   session is offered two fewer tools (1,528 bytes of schemas a request).
+   §5's ranking of cards and §6's exact scan go with them: `index-search`
+   ranks the events whose words the cards are made from, tool output
+   included, which is what the scan was for. A person at a terminal has
+   `nodwyn memory search [--task SESSION] [-n N] WORDS` and
+   `nodwyn memory recall SESSION SEQ [START [COUNT]]`, which show what the
+   model would see, over every task of the repository whatever the switch.
+2. **What a search finds is shown under its turns.** The events found are
+   grouped by the turn that holds each, the turns in the order of their
+   best event: a line from the turn's card (`turn seq 158-164 · completed ·
+   6s · asked "Fix the flaky TestPagerOrder"`, `turn seq 40-, not
+   finished`, or `outside a turn`), after its task for earlier tasks, then
+   each event in order with its best lines. A compaction's note says it is
+   one (`a reply, the note of a compaction of seq 1 to 132`). A card keeps
+   that line as its head; an episode keeps its note's seq.
+3. **`recall` of a turn's first message shows the turn**: the card but for
+   what was asked, which the message says, and a line per event the turn
+   holds, the seqs `recall` takes; for a turn under way, its events so far.
+   This is what `memory-read` showed of a turn.
+4. **The words are kept on disk, in the `.mem`.** After its line of JSON,
+   `<id>.mem` (version 2) holds each document's seq and what it is (a
+   heading, its agent, the call a result answers, a reply's calls), then
+   the word index as `retrieval.Index.AppendBinary` writes it: each
+   document's length, then each word in order with its postings, kept as
+   distances. The line keeps the conversation's fold (open narrowings,
+   calls not yet answered) beside the cards'. Both scopes read it the same
+   way: a log's `.mem`, brought up to the end of its last whole turn at the
+   search, and the events after it folded then. A search decodes only its
+   own words' postings, a recall none, and nothing is held after either;
+   ADR 50's in-memory index of the conversation, built from the whole log,
+   and its per-process cache of earlier tasks are gone. A log that is not a
+   file is folded from the events the session holds. The events are
+   redacted again as they are folded, as ADR 50's were.
+5. **Measured** on a copy of the person's 78 logs (73 tasks of this
+   repository, 17,616 events): the first search wrote their files, 10.2 MB
+   holding 2.1 million postings, in 1.3 seconds; a later search took 18 to
+   19 milliseconds, in any process, with about 1 MB left in memory after
+   it.
+6. **What a write costs.** A `.mem` is written whole, as a temporary file
+   renamed into place, when its log gained a whole turn: the cost grows with
+   the log's words, not the log. A scheduled task's log of gigabytes (ADR
+   49) would rewrite some hundreds of megabytes after each run; segments
+   appended per run are the step if that matters (not built).
+7. **The leave stands.** Earlier tasks are searched and recalled only under
+   ADR 50 §9's switch; the check the first rebase added to `memory-search`
+   went with the tool.
+
+§9's model, when built, makes vectors for cards and notes, not for every
+event: about a tenth as many texts, and each says what a turn came to.
+
+Tests: `internal/retrieval` `TestIndexKeptAsBytesRanksAsItDid` (read whole,
+or with the query's words only, and added to, it ranks as before; bytes
+that are not an index are an error); `internal/memory`
+`TestFolderMakesTurnCardsAndEpisodes` (a card's head, an episode's note,
+the open turn); `internal/core` `TestSearchShowsEventsUnderTheirTurns`,
+`TestMemoryIsFoldedFromTheEndAndChecked` (the memory read from disk equals
+a fold of the whole log in memory, in its cards, its documents and its
+ranking, as the log grows, with a hash that is not the log's, with its
+words cut short, and deleted) and `TestRecallOfATurnsMessageShowsTheTurn`;
+ADR 50's `TestModelSearchesAndRecallsItsConversation` (on a log that is not
+a file: the line of the turn under way, and its message recalled after it
+ended), `TestRecallReadsAResumedTasksWholeLog` (the `.mem` beside a resumed
+log) and `TestEarlierTasksAreSearchedWhenAllowed` (turns after their tasks).

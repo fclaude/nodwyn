@@ -101,26 +101,29 @@ Read a test when you want to know what a claim actually means.
 
 Every turn of every task leaves a card: what was asked, how it ended, its
 plan and the marks made, the files written, the commands run and how they
-ended, errors, and the start of the answer. Each compaction leaves its note.
-The model searches its own task's with `memory-search` and opens one with
-`memory-read` (ADR 51). It searches the other tasks of its repository with
-`(memory-search "…" "project")` only when you let it search earlier tasks
-for that folder, the switch `index-search` heeds too (ADR 50 §9): the
-folder's editor on Workspaces, or `:earlier on` in the TUI. Never another
-repository's. From a terminal, you search them all:
+ended, errors, and the start of the answer. When the model searches its
+conversation with `index-search`, or a folder's earlier tasks once you let
+it (the folder's editor on Workspaces, or `:earlier on` in the TUI; ADR 50),
+it sees each event it found under its turn's card in one line: how the turn
+ended, how long it took, what it cost and what it asked. `recall` of a
+turn's first message shows the whole card and the seq of every event in the
+turn (ADR 51). From a terminal, you search all of a repository's tasks the
+same way, whatever that switch says:
 
 ```
 nodwyn --repo ~/src/your-repo memory search flaky pager test
-nodwyn --repo ~/src/your-repo memory search --exact "connection reset by peer"
-nodwyn --repo ~/src/your-repo memory read m:20261004T073130Z-40187c24:6-648:1
+nodwyn --repo ~/src/your-repo memory search --task 20261004T073130Z-40187c24 -n 20 TestPagerOrder
+nodwyn --repo ~/src/your-repo memory recall 20261004T073130Z-40187c24 6
 ```
 
-`search` ranks the cards and notes by the words they share with yours (an
-identifier is also found by its parts: "pager" finds `TestPagerOrder`);
-`--exact` finds the words as written in the tasks' messages, replies and
-tool output, newest first; `--task SESSION` keeps to one task. The cards
-are kept beside each log as `<id>.mem`, made again from the log whenever it
-does not match, so deleting them is safe. Nothing is sent anywhere.
+`search` ranks the events by the words they share with yours (an
+identifier is also found by its parts: "pager" finds `TestPagerOrder`) and
+shows them under their turns; `recall` brings one event back whole, and a
+turn's first message with what the turn did. The cards and the words are
+kept beside each log as `<id>.mem`, made again from the log whenever it does
+not match, so deleting them is safe; the first search of nodwyn's 73 tasks
+wrote 10 MB of them in 1.3 seconds, and a search after that takes about 20
+milliseconds. Nothing is sent anywhere.
 
 ### Reading a session log
 
@@ -224,8 +227,8 @@ nodwyn-stable                       # pins every path to this directory
 nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
 tools doc-export fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep index-search
-      index-update memory-read memory-search plan-step plan-write read-definition recall second-look
-      shell-exec shell-read shell-send shell-start shell-stop
+      index-update plan-step plan-write read-definition recall second-look shell-exec shell-read
+      shell-send shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence

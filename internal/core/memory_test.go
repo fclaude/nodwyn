@@ -1,17 +1,18 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/memory"
 )
 
 // appendEvents appends events to a session's log, as the session that
@@ -57,77 +58,94 @@ func pagerTurn(write func(log.Kind, any)) {
 	write(log.KindTurnEnd, log.TurnEnd{Outcome: "completed"})
 }
 
-// freshMemory is what folding the whole log from its start makes.
-func freshMemory(t *testing.T, o Options, id string) []memory.Entry {
+// wholeMemory is what folding the whole log from its start, in memory,
+// makes of it.
+func wholeMemory(t *testing.T, o Options, id string) *logMemory {
 	t.Helper()
 	evs, err := log.ReadFile(log.SessionPath(o.Paths.SessionsDir, id))
 	if err != nil && !errors.Is(err, log.ErrTruncated) {
 		t.Fatal(err)
 	}
-	f := memory.Folder{Session: id}
-	var out []memory.Entry
-	at := map[string]int{}
-	for _, ev := range evs {
-		for _, e := range f.Observe(ev) {
-			if i, ok := at[e.ID]; ok {
-				out[i] = e
-				continue
-			}
-			at[e.ID] = len(out)
-			out = append(out, e)
-		}
+	l, err := foldEvents(id, evs)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return out
+	return l
 }
 
-// Memory search ranks this project's earlier turns and compaction notes by
-// the words they share with the query (ADR 51): the card of the turn that
-// fixed TestPagerOrder comes first for a question about it, a compaction's
-// note is found as an episode, scope task keeps to one task, and another
-// project's task, which says the same, is never found.
-func TestMemorySearchFindsThisProjectsEarlierWork(t *testing.T) {
+// sameMemory fails unless a and b hold the same cards and episodes, the
+// same documents in each part, and rank query alike.
+func sameMemory(t *testing.T, when, query string, a, b *logMemory) {
+	t.Helper()
+	if x, y := asJSON(t, a.entries), asJSON(t, b.entries); x != y {
+		t.Fatalf("%s: entries\n%s\nare not the whole log's\n%s", when, x, y)
+	}
+	if len(a.parts) != len(b.parts) || a.open != b.open || a.last != b.last {
+		t.Fatalf("%s: %d parts, open %d, last %d; the whole log's %d, %d, %d", when, len(a.parts), a.open, a.last, len(b.parts), b.open, b.last)
+	}
+	for i := range a.parts {
+		if !slices.Equal(a.parts[i].seqs, b.parts[i].seqs) || !slices.EqualFunc(a.parts[i].raw, b.parts[i].raw, bytes.Equal) {
+			t.Fatalf("%s: part %d holds %v, the whole log's %v", when, i, a.parts[i].seqs, b.parts[i].seqs)
+		}
+	}
+	x, _ := rankTurns([]*logMemory{a}, query, 20)
+	y, _ := rankTurns([]*logMemory{b}, query, 20)
+	if asJSON(t, fmt.Sprint(x)) != asJSON(t, fmt.Sprint(y)) {
+		t.Fatalf("%s: %q ranks\n%v\nnot as the whole log does\n%v", when, query, x, y)
+	}
+}
+
+// A person searches this repository's tasks from a terminal as the model
+// searches earlier tasks (ADR 50 §9, ADR 51): the events found are shown
+// under their turns, each turn in a line after its task, saying how it
+// ended and what it asked; a compaction's note says what it is; another
+// repository's task, which says the same, is never found; --task keeps to
+// one. Each log's words are then beside it in its .mem.
+func TestSearchShowsEventsUnderTheirTurns(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)
 	project := config.CanonicalPath(o.Repo)
-	longLog(t, o, "20261001T070000Z-0000aa01", 30, 25, pagerTurn)
-	longLog(t, o, "20261002T070000Z-0000aa02", 5, 100, nil)
+	pager, plain := "20261001T070000Z-0000aa01", "20261002T070000Z-0000aa02"
+	longLog(t, o, pager, 30, 25, pagerTurn)
+	longLog(t, o, plain, 5, 100, nil)
 	other := o
 	other.Repo = t.TempDir()
 	longLog(t, other, "20261003T070000Z-0000bb01", 3, 100, pagerTurn)
 	st := Store{Dir: o.Paths.SessionsDir}
 
-	hits, err := st.SearchMemory(project, "", "why is TestPagerOrder flaky", 8)
+	got, err := st.SearchTasks(project, "", "flaky TestPagerOrder connection reset", 8)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hits) == 0 || hits[0].Session != "20261001T070000Z-0000aa01" || hits[0].Level != memory.LevelTurn || !strings.Contains(hits[0].Text, "wrote   pager/pager.go") {
-		t.Fatalf("the pager turn is not first: %+v", hits)
+	turn := fmt.Sprintf("task %s, \"run 0: look at last night's failures\" (2026-09-01), turn seq 158-164 · completed · 6s · asked \"Fix the flaky TestPagerOrder\"\n", pager)
+	result := `  seq 161, the result of shell-exec {"args":["test","./pager/"],"cmd":"go"}` + "\n    1: ((\"status\" . 1) (\"stdout\" . \"connection reset by peer\"))\n"
+	if !strings.HasPrefix(got, "[the 4 best of ") || !strings.Contains(got, "in this repository's 2 tasks") || !strings.Contains(got, turn+"  seq 158, the person's message\n") || !strings.Contains(got, result) {
+		t.Fatalf("the search:\n%s", got)
 	}
-	if hits[0].Task != "run 0: look at last night's failures" {
-		t.Fatalf("its task is %q", hits[0].Task)
+	if strings.Contains(got, "bb01") {
+		t.Fatalf("another repository's task was found:\n%s", got)
 	}
-	for _, h := range hits {
-		if h.Session == "20261003T070000Z-0000bb01" {
-			t.Fatalf("another project's task was found: %+v", h)
+	notes, err := st.SearchTasks(project, "", "the note: what the runs so far did", 3)
+	if err != nil || !strings.Contains(notes, ", a reply, the note of a compaction of seq 1 to 132\n") {
+		t.Fatalf("the compaction's note: %v\n%s", err, notes)
+	}
+	if only, err := st.SearchTasks(project, plain, "TestPagerOrder", 8); err != nil || !strings.HasPrefix(only, "No event of this repository's 1 tasks holds") {
+		t.Fatalf("one task only: %v\n%s", err, only)
+	}
+	for _, id := range []string{pager, plain} {
+		if _, err := os.Stat(memPath(st.Dir, id)); err != nil {
+			t.Fatalf("the words of %s are not beside its log: %v", id, err)
 		}
-	}
-	notes, err := st.SearchMemory(project, "", "the note: what the runs so far did", 8)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(notes) == 0 || notes[0].Level != memory.LevelEpisode {
-		t.Fatalf("the compaction's note is not found first: %+v", notes)
-	}
-	if only, err := st.SearchMemory(project, "20261002T070000Z-0000aa02", "TestPagerOrder", 8); err != nil || len(only) != 0 {
-		t.Fatalf("scope task found another task's turn: %+v, %v", only, err)
 	}
 }
 
 // A session's memory is kept in <id>.mem and folded from where it ended:
 // what it holds as the log grows, an unfinished turn included, is what
-// folding the whole log gives; it covers only whole turns; and one that
-// does not match its log, or is gone, is made again; deleting the session
-// deletes it.
+// folding the whole log gives, and it ranks alike, read whole or with only
+// the query's words; it covers only whole turns, and what it kept is not
+// made again when the log grows; one that does not match its log, or whose
+// words are cut short, or that is gone, is made again; deleting the
+// session deletes it.
 func TestMemoryIsFoldedFromTheEndAndChecked(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)
@@ -135,59 +153,89 @@ func TestMemoryIsFoldedFromTheEndAndChecked(t *testing.T) {
 	longLog(t, o, id, 3, 100, func(write func(log.Kind, any)) {
 		write(log.KindUserMsg, log.UserMsg{Text: "an unfinished turn"})
 		write(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: "c", Name: "fs-list", Args: json.RawMessage(`{}`)}}})
+		write(log.KindToolResult, log.ToolResult{ID: "c", Name: "fs-list", OK: true, Value: "listing what is under way"})
 	})
 	st := Store{Dir: o.Paths.SessionsDir}
 	same := func(when string) {
 		t.Helper()
-		forgetMemory(st, id)
-		got, err := st.Memory(id)
-		if err != nil {
-			t.Fatalf("%s: %v", when, err)
-		}
-		if a, b := asJSON(t, got), asJSON(t, freshMemory(t, o, id)); a != b {
-			t.Fatalf("%s: memory\n%s\nis not the whole log's\n%s", when, a, b)
+		// The second query's words are only in documents the file kept
+		// before, so a file written back with only the first's words
+		// ranks it otherwise.
+		for _, query := range []string{"listing run failures", "done look night under way"} {
+			got, err := st.memory(id, queryWords(query))
+			if err != nil {
+				t.Fatalf("%s: %v", when, err)
+			}
+			sameMemory(t, when, query, got, wholeMemory(t, o, id))
 		}
 	}
 	same("with a turn under way")
-	var m memFile
-	raw, err := os.ReadFile(memPath(st.Dir, id))
-	if err != nil {
-		t.Fatal(err)
+	header := func() memFile {
+		t.Helper()
+		raw, err := os.ReadFile(memPath(st.Dir, id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		line, _, _ := bytes.Cut(raw, []byte("\n"))
+		var m memFile
+		if err := json.Unmarshal(line, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
 	}
-	if err := json.Unmarshal(raw, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m.Seq != 17 {
-		t.Fatalf("the memory covers through seq %d; the last whole turn ends at 17", m.Seq)
+	if m := header(); m.Seq != 17 || m.Docs != 12 {
+		t.Fatalf("the memory covers through seq %d with %d documents; the last whole turn ends at 17, after 12", m.Seq, m.Docs)
 	}
 	appendEvents(t, o, id, func(write func(log.Kind, any)) {
 		write(log.KindTurnEnd, log.TurnEnd{Outcome: "stopped"})
 		pagerTurn(write)
 	})
 	same("after the log grew")
-	got, _ := st.Memory(id)
-	seen := map[string]bool{}
-	for _, e := range got {
-		if seen[e.ID] {
-			t.Fatalf("entry %s twice", e.ID)
+	if m := header(); m.Seq != 28 || len(m.Entries) != 5 {
+		t.Fatalf("the grown memory covers through seq %d with %d entries; want 28 and 5 turns", m.Seq, len(m.Entries))
+	}
+	raw, err := os.ReadFile(memPath(st.Dir, id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, words, _ := bytes.Cut(raw, []byte("\n"))
+	for when, broken := range map[string][]byte{
+		"with a memory file that is not this log's": append(bytes.Replace(line, []byte(`"hash":"`), []byte(`"hash":"0`), 1), append([]byte("\n"), words...)...),
+		"with its words cut short":                  raw[:len(raw)-3],
+	} {
+		if err := os.WriteFile(memPath(st.Dir, id), broken, 0o600); err != nil {
+			t.Fatal(err)
 		}
-		seen[e.ID] = true
+		same(when)
 	}
-	if len(got) != 5 {
-		t.Fatalf("%d entries, want 5 turns", len(got))
-	}
-	m.Hash = strings.Repeat("0", 64)
-	if raw, err = json.Marshal(m); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(memPath(st.Dir, id), raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	same("with a memory file that is not this log's")
 	if err := os.Remove(memPath(st.Dir, id)); err != nil {
 		t.Fatal(err)
 	}
 	same("with the memory file deleted")
+
+	// A document planted in what the file kept is still there after the
+	// log grew: the read folded in only the turn the log gained.
+	raw, err = os.ReadFile(memPath(st.Dir, id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, words, _ = bytes.Cut(raw, []byte("\n"))
+	kept, _, err := readWords(words, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept.raw[0] = []byte(`{"what":"planted"}`)
+	if err := os.WriteFile(memPath(st.Dir, id), appendWords(append(line, '\n'), kept), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	appendEvents(t, o, id, pagerTurn)
+	grown, err := st.memory(id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := grown.parts[0].doc(0); d.What != "planted" || grown.parts[0].seqs[len(grown.parts[0].seqs)-1] != 34 {
+		t.Fatalf("the grown memory starts with %q and ends at seq %d: it was made again, or not grown", d.What, grown.parts[0].seqs[len(grown.parts[0].seqs)-1])
+	}
 	if err := st.Delete(id); err != nil {
 		t.Fatal(err)
 	}
@@ -196,60 +244,10 @@ func TestMemoryIsFoldedFromTheEndAndChecked(t *testing.T) {
 	}
 }
 
-// forgetMemory drops the in-memory copy of a session's memory, so the next
-// read goes to its file.
-func forgetMemory(st Store, id string) {
-	memCache.mu.Lock()
-	delete(memCache.entries, log.SessionPath(st.Dir, id))
-	memCache.mu.Unlock()
-}
-
-// The exact search finds words as written, in any case, in tool output no
-// card kept, newest first, across a log long enough to be read back mark
-// by mark, each place with the card of its turn; never in another
-// project's tasks.
-func TestMemoryScanFindsWordsAsWrittenNewestFirst(t *testing.T) {
-	t.Parallel()
-	o := diskOptions(t)
-	project := config.CanonicalPath(o.Repo)
-	id := "20261001T070000Z-0000dd01"
-	longLog(t, o, id, 150, 160, pagerTurn)
-	appendEvents(t, o, id, func(write func(log.Kind, any)) {
-		for range 120 {
-			write(log.KindUserMsg, log.UserMsg{Text: "another run"})
-			write(log.KindLLMResp, log.LLMResp{Content: "nothing new"})
-			write(log.KindTurnEnd, log.TurnEnd{Outcome: "completed"})
-		}
-		pagerTurn(write)
-	})
-	other := o
-	other.Repo = t.TempDir()
-	longLog(t, other, "20261003T070000Z-0000dd02", 3, 100, pagerTurn)
-	st := Store{Dir: o.Paths.SessionsDir}
-	hits, err := st.ScanMemory(project, "", "CONNECTION reset by peer", 8)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(hits) != 2 || hits[0].Seq <= hits[1].Seq || hits[1].Seq > 1000 || hits[0].Seq < 1100 {
-		t.Fatalf("the two places, newest first: %+v", hits)
-	}
-	for _, h := range hits {
-		if h.Session != id || h.Kind != log.KindToolResult || !strings.Contains(h.Snippet, "connection reset by peer") || h.Turn == "" {
-			t.Fatalf("a place found: %+v", h)
-		}
-		if _, from, through, _, err := memory.ParseID(h.Turn); err != nil || h.Seq < from || h.Seq > through {
-			t.Fatalf("its turn %s does not hold seq %d", h.Turn, h.Seq)
-		}
-	}
-	if one, err := st.ScanMemory(project, "", "connection reset", 1); err != nil || len(one) != 1 || one[0].Seq != hits[0].Seq {
-		t.Fatalf("at most one, the newest: %+v, %v", one, err)
-	}
-}
-
-// memory-read shows a turn's card and its events from the log, an
-// episode's note and the turns it covers, and refuses an entry of another
-// project's task or one that is not there.
-func TestMemoryReadShowsATurnAndAnEpisode(t *testing.T) {
+// Recall of a turn's first message shows what the turn did, from its card
+// but for what it asked, and the seq of each event it holds; of another
+// repository's task it is refused (ADR 51).
+func TestRecallOfATurnsMessageShowsTheTurn(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)
 	project := config.CanonicalPath(o.Repo)
@@ -257,102 +255,30 @@ func TestMemoryReadShowsATurnAndAnEpisode(t *testing.T) {
 	longLog(t, o, id, 6, 4, pagerTurn)
 	other := o
 	other.Repo = t.TempDir()
-	longLog(t, other, "20261003T070000Z-0000ee02", 1, 100, nil)
+	foreign := "20261003T070000Z-0000ee02"
+	longLog(t, other, foreign, 1, 100, nil)
 	st := Store{Dir: o.Paths.SessionsDir}
-	entries, err := st.Memory(id)
+	got, err := st.RecallTask(project, id, 38, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var turn, episode memory.Entry
-	for _, e := range entries {
-		if e.Level == memory.LevelEpisode {
-			episode = e
-		}
-		if strings.Contains(e.Text, "TestPagerOrder") {
-			turn = e
-		}
-	}
-	text, err := st.ReadMemory(project, turn.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"run 0: look at last night's failures · turn", "asked   Fix the flaky TestPagerOrder", "person: Fix the flaky TestPagerOrder", `call shell-exec {"args":["test","./pager/"],"cmd":"go"}`, "shell-exec: ((\"status\" . 1)", "model: Sorted the keys", "turn ended: completed"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the turn read does not show %q:\n%s", want, text)
-		}
-	}
-	text, err = st.ReadMemory(project, episode.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(text, "the note: what the runs so far did") || strings.Count(text, ":1  run ") != 4 {
-		t.Fatalf("the episode read does not show its note and its four turns:\n%s", text)
-	}
-	foreign, err := st.Memory("20261003T070000Z-0000ee02")
-	if err != nil || len(foreign) == 0 {
-		t.Fatalf("the other project's memory: %v, %v", foreign, err)
-	}
-	if _, err := st.ReadMemory(project, foreign[0].ID); err == nil || !strings.Contains(err.Error(), "another repository") {
-		t.Fatalf("another project's entry was read: %v", err)
-	}
-	if _, err := st.ReadMemory(project, fmt.Sprintf("m:%s:1-2:1", id)); err == nil {
-		t.Fatal("an entry that is not there was read")
-	}
-}
+	want := fmt.Sprintf(`[task %s, "run 0: look at last night's failures" (2026-09-01): seq 38, the person's message]`, id) + `
+[lines 1-11 of 11]
+Fix the flaky TestPagerOrder
 
-// The tools in a session search this task's memory, and the memory of the
-// repository's other tasks only while the person lets the model search
-// earlier tasks for the project (ADR 50 §9): off, a search or a read of
-// another task's entry is refused with how to turn it on, at once both ways.
-func TestMemoryToolsInASession(t *testing.T) {
-	t.Parallel()
-	o := diskOptions(t)
-	longLog(t, o, "20261001T070000Z-0000ff01", 4, 100, pagerTurn)
-	o.Provider = waitingProvider{}
-	s, err := New(o)
-	if err != nil {
-		t.Fatal(err)
+[what the turn of seq 38 to 44 did]
+outcome completed · 6s
+wrote   pager/pager.go
+ran     go test ./pager/ (exit 1)
+answer  Sorted the keys in pager.go.
+[the events it holds]
+seq 39, a reply
+seq 41, the result of shell-exec {"args":["test","./pager/"],"cmd":"go"}
+seq 43, a reply`
+	if got != want {
+		t.Fatalf("the turn:\n%s\nwant\n%s", got, want)
 	}
-	defer s.Close()
-	eval := func(src string) (string, error) {
-		t.Helper()
-		v, err := s.Eval(t.Context(), src)
-		return v.String(), err
-	}
-	if got, err := eval(`(length (memory-search "TestPagerOrder flaky"))`); err != nil || got != "0" {
-		t.Fatalf("this task's memory, which holds no turn yet: %v, %v", got, err)
-	}
-	for _, src := range []string{`(memory-search "TestPagerOrder flaky" "project")`, `(memory-search "connection reset by peer" "project" #t)`} {
-		if _, err := eval(src); err == nil || !strings.Contains(err.Error(), "off for this project") {
-			t.Fatalf("%s while earlier tasks are off: %v", src, err)
-		}
-	}
-	allow := func(on bool) {
-		t.Helper()
-		if _, err := config.SaveRegistered(config.RegistryFile(o.Paths), config.Registered{Name: "code", Path: o.Repo, EarlierTasks: on}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	allow(true)
-	found, err := eval(`(assoc-ref (car (memory-search "TestPagerOrder flaky" "project")) 'id)`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	id := strings.Trim(found, `"`)
-	if !strings.HasPrefix(id, "m:20261001T070000Z-0000ff01:") {
-		t.Fatalf("memory-search found %s", found)
-	}
-	if read, err := eval(fmt.Sprintf(`(memory-read %q)`, id)); err != nil || !strings.Contains(read, "person: Fix the flaky TestPagerOrder") {
-		t.Fatalf("memory-read: %v, %v", read, err)
-	}
-	if exact, err := eval(`(length (memory-search "connection reset by peer" "project" #t))`); err != nil || exact != "1" {
-		t.Fatalf("an exact search: %v, %v", exact, err)
-	}
-	allow(false)
-	if _, err := eval(fmt.Sprintf(`(memory-read %q)`, id)); err == nil || !strings.Contains(err.Error(), "off for this project") {
-		t.Fatalf("memory-read of another task while off: %v", err)
-	}
-	if _, err := eval(`(memory-search "pager" "everywhere")`); err == nil || !strings.Contains(err.Error(), `"task" or "project"`) {
-		t.Fatalf("an unknown scope: %v", err)
+	if _, err := st.RecallTask(project, foreign, 3, 0, 0); err == nil || !strings.Contains(err.Error(), "is not one of this project's") {
+		t.Fatalf("another repository's task was recalled: %v", err)
 	}
 }

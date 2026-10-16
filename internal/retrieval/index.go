@@ -2,6 +2,9 @@ package retrieval
 
 import (
 	"cmp"
+	"encoding/binary"
+	"errors"
+	"maps"
 	"math"
 	"slices"
 )
@@ -13,9 +16,10 @@ type Field struct {
 	Weight int
 }
 
-// Index ranks the documents added to it by BM25 over their words. It is
-// built in memory and never written: what it indexes is derived, and can
-// be indexed again (SPEC, invariant 1). The zero Index is empty.
+// Index ranks the documents added to it by BM25 over their words. What it
+// indexes is derived, and can be indexed again (SPEC, invariant 1): it is
+// built in memory, and kept, if at all, in a derived file of the caller's
+// (AppendBinary). The zero Index is empty.
 type Index struct {
 	postings map[string][]posting
 	lengths  []int
@@ -76,6 +80,114 @@ func (x *Index) AddCounts(counts map[string]int) int {
 
 // Len is the number of documents added.
 func (x *Index) Len() int { return len(x.lengths) }
+
+// AppendBinary appends the index to b as Decode reads it: the length of
+// each document, then each word, in order, with its postings. A log's
+// words are kept so beside it (core's .mem, ADR 51), so that a search
+// reads the postings of its own words and skips the others'.
+func (x *Index) AppendBinary(b []byte) []byte {
+	b = binary.AppendUvarint(b, uint64(len(x.lengths)))
+	for _, n := range x.lengths {
+		b = binary.AppendUvarint(b, uint64(n))
+	}
+	b = binary.AppendUvarint(b, uint64(len(x.postings)))
+	var p []byte
+	for _, word := range slices.Sorted(maps.Keys(x.postings)) {
+		// Postings are added in document order, so each is kept as the
+		// distance from the one before.
+		p = p[:0]
+		prev := int32(0)
+		for _, q := range x.postings[word] {
+			p = binary.AppendUvarint(p, uint64(q.doc-prev))
+			p = binary.AppendUvarint(p, uint64(q.count))
+			prev = q.doc
+		}
+		b = binary.AppendUvarint(b, uint64(len(word)))
+		b = append(b, word...)
+		b = binary.AppendUvarint(b, uint64(len(x.postings[word])))
+		b = binary.AppendUvarint(b, uint64(len(p)))
+		b = append(b, p...)
+	}
+	return b
+}
+
+var errMalformed = errors.New("retrieval: a malformed index")
+
+// Decode reads an index AppendBinary wrote. keep, when not nil, says which
+// words' postings to read: a search needs only its own, and the documents'
+// lengths weigh them as in the whole index.
+func Decode(data []byte, keep func(word string) bool) (*Index, error) {
+	at := 0
+	next := func() (int, error) {
+		v, n := binary.Uvarint(data[at:])
+		if n <= 0 || v > uint64(len(data)) {
+			return 0, errMalformed
+		}
+		at += n
+		return int(v), nil
+	}
+	docs, err := next()
+	if err != nil {
+		return nil, err
+	}
+	x := &Index{postings: map[string][]posting{}, lengths: make([]int, 0, docs)}
+	for range docs {
+		n, err := next()
+		if err != nil {
+			return nil, err
+		}
+		x.lengths = append(x.lengths, n)
+		x.total += n
+	}
+	words, err := next()
+	if err != nil {
+		return nil, err
+	}
+	for range words {
+		size, err := next()
+		if err != nil || at+size > len(data) {
+			return nil, errMalformed
+		}
+		word := string(data[at : at+size])
+		at += size
+		count, err := next()
+		if err != nil {
+			return nil, err
+		}
+		size, err = next()
+		if err != nil || at+size > len(data) {
+			return nil, errMalformed
+		}
+		end := at + size
+		if keep != nil && !keep(word) {
+			at = end
+			continue
+		}
+		list, doc := make([]posting, 0, count), 0
+		for range count {
+			delta, err := next()
+			if err != nil {
+				return nil, err
+			}
+			c, err := next()
+			if err != nil {
+				return nil, err
+			}
+			if doc += delta; doc >= docs {
+				return nil, errMalformed
+			}
+			list = append(list, posting{int32(doc), int32(c)})
+		}
+		if at != end {
+			return nil, errMalformed
+		}
+		x.postings[word] = list
+	}
+	if at != len(data) {
+		return nil, errMalformed
+	}
+	return x, nil
+}
 
 // Search returns at most limit documents that hold words of query, best
 // first: by score, then in the order they were added. A word that many

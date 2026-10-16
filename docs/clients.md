@@ -99,8 +99,8 @@ it can see the thing but not change it.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
-| The model searches its task's turns (`memory-search`, `memory-read`), and the project's other tasks' when earlier tasks are on (ADR 50 §9) | yes, as any tool | yes | yes | `nodwyn run`: yes |
-| A person searches earlier tasks | not built (ADR 51, with ADR 49 §11) | `:eval (memory-search "…" "project")`, with `:earlier on` | `:eval`, likewise | `nodwyn memory search`, `nodwyn memory read`, whatever the switch |
+| The model sees what it found under each turn's card, and recalls a turn's message with the card and its events (`index-search`, `recall`) | yes, as any tool's result | yes | yes | `nodwyn run`: yes |
+| A person searches earlier tasks | not built (ADR 51, with ADR 49 §11) | `:eval (index-search "…" "earlier")`, with `:earlier on` | `:eval`, likewise | `nodwyn memory search`, `nodwyn memory recall`, whatever the switch |
 
 ## Files and changes
 

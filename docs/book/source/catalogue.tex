@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 257 of 515 tracked Go files: every non-test Go file, 59,067 of 107,480 Go source lines (55.0\% by lines). It also includes all 35 tracked Scheme files (3,278 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 256 of 514 tracked Go files: every non-test Go file, 58,874 of 107,252 Go source lines (54.9\% by lines). It also includes all 35 tracked Scheme files (3,278 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -428,7 +428,7 @@ Begin with Build in \src{internal/window/window.go}, then reply pairing, summari
 
 \chapter{Ranking by words}
 
-Read \src{internal/retrieval/words.go} for how text becomes the words a search matches, then the index, then chunks and the store. The index holds no text and writes nothing: \src{internal/core/recall.go} builds one from the log for the conversation, and \src{internal/prim/repoindex.go} one from the store for the repository, whose files enter only through the guarded \code{fs-read} (ADR 50). The store keeps words and line numbers under the hash of a file's redacted text, never the text. A ranking by embeddings would be a second ranked list fused with this one, not a change to it. Tests: \file{internal/retrieval/retrieval\_test.go}.
+Read \src{internal/retrieval/words.go} for how text becomes the words a search matches, then the index, then chunks and the store. The index holds no text: \src{internal/core/memory.go} keeps one for each log's events in its \file{<id>.mem} (AppendBinary, read back with only a query's words), and \src{internal/prim/repoindex.go} builds one from the store for the repository, whose files enter only through the guarded \code{fs-read} (ADR 50). The store keeps words and line numbers under the hash of a file's redacted text, never the text. A ranking by embeddings would be a second ranked list fused with this one, not a change to it. Tests: \file{internal/retrieval/retrieval\_test.go}.
 
 \sourcefile{internal/retrieval/chunk.go}{Go}
 
@@ -440,11 +440,9 @@ Read \src{internal/retrieval/words.go} for how text becomes the words a search m
 
 \chapter{What a task remembers}
 
-Read the Folder in \src{internal/memory/card.go}: it takes a log's events in order and makes a card for each turn and an episode for each compaction note, in Go, recording nothing. Then the word ranking in \src{internal/memory/rank.go}. Core keeps the entries beside each log as \file{<id>.mem}, folded from the end and checked against the log as the index is (\src{internal/core/memory.go}), and offers the model memory-search and memory-read (ADR 51). Tests: \file{internal/memory/memory\_test.go} and \file{internal/core/memory\_test.go}.
+Read the Folder in \src{internal/memory/card.go}: it takes a log's events in order and makes a card for each turn and an episode for each compaction note, in Go, recording nothing. Core keeps them beside each log as \file{<id>.mem}, with the words of its events, folded from the end and checked against the log as the index is (\src{internal/core/memory.go}); \src{internal/core/recall.go} shows what index-search finds under its turns' cards, and recall of a turn's first message its card (ADR 50, ADR 51). Tests: \file{internal/memory/memory\_test.go} and \file{internal/core/memory\_test.go}.
 
 \sourcefile{internal/memory/card.go}{Go}
-
-\sourcefile{internal/memory/rank.go}{Go}
 
 \chapter{Provider wire formats}
 

@@ -1,6 +1,7 @@
 package retrieval
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -216,4 +217,58 @@ func TestSearchAllRanksSeveralIndexesAsOne(t *testing.T) {
 	if only := SearchAll([]*Index{&a, &b}, "binding", 10, func(index, _ int) bool { return index == 0 }); len(only) != 3 {
 		t.Fatalf("filtered: %+v", only)
 	}
+}
+
+// An index kept as bytes ranks as it did, read whole or with only the
+// query's words, after documents are added to it again; bytes that are
+// not an index are an error, not an empty index.
+func TestIndexKeptAsBytesRanksAsItDid(t *testing.T) {
+	texts := []string{
+		"the frobnicator failed with code 7731",
+		"go test ./pager/ failed: TestPagerOrder",
+		"sorted the keys in pager.go",
+		"nothing to see here, the frobnicator is fine",
+		"pager pager pager order",
+	}
+	var x Index
+	for _, text := range texts[:3] {
+		x.Add(Field{Text: text})
+	}
+	whole, err := Decode(x.AppendBinary(nil), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range texts[3:] {
+		x.Add(Field{Text: text})
+		whole.Add(Field{Text: text})
+	}
+	const query = "frobnicator pager order 7731"
+	want := x.Search(query, 10, nil)
+	if got := whole.Search(query, 10, nil); !slices.EqualFunc(got, want, sameHit) {
+		t.Fatalf("read whole and added to: %+v, want %+v", got, want)
+	}
+	words := map[string]bool{}
+	for _, w := range Words(query) {
+		words[w] = true
+	}
+	only, err := Decode(x.AppendBinary(nil), func(w string) bool { return words[w] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := only.Search(query, 10, nil); !slices.EqualFunc(got, want, sameHit) {
+		t.Fatalf("read with the query's words only: %+v, want %+v", got, want)
+	}
+	if len(only.postings) != len(words) || only.Len() != x.Len() {
+		t.Fatalf("read %d words of %d documents, want %d of %d", len(only.postings), only.Len(), len(words), x.Len())
+	}
+	raw := x.AppendBinary(nil)
+	for _, bad := range [][]byte{nil, raw[:len(raw)-1], append(slices.Clone(raw), 0), {0xff, 0xff, 0xff}} {
+		if _, err := Decode(bad, nil); err == nil {
+			t.Fatalf("Decode(%x) took it", bad)
+		}
+	}
+}
+
+func sameHit(p, q Hit) bool {
+	return p.Doc == q.Doc && math.Abs(p.Score-q.Score) < 1e-9 && slices.Equal(p.Matched, q.Matched)
 }

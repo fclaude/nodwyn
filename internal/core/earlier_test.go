@@ -52,9 +52,9 @@ func taskLog(t *testing.T, o Options, id, repo, text string, extra ...func(write
 
 // With the person's leave for the project, index-search ranks the events
 // of the project's other tasks, archived ones marked, never another
-// project's or its own; recall brings one back by its task; a log that
-// grew is read again, a deleted task is gone, and turned off it is refused
-// again (ADR 50 §9).
+// project's or its own, each under its turn after its task; recall brings
+// one back by its task; a log that grew is read again, a deleted task is
+// gone, and turned off it is refused again (ADR 50 §9, ADR 51).
 func TestEarlierTasksAreSearchedWhenAllowed(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)
@@ -96,7 +96,13 @@ func TestEarlierTasksAreSearchedWhenAllowed(t *testing.T) {
 	if !strings.HasPrefix(got, "[the 4 best of ") || !strings.Contains(got, "in this project's 2 earlier tasks") {
 		t.Fatalf("the header: %q", got)
 	}
-	first := fmt.Sprintf(`task %s, "look into the gizmo calibration drifted" (2026-10-01): seq %d, the result of fs-read {"path":"notes.txt"}`+"\n  2: the gizmo calibration drifted\n", kept, keptSeq)
+	first := fmt.Sprintf(`]
+task %s, "look into the gizmo calibration drifted" (2026-10-01), turn seq 2-5 · completed · 3s · asked "look into the gizmo calibration drifted"
+  seq 2, the person's message
+    1: look into the gizmo calibration drifted
+  seq %d, the result of fs-read {"path":"notes.txt"}
+    2: the gizmo calibration drifted
+`, kept, keptSeq)
 	if !strings.Contains(got, first) {
 		t.Fatalf("the kept task's result, first: %q", got)
 	}

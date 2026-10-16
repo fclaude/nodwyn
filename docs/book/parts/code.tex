@@ -1581,8 +1581,10 @@ Each line is one event:
 kinds are fixed in \file{internal/log/log.go}; a reader rejects any other,
 and rejects a gap in \code{seq}. Beside each log, \file{<id>.mem} holds its memory (\adr{51}): the
 cards \code{memory.Folder} makes from each whole turn and each compaction's
-note, kept up to the end of the last whole turn and checked against the log
-there, as the index is. And \file{<id>.idx} is its
+note, and the words of the events a model could have seen, which
+\code{index-search} ranks (\adr{50}), kept up to the end of the last whole
+turn and checked against the log there, as the index is; a search reads only
+its own words' postings from it. And \file{<id>.idx} is its
 index (\adr{49}): the listing \code{core.Store} would otherwise read the
 whole log for, and where every 256th line starts, so \code{log.read} reads
 a page from the nearest mark. It is derived from the log, checked against

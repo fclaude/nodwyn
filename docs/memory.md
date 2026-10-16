@@ -162,10 +162,12 @@ thinking, and not earlier searches and recalls, whose results repeat other
 events (a search would otherwise find its own call). Words are split as code
 names them, so `ScrubEnv` matches `scrub` and `index-grep` matches `grep`,
 and events are ranked by BM25: more of the query's words, and rarer ones,
-rank first, and a result's call counts three times its output. Each event
-found shows its three lines that hold the most of the words, numbered as
-`recall` numbers them. The repository's scope and earlier tasks' are
-below.
+rank first, and a result's call counts three times its output. Events
+found are shown under the turn that holds each, the turn in a line from its
+card (how it ended, how long it took, what it cost, what it asked; below),
+and each event with its three lines that hold the most of the words,
+numbered as `recall` numbers them. The repository's scope and earlier
+tasks' are below.
 
 `recall` returns one of those events as the log recorded it, already
 redacted, under a heading naming it (`seq 812, the result of shell-exec
@@ -176,15 +178,17 @@ tool returned it, and a shell's or a search's is one line of JSON, so both
 primitives read a result as text with lines: a shell's as the model read it
 (`exit N`, the output, then `[stderr]` and the errors, as `shell.scm`
 renders it) but whole, other JSON indented. A reply names the seq of each of its
-calls' results. It shows what was then: a file as it is now is `fs-read`'s.
+calls' results, and a turn's first message comes with what the turn did and
+the seq of every event in it. It shows what was then: a file as it is now
+is `fs-read`'s.
 
-The index is built in memory from the whole log at the first search or
-recall, reading from disk the part a resumed session does not hold (ADR 49
-§10), and extended with what is recorded after. It is never written, so it
-is a view of the log and nothing else (SPEC, invariant 1). Both values
-carry `external:log` provenance, as `session-events`'s do. A log of
-gigabytes (ADR 49) would make that first build slow and the index large;
-none is that size yet.
+The words are the log's memory, `<id>.mem` beside it (below): kept to the
+end of its last whole turn and brought up to date from where they end at
+each search, the events after them folded at the search, so a resumed task
+reads only what its log gained, never the whole log again. A search reads
+only its own words' postings and keeps nothing after; a log that is not a
+file is folded from the events the session holds. Both values carry
+`external:log` provenance, as `session-events`'s do.
 
 ## The repository index
 
@@ -265,19 +269,17 @@ session's, so a worktree's tasks are its repository's; archived tasks are
 included and marked; a deleted task's log is gone and the task with it.
 The events of all of them are ranked as one collection, a word weighing by
 how many events of all the tasks hold it, a tie going to the newer task.
-Each result names its task (id, name or first message, the day of its last
-event, whether it is archived) and shows its three best lines, read from
-its log again by its seq.
+Each turn found names its task (id, name or first message, the day of its
+last event, whether it is archived), and each event its three best lines,
+read from its log again by its seq.
 
-Each log is indexed in memory once per process, shared by the process's
-sessions as the session list's cache is, and again only when its size or
-modification time changed; its words and its events' headings are kept,
-its texts read again when shown. On the computer this was written on,
-the 73 earlier tasks of nodwyn among the 78 local logs (17,663 events)
-were indexed in 3.6 seconds, read in parallel, and the cache held 87 MB;
-a search after that reads it in about a millisecond. The memory is mostly
-the words of tool results, and it grows with the logs and stays for as
-long as the process runs. Nothing of it is written beside the logs.
+Each log's words are its `<id>.mem`, as for the conversation. On the
+computer this was written on, the first search of nodwyn's 73 tasks (17,616
+events) wrote their files, 10 MB in all, in 1.3 seconds, read in parallel;
+a search after that, in any process, took about 20 milliseconds, and about
+1 MB was left in memory after it. (Kept in memory per process instead, as
+first built, the same words took 3.6 seconds and 87 MB, for as long as the
+process ran.)
 
 ## Task memory
 
@@ -285,25 +287,25 @@ A step up from events, each task keeps a card for every turn and the note
 of every compaction (ADR 51): what was asked, how the turn ended, how long
 it took and what it cost, its plan with the marks made, the files written,
 the commands run and how they ended, errors, and the start of the answer.
-The cards are made in Go from the log, so they cost nothing, and kept beside
-it as `<id>.mem`, extended a whole turn at a time from where they end and
-checked against the log line they end at, as the index is; deleting them is
-safe.
+The cards are made in Go from the log, so they cost nothing. They are what
+`index-search` shows each event under, and what `recall` adds to a turn's
+first message:
 
 ```scheme
-(memory-search "flaky pager test")                    ; this task's turns
-(memory-search "flaky pager test" "project")          ; the repository's tasks
-(memory-search "connection reset by peer" "task" #t)  ; the words as written
-(memory-read "m:20261004T073130Z-40187c24:6-648:1")   ; a turn and its events
+(index-search "flaky pager test" "conversation")    ; events, under their turns
+(recall 158)                                        ; a turn's message, with its card
 ```
 
-Cards and notes are ranked by BM25 over their own text, words split as
-code names them. With `exact`, the tasks' messages, replies and tool output
-are scanned for the words as written, newest first, each log read backwards
-through its index's marks. A task's own memory is always searched; the
-repository's other tasks' only under the leave above, `earlier_tasks`, read
-at every call. The person searches them all from a terminal with
-`nodwyn memory search` and `nodwyn memory read`.
+`<id>.mem` beside each log holds the cards, the notes and the words of the
+events above, to the end of the last whole turn, with where that turn's
+line ends and its hash; a read checks that line, folds in only what the log
+gained and writes the file again, whole, as a temporary file renamed into
+place. One that does not match is made again from the log, and deleting it
+is always safe. The words are a list of each event's seq and what it is,
+then each word with the events that hold it and how often, so a search reads
+the postings of its own words and skips the rest. The person searches every
+task of a repository from a terminal with `nodwyn memory search` and
+`nodwyn memory recall`, whatever the switch for earlier tasks says.
 
 Across sessions, a repository keeps its project notes (`project-notes`,
 docs/scheme.md), its index (above), its tasks' memory (above) and, when the
