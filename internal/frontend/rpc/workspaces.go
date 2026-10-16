@@ -139,8 +139,8 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 			}
 			return workspaceActiveResult{Path: folder}, nil
 		}
-		if !filepath.IsAbs(p.Path) {
-			return nil, failure(-32602, "path must be absolute")
+		if err := absolute("path", p.Path); err != nil {
+			return nil, err
 		}
 		p.Path = config.CanonicalPath(p.Path)
 		if info, err := os.Stat(p.Path); err != nil || !info.IsDir() {
@@ -155,8 +155,8 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 		if err := params(req.Params, &p, "path"); err != nil {
 			return nil, err
 		}
-		if !filepath.IsAbs(p.Path) {
-			return nil, failure(-32602, "path must be absolute")
+		if err := absolute("path", p.Path); err != nil {
+			return nil, err
 		}
 		p.Path = config.CanonicalPath(p.Path)
 		last := config.LastWorkspaceFile(s.options.Paths)
@@ -178,16 +178,10 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 	if err := params(req.Params, &p, "path", "name", "mounts", "earlier_tasks"); err != nil {
 		return nil, err
 	}
-	if !filepath.IsAbs(p.Path) {
-		return nil, failure(-32602, "path must be absolute")
+	if err := s.folder("path", p.Path); err != nil {
+		return nil, err
 	}
 	p.Path = config.CanonicalPath(p.Path)
-	if info, err := os.Stat(p.Path); err != nil || !info.IsDir() {
-		return nil, failure(-32602, "path must be an existing folder")
-	}
-	if why := s.rootRefusal(p.Path); why != "" {
-		return nil, failure(-32602, why)
-	}
 	name := strings.TrimSpace(p.Name)
 	if name == "" {
 		name = filepath.Base(p.Path)
@@ -218,9 +212,13 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 		if err := params(req.Params, &p, "repo", "path"); err != nil {
 			return nil, err
 		}
-		store, known := s.versionStore(config.CanonicalPath(p.Repo))
+		root := config.CanonicalPath(p.Repo)
+		store, known := s.versionStore(root)
 		if !filepath.IsAbs(p.Repo) || !known {
 			return nil, failure(-32602, "repo must be a folder nodwyn works in")
+		}
+		if reason := s.rootRefusal(root); reason != "" {
+			return nil, failure(-32602, reason)
 		}
 		abs := p.Path
 		if !filepath.IsAbs(abs) {
@@ -494,8 +492,8 @@ func (s *server) attach(req request, client *peer) (any, *rpcError) {
 	if err := params(req.Params, &p, "id", "path", "name"); err != nil {
 		return nil, err
 	}
-	if !filepath.IsAbs(p.Path) {
-		return nil, failure(-32602, "path must be absolute")
+	if err := absolute("path", p.Path); err != nil {
+		return nil, err
 	}
 	owned, rerr := s.idle(p.ID, "attaching")
 	if rerr != nil {
@@ -513,6 +511,30 @@ func (s *server) attach(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	return receipt, nil
+}
+
+// absolute refuses a path that is not absolute: a relative one would mean
+// the daemon's own working directory, not the caller's.
+func absolute(name, path string) *rpcError {
+	if !filepath.IsAbs(path) {
+		return failure(-32602, name+" must be an absolute path")
+	}
+	return nil
+}
+
+// folder is the check every method makes of a folder it is to work in: an
+// absolute path to an existing directory that rootRefusal does not forbid.
+func (s *server) folder(name, path string) *rpcError {
+	if err := absolute(name, path); err != nil {
+		return err
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return failure(-32602, name+" must be an existing folder")
+	}
+	if why := s.rootRefusal(path); why != "" {
+		return failure(-32602, why)
+	}
+	return nil
 }
 
 // rootRefusal says why a folder cannot be a task's root, or "". A root is

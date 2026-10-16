@@ -425,3 +425,38 @@ func TestIndexStatusAndForget(t *testing.T) {
 		t.Fatal("a relative path was accepted")
 	}
 }
+
+// Every method that names a folder to work in checks it the same way
+// (P2-080): absolute, an existing directory, and not one that holds nodwyn's
+// own configuration or data.
+func TestMethodsCheckAFolderTheSameWay(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	file := filepath.Join(t.TempDir(), "file")
+	os.WriteFile(file, nil, 0o600)
+	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	for method, build := range map[string]func(folder string) map[string]any{
+		"session.open":  func(f string) map[string]any { return map[string]any{"repo": f} },
+		"worktree.open": func(f string) map[string]any { return map[string]any{"repo": f} },
+		"run.start": func(f string) map[string]any {
+			return map[string]any{"repo": f, "task": "t", "wall": "1m", "max_turns": 1, "auto_approve": false}
+		},
+		"workspace.save": func(f string) map[string]any { return map[string]any{"path": f} },
+		"notes.read":     func(f string) map[string]any { return map[string]any{"repo": f} },
+		"index.status":   func(f string) map[string]any { return map[string]any{"repo": f} },
+	} {
+		for what, folder := range map[string]string{"relative": "work/here", "a file": file, "missing": "/nonexistent-nodwyn-folder", "nodwyn's own configuration": o.Paths.ConfigDir} {
+			r := c.call(method, build(folder))
+			// Reading notes or an index needs no folder to exist, only an absolute path.
+			readsOnly := method == "notes.read" || method == "index.status"
+			if readsOnly && (what == "a file" || what == "missing" || what == "nodwyn's own configuration") {
+				continue
+			}
+			if r.Error == nil || r.Error.Code != -32602 {
+				t.Errorf("%s accepted %s: %+v", method, what, r.Error)
+			}
+		}
+	}
+}

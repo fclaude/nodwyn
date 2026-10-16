@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"reflect"
 	"runtime/debug"
@@ -21,7 +22,9 @@ const ProtocolVersion = 1
 
 const maxFrame = 1 << 20 // bytes per JSON-RPC frame, either direction
 
-var methods = []string{"schedule.next", "schedule.read", "schedule.set", "schedule.pause", "schedule.run", "run.start", "run.info", "run.stop", "run.resume", "session.list", "session.watch", "session.open", "worktree.open", "worktree.diff", "worktree.review", "session.resume", "session.model.set", "session.judge.set", "session.limits.set", "session.info", "session.totals", "session.close", "session.rename", "session.archive", "session.delete", "session.send", "session.abort", "session.subscribe", "session.unsubscribe", "log.read", "log.runs", "conversation.search", "log.context", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.approve_all", "session.eval", "session.friction", "session.policy.read", "session.policy.write", "attention.list", "notes.read", "session.notes.write", "index.status", "index.forget", "models.status", "models.offered", "models.published", "keychain.status", "keychain.create", "keychain.unlock", "keychain.passphrase", "credentials.list", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "settings.read", "settings.control.write", "settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test", "settings.docs.write", "settings.write", "workspace.list", "workspace.forgotten", "workspace.active", "workspace.save", "workspace.remove", "versions.list", "versions.diff", "session.restore", "session.attach", "mcp.list", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.runtime", "mcp.pull"}
+// methods are the names hello advertises: the dispatch table's, so a method
+// cannot be implemented and not advertised, or the reverse.
+var methods = slices.Sorted(maps.Keys(methodTable))
 
 type request struct {
 	JSONRPC string          `json:"jsonrpc"`

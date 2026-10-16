@@ -835,3 +835,52 @@ func TestASlowCallHoldsUpNothingElse(t *testing.T) {
 		return
 	}
 }
+
+// Every method the daemon advertises is classified by the bridge: read-only,
+// or allowed to this computer (and to a device or not). One added to the
+// daemon and not to the bridge is refused to everyone, silently (P2-080).
+func TestEveryAdvertisedMethodIsClassifiedByTheBridge(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	socket := filepath.Join(root, "run", "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	done := make(chan error, 1)
+	go func() { done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: paths}) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	client, err := rpc.Dial(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	var hello rpc.HelloResult
+	if err := client.Call(ctx, "hello", map[string]any{"protocol": 1}, &hello); err != nil {
+		t.Fatal(err)
+	}
+	// What the console never calls: a run is the terminal's (nodwyn run),
+	// :eval is line mode's, and a file attached from a page goes through
+	// POST /attach, which stages it, never through a path the page names.
+	terminalOnly := []string{"run.start", "run.info", "run.stop", "run.resume", "session.eval", "session.attach"}
+	b := &bridge{}
+	for _, method := range hello.Methods {
+		switch allowed := b.allowed(method, false); {
+		case slices.Contains(terminalOnly, method) && allowed:
+			t.Errorf("%s is allowed by the bridge, but this test lists it as never offered to a browser", method)
+		case !slices.Contains(terminalOnly, method) && !allowed:
+			t.Errorf("%s is advertised by the daemon, but the bridge refuses it even on this computer: add it to readOnly or to allowed, or to terminalOnly here", method)
+		}
+	}
+}

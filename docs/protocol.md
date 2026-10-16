@@ -55,6 +55,25 @@ response payloads are not printed to daemon diagnostics. Application results
 and error messages pass through shared redaction; caller-selected correlation
 IDs are transport data and are echoed unchanged.
 
+### Naming
+
+A method is `<noun>.<verb>`, with the noun taken from the thing it acts on
+(`session`, `settings`, `credentials`, `workspace`, `mcp`), and a new method
+follows these rules. A read of one thing is `.read`, of many `.list`; a
+change to a setting or a file is `.write`, and a removal is `.remove`. A
+boolean parameter is named for its state (`on`, `archived`, `paused`), and an
+id that names a session is `id`.
+
+The methods that came first do not all follow them, and none is renamed:
+clients ship, and a rename would break one that is not upgraded. The
+exceptions are `.set` (`session.model.set`, `session.judge.set`,
+`session.limits.set`, `schedule.set`), `.save` (`workspace.save`,
+`mcp.save`), `.add` and `.replace` (`credentials`), `.create`
+(`session.approval.create`, `session.binding.create`), `.delete` and
+`.forget` where the rest say `.remove` (`session.delete`, `index.forget`),
+`notes.read` beside `session.notes.write`, and `session.approve_all`, which
+has no verb. Prefer the rule over the nearest neighbour.
+
 ## Lifecycle methods
 
 | Method | Named parameters | Result |

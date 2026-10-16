@@ -435,14 +435,8 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 		}
 		limits = &core.LimitsChoice{On: false, Actor: client.actor}
 	}
-	if !filepath.IsAbs(p.Repo) {
-		return nil, failure(-32602, "repo must be an absolute directory")
-	}
-	if info, err := os.Stat(p.Repo); err != nil || !info.IsDir() {
-		return nil, failure(-32602, "repo must be an existing directory")
-	}
-	if why := s.rootRefusal(p.Repo); why != "" {
-		return nil, failure(-32602, why)
+	if err := s.folder("repo", p.Repo); err != nil {
+		return nil, err
 	}
 	if why := s.lockedKeyRefusal(choice); why != "" {
 		return nil, failure(-32000, why)

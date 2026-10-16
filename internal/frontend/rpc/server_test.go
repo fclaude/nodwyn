@@ -363,25 +363,3 @@ func TestWireRedactionAndOversizedFrame(t *testing.T) {
 	other.hello()
 	other.ok("session.list", struct{}{})
 }
-
-// The advertised method list and the dispatch table are two statements of
-// the same fact; drift between them is a client told about a method that
-// answers "Method not found", or one that works but is never discovered.
-func TestAdvertisedMethodsMatchTheDispatchTable(t *testing.T) {
-	advertised := map[string]bool{}
-	for _, name := range methods {
-		if advertised[name] {
-			t.Errorf("method %q advertised twice", name)
-		}
-		advertised[name] = true
-	}
-	for name := range methodTable {
-		if !advertised[name] {
-			t.Errorf("method %q is implemented but not advertised", name)
-		}
-		delete(advertised, name)
-	}
-	for name := range advertised {
-		t.Errorf("method %q is advertised but not implemented", name)
-	}
-}

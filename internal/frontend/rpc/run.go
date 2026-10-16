@@ -2,8 +2,6 @@ package rpc
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/core"
@@ -56,12 +54,8 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if err := unwatchedRefusal(client, p.AutoApprove, p.Unattended, p.Judge); err != nil {
 			return nil, err
 		}
-		info, err := os.Stat(p.Repo)
-		if !filepath.IsAbs(p.Repo) || err != nil || !info.IsDir() {
-			return nil, failure(-32602, "repo must be an existing absolute directory")
-		}
-		if why := s.rootRefusal(p.Repo); why != "" {
-			return nil, failure(-32602, why)
+		if err := s.folder("repo", p.Repo); err != nil {
+			return nil, err
 		}
 		if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
 			return nil, failure(-32000, why)

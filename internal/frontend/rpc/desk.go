@@ -76,8 +76,8 @@ func (s *server) notesRead(req request, _ *peer) (any, *rpcError) {
 	if err := params(req.Params, &p, "repo"); err != nil {
 		return nil, err
 	}
-	if !strings.HasPrefix(p.Repo, "/") {
-		return nil, failure(-32602, "repo must be an absolute path")
+	if err := absolute("repo", p.Repo); err != nil {
+		return nil, err
 	}
 	text, err := core.ProjectNotes(s.options.Paths.DataDir, p.Repo)
 	if err != nil {
@@ -94,8 +94,8 @@ func (s *server) indexStatus(req request, _ *peer) (any, *rpcError) {
 	if err := params(req.Params, &p, "repo"); err != nil {
 		return nil, err
 	}
-	if !strings.HasPrefix(p.Repo, "/") {
-		return nil, failure(-32602, "repo must be an absolute path")
+	if err := absolute("repo", p.Repo); err != nil {
+		return nil, err
 	}
 	if req.Method == "index.forget" {
 		if err := core.ForgetProjectIndex(s.options.Paths.DataDir, p.Repo); err != nil {
