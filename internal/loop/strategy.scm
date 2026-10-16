@@ -5,15 +5,28 @@
 ;; own way redefines nodwyn-turn.
 (define (nodwyn-turn request)
   (set! turn-stopping #f)
+  (set! turn-stop-tools '())
+  (set! turn-stop-rounds 0)
   (set! stalled 0)
   (when (plan-required?) (plan-gate request))
   (agent-turn request))
 
 ;; Set when the turn must end with a report, not more work (compact.scm:
 ;; the context filled twice with nothing written between): from then on the
-;; model is asked without tools, so its next reply is its answer and the
-;; turn ends there, and the finish checks ask nothing more of it.
+;; model is offered only turn-stop-tools, and no tool at all once their
+;; rounds are spent, so a reply without calls is its answer and the turn
+;; ends there, and the finish checks ask nothing more of it.
 (define turn-stopping #f)
+
+;; While the turn stops, the tools the model is still offered and the
+;; requests it may still use them in (ask-stopping); compaction's write round
+;; sets them (compact.scm). A call to any other tool is not run. Once the
+;; rounds are spent, turn-stop-report is said and the model is asked with no
+;; tools.
+(define turn-stop-tools '())
+(define turn-stop-rounds 0)
+(define turn-stop-report
+  "The rounds you had for that are spent, and tools are off now. In a few lines say what you changed, what is left and what stands in the way; the turn ends with this answer.")
 
 ;; Replies cut at the output limit (window.output_reserve), usually by long
 ;; thinking, that ask-model asks again for, each time with a note to be
@@ -48,13 +61,40 @@
        (string-empty? (string-trim (format "~a" (assoc-ref reply 'content ""))))))
 
 (define (ask-model . args)
-  (let* ((plain (and (null? args) (not turn-stopping)))
-         (args (if turn-stopping '("control" ((tools . #f))) args)))
-    (let again ((reply (ask-model-with args)) (left empty-reply-retries))
-      (if (and plain (> left 0) (empty-reply? reply))
-          (begin (add-message empty-reply-message)
-                 (again (ask-model-with args) (- left 1)))
-          reply))))
+  (if turn-stopping
+      (ask-stopping)
+      (let again ((reply (ask-model-with args)) (left empty-reply-retries))
+        (if (and (null? args) (> left 0) (empty-reply? reply))
+            (begin (add-message empty-reply-message)
+                   (again (ask-model-with args) (- left 1)))
+            reply))))
+
+;; ask-model while the turn stops (turn-stopping): the control model,
+;; offered turn-stop-tools while turn-stop-rounds last and nothing after
+;; them. A model asked with few tools or none may call others it has seen
+;; (compact-note skips such calls for the same reason); they are skipped
+;; here, and a reply whose every call was skipped spends its round and is
+;; asked again, rather than end the turn with nothing said.
+(define (ask-stopping)
+  (when (and (pair? turn-stop-tools) (<= turn-stop-rounds 0))
+    (set! turn-stop-tools '())
+    (add-message turn-stop-report))
+  (let* ((offer turn-stop-tools)
+         (reply (ask-model-with (list "control" (list (cons 'tools (if (pair? offer) offer #f))))))
+         (calls (assoc-ref reply 'tool-calls '()))
+         (offered? (lambda (c) (member (assoc-ref c 'name) offer)))
+         (off (filter (lambda (c) (not (offered? c))) calls)))
+    (when (pair? offer)
+      (set! turn-stop-rounds (- turn-stop-rounds 1)))
+    (if (null? off)
+        reply
+        (let ((kept (filter offered? calls)))
+          (skip-tools off (if (pair? offer)
+                              (string-append "the turn is ending, and only " (string-join offer ", ") " may be used now")
+                              "tools are off now: write your answer as text"))
+          (if (and (null? kept) (pair? offer))
+              (ask-stopping)
+              (cons (cons 'tool-calls kept) reply))))))
 
 (define (ask-model-with args)
   (let again ((reply (apply model-turn args)) (left output-cut-retries))

@@ -1184,3 +1184,38 @@ A compaction now carries about the plan's size more (a few hundred to 2,000
 tokens). `TestCompactionCarriesThePlanWithItsMarks` fails on `d880bb3`: the
 compacted request is the system prompt and the note alone, and the note
 request says nothing of where the plan is.
+
+## Amendment 2026-10-15: a turn that fills twice gets a write round before its report
+
+The stop of 2026-10-05 is right that a third compaction would repeat the
+second, and wrong to write nothing when the model knows the edits. On
+6e18b7ba (dsl16) the context filled the second time at 36 of the run's 60
+minutes with nothing written; asked without tools for a report, the model
+answered that all six edit sites were confirmed, listed every code change as
+left, and the run ended with an empty patch. The other runs of that task
+(A, dsl18m, Pi) had written their code before their compactions and found
+it on disk after them.
+
+So the stop first gives a write round (`compact-stop`, compact.scm): the
+model is told "Your note and plan name the edits: make the code changes now;
+tests and docs come after", and to report what is done and what is left
+after them, and is offered `compact-write-tools` (`fs-edit`, `fs-write`,
+`read-definition`, and a repository's `go-build`: those of them the session
+has) for at most `compact-write-rounds` (6) requests. Then
+`turn-stop-report` asks for the report without tools, and that answer, or
+one the model gives sooner, ends the turn as before; the finish checks still
+ask nothing more. While the turn stops, `ask-model` skips a call to a tool it
+did not offer (as `compact-note` does), and a reply whose every call it
+skipped spends its round and is asked again; before, such a call with the
+report would have run. A turn that is stopping is not compacted again, so
+the writes of the write round do not lead to a third compaction. With
+`compact-write-rounds` at 0, or neither edit tool in the session, the turn
+stops with the report alone, as before.
+
+Not built: the reading reminder at 4 rounds rather than 12 while nothing has
+been written since a compaction. The risk is a hasty edit in a run that
+would otherwise have ended with none.
+`TestCompactionGoingRoundInCirclesGetsAWriteRound` and
+`TestAWriteRoundEndsWithAReportWithoutTools` fail on the commit before this
+one; `TestCompactionGoingRoundInCirclesStopsTheTurn` now covers the report
+alone, with `compact-write-rounds` at 0.

@@ -1032,9 +1032,11 @@ Long work is compacted on its own just under the window's high water: the
 model writes a handover note and goes on from it, in that turn and the next
 ones, with the turn's plan and the steps marked so far given back after the
 note. A turn whose context fills a second time with no file written since
-the last compaction stops instead: the model is asked, without tools, what it
-found, what is done, what is left and what is in the way, and that is the
-turn's answer (`compact-stop-unchanged`, `#f` turns it off). Set
+the last compaction stops instead of compacting again: the model gets up to
+six requests with only the edit tools to make the code changes its note and
+plan name, then reports what is done and what is left, without tools, and
+that is the turn's answer (`compact-stop-unchanged`, `#f` turns it off;
+`compact-write-rounds` 0 asks for the report at once). Set
 `(define compact-threshold 40000)` to compact earlier, `#f` to
 only trim, and send `/compact` to compact whenever you like
 ([docs/scheme.md](scheme.md) §9.2). Each compaction is one line in every

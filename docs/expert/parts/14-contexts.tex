@@ -214,9 +214,14 @@ goes on in the full context. A turn whose context fills a second time with
 no file written since its last compaction stops instead: compacting again
 would only send the model back over what it read (five compactions and no
 edit in seven minutes, in one session on a 61,440-token window). The model
-is asked, without tools, what it found, what is done, what is left and what
-is in the way, and that answer ends the turn (\code{compact-stop-unchanged},
-\code{turn-stopping}). How full the context is shows as you work:
+first gets a write round: told to make the code changes its note and plan
+name, tests and docs after, it is offered only the edit tools
+(\code{compact-write-tools}) for at most \code{compact-write-rounds} (6)
+requests; then it is asked, without tools, what is done and what is left,
+and that answer ends the turn (\code{compact-stop-unchanged},
+\code{turn-stopping}). A model that had worked out all six edits of a
+change and made none was asked only for that report, and its run ended
+with nothing written. How full the context is shows as you work:
 in the terminal client's title (\code{context \textasciitilde 45k of
 \textasciitilde 61k}) and \code{:budget}, and in the console's Context
 meter.
