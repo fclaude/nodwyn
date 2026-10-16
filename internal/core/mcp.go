@@ -84,6 +84,9 @@ func (s *Session) connectServer(server config.MCPServer) MCPServer {
 	if err != nil {
 		return fail(err)
 	}
+	s.mcpMu.Lock()
+	s.remote = append(s.remote, client)
+	s.mcpMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), mcpConnectTimeout)
 	defer cancel()
 	return s.offer(ctx, server, client, status, nil)
@@ -415,6 +418,7 @@ func InspectMCP(o Options, server config.MCPServer) ([]mcp.Tool, string, error) 
 	if err != nil {
 		return nil, "", err
 	}
+	defer client.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), mcpConnectTimeout)
 	defer cancel()
 	if _, err := client.Initialize(ctx); err != nil {

@@ -20,6 +20,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/loop"
+	"github.com/fclaude/nodwyn/internal/mcp"
 	"github.com/fclaude/nodwyn/internal/prim"
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
@@ -161,6 +162,7 @@ type Session struct {
 	// session was being built wait for session.start.
 	mcpMu     sync.Mutex
 	mcp       []MCPServer
+	remote    []*mcp.Client     // remote servers' clients, whose sessions Close ends
 	contained []containedServer // running contained servers, stopped by Close
 	started   bool
 	held      []heldRecord

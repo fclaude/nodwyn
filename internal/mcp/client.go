@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // ProtocolVersion is the MCP revision this client speaks.
@@ -63,6 +64,11 @@ type Client struct {
 	t    transport
 	mu   sync.Mutex
 	next int64
+	// initMu serializes starting a new session after the server dropped the
+	// old one; epoch counts the sessions started that way, so calls that
+	// all met the same expiry start one new session, not one each.
+	initMu sync.Mutex
+	epoch  atomic.Int64
 }
 
 // Host is a remote server's hostname, the destination bindings name; ""
@@ -173,15 +179,17 @@ type response struct {
 }
 
 func (c *Client) call(ctx context.Context, method string, params, result any) error {
-	c.mu.Lock()
-	c.next++
-	id := c.next
-	c.mu.Unlock()
-	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
-	if err != nil {
-		return err
+	epoch := c.epoch.Load()
+	reply, err := c.send(ctx, method, params)
+	if errors.Is(err, errSessionExpired) {
+		// A server drops a session it has expired: the specification has the
+		// client initialize again and send the request once more. A task
+		// kept open for hours otherwise failed every call to the server.
+		if err := c.reinitialize(ctx, epoch); err != nil {
+			return err
+		}
+		reply, err = c.send(ctx, method, params)
 	}
-	reply, err := c.t.request(ctx, method, id, body)
 	if err != nil {
 		return err
 	}
@@ -192,6 +200,34 @@ func (c *Client) call(ctx context.Context, method string, params, result any) er
 		return nil
 	}
 	return json.Unmarshal(reply.Result, result)
+}
+
+// send makes one request and returns its response.
+func (c *Client) send(ctx context.Context, method string, params any) (*response, error) {
+	c.mu.Lock()
+	c.next++
+	id := c.next
+	c.mu.Unlock()
+	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+	if err != nil {
+		return nil, err
+	}
+	return c.t.request(ctx, method, id, body)
+}
+
+// reinitialize opens a new session after the server dropped the one a call
+// of epoch used, unless another call has already done so.
+func (c *Client) reinitialize(ctx context.Context, epoch int64) error {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
+	if c.epoch.Load() != epoch {
+		return nil
+	}
+	if _, err := c.Initialize(ctx); err != nil {
+		return err
+	}
+	c.epoch.Add(1)
+	return nil
 }
 
 func (c *Client) notify(ctx context.Context, method string) error {

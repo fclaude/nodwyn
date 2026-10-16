@@ -352,10 +352,17 @@ func (s *Session) recheckContained(server config.MCPServer) error {
 // proxy reports were left out. It runs before session.end.
 func (s *Session) closeMCP() {
 	s.mcpMu.Lock()
-	running := s.contained
-	s.contained = nil
+	running, remote := s.contained, s.remote
+	s.contained, s.remote = nil, nil
 	s.mcpMu.Unlock()
 	var wg sync.WaitGroup
+	for _, c := range remote {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = c.Close() // ends the server's session; best effort
+		}()
+	}
 	for _, c := range running {
 		wg.Add(1)
 		go func() {

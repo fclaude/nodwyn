@@ -53,14 +53,57 @@ func (t *httpTransport) host() string {
 	return strings.ToLower(u.Hostname())
 }
 
-func (t *httpTransport) close() error { return nil }
+// close ends the server's session, as the specification asks a client to,
+// with a DELETE carrying its id. It is best effort: a server may refuse it
+// (405), and nothing waits on the answer for long.
+func (t *httpTransport) close() error {
+	t.mu.Lock()
+	session := t.session
+	t.session = ""
+	t.mu.Unlock()
+	if session == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, t.endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("MCP-Protocol-Version", ProtocolVersion)
+	req.Header.Set("Mcp-Session-Id", session)
+	if t.authorize != nil {
+		if err := t.authorize(req); err != nil {
+			return err
+		}
+	}
+	resp, err := t.http.Do(req)
+	if err != nil {
+		return keychain.SendError(err)
+	}
+	return resp.Body.Close()
+}
+
+// errSessionExpired is what request answers when the server says it no
+// longer knows the session the request carried (404 with an Mcp-Session-Id
+// sent): the specification has the client start a new one, and the client
+// does (Client.call). The transport has already forgotten the old id.
+var errSessionExpired = errors.New("mcp: the server no longer knows this session")
 
 func (t *httpTransport) request(ctx context.Context, method string, id int64, body []byte) (*response, error) {
-	resp, err := t.post(ctx, body)
+	resp, sent, err := t.post(ctx, body)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound && sent != "" {
+		t.mu.Lock()
+		if t.session == sent {
+			t.session = ""
+		}
+		t.mu.Unlock()
+		return nil, errSessionExpired
+	}
 	if resp.StatusCode/100 != 2 {
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return nil, fmt.Errorf("mcp: %s: %s %s", method, resp.Status, strings.TrimSpace(string(detail)))
@@ -122,7 +165,7 @@ func readStream(r io.Reader, want string) (*response, error) {
 }
 
 func (t *httpTransport) notify(ctx context.Context, method string, body []byte) error {
-	resp, err := t.post(ctx, body)
+	resp, _, err := t.post(ctx, body)
 	if err != nil {
 		return err
 	}
@@ -133,26 +176,29 @@ func (t *httpTransport) notify(ctx context.Context, method string, body []byte) 
 	return nil
 }
 
-func (t *httpTransport) post(ctx context.Context, body []byte) (*http.Response, error) {
+// post sends one message and returns the session id it carried, "" when it
+// carried none.
+func (t *httpTransport) post(ctx context.Context, body []byte) (*http.Response, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("MCP-Protocol-Version", ProtocolVersion)
 	t.mu.Lock()
-	if t.session != "" {
-		req.Header.Set("Mcp-Session-Id", t.session)
-	}
+	sent := t.session
 	t.mu.Unlock()
+	if sent != "" {
+		req.Header.Set("Mcp-Session-Id", sent)
+	}
 	if t.authorize != nil {
 		if err := t.authorize(req); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
 	// authorize may have put a key in the query, and a failed send's error
 	// names the whole address.
 	resp, err := t.http.Do(req)
-	return resp, keychain.SendError(err)
+	return resp, sent, keychain.SendError(err)
 }

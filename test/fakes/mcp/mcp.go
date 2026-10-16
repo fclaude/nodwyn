@@ -38,6 +38,8 @@ type Server struct {
 	SSE   bool // answer requests as event streams
 	Calls []Call
 	Auth  []string // Authorization headers seen, one per request
+	// Ended holds the id of each session a client ended with a DELETE.
+	Ended []string
 }
 
 // New starts a fake with tools, over HTTP.
@@ -56,6 +58,10 @@ func (s *Server) SetTools(tools ...Tool) {
 	s.tools = tools
 	s.mu.Unlock()
 }
+
+// Lock and Unlock hold the fake's fields still while a test reads them.
+func (s *Server) Lock()   { s.mu.Lock() }
+func (s *Server) Unlock() { s.mu.Unlock() }
 
 // Recorded returns the calls so far.
 func (s *Server) Recorded() []Call {
@@ -112,6 +118,13 @@ func (s *Server) answer(req request, auth string, session bool) (any, bool) {
 }
 
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		s.mu.Lock()
+		s.Ended = append(s.Ended, r.Header.Get("Mcp-Session-Id"))
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return

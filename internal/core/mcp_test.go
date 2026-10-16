@@ -240,6 +240,24 @@ func TestMCPResultsAreExternal(t *testing.T) {
 	}
 }
 
+// Closing a session ends the HTTP session each remote server opened for it
+// (P2-053): the specification asks a client to, and a server otherwise holds
+// the session until it expires it.
+func TestClosingASessionEndsItsRemoteMCPSessions(t *testing.T) {
+	t.Parallel()
+	server := fakemcp.New(mcpTools()...)
+	defer server.Close()
+	r, _ := mcpRig(t, server, true, false, nil)
+	if err := r.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	server.Lock()
+	defer server.Unlock()
+	if len(server.Ended) != 1 || server.Ended[0] != "fake-session" {
+		t.Fatalf("sessions ended: %v", server.Ended)
+	}
+}
+
 // A server without a key has no binding row, but the person approved it in
 // mcp.toml: L2 counts its host as named for that server's tools, so content
 // from outside may go there (guard.TestApprovedDestinationIsThePrimsOwn

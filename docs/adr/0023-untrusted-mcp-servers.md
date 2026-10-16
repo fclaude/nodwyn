@@ -321,3 +321,19 @@ exfil suite (`test/exfil`) runs primitives without a session, so the
 contained cases live in `internal/core` and `internal/guard` tests and the
 opt-in test above. macOS (a podman or docker virtual machine) is built for
 but was not run here.
+
+## Amendment 2026-10-16: an expired HTTP session is started again, and a closed one is ended
+
+A remote server's `Mcp-Session-Id` was kept for the life of the task and sent
+on every request, and any non-2xx answer was only an error: a server that
+expired its session after some hours answered every later call with `404 Not
+Found` until the task was closed and resumed. As the MCP specification
+asks, a 404 to a request that carried a session id now makes the client
+forget it, initialize again (`initialize` and `notifications/initialized`) and
+send the request once more; calls that met the same expiry start one new
+session. Closing a session sends each remote server a `DELETE` with its id,
+best effort and within three seconds. The `DELETE` goes through the same
+binding check as any request, so a server whose key is bound for `POST` only
+is not sent it (a binding names the method); it expires the session itself.
+The regressions are `TestExpiredSessionIsStartedAgain` (`internal/mcp`) and
+`TestClosingASessionEndsItsRemoteMCPSessions`.
