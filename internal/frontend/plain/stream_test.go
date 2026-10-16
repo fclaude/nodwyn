@@ -2,6 +2,7 @@ package plain
 
 import (
 	"bytes"
+	"context"
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/log"
 	"strings"
@@ -145,5 +146,18 @@ func TestReplayLeavesTerminalControlsOut(t *testing.T) {
 	Replay(events, &replayed, false)
 	if strings.ContainsAny(replayed.String(), "\x1b\x07\r") || !strings.Contains(replayed.String(), "done") {
 		t.Fatalf("replay: %q", replayed.String())
+	}
+}
+
+// :log with a count that is not one from 1 says how it is used; a negative
+// one sliced past the end and the panic ended line mode with no session.end.
+func TestLogCommandRefusesABadCount(t *testing.T) {
+	var out bytes.Buffer
+	c := &Chat{Out: &out}
+	for _, line := range []string{":log -1", ":log x", ":log 0"} {
+		out.Reset()
+		if quit := c.command(context.Background(), line); quit || !strings.Contains(out.String(), "usage: :log") {
+			t.Errorf("%s: %q", line, out.String())
+		}
 	}
 }

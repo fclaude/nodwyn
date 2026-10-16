@@ -464,7 +464,7 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 	case ":h", ":help":
 		fmt.Fprint(c.Out, `commands:
   :q             quit
-  :log [n]       show the last n log events (default 20)
+  :log [n]       show the last n log events of this run (default 20, at most 200)
   :tools         list the tools offered to the model
   :eval EXPR     evaluate Scheme with user origin
   :thinking      toggle showing the model's thinking
@@ -473,7 +473,11 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 	case ":log":
 		n := 20
 		if len(fields) > 1 {
-			n, _ = strconv.Atoi(fields[1])
+			var err error
+			if n, err = strconv.Atoi(fields[1]); err != nil || n < 1 {
+				fmt.Fprintln(c.Out, "usage: :log [n], n a count of events from 1 (this run's, the last 200 at most)")
+				return false
+			}
 		}
 		start := len(c.recent) - n
 		if start < 0 {
