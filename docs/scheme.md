@@ -602,7 +602,14 @@ does not test, run again with each part taken out in turn (`check-without`) and 
 parts it still passes without, printing the same
 (`finish-untested-parts-message`): a check that cannot fail for a part does
 not test it, and one that prints something else without it does, whatever
-its exit status; and a command the final report cites in backquotes, one
+its exit status. The review asks for a test only a few times: it names at most
+`finish-ask-limit` (3) of those parts, the largest first, and of the plan's
+test steps whose test is missing or passes on the unchanged code, and of the
+dropped conditions, says how many more there were, and does not name an item
+again in a later review of the run (`finish-ask`, `finish-asked`); the parts
+message asks for a case only for a part that implements what the request asks
+for, and says a flag, a rename, a refactor or a skip gets no test (ADR 32,
+amended 2026-10-17). And a command the final report cites in backquotes, one
 the turn ran (`shell-commands` reads each command line as the shell does)
 and has not run since the last edit (`stale-citations`,
 `finish-stale-citations-message`). Runs on `$TMPDIR/base` never go stale, and
@@ -616,7 +623,9 @@ package no longer defines and the request does not name
 through it, unless removing it is the task), and lines of existing tests that
 stated an expectation, a case of a table or an assertion, removed or
 rewritten (`finish-removed-expectations-message`: restore each the request
-does not change, or quote the words that change it), and the existing tests
+does not change, or quote the words that change it; not the lines whose answer
+to the question at the edit was read and supported, and, as the review's first
+point, the lines it was not: `finish-unsupported-edits-message`, below), and the existing tests
 the turn edited that fail when their files are as HEAD had them
 (`original-tests`, `finish-original-tests-message`: the tests are named; either
 the change is wrong, so change the code, appending to what a test pins rather
@@ -712,11 +721,13 @@ made, not only at the finish. After a round whose calls wrote a test file
 (`test-file-path?`: `x_test.go`, `test_x.py`, `x.test.js`, a file under
 `tests/`) not yet asked about in the turn, it sets the change against HEAD with
 `change-removals` and, for the lines of that file, adds
-`(edited-expectations-message lines)` before the next request (`test-edit-nudge`):
-which sentence of the request requires the new expectation, for that input or
-case; if none does, restore the line and change the code (appending to the
-phrase a test pins, not rewording it), and if one does, say which in the
-answer. The expectation lines are a case of a table, an assertion that carries
+`(edited-expectations-message lines)` before the next request (`test-edit-nudge`,
+which returns `(files . lines)`): which sentence of the request requires the new
+expectation, for that input or case, answered in a form, one line for each
+row, the row and then a sentence copied word for word from the request that
+names the input or case the row tests; if none does, `none`, restore the line
+and change the code (appending to the phrase a test pins, not rewording it).
+The expectation lines are a case of a table, an assertion that carries
 one, a literal assigned to `want`, `expect`, `expected` or a name that starts
 with one (`wantErr`, `expected_msg`), and in Go a `strings` or `bytes` check
 (`Contains`, `ContainsAny`, `HasPrefix`, `HasSuffix`, `EqualFold`) of a string
@@ -724,27 +735,41 @@ literal that is not a `case` line; a line whose
 string literals all stand on one line the change adds (a case moved from a map
 to a direct assertion) is not removed. The edit is never refused. The lines are HEAD's, so a test
 the turn added, or a case it adds to a table, is not asked about, and a file is
-asked about once in a turn; the finish review still names every such line when
-its latest run passed (ADR 32, amended 2026-10-16).
+asked about once in a turn.
 
-The finish review also asks for the lines of the change that no test ran
-(`finish-uncovered-lines-message`). When the latest run since the last edit
-passed, the turn changed a source file (`coverage-extensions`: .go, .py, .js,
-.ts and the like; a project may redefine the list), the lines it added hold a
-branch or a condition (`branch-words`, read from `git-diff` and from new
-files), and no command run since the last edit measured coverage
-(`coverage-run?`: cover, --cov, nyc, c8), the model is asked to run the tests
-of the files it changed once with coverage and name the changed lines none
-executed; for a line that does what the request asks for, add a test that
-executes it, and for a branch no case reaches (a condition that cannot be
-true, a skip nothing exercises), delete it or quote the sentence of the
-request that requires it, a skip added after an existing test failed getting
-no test since the test would pin it; or, where coverage cannot run, to read the
-change against its tests. The coverage point names the same broadest passing
-check (`broadest-passing`) as check-without. The loop knows which
-commands passed, and none of them says which lines ran; `check-without` takes
-out whole hunks, and a dead branch lives inside one the check needs (ADR 32,
-amended 2026-10-16).
+The answer is read, not weighed (`edit-answers`, `edit-support`). The rows the
+question named are kept for the turn, each in the state `asked`, `firm` or `ok`.
+After every round whose reply has words, the rows still changed (the model may
+have restored one: then it is answered) are set against the reply with
+`(edit-support lines request reply)`: a quote is a run of three words or more of
+the reply that stands in the request in the same order, case, punctuation and
+white space aside, and it supports a row when it shares a distinctive token with
+the row's string literals, its input and the message it expects, and with the
+line that replaces it (a word of three letters or more, or a number from 2 up,
+lightly stemmed, that is no stop word and no part of the name of a function the
+row calls; the words of its identifiers when its literals give none). A row
+whose replacement cuts words out of the phrase it expects, or puts words inside
+it, needs more: a quote with most of the words cut or all of the words put, so
+that appending to a pinned phrase is supported by the sentence that asks for the
+addition, and cutting or splitting it is not. A supported row is `ok`; a row
+with no token to judge it by is left to the review's other point. A reply that
+quotes the request and supports no more of a row gets one firmer message for it
+(`edited-expectations-firm-message`: what the request does not mention, the
+default of restoring the old expectation and changing the code, and that the row
+is kept only by quoting the sentence that names it), and its state becomes
+`firm`. A reply that quotes nothing is no answer yet, and the reply that ends the
+turn is read for the rows it supports and says nothing more. At the finish, the
+rows still unsupported are the review's first point, with the original tests that
+fail (`finish-unsupported-edits-message`). Nothing is reverted or refused: the
+model may keep an edit, against the evidence (ADR 32, amended 2026-10-17).
+
+The finish review used to ask for the lines of the change that no test ran
+(`finish-uncovered-lines-message`, with `coverage-extensions`, `branch-words`
+and `coverage-run?`) and no longer does: on commit-bench 6e18b7ba (dsl22) the
+model spent 62 of its 167 calls and 1.12M of its 2.38M cost-eq running coverage
+and writing tests for branches of its own defensive code. `source-extensions`
+and `source-path?` remain, for the directories a change touches
+(`changed-dirs`, which `broadest-passing` uses).
 
 Both loops also count, in `stall-check`, the rounds in a row whose reply
 thought at length (`stall-reasoning-tokens`, 10,000, or more reasoning
@@ -827,10 +852,10 @@ strings (§1.1):
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them; a question is answered, and a request for something never built is told so, with what exists, what is missing and what the model would build, before it builds anything |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach, the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
-| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-original-tests-message failures)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-uncovered-lines-message check)`, `(finish-review-message points)`, `finish-review-close`, `(edited-expectations-message lines)` | what the evidence loop tells the model (§9); from `finish-new-files-message` to `finish-uncovered-lines-message`, points of the finish review, and the one message that carries them; `edited-expectations-message` is said as a test file is edited, once for each file |
+| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts omitted)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-original-tests-message failures)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-unsupported-edits-message rows original)`, `(finish-review-message points)`, `finish-review-close`, `(edited-expectations-message lines)`, `(edited-expectations-firm-message verdicts)` | what the evidence loop tells the model (§9); from `finish-new-files-message` to `finish-unsupported-edits-message`, points of the finish review, and the one message that carries them; `edited-expectations-message` is said as a test file is edited, once for each file, and `edited-expectations-firm-message` once for a row whose answer quoted the request and did not support it |
 
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach (each cited as `path:line`), the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
-| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-original-tests-message failures)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-review-message points)`, `finish-review-close` | what the evidence loop tells the model (§9); from `finish-new-files-message` on, points of the finish review, and the one message that carries them |
+| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts omitted)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-original-tests-message failures)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-unsupported-edits-message rows original)`, `(finish-review-message points)`, `finish-review-close` | what the evidence loop tells the model (§9); from `finish-new-files-message` on, points of the finish review, and the one message that carries them |
 | `(reading-reminder-message n)`, `(reading-reminder-reviewed-message n)` | what the default loop tells a model whose last `n` rounds only looked (§9) |
 | `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5): leads found without running anything, and any fix in them a guess to test; `plan-hand-over` adds the lines of the files they cite (`plan-excerpts`, below) |
 | `task-header` `plan-header` | the headers under which the window shows the user's request, at the head of their message, and its plan, as a message of its own after the calls it came with are answered; neither is ever trimmed away. The system prompt stays the same, so a new request or a plan keeps the server's cached prefix (window recipe v15); before v15 the system prompt carried both |
@@ -1119,7 +1144,8 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `(head-has-name name)` | whether a file of HEAD holds `name` whole and in any case (`session-id` is not in `X-Session-Id`). Hidden; registered in a git work tree. planspec.scm puts a request's name the plan left out and the code already has into the plan's context instead of asking the planner again, and asks the change only for names HEAD lacks |
 | `(docs-mentioning names [packages])` | the repository's documents (Markdown, LaTeX, reStructuredText, AsciiDoc, as HEAD has them) that hold one of `names` whole, and the ADRs whose file name has a word starting with one of `packages` (`0025-ingress-redaction.md` for `redact`), most names first, at most 4, as a list of `(path . "the names it holds")`; a name in more than 8 documents, or shorter than 4 characters, is left out. Hidden; registered in a git work tree. Before an unattended turn ends, when the change edited no document, planspec.scm says which documents describe a function or package the plan's change steps name |
 | `(git-intend paths)` | mark the files of `paths` that are new (untracked, inside the repository, not ignored) as intended for the next commit (`git add -N`), so tools that list the tracked files see them; returns the paths it marked. Nothing is staged. Hidden; registered in a git work tree. planspec.scm marks the new files the plan names as the model writes them: the book's catalogue generator lists files with `git ls-files` |
-| `(change-removals request)` | what the uncommitted change takes away that its own check cannot show, as an alist: `definitions`, the top-level definitions (Go functions, methods as `Type.Method`, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, at most 6, each an alist of `path`, `name`, `kind` and `line` (at HEAD), leaving out a name `request` gives whole or in words that spell it (`workspace-kind` for `WorkspaceKind`; a method by its type unless the type is a plain word); and `expectations`, the lines of existing tests (`x_test.go`, `test_x.py`, `x_test.py`) that state an expectation (a case of a table, a line ending in a comma that holds a literal; an assertion that carries it: testify's `assert.`/`require.`, Python's `assert`; a literal assigned to `want`, `expect`, `expected` or a name that starts with one, such as `wantErr` or `expected_msg`; or, in Go, a `strings` or `bytes` check (`Contains`, `ContainsAny`, `HasPrefix`, `HasSuffix`, `EqualFold`) of a string literal) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, or whose string literals all stand on one line it adds (a case moved into another shape), at most 8, each an alist of `path`, `line` (at HEAD) and `text`. Hidden; registered in a git work tree. The finish review names them when the latest run since the last edit passed, and the test-edit question reads them as a test file is edited (ADR 32, amended 2026-10-15 and 2026-10-16) |
+| `(change-removals request)` | what the uncommitted change takes away that its own check cannot show, as an alist: `definitions`, the top-level definitions (Go functions, methods as `Type.Method`, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, at most 6, each an alist of `path`, `name`, `kind` and `line` (at HEAD), leaving out a name `request` gives whole or in words that spell it (`workspace-kind` for `WorkspaceKind`; a method by its type unless the type is a plain word); and `expectations`, the lines of existing tests (`x_test.go`, `test_x.py`, `x_test.py`) that state an expectation (a case of a table, a line ending in a comma that holds a literal; an assertion that carries it: testify's `assert.`/`require.`, Python's `assert`; a literal assigned to `want`, `expect`, `expected` or a name that starts with one, such as `wantErr` or `expected_msg`; or, in Go, a `strings` or `bytes` check (`Contains`, `ContainsAny`, `HasPrefix`, `HasSuffix`, `EqualFold`) of a string literal) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, or whose string literals all stand on one line it adds (a case moved into another shape), at most 8, each an alist of `path`, `line` (at HEAD), `text` and `new` (the line the change puts in its place: of the lines its change block adds, the one that shares most of its words with this one, if half of them; each used once; `""` for none). Hidden; registered in a git work tree. The finish review names them when the latest run since the last edit passed, and the test-edit question reads them as a test file is edited (ADR 32, amended 2026-10-15, 2026-10-16 and 2026-10-17) |
+| `(edit-support lines request reply)` | the reply to the question "which sentence of the request requires the new expectation?" read against the request, for `lines` (the expectations of `change-removals`, with their `text` and `new`): a list with an alist for each line, in order, of `path`, `line`, `text`, `status`, `quote`, `quoted`, `unmentioned`, `cut` and `put`. The reply quotes the request when a run of three words or more of it stands in the request in the same order, case, punctuation and white space aside (`quoted`: whether it does so at all). `status` is `"supported"` when a quote shares a distinctive token with the line and its replacement (a word of three letters or more, or a number from 2 up, lightly stemmed, that is no stop word and no part of the name of a function the line calls; its identifiers' words when its string literals give none), `quote` being the best one; `"unsupported"` when none does; `"unchecked"` when the line has no token. When the replacement cuts words out of the phrase the line expects, or puts words inside it, a supporting quote also holds most of the words cut or all of the words put (`cut`, `put`: the phrases). `unmentioned` lists the string literals of the line that the request does not contain. Pure; hidden from the model. The evidence loop reads the reply that follows the question with it (ADR 32, amended 2026-10-17) |
 | `(original-tests paths)` | run the existing tests the turn edited as the last commit had them, against the change as it is: for each of `paths` that is a Go test file (`x_test.go`) HEAD has and the working tree edited or deleted, the tests HEAD's version declares run with HEAD's version in place of the working tree's (`go test -overlay`: nothing on disk changes, nothing is fetched), within 3 minutes in all; a test that also fails with every changed Go file as HEAD had it is left out. An alist of `failures`, each an alist of `path` and `tests` (the names of the file's tests that fail), and `unrun`, the directories whose tests did not build with HEAD's files in place or did not finish. A file HEAD does not have, and a file that is not a Go test, is left out. Hidden; registered in a git work tree. The finish review names the failures (`finish-original-tests-message`; ADR 32, amended 2026-10-16, the original tests) |
 | `(change-claims request runs edits declared)` | the lines the uncommitted change adds to documents (under `docs/`, or `.md`, `.tex`, `.rst`, `.adoc`, `.txt`) and to Go and Scheme comments that state what nothing in the turn showed, at most 6, each an alist of `path`, `line` (now), `kind`, `text` and `why`. Kinds: `run`, a sentence reporting a run (past tense or "passes with": passed, N or zero warnings, found nothing, executions, a fuzz or benchmark figure; not a caveat such as "not run") when no run of each command it names (`make validate`, `make accept`, `go test`, a fuzz, a benchmark, or any test command) exited 0, or none printed its figures within 5% among its last 6 lines (of a fuzz run's progress lines the last only); `date`, an amendment date the file did not have that no run printed and `request` does not give (as `2026-10-15` or `20261015`), each date once; `repeat`, three or more non-blank lines, 120 characters or more, a document's edit inserted that stand word for word elsewhere in it; `generated`, a file in `edits` whose head says Code generated or Generated by, or names a `"source"` address, or that `declared` lists, with no command after its last edit holding `go generate`, its generator, or its source's address or host. `runs` is the turn's commands, each `(line status output)` (`status` `#f` when it did not run to an exit or ran on the copy of the last commit); `edits` an alist of each path edited by hand and the command lines run after its last edit; `declared` a list of `(path command)` rows. Hidden; registered in a git work tree (ADR 32, amended 2026-10-15) |
 | `(change-dropped-conditions request)` | the parts of conditions the uncommitted change stopped checking, at most 3: for each Go function of a changed non-test file whose body changed, the operands of the `&&` and `\|\|` of its old body, and the conditions of its old guards (an `if` whose block ends in a return), that neither its new body holds (white space and a leading `!` aside) nor the body of a function of its package it calls that the change added or rewrote; error and ok checks, literals, one-letter names and operands with a word `request` names (four characters or more, not a word every condition uses) left out. A list of alists of `path`, `function` (`Type.Method` for a method), `operand` and `guard` (`#t` for a guard's whole condition). Hidden; registered in a git work tree. The finish review names them when the latest run since the last edit passed (ADR 32, amended 2026-10-15) |

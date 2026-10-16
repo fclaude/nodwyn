@@ -268,13 +268,16 @@ evidence:
     documents and comments that nothing in the turn showed
     (\code{change-claims}): a run's result or figures no passing run
     printed, an amendment date no command printed, a paragraph pasted twice,
-    entries added by hand to a generated file. And when the check passed, the
-    change added a branch or a condition to a source file and nothing in the
-    turn measured coverage, it asks for the changed lines no test executed:
-    run the tests of the changed files once with coverage, and add a test
-    that executes each of those lines that does what the request asks, or
-    delete a branch or a skip the request does not ask for
-    (\code{finish-uncovered-lines-message}). After it the turn is
+    entries added by hand to a generated file. The tests it asks for are
+    bounded: at most \code{finish-ask-limit} (3) of the untested parts, the
+    plan's missing tests and the dropped conditions are named, the largest
+    first, with a count of the rest, and an item named in one review of a
+    run is not named in a later one (\code{finish-ask}); it asked for the
+    changed lines no test executed until 2026-10-17, and that point took
+    62 of a benchmark run's 167 calls. The existing tests of its first point
+    are the rows of an edit that no quote of the request supports,
+    with the original tests that fail (\code{finish-unsupported-edits-message}).
+    After the review the turn is
     accepted: the model's next answer ends it, and the reminders above are
     not asked again.
   \item As a test file is edited, not only at the finish: after a round whose
@@ -282,10 +285,18 @@ evidence:
     last commit and, for the lines of that file an edit removed or rewrote (a
     case of a table, an assertion, a literal assigned to \code{want} or
     \code{expected}, a Go \code{strings.Contains} of a phrase), asks which sentence of the request requires the new expectation, for that
-    input or case; if none does, restore it and change the code
-    (\code{edited-expectations-message}). The edit is never refused, a test
+    input or case, answered as one line for each row, the row and a sentence
+    copied word for word from the request; if none does, restore it and change
+    the code (\code{edited-expectations-message}). The edit is never refused, a test
     the turn added is not asked about, and each file is asked about once in
-    a turn.
+    a turn. The loop reads the reply that follows (\code{edit-answers},
+    \code{edit-support}): a quote is a run of three words or more of the
+    reply that stands in the request, and supports a row when it shares a
+    distinctive word with the row's string literals and with the line that
+    replaces it; a phrase made shorter needs most of the words cut, a phrase
+    split all of the words put. A row not supported gets one firmer message
+    (\code{edited-expectations-firm-message}), and the finish review lists it
+    first.
 
     not asked again. In a run nobody reads as it goes it is made at most
     twice over the run's turns (\code{finish-review-limit}). A test step

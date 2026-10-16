@@ -599,15 +599,25 @@ run". Before it ends, the check that passed (of those that passed since the
 last edit, the one that runs the most of what changed) is run again with each
 part of the change taken out in turn, and the parts it still passes without are
 named to the model: a check that cannot fail for a part does not test it, and
-that review is made at most twice in a run. When a change adds a branch and
-nothing measured coverage, the model is also asked to run the tests once with
-coverage and to name the changed lines none ran: it adds a test for a line
-that does what you asked, and deletes a branch or a skip you did not ask for
-instead of testing it into place. When an edit removes or rewrites an
-expectation of a test the repository already had (a case, an assertion, a
-`want` string, a phrase the test checks for), the model is asked once for that
-file, as it edits, which sentence of your request requires the new
-expectation; the edit itself is never refused. And in a Go project, the test
+that review is made at most twice in a run. The review asks the model to write
+a test only a few times: it names at most three of those parts (the largest
+first), three of the plan's tests that are missing or pass on the unchanged
+code, and three dropped conditions, says how many more there were, and does not
+ask about an item again; a part you did not ask for (a flag, a rename, a skip
+added to make a test pass) gets no test, it is removed or defended with the
+sentence of your request that requires it. It does not ask for the lines no test
+ran: that point cost one benchmark run a third of its calls. When an edit
+removes or rewrites an expectation of a test the repository already had (a case,
+an assertion, a `want` string, a phrase the test checks for), the model is asked
+once for that file, as it edits, which sentence of your request requires the new
+expectation, and to answer with a line for each, the row and a sentence copied
+word for word from your request that names its input or case. The loop reads the
+answer against your request: the quote must be in it, and share a distinctive
+word with the row (or, for a phrase made shorter or split, say most of the words
+cut or all of the words put). A row the answer does not support gets one firmer
+message, with the default of restoring the old expectation, and the finish
+review lists what is still unsupported as its first point, with the original
+tests that fail. The edit itself is never refused or reverted. And in a Go project, the test
 files it edited are run once more as the last commit had them, against the
 change, and the tests that fail are named to it: either its change is wrong,
 or your request names the new result and the assertion changes, or your request

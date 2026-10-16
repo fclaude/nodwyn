@@ -1983,3 +1983,183 @@ skip is what the third and fourth points ask about); recognising a revert
 experiment by what the model says; refusing or reverting any edit. Not
 measured: whether the new points change what a model does is for the next
 benchmark.
+
+## Amendment 2026-10-17: the review stops asking for the lines no test ran, bounds the tests it asks for, and the question on an edited test is answered in a form and read
+
+dsl22 (a000653, Muse, effort low, 32 runs; `muse-review-2026-10-16.md` and its
+digests) resolved 31 of 32, as dsl20r did, for about 17% more cost, and still
+failed 94f5cac4. Two findings.
+
+**Cost: 6e18b7ba took 167 calls and 2.38M cost-eq (uncached input, a tenth of
+cached input and five times the output), against 0.83M for dsl20r.** The
+first 65 calls cost 0.59M. The finish review came at 400 s with three
+test-writing points, and the model spent R66-R160 answering them, which the
+model's own reasoning summaries and its coverage runs attribute:
+
+| calls | cost-eq | what asked for it |
+|---|---|---|
+| R1-R65, before the review | 0.59M | |
+| R66-R98 (33) | 0.52M | the plan's evidence (three test steps: two passed on the unchanged code, one was not written) and check-without's six small hunks, four of one line: a concurrency test, a PATH-shadowing git wrapper to assert a flag |
+| R99-R160 (62) | 1.12M | the coverage point (`finish-uncovered-lines-message`): the model ran `go test -coverprofile`, mapped the zero-count blocks to the changed lines and wrote tests for the branches of its own defensive code, the waiter and retry paths of `Restore`, the empty-list branch of `versions.list` ("extending the RPC versions test to cover the store fallback and empty-list branches") |
+| R161-R167 (7) | 0.14M | validate and the report |
+
+- **The coverage point goes**: its trigger (`uncovered-lines-due?`: the latest
+  run passed, a source file changed, the added lines hold a branch word, no
+  command measured coverage) and its message, with the helpers only they used
+  (`added-source-lines`, `branch-words`, `branchy?`, `coverage-run?`). It was
+  added on 2026-10-16 for 3422faf1 (a dead branch that tested the wrong
+  variable), and that miss is the planner's to prevent, which the same
+  amendment's cases by position and assumptions do at the cost of a prompt, not
+  of a run: they stay. In 6e18b7ba the point took 62 of 167 calls and 1.12M of
+  2.38M cost-eq, for tests of code the request did not ask for.
+  `coverage-source?` stays as `source-path?`, which `changed-dirs` (and so
+  `broadest-passing`) reads.
+- **The tests a review asks for are bounded.** `finish-ask` names at most
+  `finish-ask-limit` (3) items of each kind: the parts check-without found
+  (the largest first), the plan's test steps that are missing or pass on the
+  unchanged code ("make it fail there"), and the dropped conditions; says how
+  many more there were; and keeps every item it considered in `finish-asked`,
+  so a later review of the run (`finish-review-limit` is 2) does not name it
+  again, the ones past the limit included: the model answered the review
+  once. `finish-untested-parts-message` asks for a case only for a part that
+  implements what the request asks for, says "do not test anything else
+  because of this message", and says a flag, a rename, a refactor, a skip or an
+  exception added to make a test pass gets no test: remove it, or defend it with
+  the sentence of the request that requires it. The review is still made once
+  a turn.
+  `TestTheReviewDoesNotAskForTheChangedLinesNoTestRan`,
+  `TestTheUntestedPartsPointNamesTheLargestThree`,
+  `TestAnItemTheReviewAskedAboutIsNotAskedAboutAgain`,
+  `TestThePlansUnwrittenTestsAreNamedThreeAtATime`,
+  `TestTheUntestedPartsPointDoesNotTestASkipIntoPlace` (changed).
+  `TestTheReviewAsksForTheChangedLinesNoTestRan` and
+  `TestTheCoveragePointNamesTheBroadestPassingCheck` are gone with the point;
+  `TestTestFilesAndBranchesAreToldApart` is
+  `TestTestFilesAndSourceFilesAreToldApart`.
+
+**94f5cac4 again: the question was asked three times and waved away.** The
+test-edit question fired at 73, 85 and 89 s (the ends of R26, R30 and R31).
+The model answered the first (R27) with "restoring the type-check case", and
+then (R28, R31) with the request's rule for a skipped argument (`A skipped
+optional argument before a later one that is given now gets its type's empty
+value ("", 0, #f, ())`), which it applied to `(fs-read "big.txt" 1 0)` "count
+must be at least 1": a row the request never mentions (the plan had invented
+"count 0 means default"), and the hidden (original) test keeps it. The patch rewrote it
+to `1 -1`. A prose answer the loop did not read cost nothing to give.
+
+- **The answer has a form, and is read.** The question asks for one line for
+  each changed row: the row, then a sentence copied word for word from the
+  request that names the input or case the row tests, or `none` (restore it and
+  change the code). The next reply with words is set against the request by
+  `edit-support` (`edit-answers`, strategy.scm), which judges text and nothing
+  else: a quote is a run of three words or more of the reply that stands in the
+  request in the same order (case, punctuation and white space aside), and it
+  supports a row when it shares a distinctive token with the row's string
+  literals, its input and the message it expects, and with the line that
+  replaces it (`change-removals` pairs the lines a change block removes and adds
+  by the words they share, and says the replacement in `new`). A token is a word
+  of three letters or more, or a number from 2 up (0 and 1 are in every sentence
+  about an index or a count), lightly stemmed, that is no stop word and no part of
+  the name of a function the row calls (a sentence that names `fs-read` says
+  nothing of which case of it the row tests); a row whose literals give none is
+  read by its identifiers' words. A row with no token to judge by is left to the
+  review's other point, as before.
+- **A rewrite that cuts or splits a phrase needs more.** 5040f9fe's pinned
+  phrase: the request has the error name its Content-Type, which adds to the
+  phrase, and the attempts that appended " (Content-Type: text/event-stream)" to
+  it passed the maintainers' test, while the one that cut the want string to
+  "ended without a terminal response" and OpenCode's, which put `(content type
+  "text/event-stream")` inside it, failed it. When the last string literal of the
+  replacement keeps the phrase whole at its start or its end, it is an append and
+  no more is asked. When it cuts two words or more, the quote must also hold most
+  of the words cut ("responses stream"); when it puts two words or more inside
+  the phrase, all the words put, as a run. The sentence about the error
+  ("A stream that ends without a terminal event names its Content-Type in the
+  error") supports the append and not the cut or the split.
+- **A row without a supported quote gets one firmer message**, when the reply
+  quoted the request at all and the row is still unsupported
+  (`edited-expectations-firm-message`, once for each row, so the second wrong
+  quote is not told again): it names what the request does not mention (the
+  input and the expectation, as the request is read for a quote; the words cut or
+  put), says the default is to restore the old expectation and change the code
+  because the last commit's version of that test is what a grader runs, and that
+  the row is kept only by quoting the sentence that names its input or case, and
+  saying why it requires the new result. A reply that quotes nothing is no
+  answer yet; the reply that ends the turn is read for the rows it supports and
+  gets no message (the review is firm enough, and a message there would be
+  another round). A row the model restored is answered.
+- **The finish review lists what is still unsupported as its first point, with
+  the original tests** (`finish-unsupported-edits-message`: the rows, and the
+  `finish-original-tests-message` failures, the grader's side of the same rows,
+  in the same point). The rows whose answer was read and supported are not
+  named again in the removed-expectations point.
+- **Nothing is reverted or refused.** The edit stands; the model may decide
+  otherwise, against the evidence.
+  `TestQuotesAreRunsOfTheRequest`, `TestTheTokensOfARow`,
+  `TestTheRepliesOf94f5cac4AreReadRowByRow`,
+  `TestRewritesArePairedByWhatTheyShare`,
+  `TestAnAppendedPhraseIsSupportedAndACutOrASplitIsNot`,
+  `TestARewrappedMapTheRequestAddsToIsSupported`,
+  `TestARowWithNoTokenIsUnchecked`, `TestEditSupportPrimitive`
+  (internal/prim, with the requests, patches and replies of the benchmark in
+  `testdata/support`); `TestAnAnswerIsReadAgainstTheRequest`,
+  `TestAReplyThatQuotesNothingIsNoAnswerYet`,
+  `TestTheAnswerThatEndsTheTurnIsRead`, `TestTheFirmerMessageIsSaidOnce`
+  (internal/core); `TestAnEditedExpectationOfAnExistingTestIsAskedAbout`
+  (changed).
+
+Tuned on the benchmark's own patches and replies, not on a model run.
+`TestSupportReplaysCommitBench` (set `NODWYN_COMMIT_BENCH` and `NODWYN_REPO`;
+skipped without them) reads the 304 attempt patches of the benchmark's runs
+(the gold patches left out) for the rows `change-removals` names and sets each
+against its task's request, twice: with every sentence of the request as a
+possible quote (the most the request can do for a row) and with the sentence a
+model would most likely quote, the one that shares the most tokens with the row.
+
+- 53 patches name 94 rows. Some sentence of the request supports 81 of them;
+  the natural quote supports 80. Of the 48 rows the real commit also changes
+  (its test diff, read from the repository), 41 are supported either way; the 7
+  that are not are a4dbffc7's two rows in four attempts (one has only the second),
+  where the attempt put its own sentence in the phrase ("a step you reword starts
+  unmarked") and the real commit cut "since that starts its marks over"
+  (supported by "The reading reminder no longer says a rewrite starts the marks
+  over").
+- 5040f9fe: 9 patches rewrite the `want` line, and the natural quote flags the
+  two that fail the maintainers' test with a phrase it can read, the cut one
+  (`want := "ended without a terminal response"`, dsl21's second replicate, not
+  graded) and OpenCode's split one (unresolved); the five that appended to the
+  phrase (dsl3, dsl6, dsl15, dsl17m, dsl19, all resolved) are supported. tok2
+  (resolved) and Pi's (unresolved on that test) restructured the test so that no
+  line replaces the old one, and are supported. Some sentence of the request
+  supports the cut one: the title, which holds "Responses" and "stream" and is
+  about neither the error nor the test, so the any-sentence count flags one row
+  fewer than the natural quote.
+- 107251d0: 5 patches, 5 rows (a map rewrapped around "instructions" in four,
+  one `{Role: RoleSystem, Content: "sys"}` row), all supported. 94f5cac4's other
+  correct rows (`(fs-read "big.txt" 0)`, the `index-grep` context, the two
+  `count needs start too` cases) are supported in all 9 of its patches.
+- 94f5cac4's `(fs-read "big.txt" 1 0)` row, rewritten to `1 -1` (or `1 -2`) in 5
+  of those patches, is supported by the natural quote: the sentences that
+  mention "count" do so of another message ("count needs start too"), so a model
+  that quoted that sentence for it would pass. None did. Set against the real
+  replies of dsl22 (R27, R28, R31, R32) the check reads: R27 quotes nothing; R28
+  supports the two `count` cases of `json_test.go` (the rule's "argument" is a
+  word of their message); R31 supports `(fs-read "big.txt" 0)` with
+  `fs-read's start 0 is line 1` and does not support `1 0`, for which it quoted
+  the rule for a skipped argument; R32 supports the `index-grep` row. Set against
+  dsl21's three replies to the same question, all four rows it rewrote are
+  supported. So the one row the check tells the model about in either run is the
+  one the hidden test keeps.
+- Flagged and not discussed above: the 14 rows of the 94 flagged are a4dbffc7 7,
+  c4cde303 4, 5040f9fe 2 (above) and 94f5cac4 1. c4cde303's is a
+  `strings.Contains` moved inside an `if` block by a refactor (its literals stand
+  on two added lines, so `kept` does not hold it), and 94f5cac4's is dsl20r's
+  `{"path":"p"}`: `1,` number table. `change-removals` named both before.
+
+Not built: a second firmer message, a message to the reply that ends the turn,
+reverting or refusing any edit, and a stricter reading of "count" (the rule is
+one shared token; two made the real `count`/`start` cases of
+94f5cac4 unsupported by the sentence the model quoted for them, and could not
+tell `count needs start too` from the row it is not about). Not measured: whether
+the model changes what it does with the form and the firmer message, and
+whether three tests a review is enough; for the next benchmark.
