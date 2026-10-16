@@ -70,8 +70,7 @@ func (MetaPolicy) Check(_ context.Context, p *scheme.Prim, _ []scheme.Value) Dec
 }
 
 // RepoPin denies path arguments that resolve outside the repository root
-// (plan §3.3), or outside the session's scratch directory when there is
-// one. Symlinks are resolved so a link out of either does not escape the
+// or outside the session's scratch directory when there is one. Symlinks are resolved so a link out of either does not escape the
 // pin. Relative paths are always relative to the repository.
 type RepoPin struct {
 	Root    string // absolute, cleaned
@@ -201,8 +200,7 @@ func resolveExisting(p string) string {
 }
 
 // PathDenylist denies path arguments that look like credential material,
-// whatever their location (plan §3.3). It is defense in depth and stays
-// after L1 lands.
+// whatever their location. It is defence in depth that stays alongside L1.
 type PathDenylist struct {
 	Globs []string // matched against the base name, except of code (codeExtensions)
 	Dirs  []string // absolute directories that are entirely off limits

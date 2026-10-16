@@ -733,7 +733,8 @@ decision is Go's: no Scheme can approve what the judge refused, and a
 project's `(approve-refuse? call)` can only refuse more. See [runs](runs.md).
 
 **With credentials.** `--yolo` on its own cannot unlock the keychain: a
-passphrase needs a terminal (plan §3.3), so an unattended process with a
+passphrase needs a terminal (it is never read from the environment or an
+argument, ADR 5), so an unattended process with a
 keychain on disk starts without one and says so. (A keychain without a
 passphrase opens anywhere, terminal or not; see "The keychain" below for
 what that gives up.) When the run is *supposed*
@@ -2475,7 +2476,7 @@ or write the text `[REDACTED anthropic-key]` over one.
    `git-status` and `git-diff`).
 2. Give it small, explicit tasks: name the file, the pattern to follow, the
    test to add, and ask it to run `go-test` on the package. A 27B model does
-   well with a paragraph and badly with a page (plan §3.4).
+   well with a paragraph and badly with a page.
 3. Review every diff at the confirm. `fs-edit` diffs are small; an
    `fs-write` of a whole existing file deserves suspicion.
 4. When it gets in the way, hand-edit, and add one line to

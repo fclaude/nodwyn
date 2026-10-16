@@ -31,7 +31,8 @@ outside the log entirely.
 - `nodwyn replay` must reproduce a transcript byte-for-byte from this file
   alone; anything that cannot be rebuilt from the log is a bug.
 - Until P7 the log may contain what the model was shown. Bootstrap runs only
-  inside the safety envelope (plan §3.3).
+  inside the safety envelope of the original build plan (its §3.3; see the
+  index).
 
 ## Amendment 2026-09-22: resume lifecycle
 

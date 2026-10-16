@@ -4,7 +4,7 @@
 - Date: 2026-09-27
 
 ## Context
-The repository pin (plan §3.3) refuses every path outside the repository,
+The repository pin (the original build plan's §3.3; see the index) refuses every path outside the repository,
 which also refused `/tmp`. Models need somewhere for throwaway files, a
 script that reproduces a bug or a note, and worked around the refusal:
 they wrote such files into the repository, where they reach its diff

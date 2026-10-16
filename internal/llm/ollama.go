@@ -23,7 +23,7 @@ type Ollama struct {
 
 // NewOllama returns a client for base. The HTTP client has no overall
 // timeout: requests are bounded by ctx, and a large cold prompt on a busy
-// single-slot server can legitimately take minutes (plan §3.4). It follows
+// single-slot server can legitimately take minutes. It follows
 // no redirect: the window goes to the server the user configured, not to
 // wherever that server points (NoRedirect).
 func NewOllama(base string) *Ollama {

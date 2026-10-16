@@ -143,7 +143,8 @@ func newPassphrase(prompt string) ([]byte, error) {
 }
 
 // readPassphrase reads a masked line from the terminal. Passphrases never
-// come from the environment or from arguments (plan §3.3).
+// come from the environment or from arguments, which other processes can
+// read (ADR 5).
 func readPassphrase(prompt string) ([]byte, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return nil, fmt.Errorf("a passphrase needs a terminal")

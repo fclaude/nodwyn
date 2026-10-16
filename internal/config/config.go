@@ -602,7 +602,7 @@ type L1 struct {
 	AllowClasses []string `toml:"allow_classes"`
 	// AllowValues suppresses exact strings: documented placeholders such as
 	// AWS's AKIAIOSFODNN7EXAMPLE. Never put a real secret here — this file
-	// is plaintext (plan §3.3).
+	// is plaintext.
 	AllowValues []string `toml:"allow_values"`
 }
 

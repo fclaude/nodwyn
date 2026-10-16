@@ -5,7 +5,7 @@
 
 ## Context
 The control-plane model is a local Qwen served by Ollama on `workshop`
-(plan §3.4). It needs no key. Other providers may come later as data-plane
+(the original build plan's §3.4; see the index). It needs no key. Other providers may come later as data-plane
 tools or as an alternate control plane.
 
 ## Decision

@@ -1,4 +1,4 @@
-// Package exfil is the exfiltration scenario suite (plan §7): the project's
+// Package exfil is the exfiltration scenario suite: the project's
 // most important test artifact and a required gate for promotion.
 //
 // Each scenarios/NNN-name.scm is ordinary nodwyn Scheme run through the real

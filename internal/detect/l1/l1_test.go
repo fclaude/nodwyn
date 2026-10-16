@@ -413,7 +413,8 @@ func BenchmarkScan64KB(b *testing.B) {
 }
 
 // FuzzScan guards the scanner against panics and index out-of-range on
-// arbitrary input (plan §7: "reader and L1 from day one").
+// arbitrary input; the reader and L1 are fuzzed because they take untrusted
+// text.
 func FuzzScan(f *testing.F) {
 	f.Add("sk-ant-api03-AbCdEfGhIjKlMnOp")
 	f.Add("x=1.2.3 y")

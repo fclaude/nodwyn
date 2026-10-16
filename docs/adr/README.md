@@ -2,6 +2,11 @@
 
 One decision per file. Amend by editing and noting the change; never delete.
 
+ADRs 2, 8, 28 and 34 cite sections of the original build plan (`§3.3`, the
+bootstrap safety envelope; `§3.4`, the control plane's reference; `§4, B3`,
+the bootstrap's dev tools), which `plan.md` no longer has: read it with
+`git show 2f4394f^:plan.md`.
+
 - [0042](./0042-gitea-releases.md) — Gitea distributes binaries and books; GitHub CI is manual-only
 - [0044](./0044-wails-desktop.md) — Wails owns the native window while console RPC keeps its origin and authentication
 

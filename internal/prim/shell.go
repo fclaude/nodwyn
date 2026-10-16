@@ -199,7 +199,7 @@ func pipefail(name string, args []string) []string {
 }
 
 // scrubEnv builds a child environment from the allowlist only, so a secret
-// in the parent's environment never reaches a subprocess (plan §3.3).
+// in the parent's environment never reaches a subprocess.
 func scrubEnv(allow []string) []string {
 	out := make([]string, 0, len(allow))
 	for _, k := range allow {

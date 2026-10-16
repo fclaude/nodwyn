@@ -166,7 +166,7 @@ func Register(in *scheme.Interp, o Options) error {
 }
 
 // Checkers returns the guard checkers the host primitives rely on, in the
-// order they should run: the envelope from plan §3.3, the write preview,
+// order they should run: the envelope (metadata policy, repository pin, path denylist, argv trigger), the write preview,
 // and the user's standing command approvals (nil for none). extra carries
 // the phase-specific checkers — the E3 egress checker from P3 — appended
 // after the core ones.

@@ -4,8 +4,9 @@
   2026-10-02; a session in a worktree from the console built 2026-10-03,
   see the amendment)
 - Date: 2026-10-01
-- Amends: ADR 17 (no standing approval for commits or pushes) and plan §4
-  B3 (the operator commits), in worktree sessions only
+- Amends: ADR 17 (no standing approval for commits or pushes) and the
+  original build plan's §4, B3 (the operator commits; see the index), in
+  worktree sessions only
 
 ## Context
 A session is pinned to one directory for its life (`log.SessionStart.Repo`).

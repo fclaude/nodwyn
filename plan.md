@@ -6,7 +6,7 @@ that way is [SPEC.md](SPEC.md) and the [decision records](docs/adr/), whose
 index says for each what is built and what is not. How it was built, from the
 bootstrap through v0 and the tracks after it, is the book's part "How it was
 built, and what is next" (`make book`) and the git history; the plan as it
-stood until 2026-10-02 is `git show af6c36f:plan.md`.
+stood until 2026-10-02 is `git show 2f4394f^:plan.md`.
 
 ## Where it stands (2026-10-16)
 
