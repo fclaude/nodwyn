@@ -366,13 +366,53 @@ check(async () => {
       server.onMessage((message) => ws.send(message));
     });
   });
+  // A task whose conversation fails to load says so in the page, with the
+  // message and a Retry, and says it is loading until then; the reply box
+  // says why it is off. Retry reads it again and the task is usable.
+  let failLoad = true;
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await shoot("task-load-failed", { width: 1280, height: 800 }, "light", async (page) => {
+    await page.click('#sidebar .nav-task:has-text("Summarize what is in this folder")');
+    await page.waitForSelector(".task .transcript");
+    await shows(page, ".transcript", "Loading the conversation…");
+    await page.screenshot({ path: `${out}/task-loading.png` });
+    release();
+    await page.waitForSelector(".load-failed");
+    await shows(page, ".transcript", "This conversation could not be loaded.", "simulated load failure", "Retry");
+    assert.ok(!(await page.textContent(".transcript")).includes("Loading the conversation…"), "the loading line stayed after the failure");
+    assert.ok(await page.isDisabled("#reply"), "the reply box is enabled after a failed load");
+    assert.ok((await page.getAttribute("#reply", "placeholder")).includes("Retry"), await page.getAttribute("#reply", "placeholder"));
+    await page.screenshot({ path: `${out}/task-load-failed-panel.png` });
+    failLoad = false;
+    await page.click(".load-failed button:text-is('Retry')");
+    await page.waitForSelector(".task[data-loaded]");
+    assert.strictEqual(await page.locator(".load-failed").count(), 0, "the failure stayed after Retry loaded the task");
+    await shows(page, ".transcript", "Summarize what is in this folder");
+  }, "light", async (page) => {
+    await page.routeWebSocket("**/socket", async (ws) => {
+      const server = await ws.connectToServer();
+      ws.onMessage(async (message) => {
+        const frame = JSON.parse(message);
+        if (failLoad && (frame.method === "session.subscribe" || frame.method === "log.read")) {
+          await held;
+          return ws.send(JSON.stringify({ jsonrpc: "2.0", id: frame.id, error: { code: -32000, message: "simulated load failure" } }));
+        }
+        server.send(message);
+      });
+      server.onMessage((message) => ws.send(message));
+    });
+  });
   // A page that throws while it is drawn is replaced by its failure, with a
   // way out, instead of leaving the last page on screen under a sidebar
   // that already moved on.
   await shoot("fault", { width: 1280, height: 800 }, "light", async (page) => {
+    // The desk's own changes are held while the page is broken, so that one
+    // hash change makes exactly one render, and one error.
     await page.evaluate(async () => {
       const { Desk } = await import("/desk.js");
-      window.needsYou = Desk.prototype.needsYou;
+      window.kept = { needsYou: Desk.prototype.needsYou, changed: Desk.prototype.changed };
+      Desk.prototype.changed = () => {};
       Desk.prototype.needsYou = () => { throw new Error("needs exploded"); };
     });
     expectError(/needs exploded/);
@@ -380,8 +420,11 @@ check(async () => {
     await page.waitForSelector("#fault");
     await shows(page, "#view", "This page could not be drawn", "needs exploded", "Reload");
     await page.screenshot({ path: `${out}/fault-panel.png` });
-    await page.evaluate(async () => (await import("/desk.js")).Desk.prototype.needsYou = window.needsYou);
-    await page.click("#fault a:text-is('Home')");
+    await page.evaluate(async () => {
+      const { Desk } = await import("/desk.js");
+      Object.assign(Desk.prototype, window.kept);
+      document.querySelector("#fault a").click();
+    });
     await page.waitForSelector("#task");
     await shows(page, "#view", "What should we get done?");
   });

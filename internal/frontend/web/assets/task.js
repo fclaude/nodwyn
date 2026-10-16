@@ -93,7 +93,14 @@ export class TaskView {
   }
 
   // ---------- lifecycle ----------
-  async open(id) {
+  // open reads task id's conversation. The load in progress is kept, so
+  // whoever started it, or a list refresh that reopened the view, can be
+  // waited for (resume).
+  open(id) {
+    this.opening = this.load(id);
+    return this.opening;
+  }
+  async load(id) {
     this.clearStreams();
     const version = ++this.version;
     clearTimeout(this.totalsTimer);
@@ -133,8 +140,13 @@ export class TaskView {
     this.limitsPending = undefined;
     this.notes = null;
     this.index = null;
-    this.notesDraft = null;
-    this.review = null;
+    // What was written for a review or for the notes outlives a reload of the
+    // same task (a failed send or answer reloads it): only another task starts
+    // without it, as the reply box's draft does.
+    if (previous?.id !== id) {
+      this.notesDraft = null;
+      this.review = null;
+    } else if (this.review) Object.assign(this.review, { loading: false, sending: false, refresh: true });
     this.histories.clear();
     this.changeOpen.clear();
     this.comparisons.clear();
@@ -152,6 +164,10 @@ export class TaskView {
     this.header();
     this.aside();
     this.controls();
+    // A long log takes a while to read: the conversation says so until its
+    // first event is drawn (render removes a placeholder).
+    this.loadingNote = h("p", { class: "hint", role: "status", dataset: { placeholder: "1" } }, "Loading the conversation…");
+    this.el.transcript.prepend(this.loadingNote);
     try {
       let page,
         pending = [],
@@ -187,6 +203,7 @@ export class TaskView {
       this.truncated = truncated;
       this.busy = busy;
       this.loading = false;
+      this.loadingNote.remove();
       for (const event of pending) this.render(event);
       for (const event of this.queued) this.render(event);
       this.queued = [];
@@ -204,11 +221,21 @@ export class TaskView {
       }
     } catch (error) {
       if (version !== this.version) return;
-      // A failed load must not enable sending against uncertain state.
+      // A failed load must not enable sending against uncertain state, and
+      // says so where the conversation would be, with a way to try again.
       this.loading = true;
       this.failed = true;
       this.queued = [];
-      toast(error.message);
+      this.loadingNote.remove();
+      this.el.transcript.prepend(
+        h(
+          "div",
+          { class: "callout load-failed", role: "alert" },
+          h("div", { class: "stack-sm" }, h("strong", {}, "This conversation could not be loaded."), h("span", {}, error.message)),
+          h("button", { type: "button", class: "btn small", onclick: () => this.open(id) }, "Retry"),
+        ),
+      );
+      this.header();
       this.controls();
     }
   }
@@ -708,7 +735,9 @@ export class TaskView {
     const delegates = this.info?.delegates || [];
     this.el.helpers.hidden = !open || !delegates.length;
     this.el.helpers.textContent = delegates.length ? `May hand work to: ${delegates.join(", ")}` : "";
-    const canSend = this.conn.has("session.send") && open && !this.loading && !this.acting && !this.uploading && !lost;
+    // A saved task can be answered: sending resumes it first.
+    const resumable = !open && this.conn.has("session.resume") && !this.desk.keysLocked;
+    const canSend = this.conn.has("session.send") && (open || resumable) && !this.loading && !this.acting && !this.uploading && !lost;
     this.el.form.hidden = !this.conn.has("session.send") || !!this.inspecting;
     // While a message or an answer is on its way the reply box is read-only,
     // not disabled: disabling the field being typed in drops the focus to the
@@ -717,8 +746,12 @@ export class TaskView {
     const busyHere = this.acting || this.uploading;
     this.el.reply.disabled = !canSend && !busyHere;
     this.el.reply.readOnly = busyHere;
-    this.el.reply.placeholder = !open
-      ? "This task is saved. Resume it to continue."
+    this.el.reply.placeholder = this.failed
+      ? "The conversation did not load: use Retry."
+      : !open
+      ? this.desk.keysLocked
+        ? "Unlock your keys above to continue this task."
+        : "This task is saved. Reply to resume it and carry on."
       : lost
         ? "Choose a model below to continue."
       : prompt
@@ -727,7 +760,7 @@ export class TaskView {
           ? "Working… stop it to steer."
           : "Steer it, or answer in words…";
     this.el.send.disabled = !canSend || this.busy || prompt || !this.el.reply.value.trim();
-    for (const b of this.el.form.querySelectorAll("[aria-label='Attach a file']")) b.disabled = !canSend || this.busy || prompt;
+    for (const b of this.el.form.querySelectorAll("[aria-label='Attach a file']")) b.disabled = !canSend || !open || this.busy || prompt;
     for (const control of this.el.transcript.querySelectorAll(".ask-card button, .ask-card input")) control.disabled = this.acting || !this.conn.live;
     // A run that answers its own confirms has no questions to stop asking,
     // and a task Settings does not offer the switch to shows it only while
@@ -905,6 +938,13 @@ export class TaskView {
     const item = this.item,
       text = this.el.reply.value,
       version = this.version;
+    if (!item.open) {
+      // A saved task is resumed, and the message goes once it is open again:
+      // the text stays in the box if resuming fails.
+      drafts.set(item.id, text);
+      if (!(await this.resume()) || this.item?.id !== item.id) return;
+      return this.send();
+    }
     this.acting = true;
     this.busy = true;
     this.controls();
@@ -952,6 +992,7 @@ export class TaskView {
   status() {
     const item = this.item;
     if (!item) return { label: "", cls: "" };
+    if (this.failed) return { label: "Not loaded", cls: "warn" };
     if (this.activePrompt()) return { label: "Waiting for you", cls: "warn" };
     if (item.run?.status === "running") return { label: `${item.run.unattended ? "Unattended run" : "Run"}${item.run.judge ? ", judged" : ""} · turn ${item.run.turns} of ${item.run.max_turns}`, cls: "run" };
     if (this.busy) return { label: this.statusDetail && this.statusDetail !== "busy" ? oneWord(this.statusDetail) : "Working", cls: "run" };
@@ -1138,6 +1179,8 @@ export class TaskView {
       this.refreshAll();
     }
   }
+  // resume opens the saved task again, and says whether it is open and
+  // loaded now.
   async resume() {
     const item = this.item,
       version = this.version;
@@ -1147,10 +1190,15 @@ export class TaskView {
       await this.conn.call("session.resume", { id: item.id });
       await this.desk.refresh();
       this.acting = false;
-      // Another task may have been opened meanwhile: never replace it.
+      // The refresh may already have reopened this view (app.js does, for a
+      // task that opens under a view showing it saved): that load is waited
+      // for, not repeated. Another task opened meanwhile is never replaced.
       if (version === this.version) await this.open(item.id);
+      else await this.opening;
+      return this.item?.id === item.id && !!this.item.open && !this.failed;
     } catch (error) {
       toastError(error.message);
+      return false;
     } finally {
       this.acting = false;
       this.controls();
@@ -1783,7 +1831,11 @@ export class TaskView {
     this.el.inspector.classList.add("review-view");
     this.controls();
     this.aside(true);
-    if (first && this.item.open) this.loadReview();
+    // A review kept across a reload of the task is read again.
+    if ((first || this.review.refresh) && this.item.open) {
+      this.review.refresh = false;
+      this.loadReview();
+    }
   }
   // Nested file diffs and the centre view each keep their reading position.
   // Selection is recorded as it changes, since clicking Close takes focus
@@ -1800,8 +1852,15 @@ export class TaskView {
   }
   drawReview(focusDraft = false) {
     if (this.inspecting !== "review" || !this.el) return;
-    this.rememberReview();
     const state = this.review;
+    // Every recorded event redraws the side panel, and this with it: a diff of
+    // thousands of lines, a selection in it and the reading place are not
+    // thrown away for an event that changed none of what it shows. A draft
+    // being typed is not in the signature: its field keeps its own text.
+    const shown = JSON.stringify([state.filesId, state.base, state.omitted, state.mode, state.composing, state.comments, state.loading, state.error, state.sending, this.working(), this.item.open, this.item.worktree?.base, this.acting, this.desk.keysLocked]);
+    if (!focusDraft && shown === state.shown) return;
+    state.shown = shown;
+    this.rememberReview();
     const view = this.el.inspector;
     const active = view.contains(document.activeElement) ? document.activeElement : null;
     const control = active?.getAttribute("aria-label");
@@ -1849,6 +1908,7 @@ export class TaskView {
     state.loading = false;
     state.error = answer.error || null;
     if (!answer.error) {
+      state.filesId = (state.filesId || 0) + 1;
       state.files = answer.changes;
       state.base = answer.base;
       state.omitted = answer.omitted;
@@ -1896,7 +1956,10 @@ export class TaskView {
     const panel = h("section", { class: "panel review", "aria-label": "Worktree review" });
     // The changes are read from the worktree of an open task.
     if (!item.open) {
-      panel.append(h("p", { class: "hint" }, "Resume this task to review its changes: they are read from its worktree while it is open."));
+      panel.append(
+        h("p", { class: "hint" }, "Resume this task to review its changes: they are read from its worktree while it is open."),
+        h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn dark resume-review", disabled: !this.conn.has("session.resume") || this.desk.keysLocked || this.acting, onclick: async () => { if (await this.resume()) this.openReview(); } }, "Resume and review")),
+      );
       return panel;
     }
     const state = this.review;

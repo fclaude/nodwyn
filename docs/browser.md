@@ -423,8 +423,15 @@ the default, with old and current-file line numbers; **Side-by-side** aligns
 the old and new files, leaving a blank where only one has a line. Long lines
 wrap within the diff; on a phone the split diff scrolls sideways without
 widening the page. A line starting with `++` or `--` is content, not a header.
-A closed task's review says to resume it. **Close review** restores the
-conversation and reply form without discarding either draft.
+A closed task's review says to resume it, with **Resume and review** beside
+the message: one step resumes the task and opens the review (Home's **Review**
+link lands there for a saved task). **Close review** restores the
+conversation and reply form without discarding either draft. The review is
+built again only when something it shows changed (its diff, the comments, the
+layout, whether the task works), not for every recorded event, so a selection
+in a long diff and the reading place stay while the task works. Comments and an
+unsaved notes draft survive a reload of the same task, which a failed send or
+answer causes; only another task starts without them.
 
 **+** on a current-file line (or **Comment on file**) writes a comment, which
 **Remove** takes back. Old-only deletions have no line-comment control; use a
@@ -477,7 +484,12 @@ it. An open task's page is kept while another is shown: it stays
 subscribed, draws what happens meanwhile, and comes back at once as it
 was, without reading the conversation again. The eight most recently
 shown are kept; a saved task's page, or one past those, is read from its
-log when it is opened. A key typed into a request card is cleared when you
+log when it is opened. The page says "Loading the conversation…" until its
+first event is drawn; a load that fails says so where the conversation would
+be, with the message and **Retry**, and the reply box says why it is off. A
+saved task's reply box is not dead: **Send** resumes the task and then sends
+the message (nothing is sent if resuming fails, and the text stays in the
+box), and **Resume** in the heading stays too. A key typed into a request card is cleared when you
 switch away.
 
 Streamed text and thinking are joined for the next display frame, without

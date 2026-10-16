@@ -107,6 +107,20 @@ async function reviewSafeguards(page) {
     await accepted;
     guards.accepted = task.review.comments.length === 0 && task.review.note === "";
 
+    // Reopening the same task, as a failed send does, keeps what was written
+    // for the review and the notes; the review is read again when it is opened.
+    if (task.openReview) {
+      task.review.comments.push({ path: "newest.txt", line: 1, quote: "x", text: "Kept across a reload" });
+      task.notesDraft = "A note in progress";
+      await task.open("review-check");
+      guards.reopenKeeps = task.review?.comments.length === 1 && task.review.comments[0].text === "Kept across a reload" && task.notesDraft === "A note in progress";
+      const before = reads.length;
+      open();
+      guards.reopenReads = reads.length === before + 1 && document.querySelector(".review-comment")?.textContent.includes("Kept across a reload");
+      task.review.comments = [];
+      task.notesDraft = null;
+    }
+
     if (task.openReview) {
       const complex = task.loadReview();
       reads.at(-1).resolve(answer([
@@ -146,6 +160,17 @@ async function reviewSafeguards(page) {
       modes.lateClose = task.inspecting === null && task.el.inspector.hidden && !task.el.transcript.hidden && !task.el.form.hidden;
     }
     open();
+    // An event that changes nothing the review shows leaves its diff, its
+    // selection and its reading place alone; a change redraws it.
+    if (task.openReview) {
+      const marker = document.querySelector(".review-file");
+      task.aside();
+      task.aside();
+      guards.noRebuild = !!marker && document.querySelector(".review-file") === marker;
+      task.review.mode = task.review.mode === "split" ? "unified" : "split";
+      task.aside();
+      guards.rebuildOnChange = document.querySelector(".review-file") !== marker;
+    }
     const navigated = task.loadReview();
     task.version++;
     reads.at(-1).resolve(answer([file("wrong-task")]));
@@ -505,6 +530,14 @@ check(async () => {
   assert.strictEqual(sent.of("worktree.diff").length, asked, "a closed task's diff was asked for");
   assert.ok(!(await page.innerText(".task-main .inspector-view .review")).includes("not open in this daemon"), "the closed task shows the daemon's refusal");
   await page.screenshot({ path: `${out}/worktree-review-closed.png` });
+  // Resume sits beside that message: it resumes the task and opens its review
+  // in one step, instead of three.
+  const diffReads = sent.of("worktree.diff").length, resumes = sent.of("session.resume").length;
+  await page.click(".review .resume-review");
+  await until("the resumed task's review", async () => sent.of("session.resume").length === resumes + 1 && sent.of("worktree.diff").length > diffReads).catch((e) => { throw new Error(e.message + " " + JSON.stringify([resumes, sent.of("session.resume").length, diffReads, sent.of("worktree.diff").length])); });
+  await page.waitForSelector(".review-file");
+  assert.ok(await page.isVisible(".review-bar"), "the review is not on screen after Resume and review");
+  await idle();
 
   // A folder can still opt out, and the next task then starts in that folder.
   await page.evaluate(() => (location.hash = "#/"));

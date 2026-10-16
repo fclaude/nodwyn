@@ -368,4 +368,20 @@ check(async () => {
   assert.strictEqual(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false, "earlier run history scrolls the phone sideways");
   await page.screenshot({ path: `${out}/tasks-earlier-runs-phone.png` });
 
+  // A saved task's reply box works: Send resumes the task, and the message
+  // goes once it is open, in that order; the Resume button stays too.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await button("Close");
+  await page.waitForSelector('.task-actions button:text-is("Resume")');
+  assert.ok(await page.isEnabled("#reply"), "a saved task's reply box is disabled");
+  assert.ok((await page.getAttribute("#reply", "placeholder")).includes("Reply to resume"), await page.getAttribute("#reply", "placeholder"));
+  const mark = sent.length;
+  await page.fill("#reply", "One more thing");
+  await page.press("#reply", "Enter");
+  await until("the message sent after the resume", async () => sent.slice(mark).some((r) => r.method === "session.send"));
+  assert.deepStrictEqual(sent.slice(mark).map((r) => r.method).filter((m) => m === "session.resume" || m === "session.send"), ["session.resume", "session.send"], "the message did not follow the resume");
+  assert.strictEqual(sent.slice(mark).find((r) => r.method === "session.send").params.text, "One more thing");
+  await until("the resumed task answered", async () => (await page.locator(".transcript > .turn.user .you-text").count()) === 3);
+  await page.screenshot({ path: `${out}/tasks-saved-reply.png` });
+  step("a saved task is answered from its own reply box");
 });
