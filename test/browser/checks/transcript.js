@@ -1317,6 +1317,28 @@ check(async () => {
   const c = results.clocks;
   want(c.model === "5.0 s" && c.tools === "0.0 s", `the clocks count only answered pairs: ${JSON.stringify(c)}`);
   want(c.running === "12 s" && c.working === "12 s", `running and working stay at the turns' own spans: ${JSON.stringify(c)}`);
+  // A reply of thousands of ">" (a model stuck repeating, or a reply written
+  // to do this) overflowed the markdown reader's stack, and the task could
+  // not be drawn again. It draws, nested no deeper than the reader's cap,
+  // and what follows it draws too.
+  const hostile = await page.evaluate(async () => {
+    const { Transcript } = await import("/transcript.js");
+    const root = document.createElement("div");
+    document.body.replaceChildren(root);
+    const t = new Transcript(root);
+    let error = "";
+    try {
+      t.render({ kind: "user.msg", payload: { text: "Go" } });
+      t.render({ kind: "llm.resp", payload: { content: ">".repeat(6000) + " hi", usage: { prompt_tokens: 1, output_tokens: 1 } } });
+      t.render({ kind: "llm.resp", payload: { content: "After it.", usage: { prompt_tokens: 1, output_tokens: 1 } } });
+    } catch (err) {
+      error = String(err);
+    }
+    let depth = 0;
+    for (let q = root.querySelector("blockquote"); q; q = q.querySelector(":scope > blockquote")) depth++;
+    return { error, depth, after: root.textContent.includes("After it.") };
+  });
+  want(!hostile.error && hostile.depth > 0 && hostile.depth <= 9 && hostile.after, `a reply of 6000 ">" draws: ${JSON.stringify(hostile)}`);
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
 });

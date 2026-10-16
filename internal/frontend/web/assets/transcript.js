@@ -351,7 +351,17 @@ export class Transcript {
     pre.textContent = note.tools.join("\n");
   }
   // render draws one event; it returns nothing and decides nothing.
+  // render draws one record. One that cannot be drawn says so in its place:
+  // the conversation is replayed through here each time the task opens, so a
+  // record that threw would close the task to the console for good.
   render(event) {
+    try {
+      this.draw(event);
+    } catch (err) {
+      this.el.append(h("p", { class: "empty-note" }, `Record ${event.seq ?? ""} (${event.kind}) could not be shown here: ${err?.message || err}. The log keeps it whole; nodwyn replay prints it.`));
+    }
+  }
+  draw(event) {
     const p = event.payload || {};
     switch (event.kind) {
       case "user.msg": {

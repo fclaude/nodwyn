@@ -597,6 +597,9 @@ shell decisions inside read-style wrappers do not interrupt replay. A reconnect
 never retries an operation. Browser reload retains pairing through the session
 cookie, and the address keeps the task, so the same task opens again.
 Untrusted text is rendered as literal text, never HTML or executable Markdown.
+Quotes and lists nest at most eight deep; deeper lines show as text. A record
+the console cannot draw shows a line saying so in its place, and the rest of
+the conversation draws, so no single reply can close a task to the console.
 
 Create a session with an existing absolute repository directory, resume a saved
 session, and send messages from the composer. Abort cancels the current turn or

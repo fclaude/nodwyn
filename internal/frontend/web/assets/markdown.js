@@ -4,7 +4,12 @@
 // shows the markup as text. Links open only for http(s) URLs.
 import { h } from "./dom.js";
 
-export function markdown(source) {
+// maxNesting bounds quotes and lists inside each other. Deeper lines are
+// shown as text: a reply of thousands of ">" would otherwise recurse past the
+// browser's stack, and the task could not be drawn again.
+const maxNesting = 8;
+
+export function markdown(source, depth = 0) {
   const root = h("div", { class: "prose" });
   const lines = String(source ?? "").replace(/\r\n?/g, "\n").split("\n");
   let i = 0;
@@ -39,7 +44,11 @@ export function markdown(source) {
     if (/^\s*>/.test(line)) {
       const body = [];
       while (i < lines.length && /^\s*>/.test(lines[i])) body.push(lines[i++].replace(/^\s*>\s?/, ""));
-      const quote = markdown(body.join("\n"));
+      if (depth >= maxNesting) {
+        root.append(h("blockquote", {}, h("p", {}, body.join("\n"))));
+        continue;
+      }
+      const quote = markdown(body.join("\n"), depth + 1);
       quote.className = "";
       root.append(h("blockquote", {}, [...quote.childNodes]));
       continue;
@@ -51,7 +60,7 @@ export function markdown(source) {
       continue;
     }
     if (listItem(line)) {
-      const [list, next] = readList(lines, i, indent(line));
+      const [list, next] = readList(lines, i, indent(line), depth);
       root.append(list);
       i = next;
       continue;
@@ -79,7 +88,7 @@ function indent(line) {
 function listItem(line) {
   return /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/.exec(line);
 }
-function readList(lines, i, base) {
+function readList(lines, i, base, depth) {
   const first = listItem(lines[i]);
   const ordered = /\d/.test(first[2]);
   const list = h(ordered ? "ol" : "ul");
@@ -92,8 +101,8 @@ function readList(lines, i, base) {
       item = h("li", {}, taskBox(m[3]));
       list.append(item);
       i++;
-    } else if (m && indent(line) > base && item) {
-      const [sub, next] = readList(lines, i, indent(line));
+    } else if (m && indent(line) > base && item && depth < maxNesting) {
+      const [sub, next] = readList(lines, i, indent(line), depth + 1);
       item.append(sub);
       i = next;
     } else if (line.trim() && indent(line) > base && item) {
