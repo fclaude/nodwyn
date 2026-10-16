@@ -59,13 +59,8 @@
           '("fs-read" "fs-list" "index-grep" "index-search" "fs-find")))
 
 (define (second-look-ask system task)
-  (let ((rounds sub-agent-max-rounds))
-    (set! sub-agent-max-rounds second-look-rounds)
-    (let ((answer (guard (e (else (set! sub-agent-max-rounds rounds)
-                                  (string-append "(the helper failed: " (format "~a" (assoc-ref e 'message "")) ")")))
-                    (sub-agent system task second-look-tools "second-look"))))
-      (set! sub-agent-max-rounds rounds)
-      answer)))
+  (guard (e (else (string-append "(the helper failed: " (format "~a" (assoc-ref e 'message "")) ")")))
+    (sub-agent system task second-look-tools "second-look" (list (cons 'rounds second-look-rounds)))))
 
 ;; The tool reads the check only where the session may read: a path the
 ;; repository-pin guard refuses does not raise, it ends the turn (q4-hrcel-1,

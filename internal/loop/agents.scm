@@ -12,6 +12,11 @@
 ;; The name a sub-agent's context gets in the log: the agent tool being
 ;; answered while run-calls runs its handler, else "sub-agent".
 (define agent-label #f)
+;; A turn starts with no agent tool running; a stop inside one left it set.
+(define agents-base-nodwyn-turn nodwyn-turn)
+(define (nodwyn-turn request)
+  (set! agent-label #f)
+  (agents-base-nodwyn-turn request))
 
 ;; Register a tool the model can call, answered by (handler call args). It is
 ;; offered like any tool, so define it in .nodwyn/init.scm, before the tool
@@ -103,11 +108,17 @@
 ;; the caller's context never sees the sub-agent's work, only what the
 ;; caller does with the answer. The log keeps all of it. An optional options
 ;; alist follows the name: '((model . "NAME")) asks the configured model NAME
-;; (see model-names, and labels in model-info) instead of the control model.
+;; (see model-names, and labels in model-info) instead of the control model,
+;; and '((rounds . N)) gives it N rounds instead of sub-agent-max-rounds. A
+;; caller that wants fewer rounds says so here: one that set the global for
+;; the call left it set when a stop ended the turn inside the sub-agent,
+;; since guard does not catch a stop, and every later sub-agent of the
+;; session had those few rounds.
 (define (sub-agent system task tools . rest)
   (define name (if (and (pair? rest) (car rest)) (list (car rest)) '()))
   (define options (if (and (pair? rest) (pair? (cdr rest))) (cadr rest) '()))
   (define model (assoc-ref options 'model "control"))
+  (define max-rounds (assoc-ref options 'rounds sub-agent-max-rounds))
   (define (ask)
     (cond ((null? tools) (ask-model model '((tools . #f)))) ; no tools: offer none
           ((pair? tools) (ask-model model (list (cons 'tools tools))))
@@ -129,7 +140,7 @@
          ((null? calls)
           (fold-context)
           (string-trim (assoc-ref reply 'content "")))
-         ((>= rounds sub-agent-max-rounds)
+         ((>= rounds max-rounds)
           (sub-agent-wrap-up calls "this agent is out of rounds" model))
          (else
             (let ((allowed (cond ((procedure? tools) (filter tools calls))

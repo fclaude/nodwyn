@@ -58,6 +58,14 @@
 (define hygiene-unrun '()) ; test commands that did not run a test: (id . why)
 (define hygiene-cache '()) ; recent requests that reported the provider's cache: (prompt . cached)
 
+;; A turn starts in the main context, with no sub-agent running. A stop
+;; inside one (the person's, a limit, a progress stop) passes through guard
+;; and skips the decrement below, which left the rules off for the session.
+(define hygiene-base-nodwyn-turn nodwyn-turn)
+(define (nodwyn-turn request)
+  (set! hygiene-depth 0)
+  (hygiene-base-nodwyn-turn request))
+
 (define hygiene-base-sub-agent sub-agent)
 (define (sub-agent . args)
   (set! hygiene-depth (+ hygiene-depth 1))

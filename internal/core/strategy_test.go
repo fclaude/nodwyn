@@ -500,3 +500,29 @@ func TestFoldResultShowsTextInLaterWindows(t *testing.T) {
 		}
 	}
 }
+
+// A stop inside a sub-agent (a limit, a progress stop, the person's) passes
+// through guard, and the strategy's tidying after it never ran: the hygiene
+// rules stayed off and every later sub-agent kept the few rounds the
+// stopped one was given, for the rest of the session. The next turn starts
+// as a turn does.
+func TestAStopInsideASubAgentLeavesTheNextTurnAlone(t *testing.T) {
+	r := strategyRig(t, `
+(define first-turn #t)
+(define base-agent-turn agent-turn)
+(define (agent-turn request)
+  (if first-turn
+      (begin (set! first-turn #f) (second-look-ask "You check." "Check this."))
+      (base-agent-turn request)))`, 1,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-read", Args: map[string]any{"path": "main.go"}}}},
+		fake.Turn{Content: "done"})
+	if got := r.turn("check it"); got == "" {
+		t.Fatal("the turn inside the sub-agent was not stopped")
+	}
+	if got := r.turn("go on"); got != "" {
+		t.Fatalf("the next turn: %s", got)
+	}
+	if got := r.eval(`(list hygiene-depth sub-agent-max-rounds agent-label)`); got != "(0 40 #f)" {
+		t.Fatalf("after a stop inside a sub-agent: %s", got)
+	}
+}

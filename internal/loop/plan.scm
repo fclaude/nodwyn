@@ -95,13 +95,10 @@
 (define (plan-explore request)
   (if (<= (tuned plan-explore-rounds) 0)
       ""
-      (let ((rounds sub-agent-max-rounds))
-        (set! sub-agent-max-rounds (tuned plan-explore-rounds))
-        (let ((found (guard (e (else (set! sub-agent-max-rounds rounds) ""))
-                       (sub-agent plan-explore-system (plan-explore-task request)
-                                  '("fs-read" "fs-list" "index-grep" "index-search" "fs-find") "explorer"))))
-          (set! sub-agent-max-rounds rounds)
-          found))))
+      (guard (e (else ""))
+        (sub-agent plan-explore-system (plan-explore-task request)
+                   '("fs-read" "fs-list" "index-grep" "index-search" "fs-find") "explorer"
+                   (list (cons 'rounds (tuned plan-explore-rounds)))))))
 
 ;; Whether the task has a judge it can ask now: one chosen for it, or
 ;; [judge]'s, whose key is stored (ADR 46, ADR 47). The primitive is
