@@ -70,7 +70,7 @@ it can see the thing but not change it.
 | Save a binding (`session.binding.create`) | yes, on this computer | yes, `b` | yes | `nodwyn credential` |
 | Masked secret prompts | yes | yes | yes | — |
 | Budget checkpoints | yes | yes | yes | — |
-| Don't ask (`session.approve_all`) | yes, when Settings offers it | not built | `--yolo` at start | `nodwyn run --yolo` |
+| Don't ask (`session.approve_all`) | yes, when Settings offers it; a paired device sees it while on and turns it off | not built | `--yolo` at start | `nodwyn run --yolo` |
 | A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: `--budget-*` set limits, none removes them | `nodwyn run`: not built, its run limits are its own |
 | Edit `allow.toml` (`session.policy.write`) | yes, the policy editor | deliberate gap: `:bindings` reads only | — | — |
 

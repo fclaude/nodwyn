@@ -239,12 +239,9 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 	if err := params(req.Params, &p, "id", "path", "hash"); err != nil {
 		return nil, err
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before restoring a file")
+	owned, rerr := s.idle(p.ID, "restoring a file")
+	if rerr != nil {
+		return nil, rerr
 	}
 	operation, err := owned.session.Restore(p.Path, p.Hash, client.actor)
 	if err != nil {
@@ -500,12 +497,9 @@ func (s *server) attach(req request, client *peer) (any, *rpcError) {
 	if !filepath.IsAbs(p.Path) {
 		return nil, failure(-32602, "path must be absolute")
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before attaching")
+	owned, rerr := s.idle(p.ID, "attaching")
+	if rerr != nil {
+		return nil, rerr
 	}
 	// An image waits for its confirm, which a client answers with
 	// session.answer, so the attachment is made without the lifecycle lock

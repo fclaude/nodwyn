@@ -193,6 +193,23 @@ func isGit(root string) bool {
 	return err == nil
 }
 
+// idle finds the open session id names for a method that changes it or
+// reads what only a session at rest can answer, and refuses while a run
+// drives it. doing completes "Stop the active run before ".
+func (s *server) idle(id, doing string) (ownedSession, *rpcError) {
+	if id == "" {
+		return ownedSession{}, failure(-32602, "id is required")
+	}
+	owned, ok := s.sessions[id]
+	if !ok {
+		return ownedSession{}, failure(-32002, "Session is not open in this daemon")
+	}
+	if owned.driver.Active() {
+		return ownedSession{}, failure(-32000, "Stop the active run before "+doing)
+	}
+	return owned, nil
+}
+
 // handler is one RPC method. Every handler runs with s.mu held and with
 // the client already past hello, so none of them repeats those checks.
 type handler func(*server, request, *peer) (any, *rpcError)
@@ -303,6 +320,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 				return nil, failure(-32602, "via must be a short name such as web:phone, given once")
 			}
 			client.actor += " via " + p.Via
+			client.device = true
 		}
 		client.ready = true
 		return helloResult{ProtocolVersion, s.options.Version, methods, client.actor}, nil
@@ -391,13 +409,13 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 		return nil, err
 	}
 	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort, Actor: client.actor}
-	if why := deviceModelRefusal(client.actor, choice); why != nil {
+	if why := deviceModelRefusal(client, choice); why != nil {
 		return nil, why
 	}
 	var judge *core.JudgeChoice
 	if p.Judge != nil {
-		if strings.Contains(client.actor, " via ") {
-			return nil, failure(-32602, "The judge a task asks is chosen on the computer nodwyn runs on, not from a paired device")
+		if why := client.refuseDevice("The judge a task asks is chosen on the computer nodwyn runs on, not from a paired device"); why != nil {
+			return nil, why
 		}
 		judge = &core.JudgeChoice{Server: *p.Judge, Actor: client.actor}
 	}
@@ -405,14 +423,14 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	if len(p.Delegates) > 0 {
 		// Where a task's work may go is this computer's choice, as its model
 		// and judge are (ADR 30).
-		if strings.Contains(client.actor, " via ") {
-			return nil, failure(-32602, "The models a task may delegate to are chosen on the computer nodwyn runs on, not from a paired device")
+		if why := client.refuseDevice("The models a task may delegate to are chosen on the computer nodwyn runs on, not from a paired device"); why != nil {
+			return nil, why
 		}
 		delegates = &core.DelegateChoice{Models: p.Delegates, Actor: client.actor}
 	}
 	var limits *core.LimitsChoice
 	if p.Limits != nil && !*p.Limits {
-		if why := deviceLimitsRefusal(client.actor); why != nil {
+		if why := deviceLimitsRefusal(client); why != nil {
 			return nil, why
 		}
 		limits = &core.LimitsChoice{On: false, Actor: client.actor}
@@ -500,15 +518,12 @@ func (s *server) model(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32602, "give the name of a configured model, or a server and the model on it")
 	}
 	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort, Actor: client.actor}
-	if why := deviceModelRefusal(client.actor, choice); why != nil {
+	if why := deviceModelRefusal(client, choice); why != nil {
 		return nil, why
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before switching the model")
+	owned, rerr := s.idle(p.ID, "switching the model")
+	if rerr != nil {
+		return nil, rerr
 	}
 	state, err := owned.session.SetModel(choice)
 	if err != nil {
@@ -529,15 +544,12 @@ func (s *server) judge(req request, client *peer) (any, *rpcError) {
 	if p.ID == "" {
 		return nil, failure(-32602, "id is required")
 	}
-	if strings.Contains(client.actor, " via ") {
-		return nil, failure(-32602, "The judge a task asks is chosen on the computer nodwyn runs on, not from a paired device")
+	if why := client.refuseDevice("The judge a task asks is chosen on the computer nodwyn runs on, not from a paired device"); why != nil {
+		return nil, why
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before choosing the judge")
+	owned, rerr := s.idle(p.ID, "choosing the judge")
+	if rerr != nil {
+		return nil, rerr
 	}
 	state, err := owned.session.SetJudge(p.Judge, client.actor)
 	if err != nil {
@@ -558,15 +570,12 @@ func (s *server) limitsSet(req request, client *peer) (any, *rpcError) {
 	if p.ID == "" {
 		return nil, failure(-32602, "id is required")
 	}
-	if why := deviceLimitsRefusal(client.actor); why != nil {
+	if why := deviceLimitsRefusal(client); why != nil {
 		return nil, why
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before changing the task's limits")
+	owned, rerr := s.idle(p.ID, "changing the task's limits")
+	if rerr != nil {
+		return nil, rerr
 	}
 	if err := owned.session.SetLimits(p.On, client.actor); err != nil {
 		return nil, failure(-32000, err.Error())
@@ -578,23 +587,19 @@ func (s *server) limitsSet(req request, client *peer) (any, *rpcError) {
 // deviceLimitsRefusal says why a paired device may not lift or change a
 // task's turn limits: a device answers a task's requests, it does not
 // decide how long a turn may run with nobody stopping it (ADR 30, ADR 49).
-func deviceLimitsRefusal(actor string) *rpcError {
-	if strings.Contains(actor, " via ") {
-		return failure(-32602, "A task's limits are chosen on the computer nodwyn runs on, not from a paired device")
-	}
-	return nil
+func deviceLimitsRefusal(client *peer) *rpcError {
+	return client.refuseDevice("A task's limits are chosen on the computer nodwyn runs on, not from a paired device")
 }
 
 // deviceModelRefusal says why a paired device may not choose the model a
 // conversation talks to, opening it or moving it: where its content goes is
 // chosen on the computer nodwyn runs on (ADR 30, ADR 40). A device opens a
-// task on config.toml's [control] model. The bridge relays a paired device's
-// name as via, so its actor carries " via ", as unwatchedRefusal reads it.
-func deviceModelRefusal(actor string, c core.ModelChoice) *rpcError {
-	if (c.Name != "" || c.Server != "" || c.Model != "" || c.Effort != "") && strings.Contains(actor, " via ") {
-		return failure(-32602, "The model a task talks to is chosen on the computer nodwyn runs on, not from a paired device")
+// task on config.toml's [control] model.
+func deviceModelRefusal(client *peer, c core.ModelChoice) *rpcError {
+	if c.Name == "" && c.Server == "" && c.Model == "" && c.Effort == "" {
+		return nil
 	}
-	return nil
+	return client.refuseDevice("The model a task talks to is chosen on the computer nodwyn runs on, not from a paired device")
 }
 
 func (s *server) info(req request, _ *peer) (any, *rpcError) {
@@ -739,12 +744,13 @@ func (s *server) deleteSession(req request, _ *peer) (any, *rpcError) {
 }
 
 func (s *server) friction(req request, client *peer) (any, *rpcError) {
-	owned, _, err := s.session(req)
-	if err != nil {
+	var p idParams
+	if err := params(req.Params, &p, "id"); err != nil {
 		return nil, err
 	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before inspecting friction")
+	owned, rerr := s.idle(p.ID, "inspecting friction")
+	if rerr != nil {
+		return nil, rerr
 	}
 	operation, readErr := owned.session.ReadFriction(client.actor)
 	if readErr != nil {
@@ -761,12 +767,9 @@ func (s *server) eval(req request, client *peer) (any, *rpcError) {
 	if p.ID == "" || p.Source == "" {
 		return nil, failure(-32602, "id and nonempty source are required")
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before evaluating")
+	owned, rerr := s.idle(p.ID, "evaluating")
+	if rerr != nil {
+		return nil, rerr
 	}
 	if err := owned.session.StartEval(p.Source, client.actor); err != nil {
 		return nil, failure(-32000, err.Error())
@@ -782,12 +785,9 @@ func (s *server) send(req request, _ *peer) (any, *rpcError) {
 	if p.ID == "" || p.Text == "" {
 		return nil, failure(-32602, "id and nonempty text are required")
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before sending a message")
+	owned, rerr := s.idle(p.ID, "sending a message")
+	if rerr != nil {
+		return nil, rerr
 	}
 	if err := owned.session.Send(p.Text); err != nil {
 		return nil, failure(-32000, err.Error())

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -92,8 +91,8 @@ func (s *server) writeSchedule(id string, rec log.SessionSchedule) error {
 }
 
 func (s *server) setSchedule(req request, client *peer) (any, *rpcError) {
-	if strings.Contains(client.actor, " via ") {
-		return nil, failure(-32602, "Schedules are created and changed on this computer, not from a paired device")
+	if why := client.refuseDevice("Schedules are created and changed on this computer, not from a paired device"); why != nil {
+		return nil, why
 	}
 	var p scheduleSetParams
 	if err := params(req.Params, &p, "id", "message", "repeat", "at", "cost", "paused", "remove"); err != nil {
@@ -135,8 +134,10 @@ func (s *server) pauseSchedule(req request, client *peer) (any, *rpcError) {
 	if p.ID == "" || p.Paused == nil {
 		return nil, failure(-32602, "id and paused are required")
 	}
-	if !*p.Paused && strings.Contains(client.actor, " via ") {
-		return nil, failure(-32602, "Resuming a schedule is a change made on this computer, not from a paired device")
+	if !*p.Paused {
+		if why := client.refuseDevice("Resuming a schedule is a change made on this computer, not from a paired device"); why != nil {
+			return nil, why
+		}
 	}
 	state, err := s.store().Schedule(p.ID)
 	if err != nil {

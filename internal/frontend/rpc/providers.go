@@ -780,8 +780,8 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 	if err := params(req.Params, &p, "name", "server", "model", "effort"); err != nil {
 		return nil, err
 	}
-	if strings.Contains(client.actor, " via ") {
-		return nil, failure(-32602, "A model is tried from the computer nodwyn runs on, not from a paired device")
+	if why := client.refuseDevice("A model is tried from the computer nodwyn runs on, not from a paired device"); why != nil {
+		return nil, why
 	}
 	m, effort, err := core.Choose(s.options.Config, core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort})
 	if err != nil {

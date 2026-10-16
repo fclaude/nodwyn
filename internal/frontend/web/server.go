@@ -574,6 +574,11 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.approval.create", "session.friction", "session.policy.read",
 		"schedule.pause", "schedule.run", "session.notes.write", "session.restore", "session.rename", "session.archive":
 		return true
+	// "Don't ask" can be turned off from a device, the safe direction; the
+	// daemon refuses to turn it on for one (ADR 30), so a device can stop a
+	// task that is skipping its questions without aborting it.
+	case "session.approve_all":
+		return true
 	// Choosing a conversation's model, or the judge its plans and commands
 	// go to, decides where its content goes next, so it stays with the
 	// computer nodwyn runs on (ADR 30, ADR 40, ADR 47).
@@ -589,7 +594,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	// this computer removes one (ADR 39).
 	case "session.delete":
 		return !remote
-	case "session.binding.create", "session.approve_all", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write",
+	case "session.binding.create", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write",
 		"settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test",
 		"workspace.save", "workspace.active", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
 		return !remote

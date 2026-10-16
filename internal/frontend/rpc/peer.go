@@ -12,15 +12,28 @@ import (
 // connection; reconnecting clients recover durable events through log.read.
 type peer struct {
 	actor string // authenticated by the Unix socket, not supplied by the client
-	ready bool   // used only by the connection's request reader
-	conn  net.Conn
-	out   chan any
-	done  chan struct{}
-	once  sync.Once
+	// device is set once, at hello, by a client that relays a paired device
+	// (via): the web bridge. A process claiming it only limits itself.
+	device bool
+	ready  bool // used only by the connection's request reader
+	conn   net.Conn
+	out    chan any
+	done   chan struct{}
+	once   sync.Once
 }
 
 func newPeer(conn net.Conn) *peer {
 	return &peer{conn: conn, out: make(chan any, 128), done: make(chan struct{})}
+}
+
+// refuseDevice is the refusal of a method that is for the computer nodwyn runs
+// on (ADR 30), or nil for a client that is not a paired device: the one place
+// a handler says that a device may not do what it asks.
+func (p *peer) refuseDevice(message string) *rpcError {
+	if p.device {
+		return failure(-32602, message)
+	}
+	return nil
 }
 func (p *peer) close() {
 	p.once.Do(func() {

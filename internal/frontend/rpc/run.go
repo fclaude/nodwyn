@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/core"
@@ -54,7 +53,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if p.Judge && p.AutoApprove {
 			return nil, failure(-32602, "judge and auto_approve exclude each other: the judge answers what auto_approve would")
 		}
-		if err := unwatchedRefusal(client.actor, p.AutoApprove, p.Unattended, p.Judge); err != nil {
+		if err := unwatchedRefusal(client, p.AutoApprove, p.Unattended, p.Judge); err != nil {
 			return nil, err
 		}
 		info, err := os.Stat(p.Repo)
@@ -105,7 +104,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if p.Judge && p.AutoApprove {
 		return nil, failure(-32602, "judge and auto_approve exclude each other: the judge answers what auto_approve would")
 	}
-	if err := unwatchedRefusal(client.actor, p.AutoApprove, p.Unattended, p.Judge); err != nil {
+	if err := unwatchedRefusal(client, p.AutoApprove, p.Unattended, p.Judge); err != nil {
 		return nil, err
 	}
 	owned, open := s.sessions[p.ID]
@@ -181,12 +180,12 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 // unattended). Like "Always allow" for uploads, that is chosen on the
 // computer nodwyn runs on (ADR 30): a device answers requests, it does not
 // hand them to no one. The bridge relays a paired device's name as via, so
-// its actor carries " via "; a process claiming one only limits itself.
-func unwatchedRefusal(actor string, autoApprove, unattended, judge bool) *rpcError {
-	if (autoApprove || unattended || judge) && strings.Contains(actor, " via ") {
-		return failure(-32602, "A run whose requests nobody answers by hand starts only on the computer nodwyn runs on, not from a paired device")
+// its peer is a device; a process claiming it only limits itself.
+func unwatchedRefusal(client *peer, autoApprove, unattended, judge bool) *rpcError {
+	if !(autoApprove || unattended || judge) {
+		return nil
 	}
-	return nil
+	return client.refuseDevice("A run whose requests nobody answers by hand starts only on the computer nodwyn runs on, not from a paired device")
 }
 
 func (s *server) startRun(session *core.Session, state run.State, actor string) (any, *rpcError) {

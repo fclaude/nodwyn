@@ -20,6 +20,9 @@ check(async () => {
   const { url, repo, page } = await desk();
   const sent = requests(page);
   let socket, approveReplyID = null, heldApproveReply = null, failNextApprove = false;
+  // A paired device's hello lacks the methods that are this computer's.
+  let deviceHello = false;
+  const computerOnly = ["session.model.set", "session.judge.set", "session.limits.set", "session.binding.create", "settings.write", "settings.control.write"];
   let approvalEventSeen = false, approvalInfoIDs = new Set(), heldApprovalInfo = null;
   await page.routeWebSocket("**/socket", (ws) => {
     const server = ws.connectToServer();
@@ -40,6 +43,11 @@ check(async () => {
     });
     server.onMessage((message) => {
       const frame = JSON.parse(message);
+      if (deviceHello) {
+        if (Array.isArray(frame.result?.methods)) frame.result.methods = frame.result.methods.filter((m) => !computerOnly.includes(m));
+        ws.send(JSON.stringify(frame));
+        return;
+      }
       if (frame.method === "session.event" && frame.params?.kind === "approval.change" && frame.params?.payload?.kind === "all") {
         approvalEventSeen = true;
         ws.send(message);
@@ -578,5 +586,21 @@ check(async () => {
     await page.waitForSelector(`[id='set-policy.allow_insecure_http-${allow || "default"}'][aria-pressed=true]`);
   }
   step("credential transport setting defaults off, saves on and off, and survives reload");
+
+  // A paired device sees that "Don't ask" is on and can turn it off, never on:
+  // the task it is watching is not left skipping its questions with no way to
+  // stop them but aborting it (P2-075).
+  deviceHello = true;
+  await page.goto(`${new URL(url).origin}/#/task/${encodeURIComponent(id)}`);
+  await page.reload();
+  await page.waitForSelector(".task[data-loaded]");
+  await until("the switch shown on a device while it is on", async () => page.$eval(".dont-ask", (el) => !el.hidden && el.querySelector("input").checked));
+  await page.screenshot({ path: `${out}/device-dont-ask.png` });
+  await page.$eval(".dont-ask input", (el) => el.click());
+  await until("the switch turned off from the device", async () => sent.of("session.approve_all").at(-1)?.on === false);
+  assert.deepStrictEqual(sent.of("session.approve_all").at(-1), { id, on: false });
+  await until("the switch gone from the device once it is off", async () => page.$eval(".dont-ask", (el) => el.hidden));
+  deviceHello = false;
+  step("a device sees Don't ask while it is on and turns it off");
 
 });

@@ -692,9 +692,10 @@ export class TaskView {
     this.files.task = this.item?.id;
     this.files.files = kept;
     // "Don't ask" is the session's, in Go: no Scheme reaches it, and only
-    // this computer turns it on (session.approve_all; a paired device's
-    // hello does not list the method), and only once Settings › General › Approvals
-    // offers it (approve_all_offered; ADR 17, amended 2026-10-05).
+    // this computer turns it on (session.approve_all; a paired device may
+    // turn it off, and shows the box only while it is on), and only once
+    // Settings › General › Approvals offers it (approve_all_offered; ADR 17, amended
+    // 2026-10-05).
     const dontAsk = h(
       "label",
       { class: "dont-ask", title: "Writes and commands in this task are approved without asking until you uncheck this or the task closes. Protected files, writes that look like a key and commands built from tool output still ask; what the guard refuses stays refused." },
@@ -778,7 +779,11 @@ export class TaskView {
     // it is still on, so it can be turned off.
     const run = this.item?.run;
     const box = this.el.dontAsk;
-    const offered = !!(this.info?.approve_all_offered || this.info?.approve_all);
+    // This computer turns it on only once Settings offers it; a paired device
+    // (whose hello lacks the methods that are this computer's) turns it off,
+    // so it shows the box only while it is on.
+    const onComputer = this.conn.has("session.model.set");
+    const offered = onComputer ? !!(this.info?.approve_all_offered || this.info?.approve_all) : !!this.info?.approve_all;
     box.hidden = !this.conn.has("session.approve_all") || !open || !offered || !!(run && (run.auto_approve || run.unattended || run.judge));
     const check = box.querySelector("input");
     const approveAll = this.switching ? this.approveAllPending : !!this.info?.approve_all;

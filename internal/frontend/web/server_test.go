@@ -541,7 +541,7 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	if _, ok := s.b.authenticated(r); ok {
 		t.Fatal("revoked device still paired")
 	}
-	for _, method := range []string{"session.binding.create", "session.approve_all", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
+	for _, method := range []string{"session.binding.create", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
 		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "session.secret", "session.delete", "session.model.set", "session.limits.set"} {
 		if s.b.allowed(method, true) {
 			t.Fatalf("remote device may call %s", method)
@@ -557,7 +557,7 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	}
 	// A device may start a task in a worktree, as it may start one (ADR 34);
 	// a console that cannot reach worktree.open shows no way to ask for one.
-	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "credentials.list", "session.rename", "session.archive", "session.open", "worktree.open", "worktree.diff", "worktree.review"} {
+	for _, method := range []string{"session.answer", "session.approval.create", "session.approve_all", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "credentials.list", "session.rename", "session.archive", "session.open", "worktree.open", "worktree.diff", "worktree.review"} {
 		if !s.b.allowed(method, true) {
 			t.Fatalf("remote device may not call %s", method)
 		}

@@ -22,12 +22,9 @@ func (s *server) policy(req request, client *peer) (any, *rpcError) {
 	} else if err := params(req.Params, &p, "id", "name", "revision", "content"); err != nil {
 		return nil, err
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before editing policy")
+	owned, rerr := s.idle(p.ID, "editing policy")
+	if rerr != nil {
+		return nil, rerr
 	}
 	var operation string
 	var err error

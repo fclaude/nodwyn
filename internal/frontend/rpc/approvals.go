@@ -1,7 +1,5 @@
 package rpc
 
-import "strings"
-
 // Shared parameter types also generate the wire schema. Credentials are only
 // decoded here, never included in a response, model message or diagnostic.
 type answerParams struct {
@@ -99,8 +97,10 @@ func (s *server) approveAll(req request, client *peer) (any, *rpcError) {
 	if !ok {
 		return nil, failure(-32002, "Session is not open in this daemon")
 	}
-	if p.On && strings.Contains(client.actor, " via ") {
-		return nil, failure(-32602, "Approving without asking is turned on only on the computer nodwyn runs on, not from a paired device")
+	if p.On {
+		if why := client.refuseDevice("Approving without asking is turned on only on the computer nodwyn runs on, not from a paired device"); why != nil {
+			return nil, why
+		}
 	}
 	if p.On && !s.options.Config.Approval.DontAsk {
 		return nil, failure(-32602, "Don't ask is not offered: turn it on in Settings › General › Approvals first")

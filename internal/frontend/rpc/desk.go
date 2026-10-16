@@ -117,12 +117,9 @@ func (s *server) notesWrite(req request, client *peer) (any, *rpcError) {
 	if err := params(req.Params, &p, "id", "text"); err != nil {
 		return nil, err
 	}
-	owned, ok := s.sessions[p.ID]
-	if !ok {
-		return nil, failure(-32002, "Session is not open in this daemon")
-	}
-	if owned.driver.Active() {
-		return nil, failure(-32000, "Stop the active run before editing notes")
+	owned, rerr := s.idle(p.ID, "editing notes")
+	if rerr != nil {
+		return nil, rerr
 	}
 	operation, err := owned.session.SaveNotes(p.Text, client.actor)
 	if err != nil {
