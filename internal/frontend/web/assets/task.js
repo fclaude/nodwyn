@@ -1405,7 +1405,7 @@ export class TaskView {
     const asks = budgets && ["tool_calls", "tokens", "actions", "wall_ns", "cost"].some((d) => budgets[d]?.soft < budgets[d]?.hard);
     const note = !budgets ? "counted from the log" : this.info?.limits === false ? "no turn limits" : asks ? "asks before a limit" : "stops at a limit";
     const panel = h("section", { class: "panel" }, h("h2", {}, "This turn", h("span", { class: "note" }, note)));
-    const meters = h("div", { style: "display:flex;flex-direction:column;gap:12px", dataset: { meters: "1" } });
+    const meters = h("div", { class: "stack-md", dataset: { meters: "1" } });
     panel.append(meters);
     this.fillMeters(meters, turn);
     return panel;

@@ -147,7 +147,7 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     if (prompt.Path) title.append(`${verbs[prompt.Prim] || "Write"} `, h("span", { class: "mono" }, prompt.Path));
     else if (prompt.Argv?.length) title.append("Run ", h("span", { class: "mono" }, prompt.Argv.join(" ")));
     else title.append(s.title);
-    card.append(h("div", { style: "display:flex;flex-direction:column;gap:6px" }, title, prompt.Reasons?.length ? h("ul", { class: "reasons" }, prompt.Reasons.map((r) => h("li", {}, r))) : null));
+    card.append(h("div", { class: "stack" }, title, prompt.Reasons?.length ? h("ul", { class: "reasons" }, prompt.Reasons.map((r) => h("li", {}, r))) : null));
     if (prompt.Security) card.append(h("p", { class: "security" }, "Security confirmation: this answer applies to this call only."));
     if (s.mcp && !prompt.Egress) {
       // A contained server's reason names it and what it can reach (ADR 23 W3b).
@@ -232,7 +232,7 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     // answer marked Local widens what nodwyn does without asking: only this
     // computer, which may change settings, is offered it.
     const here = methods.has("settings.docs.write");
-    card.append(h("div", { style: "display:flex;flex-direction:column;gap:6px" }, h("h2", {}, p.Title), p.Reasons?.length ? h("ul", { class: "reasons" }, p.Reasons.map((r) => h("li", {}, r))) : null));
+    card.append(h("div", { class: "stack" }, h("h2", {}, p.Title), p.Reasons?.length ? h("ul", { class: "reasons" }, p.Reasons.map((r) => h("li", {}, r))) : null));
     if (enabled) {
       const options = p.Choices || [];
       options.forEach((o, i) => {

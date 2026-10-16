@@ -222,7 +222,7 @@ export function renderHome(root, ctx) {
         h("div", { class: "card-head" }, h("span", { class: "badge" }, s.kind), s.tool ? h("span", { class: "mono", style: "font-size:12px;color:var(--warn-ink-2)" }, s.tool) : null, since ? h("span", { class: "when" }, ago(since)) : null),
         h(
           "div",
-          { style: "display:flex;flex-direction:column;gap:3px" },
+          { class: "stack-sm" },
           h("div", { class: "card-title" }, h("span", {}, s.title), stats ? [h("span", { class: "plus" }, `+${stats.plus}`), h("span", { class: "minus" }, `−${stats.minus}`)] : null),
           h("div", { class: "card-sub" }, `${item.title || "Untitled task"} · ${desk.folderName(desk.project(item))}`),
         ),
@@ -620,7 +620,7 @@ export function renderHome(root, ctx) {
       { class: "card" },
       h(
         "div",
-        { style: "display:flex;flex-direction:column;gap:4px" },
+        { class: "stack-sm" },
         h("div", { style: "display:flex;align-items:center;gap:10px" }, h("span", { class: "run-dot" }), h("a", { href: `#/task/${item.id}`, style: "font-size:15px;font-weight:600;text-decoration:none" }, item.title || "Untitled task")),
         // A run comes from nodwyn run, a batch tool for scripts (ADR 35).
         h("div", { class: "card-sub", style: "padding-left:18px" }, run ? `${run.unattended ? "Unattended run" : "Run"} from nodwyn run · ${desk.folderName(desk.project(item))}` : `Working · ${desk.folderName(desk.project(item))}`),

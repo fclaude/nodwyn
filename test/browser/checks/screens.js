@@ -12,9 +12,9 @@ check(async () => {
   const browser = await launch();
   // The browser always reports a light system: dark is the console's default,
   // and light only a stored choice, so the dark shots check the default too.
-  const shoot = async (name, viewport, theme, look) => {
-    const ctx = await browser.newContext({ viewport, colorScheme: "light", deviceScaleFactor: 1 });
-    if (theme === "light") await ctx.addInitScript(() => localStorage.setItem("nodwyn-theme", "light"));
+  const shoot = async (name, viewport, theme, look, scheme = "light") => {
+    const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: 1 });
+    if (theme !== "dark") await ctx.addInitScript((mode) => localStorage.setItem("nodwyn-theme", mode), theme);
     const page = watch(await ctx.newPage(), name);
     // Each page pairs with a ticket of its own, one per line the demo reads.
     const from = demo.stdoutText.length;
@@ -24,8 +24,9 @@ check(async () => {
     await ready(page);
     await look(page);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    const want = theme === "light" ? "rgb(245, 242, 234)" : "rgb(23, 22, 19)";
-    assert.strictEqual(bg, want, `${name}: the background (${theme})`);
+    // "Match the system" takes the side of the system's scheme.
+    const want = (theme === "system" ? scheme : theme) === "light" ? "rgb(245, 242, 234)" : "rgb(23, 22, 19)";
+    assert.strictEqual(bg, want, `${name}: the background (${theme}, ${scheme} system)`);
     if (viewport.width < 600) {
       const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       assert.ok(sideways <= 0, `${name}: the page scrolls ${sideways} px sideways at phone width`);
@@ -120,6 +121,10 @@ check(async () => {
   await shoot("home-dark", { width: 1440, height: 900 }, "dark", home);
   await shoot("home-phone", { width: 390, height: 844 }, "light", home);
   await shoot("home-phone-dark", { width: 390, height: 844 }, "dark", home);
+  // The light palette is written once, so "Match the system" follows the
+  // system's scheme with the same colours the light choice has.
+  await shoot("home-system-light", { width: 1440, height: 900 }, "system", home, "light");
+  await shoot("home-system-dark", { width: 1440, height: 900 }, "system", home, "dark");
   await shoot("phone", { width: 390, height: 844 }, "light", task);
   const inspector = async (page) => {
     await task(page);
