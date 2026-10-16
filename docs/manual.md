@@ -593,23 +593,31 @@ change (docs/scheme.md §9): the system prompt is how to work rather than
 what to tell an approver, and a turn ends on evidence — a change, and a test
 run after it that did not fail — with an honest way out when the tests cannot
 run at all, and another when the code already does what was asked: a check
-that shows it. Before it ends, the check that passed is run again with each
+that shows it. A run that fails because tests fail, or because the model took
+part of its own change out to see a test fail, is not "tests that cannot
+run". Before it ends, the check that passed (of those that passed since the
+last edit, the one that runs the most of what changed) is run again with each
 part of the change taken out in turn, and the parts it still passes without are
-named to the model: a check that cannot fail for a part does not test it. When
-a change adds a branch and nothing measured coverage, the model is also asked
-to run the tests once with coverage and to add a test for each changed line
-none ran, or delete it. And when an edit removes or rewrites an expectation of
-a test the repository already had, the model is asked once for that file, as
-it edits, which sentence of your request requires the new expectation; the
-edit itself is never refused. It answers the guard's questions; it does not
-
-named to the model: a check that cannot fail for a part does not test it,
-and that review is made at most twice in a run. A test that failed on the
-unchanged code too (in a run on a copy of the last commit, or in the turn's
-first full run before it edited anything) is said so when it fails again, and
-is not told to the model as its change's failure. Files that `make validate`
-leaves untracked are named in its result, and deleting them does not call for
-another run. It answers the guard's questions; it does not
+named to the model: a check that cannot fail for a part does not test it, and
+that review is made at most twice in a run. When a change adds a branch and
+nothing measured coverage, the model is also asked to run the tests once with
+coverage and to name the changed lines none ran: it adds a test for a line
+that does what you asked, and deletes a branch or a skip you did not ask for
+instead of testing it into place. When an edit removes or rewrites an
+expectation of a test the repository already had (a case, an assertion, a
+`want` string, a phrase the test checks for), the model is asked once for that
+file, as it edits, which sentence of your request requires the new
+expectation; the edit itself is never refused. And in a Go project, the test
+files it edited are run once more as the last commit had them, against the
+change, and the tests that fail are named to it: either its change is wrong,
+or your request names the new result and the assertion changes, or your request
+contradicts the test's setup, which it then changes, not the test's assertions;
+it says which sentence of the request requires a change to a test. A test
+that failed on the unchanged code too (in a run on a copy of the last commit,
+or in the turn's first full run before it edited anything) is said so when it
+fails again, and is not told to the model as its change's failure. Files that
+`make validate` leaves untracked are named in its result, and deleting them
+does not call for another run. It answers the guard's questions; it does not
 overrule its refusals. Still denied, exactly as with a human at the prompt:
 
 - anything outside the repository, and symlinks that leave it;

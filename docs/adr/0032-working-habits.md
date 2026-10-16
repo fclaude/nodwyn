@@ -1810,3 +1810,176 @@ chase of a flaky browser check inside validate (c80b38ac, R61-R84) was the
 model's, not a reminder's, and nothing here touches it; the plain chat loop
 does not run `evidence-loop`, so none of this applies to a chat that is
 neither unattended nor planned. None of this was replayed on the benchmark.
+
+## Amendment 2026-10-16: the original tests are run at the finish, a want string is an expectation, and a skip is deleted, not tested
+
+Two more misses of dsl21 (Muse, effort low, `muse-review-2026-10-16.md`), each
+reproduced by a reviewer. They are one lesson from both sides: when an old
+test fails after a change, which side is wrong depends on the request. The old
+assertion stands unless the request names the new behaviour for that input or
+case; the fixture's setup may change, and be named, when the request
+contradicts it.
+
+- **5040f9fe** (replicate 2): the request added the response's Content-Type to
+  an error. The model reworded the error so that "Responses stream ended
+  without a terminal response", a phrase an existing test pins, was split, and
+  then edited that test's `want := "..."` to match. The real commit left the
+  test alone and appended the Content-Type to the intact phrase, so the
+  hidden (original) test fails on the patch. The test-edit question of the
+  2026-10-16 amendment did not fire: `expectationLine` read the cases of a
+  table and testify's asserts, and a want string beside a `strings.Contains`
+  is neither. `validate` said the test passed on the unchanged code and the
+  model answered "deliberately widened", without a sentence of the request.
+  Nine attempts of the benchmark's runs edited the same `want` line (the
+  builds dsl3, dsl6, dsl15, dsl17m, dsl19, dsl21, OpenCode, Pi and tok2).
+- **855e90e7**: an old test (`TestResumeAfterProcessKilled`) failed after the
+  model's correct change because its fixture uses one folder as repository,
+  configuration and data directory. The model added a skip to `denylist()`
+  (private directories that overlap the repository root) and left the fixture,
+  which removes exactly the directories the hidden test expects denied; the
+  real commit changed the fixture. The finish review made it worse: "a skip
+  nothing exercises: add a test or delete" and "a branch gets a test for each
+  side" led the model to add a test that pinned the skip, and check-without,
+  run on the exfiltration suite alone (the last passing command), named four
+  hunks no test of it covers, which cost 53 calls of per-hunk revert
+  experiments; the last six of those runs were told "Your last 6 test commands
+  did not run successfully".
+
+The owner's principle holds: nothing is refused, the harness asks, and follows
+what the model decides. So:
+
+- **The original tests are run at the finish.** A grader lays the maintainers'
+  test files over the patch; the finish review now does the same for the
+  files the turn edited. `original-tests` (internal/prim/original.go, hidden,
+  registered in a git work tree) takes the turn's changed test paths and, for
+  each Go test file HEAD has and the working tree edited or deleted, runs the
+  tests HEAD's version declares with HEAD's version in place of the working
+  tree's, against the change as it is: `go test -overlay`, so nothing on disk
+  is touched and there is nothing to put back if the run is stopped, within
+  3 minutes in all, with `GOPROXY=off` and the allowlisted environment. A test
+  that also fails with every changed Go file as HEAD had it (a second
+  overlay run, only for the failures) was not broken by the change and is
+  left out; a directory whose tests do not build with HEAD's files in place
+  (the request changed a signature, or a helper moved) is `unrun` and
+  named in the log only. A test the turn added to the file, or in a file of
+  its own, is not declared by HEAD and is never run. The point is
+  `finish-original-tests-message`, in the finish review, so it is said once a
+  turn, never refuses anything and never repeats for a file in the turn: "these
+  original tests fail on your change", with three ways out: the change is wrong
+  (change the code, appending to what a test pins rather than rewording it); the
+  request names the new result for that input or case (the assertion changes;
+  say which sentence requires it); the request contradicts the test's setup, a
+  fixture (change the setup, not its assertions, and say which sentence
+  requires it). The middle one is the owner's rule that the old assertion
+  stands unless the request names the new behaviour; the first message left it
+  out, and a request that changes a result changes the test that pins it, as
+  35 of the 244 resolved attempts that edit an existing Go test did (see the
+  replay below).
+  Go only: another language's tests would need a copy of the tree or an edit
+  in place, and the loop says in its log that it did not run them
+  (`original-test-failures`). Who runs what: this runs the repository's code,
+  the package of a test file the model edited, as the model's own `go test` of
+  that package would, in the environment a shell call gets, with no network;
+  it is no new authority, and (ADR 45) trust is not a sandbox here either.
+  `TestOriginalTestsNameTheTestsTheChangeBreaks`,
+  `TestOriginalTestsOfADeletedFileAndOfOneThatDoesNotBuild`,
+  `TestOriginalTestsPrimitive`, `TestTheReviewNamesOriginalTestsTheChangeBreaks`,
+  `TestTheReviewIsQuietWhenTheOriginalTestsPass`,
+  `TestOriginalTestsAreRunForGoOnly`.
+- **A want string is an expectation.** `expectationLine` also reads a literal
+  assigned to `want`, `expect`, `expected` or a name that starts with one
+  (`wantErr`, `expected_msg`; Go and Python), and in Go
+  a `strings` or `bytes` check (`Contains`, `ContainsAny`, `HasPrefix`,
+  `HasSuffix`, `EqualFold`) of a non-empty string literal, a switch's `case`
+  line left out, which picks the expectation and is not one: the question at the
+  edit and the finish review both read them through `change-removals`. Moved lines are not changes, as
+  before for a line added whole elsewhere, and now also for a line whose string
+  literals all stand on one line the change adds (`kept`): the 94f5cac4 replay
+  named a case that had only moved from a map to a direct assertion. The
+  question's text adds that to add to what a test pins, the model appends to the
+  phrase and does not reword it.
+  `TestRemovedExpectationsAreAlsoWantsAndPhraseChecks`,
+  `TestExpectationLinesOfWantsAndPhraseChecks`, `TestStringLiterals`,
+  `TestAnEditedWantStringOfAnExistingTestIsAskedAbout`.
+- **A skip is deleted, not tested.** The working rule says: a branch the
+  request asks for gets a test for each side of it; a branch added for any other
+  reason is not tested into place, delete it; and a fixture is setup, its
+  assertions are not. `finish-uncovered-lines-message` offers, for a branch no
+  case reaches (a condition that cannot be true, a skip nothing exercises),
+  deleting it or quoting the sentence of the request that requires it, adding the
+  test only then, and says a skip or exception added after an existing test
+  failed gets no test, since the test would pin it: fix that test's setup or the
+  code instead. `finish-untested-parts-message` ends the same way: a part the
+  request does not ask for is removed, or defended by the sentence that
+  requires it, not given a test.
+  `TestThePromptsDecideWhichSideOfAFailingTestIsWrong`,
+  `TestTheReviewAsksForTheChangedLinesNoTestRan`,
+  `TestTheUntestedPartsPointDoesNotTestASkipIntoPlace`.
+- **The check taken apart is the broadest passing run, and a revert experiment
+  is not a run that failed to run.** check-without and the coverage point used
+  the last passing command, the exfiltration suite on 855e90e7. They use
+  `broadest-passing` now: of the commands that passed since the last edit, the
+  one that names the most of the changed files' directories (`./...` and the
+  whole-check words name all of them), one not narrowed with `-run` or `-k`
+  before one that is, the newest of those that tie, so a turn with one passing
+  command is as before. `unrunnable-after` counted every failing test run, edits
+  between them leaving the count alone. A failing run now ends the count when
+  its output shows tests ran (`tests-ran?`: a failing test named, a test or
+  package that passed, or a package that says `FAIL` with a time of its own),
+  and leaves it where it was after an edit that took part of the model's own
+  change out (`shrinking-edit?`: the file's changes against HEAD got smaller,
+  measured with `git-diff` from the turn's first command on, since a part is
+  taken out to see a test fail only after one has run), which is a revert
+  experiment, expected to fail. A run on `$TMPDIR/base` did
+  not count already. `TestBroadestPassingPicksTheRunThatRunsTheMostOfTheChange`,
+  `TestTheReviewTakesApartTheBroadestPassingCheck`,
+  `TestTheLastOfEqualPassingChecksIsTheOneTakenApart`,
+  `TestTheCoveragePointNamesTheBroadestPassingCheck`,
+  `TestFailingTestsAreNotCommandsThatDidNotRun`,
+  `TestRevertExperimentsAreNotCommandsThatDidNotRun`,
+  `TestGrowingEditsFollowedByFailingRunsStillCountAsUnrunnable`.
+
+Every new test fails on 95834ba (dsl21) or cannot compile there: the three
+`TestOriginalTests...` of the primitive and `TestStringLiterals` call functions
+the old code lacks, and `TestBroadestPassingPicksTheRunThatRunsTheMostOfTheChange`
+calls Scheme functions it lacks. `TestTheReviewIsQuietWhenTheOriginalTestsPass`
+asserts an absence, and fails there only through the row that moved into a
+direct check, which the old code asks about.
+The replay (each patch applied to its task's parent and read by the new code, no
+model run; the 291 distinct patches of the benchmark's runs that edit an
+existing Go test file): the 5040f9fe patch of this miss yields the `want` line
+at responses_test.go:280 from `change-removals` and, from `original-tests`, the
+hidden test itself, `TestResponsesEventStreamRejectsMissingOrFailedTerminal`.
+`change-removals` names expectations in 37 of the 291 patches before and in 50
+after, and 98 lines before against 87 after: 12 patches stop being named (a map
+every attempt of 107251d0 extended and rewrapped, table rows whose literals all
+stand on a line the change adds, 94f5cac4's `index-grep` case that moved from a
+map to a direct assertion), 25 are named
+that were not, nine of them 5040f9fe's `want` line and the others phrase checks
+and want strings that were changed. `original-tests` names failing tests in 51
+of them: 35 of the 244 resolved attempts (14%) and 14 of the 39 unresolved
+(36%), 2 of the 8 not graded. The tasks it names are the known misses: all 8
+attempts of 94f5cac4 (`TestReadRanges` among them), and for 5040f9fe the three
+patches whose error no longer holds the pinned phrase (this one, not graded,
+and OpenCode's and Pi's, both unresolved on exactly the test named,
+`TestResponsesEventStreamRejectsMissingOrFailedTerminal`) against none of the
+20 resolved ones. The resolved
+attempts named are the ones whose request changes a result, so the test that
+pins it changes: 107251d0's 17 (the Responses round trip), 855e90e7's 6 (they
+edited the fixture of `TestResumeAfterProcessKilled` as the real commit did,
+and it fails as the last commit had it, which is the point's third way out),
+67a1f950's 6, 7513f7eb's 2 and four more. The point therefore costs a round
+for about one attempt in seven that edits a Go test (one in six counting the
+unresolved), and asks the model for the sentence of the request. 7 patches (2%) are unrun. The dsl21 patch of 855e90e7 is not named:
+it did not edit `resume_test.go`, the skip was in production code, and that is
+what the third and fourth points address (the finish review's own text led to
+the test of the skip, and check-without on the exfiltration suite to the 53
+calls).
+
+Not built: running the original tests of another language (pytest would need a
+copy of the tree); naming failing tests of files the turn did not edit (the
+model's own runs show those; 855e90e7's resume test was not edited, and the
+skip is what the third and fourth points ask about); recognising a revert
+experiment by what the model says; refusing or reverting any edit. Not
+measured: whether the new points change what a model does is for the next
+benchmark.

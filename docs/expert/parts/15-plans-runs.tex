@@ -249,12 +249,21 @@ evidence:
     message, once a turn: new files git does not track, the plan's steps
     without their evidence, the parts of the change the passing check does
     not test (it runs again with each part taken out in turn,
-    \code{check-without}; a deleted file or a hunk that only deletes lines is
-    no part), and a command the report cites that has not run since the last
-    edit. When that check passed, it also names what the change removed
+    \code{check-without}; the check is the passing run since the last edit
+    that runs the most of what changed, not the last one; a deleted file or a
+    hunk that only deletes lines is no part), and a command the report cites
+    that has not run since the last edit. When that check passed, it also names what the change removed
     (\code{change-removals}): a definition gone from its package that the
     request does not name, and the cases and assertions of existing tests
-    it removed or rewrote; and the parts of a condition a rewritten Go
+    it removed or rewrote (a case, an assertion, a \code{want} value, a phrase
+    a \code{strings.Contains} looks for); the existing Go tests the turn
+    edited that fail when their files are as the last commit had them
+    (\code{original-tests}, \code{finish-original-tests-message}: change the
+    code, appending to what a test pins; or, when the request names the new
+    result, change the assertion; or, when it contradicts the test's setup,
+    change the setup, and say which sentence of the request requires it; no
+    other language is run);
+    and the parts of a condition a rewritten Go
     function no longer checks (\code{change-dropped-conditions}). And it names the lines the change adds to
     documents and comments that nothing in the turn showed
     (\code{change-claims}): a run's result or figures no passing run
@@ -263,14 +272,16 @@ evidence:
     change added a branch or a condition to a source file and nothing in the
     turn measured coverage, it asks for the changed lines no test executed:
     run the tests of the changed files once with coverage, and add a test
-    that executes each of those lines or delete it
+    that executes each of those lines that does what the request asks, or
+    delete a branch or a skip the request does not ask for
     (\code{finish-uncovered-lines-message}). After it the turn is
     accepted: the model's next answer ends it, and the reminders above are
     not asked again.
   \item As a test file is edited, not only at the finish: after a round whose
     calls wrote an existing test file, the loop sets the change against the
-    last commit and, for the lines of that file an edit removed or rewrote,
-    asks which sentence of the request requires the new expectation, for that
+    last commit and, for the lines of that file an edit removed or rewrote (a
+    case of a table, an assertion, a literal assigned to \code{want} or
+    \code{expected}, a Go \code{strings.Contains} of a phrase), asks which sentence of the request requires the new expectation, for that
     input or case; if none does, restore it and change the code
     (\code{edited-expectations-message}). The edit is never refused, a test
     the turn added is not asked about, and each file is asked about once in
@@ -299,7 +310,10 @@ A command counts as a test run when its command line contains one of
 \code{cargo test}, \code{npm test}, \code{make test}, \code{rspec} and
 twenty-one more. A test run with failures still counts as a run; only
 commands that never got as far as running a test count against
-\code{unrunnable-after}. A tool your repository registers to run a command
+\code{unrunnable-after}: a run whose output shows tests ran (a test named as
+failed, a test or package passed, a package that says \code{FAIL} with a time
+of its own) ends the count, and a failing run after an edit that took part of
+the model's own change out, a revert experiment, leaves it where it was. A tool your repository registers to run a command
 counts as that command when \code{tool-commands} names it: nodwyn's
 \code{validate} is \code{make validate}, \code{go-test} is \code{go test}
 on its package, \code{run-make} is \code{make} on its target. A run whose
