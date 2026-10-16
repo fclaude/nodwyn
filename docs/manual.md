@@ -2116,9 +2116,23 @@ chat-completions server as `reasoning_content` (OpenRouter reads it as
 encrypted reasoning), unless the model keeps that (below). It counts toward
 the window and is trimmed with its reply. A
 server that reports only a summary of the thinking, or none, gives back
-only that; encrypted reasoning (OpenRouter's `reasoning_details`) is not
-kept. Anthropic's own API is the exception: its signed thinking blocks are
+only that. Anthropic's own API is the exception: its signed thinking blocks are
 kept and given back whole (above).
+
+A reply that carries OpenRouter's `reasoning_details` (its reasoning as the
+model's provider gave it, often encrypted or signed) keeps them, with no
+setting: the log keeps the array as it came, and every later request of the
+conversation sends it back unchanged, in order, on that reply, in place of its
+thinking text, so the model keeps its reasoning between tool rounds. This is
+any `openai` server with the default dialect; `dialect = "cerebras"` and
+`dialect = "responses"` are unchanged. The details go back only to the server
+and model they came from: after you move the conversation to another model,
+that model is sent its replies' thinking text as before, and moving back gives
+the first model its details again. They are never shown, and they count toward
+the window: trimming a reply takes its details with it, and a reply made
+before the window folded or trimmed something earlier goes back with its
+thinking text instead. Details holding a credential-shaped text, which the log
+would redact, are not kept, and the log says so (ADR 9, amended 2026-10-15).
 
 A model on a Responses server can keep its reasoning the same way: with
 `keep_reasoning = true` in its entry, each request asks for the reply's

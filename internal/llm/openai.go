@@ -52,7 +52,11 @@ type OpenAI struct {
 	// left where they were (reasoning.context "all_turns"). It names the
 	// server and the model: a plan's credential and an API key share an
 	// address, and one may not read what the other encrypted. "" keeps none
-	// (ADR 9, amended 2026-10-07).
+	// (ADR 9, amended 2026-10-07). On the compatible chat-completions
+	// dialect it keeps a reply's reasoning_details under this name, when a
+	// reply carries them, and gives back those kept under it; nothing is
+	// asked for, so a server that sends none is sent what it was before
+	// (ADR 9, amended 2026-10-15).
 	ReasoningOrigin string
 	// CacheControl asks the provider to cache the prompt, as the request's
 	// top-level cache_control: "ephemeral" or "1h". A Claude model reached
@@ -179,11 +183,14 @@ type oaiMessage struct {
 	// Reasoning is where servers that expose a model's thinking put it;
 	// the name varies (DeepSeek and vLLM: reasoning_content). The dialect
 	// chooses the field for history separately from reading these aliases.
-	// Only the text goes back; OpenRouter's reasoning_details, which carry
-	// encrypted reasoning, are not kept, since the log redacts what looks
-	// like a key and would break them (ADR 9, amended 2026-10-02).
 	Reasoning        string `json:"reasoning,omitempty"`
 	ReasoningContent string `json:"reasoning_content,omitempty"`
+	// ReasoningDetails are OpenRouter's reasoning_details: the reply's
+	// reasoning as its provider gave it, encrypted or signed, an array the
+	// provider wants back unchanged on the same message. They are read and
+	// sent as raw JSON, never field by field (llm.ReasoningDetails; ADR 9,
+	// amended 2026-10-15).
+	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
 }
 
 // oaiContent is a message's content: a string, or, for a message that
@@ -349,11 +356,24 @@ func usage(raw json.RawMessage) Usage {
 	return u
 }
 
-func toOpenAI(req Request, dialect ChatDialect) oaiRequest {
+// toOpenAI is req as a chat completion. A reply's reasoning_details kept under
+// origin go back on it, as they came, on a dialect that keeps them; its
+// thinking text then stays out, since the details are that reasoning as the
+// provider gave it, as OpenRouter's examples send them. "" sends none.
+func toOpenAI(req Request, dialect ChatDialect, origin string) oaiRequest {
 	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed, ReasoningEffort: req.Effort}
 	for _, m := range req.Messages {
 		om := oaiMessage{Role: m.Role, Content: openAIContent(m), ToolCallID: m.ToolCallID}
-		dialect.setThinking(&om, m.Thinking)
+		for _, b := range m.Blocks {
+			// Text that is not JSON would fail the whole request, every
+			// later one too, so it does not go.
+			if origin != "" && dialect.KeepsDetails() && b.Type == ReasoningDetails && b.Origin == origin && json.Valid([]byte(b.Data)) {
+				om.ReasoningDetails = json.RawMessage(b.Data)
+			}
+		}
+		if om.ReasoningDetails == nil {
+			dialect.setThinking(&om, m.Thinking)
+		}
 		for _, tc := range m.ToolCalls {
 			var ot oaiToolCall
 			ot.ID, ot.Type = tc.ID, "function"
@@ -386,7 +406,7 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 	if o.Dialect == ChatResponses {
 		return o.respond(ctx, req, onDelta)
 	}
-	wire := toOpenAI(req, o.Dialect)
+	wire := toOpenAI(req, o.Dialect, o.ReasoningOrigin)
 	if o.MaxTokensField == "max_tokens" {
 		wire.MaxTokens, wire.MaxCompletionTokens = wire.MaxCompletionTokens, 0
 	}
@@ -420,6 +440,9 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 		DoneReason: choice.FinishReason,
 		Usage:      usage(wr.Usage),
 	}
+	if details := choice.Message.ReasoningDetails; o.ReasoningOrigin != "" && o.Dialect.KeepsDetails() && carriesDetails(details) {
+		out.Message.Blocks = []ThinkingBlock{{Type: ReasoningDetails, Data: string(details), Origin: o.ReasoningOrigin}}
+	}
 	for i, tc := range choice.Message.ToolCalls {
 		args := json.RawMessage(tc.Function.Arguments)
 		if !json.Valid(args) {
@@ -436,6 +459,14 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 		onDelta(Delta{Text: out.Message.Content, Thinking: out.Message.Thinking})
 	}
 	return out, nil
+}
+
+// carriesDetails says whether a reply's reasoning_details hold anything to
+// give back: an array of at least one item. null, an empty array and a field
+// that is not there hold nothing, so such a reply is kept as before.
+func carriesDetails(raw json.RawMessage) bool {
+	var items []json.RawMessage
+	return json.Unmarshal(raw, &items) == nil && len(items) > 0
 }
 
 // cacheControl is the request's ask to cache the prompt (CacheControl), or

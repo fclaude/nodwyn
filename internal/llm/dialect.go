@@ -25,6 +25,12 @@ func (d ChatDialect) Validate() error {
 	}
 }
 
+// KeepsDetails says whether a reply's reasoning_details are kept and given
+// back on this dialect: the compatible one's, which is OpenRouter's. Cerebras
+// refuses history fields it does not know, and the Responses API keeps its
+// reasoning another way (OpenAI.ReasoningOrigin).
+func (d ChatDialect) KeepsDetails() bool { return d == "" || d == ChatCompatible }
+
 // setThinking selects the history field independently of response decoding:
 // Cerebras returns reasoning but refuses reasoning_content on the next turn.
 func (d ChatDialect) setThinking(m *oaiMessage, thinking string) {

@@ -38,19 +38,27 @@ type Message struct {
 // ThinkingBlock is one block of a reply's reasoning as its provider gave
 // it, to go back unchanged with that reply: Anthropic signs each, and reads
 // the reasoning behind a signature again only from a block that comes back
-// as it was; a Responses server encrypts a reasoning item's. Before is how
-// many of the reply's tool calls came before it, so it goes back where it
-// was. Each provider gives back only the types it makes.
+// as it was; a Responses server encrypts a reasoning item's; a
+// chat-completions server such as OpenRouter gives a reply's reasoning as
+// reasoning_details, which go back whole. Before is how many of the reply's
+// tool calls came before it, so it goes back where it was. Each provider
+// gives back only the types it makes.
 type ThinkingBlock struct {
-	Type      string `json:"type"`                // "thinking" or "redacted_thinking" (Anthropic), "reasoning" (Responses)
+	Type      string `json:"type"`                // "thinking" or "redacted_thinking" (Anthropic), "reasoning" (Responses), ReasoningDetails (chat completions)
 	Thinking  string `json:"thinking,omitempty"`  // the summary given, empty when none was
 	Signature string `json:"signature,omitempty"` // a thinking block's
-	Data      string `json:"data,omitempty"`      // a redacted_thinking block's, or a reasoning item's encrypted content
+	Data      string `json:"data,omitempty"`      // a redacted_thinking block's, a reasoning item's encrypted content, or the reasoning_details array as the JSON text it came as
 	Before    int    `json:"before,omitempty"`
-	// Origin is the server and model a reasoning item came from, the only
-	// ones it goes back to (OpenAI.ReasoningOrigin).
+	// Origin is the server and model a reasoning item or reasoning_details
+	// came from, the only ones they go back to (OpenAI.ReasoningOrigin).
 	Origin string `json:"origin,omitempty"`
 }
+
+// ReasoningDetails is the type of the block that keeps a chat-completions
+// reply's reasoning_details: its Data is the whole array, the JSON text the
+// server sent, never read field by field, so it goes back as it came, in
+// order (ADR 9, amended 2026-10-15).
+const ReasoningDetails = "reasoning_details"
 
 // Image is a picture sent with a message. Only its media type and digest
 // are in the request's JSON, so a request's hash names the image by its

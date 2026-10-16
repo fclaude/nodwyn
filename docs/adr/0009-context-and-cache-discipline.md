@@ -556,3 +556,89 @@ again in run 2 (on) and one in run 4 (off).
 So `keep_reasoning = false`, the default, is the setting for gpt-6.1-sol.
 The setting stays for the models that follow, which may reason differently
 with their reasoning given back; the runs above are the way to find out.
+
+## Amendment 2026-10-15: a chat-completions reply's reasoning_details go back with it
+
+The 2026-10-02 amendment gave a reply's thinking back as text and kept
+nothing of OpenRouter's `reasoning_details`, the reply's reasoning as its
+provider gave it (`reasoning.encrypted`, `reasoning.summary`,
+`reasoning.text`, often signed or encrypted). Its reason was the log: it
+redacts what looks like a key, an encrypted blob in base64url looks like one,
+and the copy the window sent back could be altered; the 2026-10-04 amendment
+left encrypted reasoning unsupported for that reason. Remote reasoning models
+are now benchmarked through OpenRouter (meta/muse-spark-1.3-contributor first),
+and OpenRouter wants each reply's `reasoning_details` back unchanged, in order,
+on the same assistant message in every later request: without them a model
+loses its own reasoning between tool rounds.
+
+The reason does not hold as stated. The log's redaction replaces the known
+credential shapes only, and never a string for its entropy alone (ADR 25: the
+unknown-entropy class is reported, not removed). A base64 or base64url blob
+holds a known shape only by chance, and none of 9,000 random 16 KB blobs in
+base64, base64url and unpadded base64url, each in a `reasoning_details` array
+beside a summary, was changed by it (2026-10-15). A Responses reply's
+encrypted reasoning has been kept in the log this way since 2026-10-07, and
+none of the three runs that kept it then had a request refused for it. So the
+details are kept as that reasoning and Claude's signed thinking are: on the
+reply, in the log, given back by the window. No sidecar store: the log stays
+the one source, and replay needs nothing else.
+
+- A chat-completions reply (provider `openai`, dialect `compatible` or unset)
+  whose message carries `reasoning_details` with at least one item keeps the
+  whole array, the JSON text as it came, as one block of type
+  `reasoning_details` (`llm.ThinkingBlock`, its `data`), with its origin: the
+  server by name, or the address and credential of a model that names none,
+  and the model, as `keep_reasoning` names a Responses reply's. Nothing reads
+  it field by field, cuts or summarises it. `null`, `[]` or no field keep
+  nothing. Nothing is asked for, so there is no setting: a server that sends
+  none is sent what it was before. Cerebras's dialect and the Responses API
+  are unchanged, and Anthropic's and Ollama's requests give back none of it.
+- It is logged with the reply (`llm.resp` `blocks`), and recipe v18 gives it
+  back, on that assistant message, in every later request while the reply is
+  in the window. The window already gave back every block a reply logged, so
+  the recipe is unchanged: an older log, with none, replays as before, and a
+  newer one replays to its hashes on an older binary too.
+- The block is in the provider-neutral request and its hash, so replay
+  rebuilds the details with the request. A request that no reply with details
+  precedes has no block in it and hashes as before.
+- On the wire it goes as the message's `reasoning_details`, and that
+  message's thinking does not go as `reasoning_content` as well: the details
+  are that reasoning as the provider gave it, and OpenRouter's examples send
+  them alone. Go's encoder writes the array compact and writes `<`, `>` and
+  `&` inside its strings as `\u` escapes, so it is the same JSON value, and
+  the same bytes when the server sent it compact and without those
+  characters.
+- It goes back only to its origin. A conversation moved to another model
+  (ADR 40), on another server or the same one, and a `[models.NAME]` a
+  strategy asks, are sent none, and the thinking of those replies as before;
+  moved back, the model that gave the details gets them again, where they
+  were.
+- Trimming elides a reply with its details, and a folded or compacted context
+  takes its replies' details with it. As for Claude's signed thinking, a reply
+  made before a fold or an elision of an earlier entry goes back without its
+  details, and with its thinking text: OpenRouter routes Claude too, whose
+  provider checks what came before the reasoning, and the prefix had already
+  changed at the earlier entry, so dropping them costs the cache nothing more.
+- Details that the log's redaction would change are not kept: `ask` runs the
+  same redaction on the block before the reply is logged, and on any change
+  leaves it out, notes why, and the reply goes back with its thinking. A
+  summary or a reasoning text the model wrote a credential shape into is the
+  case to expect; its thinking is then redacted as before.
+- The details are never shown. The console, the TUI and line mode draw a
+  reply's content and thinking, not its blocks (the console receives them in
+  `llm.resp`'s payload, as Claude's), and a strategy's reply alist has none.
+- They count toward the window's estimate, a token for three bytes, and the
+  log keeps them.
+
+The tests run on fakes, and nothing here was sent to OpenRouter. Seven new
+tests fail on `d880bb3`: three tool rounds and a second turn carrying each
+reply's array byte for byte on its own message, replay rebuilding them, a
+request without them unchanged to the byte, trimming, folding, a model switch
+and back, and details the log would change. What a real route does is for
+the first session to show: whether OpenRouter takes `reasoning_details`
+without `reasoning_content` for every model it routes, and whether
+muse-spark's details are bound to what came before them, as the fold rule
+assumes they may be. A refused request names the field. Whether the details
+help is measured against the build before this one (`d880bb3`) on the same
+tasks, as `keep_reasoning` was: replies, calls, reasoning tokens a reply and
+time.

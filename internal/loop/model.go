@@ -147,7 +147,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		_ = l.record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
 		return nil, err
 	}
-	notes := l.tidyCalls(resp)
+	notes := append(l.tidyCalls(resp), keepDetails(resp)...)
 	l.show(resp)
 	if err := l.record(log.KindLLMResp, responseRecord(resp, ep.Rates)); err != nil {
 		return nil, err
@@ -185,6 +185,33 @@ func (l *Loop) tidyCalls(resp *llm.Response) []string {
 			notes = append(notes, fmt.Sprintf("%s call %s: %s; read as the plain call", tc.Name, tc.ID, note))
 		}
 	}
+	return notes
+}
+
+// keepDetails leaves out a reply's reasoning_details that the log's redaction
+// would change, and returns a note saying so for ask to record. The window
+// gives back what the log holds, and details with a placeholder in them are
+// not the reasoning the provider made: it would refuse them, or read
+// reasoning that was never its. Redaction removes known credential shapes
+// only, never a string for its entropy (ADR 25), so an encrypted blob holds
+// one only by chance (none of 9,000 random 16 KB blobs, base64 and
+// base64url, did); a summary or a reasoning text holds one when the model
+// wrote one out, and its thinking is then redacted as before (ADR 9, amended
+// 2026-10-15).
+func keepDetails(resp *llm.Response) []string {
+	var notes []string
+	kept := resp.Message.Blocks[:0]
+	for _, b := range resp.Message.Blocks {
+		if b.Type == llm.ReasoningDetails {
+			clean, _, err := redact.Payload(b, nil)
+			if c, ok := clean.(llm.ThinkingBlock); err != nil || !ok || c != b {
+				notes = append(notes, "the reply's reasoning_details held text the log redacts, so they are not kept: changed, they would not be the reasoning the provider made")
+				continue
+			}
+		}
+		kept = append(kept, b)
+	}
+	resp.Message.Blocks = kept
 	return notes
 }
 

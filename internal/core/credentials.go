@@ -298,7 +298,11 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 			// the keychain requires of a plan sign-in.
 			oai.CodexHeaders = m.Credential != "" && slices.Contains(s.credentialScopes(m.Credential, ""), "chatgpt.tokens.use.direct")
 		}
-		if m.KeepReasoning {
+		// A Responses model keeps its reasoning only when its entry says so,
+		// since asking for it changes every request; a chat-completions
+		// reply's reasoning_details are kept whenever one carries them, which
+		// asks for nothing (ADR 9, amended 2026-10-15).
+		if m.KeepReasoning || m.Dialect.KeepsDetails() {
 			oai.ReasoningOrigin = reasoningOrigin(m)
 		}
 		p = oai
