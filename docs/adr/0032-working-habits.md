@@ -1640,8 +1640,6 @@ coverage output in the loop; a check that an assumption was compared with a
 test; the report's other candidates (gate work, sandbox paths, re-reads after
 folds).
 
-## Amendment 2026-10-16: the scratch rule says what TMPDIR is
-
 ## Amendment 2026-10-16: the scratch rule says what TMPDIR is, long files are read by the part, and the explorer's reads go with its findings
 
 The review of the nine tasks' dsl20r transcripts (commit-bench, Muse,
