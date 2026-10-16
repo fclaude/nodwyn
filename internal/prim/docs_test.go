@@ -15,6 +15,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/guard"
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 // fakePandoc writes a stand-in for pandoc into its own directory: it
@@ -364,10 +365,10 @@ func TestDocExportKeepsRawContentAsText(t *testing.T) {
 func TestDocExportRefusesATreeTooLargeToHold(t *testing.T) {
 	pandoc := newFakePandoc(t, "")
 	h := exportHarness(t, pandoc.path)
-	os.WriteFile(filepath.Join(h.root, "big.md"), []byte("*a*\n"), 0o644)
+	must.WriteFile(t, filepath.Join(h.root, "big.md"), []byte("*a*\n"), 0o644)
 	node := `{"t":"Emph","c":[{"t":"Str","c":"a"}]},`
 	tree := `{"pandoc-api-version":[1,23,1,1],"meta":{},"blocks":[{"t":"Para","c":[` + strings.Repeat(node, (maxExportTree/len(node))+1) + `{"t":"Space"}]}]}`
-	os.WriteFile(filepath.Join(pandoc.dir, "tree.json"), []byte(tree), 0o644)
+	must.WriteFile(t, filepath.Join(pandoc.dir, "tree.json"), []byte(tree), 0o644)
 	_, err := h.eval(t, `(doc-export "big.md" "big.docx")`)
 	if err == nil || !strings.Contains(err.Error(), "pandoc wrote more than 8 MiB") {
 		t.Fatalf("a tree past the cap: %v", err)

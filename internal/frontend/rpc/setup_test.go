@@ -13,6 +13,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/policyfile"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -225,9 +226,9 @@ func TestControlWriteTakesNoProviderOrKey(t *testing.T) {
 // (P2-069, P2-078).
 func TestControlWriteWaitsForTheConfigLock(t *testing.T) {
 	o := options(t)
-	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	must.MkdirAll(t, o.Paths.ConfigDir, 0o700)
 	raw := "[servers.workshop]\nurl = \"http://workshop:11434\"\n"
-	os.WriteFile(o.Paths.ConfigFile, []byte(raw), 0o600)
+	must.WriteFile(t, o.Paths.ConfigFile, []byte(raw), 0o600)
 	cfg, err := config.Load(o.Paths.ConfigFile)
 	if err != nil {
 		t.Fatal(err)
@@ -356,7 +357,7 @@ func TestControlModelKeepsNamedServer(t *testing.T) {
 func TestSettingsWriteKeepsTuningOfTheSameModel(t *testing.T) {
 	o := options(t)
 	os.MkdirAll(o.Paths.ConfigDir, 0o700)
-	os.WriteFile(o.Paths.ConfigFile, []byte("[servers.workshop]\nurl = \"http://workshop:11434\"\n\n[control]\nurl = \"http://workshop:11434\"\nmodel = \"qwen\"\nnum_ctx = 90000\ntemperature = 0.2\nseed = 5\n"), 0o600)
+	must.WriteFile(t, o.Paths.ConfigFile, []byte("[servers.workshop]\nurl = \"http://workshop:11434\"\n\n[control]\nurl = \"http://workshop:11434\"\nmodel = \"qwen\"\nnum_ctx = 90000\ntemperature = 0.2\nseed = 5\n"), 0o600)
 	cfg, err := config.Load(o.Paths.ConfigFile)
 	if err != nil {
 		t.Fatal(err)

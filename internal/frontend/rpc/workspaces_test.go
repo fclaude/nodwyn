@@ -11,6 +11,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/prim"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 // A workspace's name and mounted folders go to the workspace list in the
@@ -435,8 +436,8 @@ func TestMethodsCheckAFolderTheSameWay(t *testing.T) {
 	c := connect(t, path)
 	c.hello()
 	file := filepath.Join(t.TempDir(), "file")
-	os.WriteFile(file, nil, 0o600)
-	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	must.WriteFile(t, file, nil, 0o600)
+	must.MkdirAll(t, o.Paths.ConfigDir, 0o700)
 	for method, build := range map[string]func(folder string) map[string]any{
 		"session.open":  func(f string) map[string]any { return map[string]any{"repo": f} },
 		"worktree.open": func(f string) map[string]any { return map[string]any{"repo": f} },
