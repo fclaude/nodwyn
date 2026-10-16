@@ -27,13 +27,15 @@ func (r Rates) Known() bool { return r.Input != nil && r.Output != nil }
 // those written to it at CacheWrite, the rest of the prompt at Input and the
 // output, reasoning included, at Output, each at the rates of the longest
 // tier the prompt is past. A reported cost always wins: a provider knows its
-// own surcharges.
+// own surcharges. A reply whose server reported no tokens is unknown, not
+// free: its zero counts would price at nothing, and a spend limit would
+// never see it.
 func Cost(u Usage, r Rates) (cost *float64, estimated bool) {
 	if u.Cost != nil {
 		c := *u.Cost
 		return &c, false
 	}
-	if !r.Known() {
+	if !r.Known() || u.Unreported {
 		return nil, false
 	}
 	rates := RateTier{Input: r.Input, CachedInput: r.CachedInput, CacheWrite: r.CacheWrite, Output: r.Output}

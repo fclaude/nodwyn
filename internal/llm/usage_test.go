@@ -90,6 +90,11 @@ func TestCost(t *testing.T) {
 	if c, _ := Cost(Usage{PromptTokens: 5, OutputTokens: 5}, Rates{Input: price(1)}); c != nil {
 		t.Fatalf("unknown came back as %v", *c)
 	}
+	// A server that said nothing about tokens: unknown, not free, whatever
+	// the rates, or a spend limit would never count it.
+	if c, _ := Cost(Usage{Unreported: true}, rates); c != nil {
+		t.Fatalf("unreported usage came back as %v", *c)
+	}
 }
 
 // Prompt tokens written to the cache are priced at their own rate, as OpenAI
