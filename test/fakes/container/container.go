@@ -68,7 +68,7 @@ func Install(dir, kind string) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, sub := range []string{"images", "running", "containers"} {
+	for _, sub := range []string{"images", "running", "containers", "networks", "labels"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o700); err != nil {
 			return nil, err
 		}
@@ -197,11 +197,19 @@ func run(dir string, args []string, tools []fakemcp.Tool) int {
 		_ = os.WriteFile(filepath.Join(dir, "images", imageKey(ref)), []byte(ref), 0o600)
 		return 0
 	case "network":
-		if len(args) > 1 && args[1] == "create" {
-			fmt.Println(args[len(args)-1])
+		return network(dir, args[1:])
+	case "ps":
+		// ps -a --filter label=K --format {{.Names}}: the containers that
+		// carry the label.
+		for _, name := range labelled(dir, "labels", strings.TrimPrefix(flagValue(args, "--filter"), "label=")) {
+			fmt.Println(name)
 		}
 		return 0
 	case "container":
+		if i := slices.Index(args, "--format"); i >= 0 && strings.Contains(args[i+1], ".Config.Labels") {
+			fmt.Println(labelOf(dir, "labels", args[len(args)-1], labelKey(args[i+1])))
+			return 0
+		}
 		// container inspect: the proxy's address on each of its networks.
 		raw, err := os.ReadFile(filepath.Join(dir, "containers", args[len(args)-1]))
 		if err != nil {
@@ -249,6 +257,7 @@ func runContainer(dir string, args []string, tools []fakemcp.Tool) int {
 		}
 	}
 	_ = os.WriteFile(filepath.Join(dir, "containers", name), []byte(strings.Join(networks, " ")), 0o600)
+	setLabels(dir, "labels", name, args)
 	_ = os.WriteFile(filepath.Join(dir, "running", name), []byte(strconv.Itoa(os.Getpid())), 0o600)
 	defer os.Remove(filepath.Join(dir, "running", name))
 	signals := make(chan os.Signal, 1)
@@ -279,8 +288,113 @@ func runContainer(dir string, args []string, tools []fakemcp.Tool) int {
 	return code
 }
 
+// network acts out network create, rm, ls and inspect. A created network
+// is a file in networks, holding its labels.
+func network(dir string, args []string) int {
+	if len(args) == 0 {
+		return 125
+	}
+	switch args[0] {
+	case "create":
+		name := args[len(args)-1]
+		fmt.Println(name)
+		setLabels(dir, "networks", name, args)
+	case "rm":
+		for _, a := range args[1:] {
+			if !strings.HasPrefix(a, "-") {
+				_ = os.Remove(filepath.Join(dir, "networks", a))
+				_ = os.Remove(filepath.Join(dir, "networks", a+".labels"))
+			}
+		}
+	case "ls":
+		for _, name := range labelled(dir, "networks", strings.TrimPrefix(flagValue(args, "--filter"), "label=")) {
+			fmt.Println(name)
+		}
+	case "inspect":
+		i := slices.Index(args, "--format")
+		fmt.Println(labelOf(dir, "networks", args[len(args)-1], labelKey(args[i+1])))
+	}
+	return 0
+}
+
+// setLabels keeps the --label=k=v arguments of a create or run.
+func setLabels(dir, kind, name string, args []string) {
+	var lines []string
+	for _, a := range args {
+		if kv, ok := strings.CutPrefix(a, "--label="); ok {
+			lines = append(lines, kv)
+		}
+	}
+	_ = os.WriteFile(filepath.Join(dir, kind, name+".labels"), []byte(strings.Join(lines, "\n")), 0o600)
+	if kind == "networks" {
+		_ = os.WriteFile(filepath.Join(dir, kind, name), nil, 0o600)
+	}
+}
+
+// labelled lists the names in kind that carry the label key, whatever its
+// value.
+func labelled(dir, kind, key string) []string {
+	entries, _ := os.ReadDir(filepath.Join(dir, kind))
+	var out []string
+	for _, e := range entries {
+		name, ok := strings.CutSuffix(e.Name(), ".labels")
+		if ok && labelOf(dir, kind, name, key) != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func labelOf(dir, kind, name, key string) string {
+	raw, _ := os.ReadFile(filepath.Join(dir, kind, name+".labels"))
+	for _, line := range strings.Split(string(raw), "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok && k == key {
+			return v
+		}
+	}
+	return ""
+}
+
+// labelKey is the key a format like {{index .Labels "k"}} asks for.
+func labelKey(format string) string {
+	_, rest, _ := strings.Cut(format, `"`)
+	key, _, _ := strings.Cut(rest, `"`)
+	return key
+}
+
+func flagValue(args []string, flag string) string {
+	if i := slices.Index(args, flag); i >= 0 && i+1 < len(args) {
+		return args[i+1]
+	}
+	return ""
+}
+
+// AddOrphan leaves behind a container and a network labelled as nodwyn's of
+// the process owner, which a test makes a process that is gone: what a
+// killed nodwyn leaves.
+func (r *Runtime) AddOrphan(name string, owner int) {
+	label := fmt.Sprintf("nodwyn.pid=%d", owner)
+	_ = os.WriteFile(filepath.Join(r.Dir, "running", name), []byte("0"), 0o600)
+	_ = os.WriteFile(filepath.Join(r.Dir, "labels", name+".labels"), []byte(label), 0o600)
+	_ = os.WriteFile(filepath.Join(r.Dir, "networks", name+"-in"), nil, 0o600)
+	_ = os.WriteFile(filepath.Join(r.Dir, "networks", name+"-in.labels"), []byte(label), 0o600)
+}
+
+// Networks are the names of the networks that exist.
+func (r *Runtime) Networks() []string {
+	entries, _ := os.ReadDir(filepath.Join(r.Dir, "networks"))
+	var out []string
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".labels") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
 // stop ends a running container, as rm --force does.
 func stop(dir, name string) {
+	defer os.Remove(filepath.Join(dir, "labels", name+".labels"))
 	raw, err := os.ReadFile(filepath.Join(dir, "running", name))
 	if err != nil {
 		return
@@ -288,6 +402,9 @@ func stop(dir, name string) {
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
 	if pid > 0 {
 		_ = syscall.Kill(pid, syscall.SIGTERM)
+	} else {
+		// An orphan (AddOrphan) has no process to end.
+		_ = os.Remove(filepath.Join(dir, "running", name))
 	}
 	for range 100 {
 		if _, err := os.Stat(filepath.Join(dir, "running", name)); err != nil {

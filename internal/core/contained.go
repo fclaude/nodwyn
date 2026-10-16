@@ -9,8 +9,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/binding"
@@ -148,9 +150,14 @@ func startContained(ctx context.Context, server config.MCPServer, o containedSta
 	if err != nil {
 		return nil, nil, err
 	}
+	sweepOrphans(o.runtime)
+	labels := map[string]string{container.OwnerLabel: strconv.Itoa(os.Getpid())}
+	for k, v := range o.labels {
+		labels[k] = v
+	}
 	opts := container.Options{
 		Spec: container.Spec{Name: o.name, Image: server.Image, Command: server.Command, Args: server.Args, Mounts: mounts,
-			Network: server.Network, Labels: o.labels, SecretEnv: config.EnvName(server.Position)},
+			Network: server.Network, Labels: labels, SecretEnv: config.EnvName(server.Position)},
 		EgressDir: filepath.Join(o.dataDir, "egress"),
 		Inject:    o.inject,
 		Report:    o.report,
@@ -171,6 +178,33 @@ func startContained(ctx context.Context, server config.MCPServer, o containedSta
 		return nil, nil, err
 	}
 	return c, mcp.NewStdio(c.Stdin(), c.Stdout(), c.Ended), nil
+}
+
+// sweeps holds, per runtime, the sweep of what a nodwyn that died left
+// behind, made once per process before it starts its first container.
+var sweeps sync.Map // runtime path -> *sync.Once
+
+// sweepOrphans removes the containers and networks of a nodwyn process that
+// is gone. A killed nodwyn leaves a server that ignores the end of its input
+// running, and the networks of a networked one: Docker's default pools hold
+// about thirty, and after a few such crashes network create failed with "all
+// predefined address pools have been fully subnetted" and no networked
+// server could start. A process still alive keeps its own.
+func sweepOrphans(rt container.Runtime) {
+	once, _ := sweeps.LoadOrStore(rt.Path, new(sync.Once))
+	once.(*sync.Once).Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		rt.Sweep(ctx, processAlive)
+	})
+}
+
+// processAlive says whether a process with this id exists: signal 0 checks
+// without sending, and a process of another user, which it may not signal,
+// is alive all the same.
+func processAlive(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 // unavailable is a server that cannot run here as things are: something to

@@ -354,3 +354,22 @@ details say so. The regressions are
 `TestMCPServersConnectAtOnceAndRegisterInConfigOrder` (the servers' first
 requests wait for each other, and the first server fails on the unchanged
 code) and `TestContainedServerWithNoToolOnIsStopped`.
+
+## Amendment 2026-10-16: the containers and networks of a nodwyn that died are swept
+
+Every container and network was labelled `nodwyn.session` and `nodwyn.mcp`
+and nothing read a label. A nodwyn that was killed (SIGKILL, power loss)
+left a server that ignores the end of its input running, and the
+`NAME-in` and `NAME-out` networks of a networked server; Docker's default
+pools hold about thirty networks, so after a few crashes `network create`
+failed with "all predefined address pools have been fully subnetted" and no
+networked server could start until the person found the `nodwyn-*` networks
+by hand. Each container and network now also carries `nodwyn.pid`, the
+process that made it, and before it starts its first container a process
+removes those whose owner is gone (`container.Runtime.Sweep`, once per
+runtime and process, best effort, containers first). It is the owner, not the
+session, that decides: a terminal and a daemon on one computer each have
+sessions the other does not know, and neither removes the other's. What an
+older nodwyn left, with no `nodwyn.pid`, is not touched. The regression is
+`TestStartingAContainedServerSweepsWhatADeadNodwynLeft`; the listing and
+inspect formats were run against podman 5.8, containers and networks.
