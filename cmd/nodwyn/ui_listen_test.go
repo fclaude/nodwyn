@@ -26,3 +26,41 @@ func TestWildcardListenNeedsAName(t *testing.T) {
 	}
 	l.Close()
 }
+
+// The console listens on the port it had the last time, so a browser finds
+// what it remembered for that origin; a port taken since gives a new one,
+// kept for next time.
+func TestConsoleKeepsItsPort(t *testing.T) {
+	paths := config.PathsUnder(filepath.Join(t.TempDir(), "config"), filepath.Join(t.TempDir(), "data"))
+	first, err := loopbackListener(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := first.Addr().String()
+	first.Close()
+	again, err := loopbackListener(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Addr().String() != port {
+		t.Fatalf("listening on %s, not on %s as last time", again.Addr(), port)
+	}
+	// Taken now (by the listener still open): another port, kept.
+	other, err := loopbackListener(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	again.Close()
+	if other.Addr().String() == port {
+		t.Fatal("two listeners on one port")
+	}
+	last, err := loopbackListener(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer last.Close()
+	if last.Addr().String() == other.Addr().String() {
+		t.Fatal("a port still in use was reused")
+	}
+}

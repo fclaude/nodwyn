@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -55,7 +56,13 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 			}
 		}
 	}
-	listener, err := net.Listen("tcp", address)
+	var listener net.Listener
+	var err error
+	if r.listen == "" {
+		listener, err = loopbackListener(paths)
+	} else {
+		listener, err = net.Listen("tcp", address)
+	}
 	if err != nil {
 		return nil, options, err
 	}
@@ -182,4 +189,30 @@ func (c *cli) devices() error {
 		return nil
 	}
 	return fmt.Errorf("devices: expected list or revoke NAME")
+}
+
+// loopbackListener listens on this computer's loopback address, on the port
+// the console had the last time when it is free, else on a new one, which it
+// keeps for next time in nodwyn's data directory. A browser keeps what the
+// console remembers in it (the theme, thinking shown, folders folded) for
+// the console's origin, its port included, and a new port at each launch
+// lost all of it. A cookie from an earlier run holds that run's session,
+// which this one does not take, so reusing the port pairs nothing.
+func loopbackListener(paths config.Paths) (net.Listener, error) {
+	file := filepath.Join(paths.DataDir, "console-port")
+	if raw, err := os.ReadFile(file); err == nil {
+		if port, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil && port > 1023 && port < 65536 {
+			if l, err := net.Listen("tcp4", "127.0.0.1:"+strconv.Itoa(port)); err == nil {
+				return l, nil
+			}
+		}
+	}
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	if os.MkdirAll(paths.DataDir, 0o700) == nil {
+		_ = os.WriteFile(file, []byte(strconv.Itoa(l.Addr().(*net.TCPAddr).Port)+"\n"), 0o600)
+	}
+	return l, nil
 }

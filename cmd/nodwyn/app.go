@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -75,7 +74,7 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 	}
 	// The window always uses its own loopback console; --listen adds a
 	// second one for other devices.
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	listener, err := loopbackListener(paths)
 	if err != nil {
 		return err
 	}

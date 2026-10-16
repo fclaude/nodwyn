@@ -25,6 +25,13 @@ check(async () => {
     const [url] = await line(app, /app: open (\S+)/, "stderr");
     return { app, url };
   };
+  // A restarted app listens on the port it had, so its address differs from
+  // the page's only by the launch ticket after #, which a browser takes as a
+  // move within the page: it is loaded afresh, as a new window would be.
+  const reopen = async (url) => {
+    await page.goto("about:blank");
+    await page.goto(url);
+  };
   const stopApp = async (app) => {
     app.kill("SIGTERM");
     assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
@@ -233,7 +240,7 @@ check(async () => {
       socket.send(message);
     });
   });
-  await page.goto(url);
+  await reopen(url);
   await page.waitForSelector("#task");
   const initiallyFocused = await page.evaluate(() => document.activeElement?.id === "keychain-pass");
   if (!(await page.isVisible("#keychain-pass"))) await page.click("details:has(#keychain-pass) > summary");
@@ -273,7 +280,7 @@ check(async () => {
   await stopApp(app);
   ({ app, url } = await startApp());
   if (!app.stderrText.includes("the keychain has no passphrase; opened it")) throw new Error("app log: " + app.stderrText);
-  await page.goto(url);
+  await reopen(url);
   await page.waitForSelector("#task", { timeout: 10000 });
   await go("#/connections/credentials");
   await page.waitForSelector(".cred-row:has-text('drive')", { timeout: 10000 });

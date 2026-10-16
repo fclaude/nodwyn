@@ -206,3 +206,14 @@ other loopback servers, which could use this console until it stops. Closing
 it needs a host name of the console's own, such as a random `*.localhost`
 name, which not every webview is known to resolve; that is not built. The
 desktop window does not browse other sites and is not exposed.
+
+## Amendment 2026-10-16: the console keeps its port
+
+A browser keeps what the console remembers in it (the theme, thinking shown,
+folders folded, a model chosen and not yet used) for the console's origin,
+and the origin includes the port, which was new at every launch of `nodwyn
+app` and `nodwyn ui`: all of it was lost each time. The loopback console now
+listens on the port it had the last time when it is free, kept in the data
+directory as `console-port`, and on a new one, kept for next time,
+otherwise. A cookie from an earlier run holds that run's session token,
+which the new run does not take, so reusing the port pairs nothing.

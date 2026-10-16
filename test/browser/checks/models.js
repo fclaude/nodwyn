@@ -68,6 +68,13 @@ check(async () => {
     const [url] = await line(app, /app: open (\S+)/, "stderr");
     return { app, url };
   };
+  // A restarted app listens on the port it had, so its address differs from
+  // the page's only by the launch ticket after #, which a browser takes as a
+  // move within the page: it is loaded afresh, as a new window would be.
+  const reopen = async (url) => {
+    await page.goto("about:blank");
+    await page.goto(url);
+  };
   let { app, url } = await startApp();
   const browser = await launch();
   const page = watch(await browser.newPage({ viewport: { width: 1280, height: 1000 } }));
@@ -716,7 +723,7 @@ check(async () => {
   app.kill("SIGTERM");
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
   ({ app, url } = await startApp());
-  await page.goto(url);
+  await reopen(url);
   await page.waitForSelector("#new-task-model-model", { timeout: 15000 });
   // The model's key is in the keychain, which is locked: the picker says which
   // models that is true of, and a task cannot start until it is unlocked.
@@ -826,7 +833,7 @@ check(async () => {
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
   fs.writeFileSync(configFile, `[models.demo]\nprovider = "ollama"\nurl = "${ollamaURL}"\nmodel = "demo"\n`);
   ({ app, url } = await startApp());
-  await page.goto(url);
+  await reopen(url);
   await go("#/settings/models");
   await page.waitForSelector("#default-model-model", { timeout: 15000 });
   assert.strictEqual(await selected("#default-model-model"), "No model");
@@ -870,7 +877,7 @@ check(async () => {
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
   fs.writeFileSync(configFile, `${config()}\n[servers.openai]\nprovider = "openai"\ndialect = "responses"\nurl = "https://api.openai.com/v1"\n\n[models.openai-a]\nserver = "openai"\nmodel = "${first}"\n\n[models.openai-c]\nserver = "openai"\nmodel = "${third}"\nefforts = ["low", "high"]\n\n[models.openai-text]\nserver = "openai"\nmodel = "${textOnly}"\n\n[servers.anthropic]\nprovider = "anthropic"\nurl = "https://api.anthropic.com/v1"\n\n[models.claude-a]\nserver = "anthropic"\nmodel = "${claudeModel}"\n\n[servers.baseten]\nprovider = "openai"\nurl = "https://inference.baseten.co/v1"\n\n[models.baseten-a]\nserver = "baseten"\nmodel = "${basetenModel}"\n`);
   ({ app, url } = await startApp());
-  await page.goto(url);
+  await reopen(url);
   await go("#/settings/models");
   await page.waitForSelector("[data-model='openai-a']", { timeout: 15000 });
   const a = expect(first);
@@ -1044,7 +1051,7 @@ check(async () => {
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
   fs.writeFileSync(configFile, config().replace('[judge]\nserver = "Jev"\n', '[judge]\nserver = "Jev"\nmodel = "Jev"\n'));
   ({ app, url } = await startApp());
-  await page.goto(url);
+  await reopen(url);
   await page.waitForSelector("#task", { timeout: 15000 });
   await go("#/settings/judge");
   await page.waitForSelector("#judge-model-warning", { timeout: 10000 });

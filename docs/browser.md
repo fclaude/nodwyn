@@ -570,9 +570,12 @@ HttpOnly, SameSite=Strict session cookie holding a token made for this run,
 never the code; no credential is written to browser local/session storage.
 Browsers send a loopback cookie to every port on that address, so a server on
 another port of 127.0.0.1 that this browser visits receives the token and
-could use this console until it stops; it cannot pair another device. Without `--listen`, restarting the bridge creates a new
-port and code; with it, the port is yours and a device's cookie survives
-restarts.
+could use this console until it stops; it cannot pair another device.
+Without `--listen`, restarting the bridge creates a new code and session and
+takes the port it had the last time when that port is free (kept in the
+data directory as `console-port`), so what the console keeps in this browser,
+the theme, thinking shown, folders folded, is still there; with `--listen`,
+the port is yours and a device's cookie survives restarts.
 
 The desk shows saved and open sessions, their repository and last activity,
 recorded conversations, streamed text, tool arguments and results, guard
@@ -701,7 +704,7 @@ retain plan/log views; current limits, policy and tools require an open session.
 Pending prompts take priority over inspector navigation. Read-only mode has the
 same snapshot inspectors; it cannot start a friction read. It retains its server-side mutation restrictions.
 
-Without `--listen` the bridge binds only `127.0.0.1` on a random port; with it,
+Without `--listen` the bridge binds only `127.0.0.1`, on the port it had the last time when free, else a new one; with it,
 the address you give, for paired devices (above). Every request checks its
 exact Host; pairing and WebSocket upgrades also require the exact browser
 origin. Cross-site fetches and framing are refused. There is no general TCP
