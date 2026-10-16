@@ -25,7 +25,7 @@ func UsageLine(u log.Usage) string {
 	}
 	parts := []string{tok}
 	if u.CachedTokens != nil && u.PromptTokens > 0 {
-		parts = append(parts, fmt.Sprintf("%d%% cached", percent(int64(*u.CachedTokens), int64(u.PromptTokens))))
+		parts = append(parts, fmt.Sprintf("%d%% cached", Percent(int64(*u.CachedTokens), int64(u.PromptTokens))))
 	}
 	if u.Cost != nil {
 		parts = append(parts, USD(*u.Cost, u.CostEstimated))
@@ -162,7 +162,8 @@ func Thousands(n int64) string {
 	return s
 }
 
-func percent(part, whole int64) int64 {
+// Percent is part of whole as a rounded whole percentage, 0 for no whole.
+func Percent(part, whole int64) int64 {
 	if whole <= 0 {
 		return 0
 	}

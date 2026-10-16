@@ -57,7 +57,7 @@ func (m *model) setPrompt(e rpc.ClientEvent) error {
 		p.title = "budget checkpoint"
 		p.checkpoint = value.Checkpoint
 		raw := value.Checkpoint
-		p.detail = fmt.Sprintf("Budget: %s\nUsed: %s · soft: %s · hard: %s\n\nUsage at checkpoint\n%s", raw.Dimension, budgetAmount(raw.Dimension, raw.Used), budgetAmount(raw.Dimension, raw.Limit.Soft), budgetAmount(raw.Dimension, raw.Limit.Hard), formatBudgetState(raw.State))
+		p.detail = fmt.Sprintf("Budget: %s\nUsed: %s · soft: %s · hard: %s\n\nUsage at checkpoint\n%s", raw.Dimension, budget.Amount(raw.Dimension, raw.Used), budget.Amount(raw.Dimension, raw.Limit.Soft), budget.Amount(raw.Dimension, raw.Limit.Hard), formatBudgetState(raw.State))
 		p.choices = "y = double soft limit · n = stop · or enter an absolute soft limit (duration for wall).\nThis does not grant tool authority."
 	case event.PromptChoice:
 		value, err := decode[event.Choice](e.Payload)
@@ -170,5 +170,3 @@ func (m *model) reply(value string) tea.Cmd {
 		return b.Answer(ctx, id, p.id, reply)
 	})
 }
-
-func budgetAmount(dimension string, value int64) string { return budget.Amount(dimension, value) }

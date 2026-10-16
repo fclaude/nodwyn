@@ -566,7 +566,7 @@ func (m *model) submit() tea.Cmd {
 		return nil
 	case text == ":details":
 		m.details = !m.details
-		m.status = "Tool arguments and results: " + onOff(m.details)
+		m.status = "Tool arguments and results: " + map[bool]string{true: "shown", false: "hidden"}[m.details]
 		m.composer.Reset()
 		m.refresh(false)
 		return nil
@@ -861,12 +861,6 @@ func (m *model) helpLine() string {
 	return "Enter sends · Alt+Enter/Ctrl+J newline · Ctrl+C clears the draft, then quits · Ctrl+Q quits"
 }
 
-func onOff(v bool) string {
-	if v {
-		return "shown"
-	}
-	return "hidden"
-}
 func (m *model) refresh(bottom bool) {
 	m.layout()
 	atBottom := m.viewport.AtBottom()

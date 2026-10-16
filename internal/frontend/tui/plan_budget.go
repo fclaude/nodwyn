@@ -127,7 +127,7 @@ func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 			fmt.Fprintf(&out, "%s · no limit\n", row.name)
 			continue
 		}
-		fmt.Fprintf(&out, "%s · soft %s · hard %s\n", row.name, budgetAmount(row.name, row.limit.Soft), budgetAmount(row.name, row.limit.Hard))
+		fmt.Fprintf(&out, "%s · soft %s · hard %s\n", row.name, budget.Amount(row.name, row.limit.Soft), budget.Amount(row.name, row.limit.Hard))
 	}
 	var g contextGauge
 	for _, e := range events {
@@ -167,7 +167,7 @@ func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 		}
 		p := record.Checkpoint
 		count++
-		fmt.Fprintf(&out, "\nCheckpoint #%d · %s\nUsed %s · soft %s · hard %s\n%s\nDecision: %s\n", e.Seq, p.Dimension, budgetAmount(p.Dimension, p.Used), budgetAmount(p.Dimension, p.Limit.Soft), budgetAmount(p.Dimension, p.Limit.Hard), formatBudgetState(p.State), checkpointDecision(record))
+		fmt.Fprintf(&out, "\nCheckpoint #%d · %s\nUsed %s · soft %s · hard %s\n%s\nDecision: %s\n", e.Seq, p.Dimension, budget.Amount(p.Dimension, p.Used), budget.Amount(p.Dimension, p.Limit.Soft), budget.Amount(p.Dimension, p.Limit.Hard), formatBudgetState(p.State), checkpointDecision(record))
 		if record.Actor != "" {
 			fmt.Fprintf(&out, "Actor: %s\n", record.Actor)
 		}
@@ -241,7 +241,7 @@ func formatSpend(events []log.Event) string {
 	}
 	cache := ""
 	if cachedKnown && prompt > 0 {
-		cache = fmt.Sprintf(", %d%% of prompt tokens from cache", percent(cached, prompt))
+		cache = fmt.Sprintf(", %d%% of prompt tokens from cache", plain.Percent(cached, prompt))
 	}
 	switch {
 	case priced == 0:
@@ -256,16 +256,6 @@ func formatSpend(events []log.Event) string {
 	return fmt.Sprintf("Spend this turn: %s (%d requests%s%s)\n", plain.USD(cost, estimated > 0), requests, cache, how)
 }
 
-func percent(part, whole int64) int64 {
-	if whole <= 0 {
-		return 0
-	}
-	if part > whole {
-		part = whole
-	}
-	return (part*100 + whole/2) / whole
-}
-
 func checkpointDecision(record log.TurnCheckpoint) string {
 	if record.Error != "" {
 		return "error: " + record.Error
@@ -273,5 +263,5 @@ func checkpointDecision(record log.TurnCheckpoint) string {
 	if !record.Choice.Continue {
 		return "stop"
 	}
-	return "continue requested · new soft limit " + budgetAmount(record.Checkpoint.Dimension, record.Choice.Soft)
+	return "continue requested · new soft limit " + budget.Amount(record.Checkpoint.Dimension, record.Choice.Soft)
 }

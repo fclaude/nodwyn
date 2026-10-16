@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -251,13 +253,13 @@ func TestArgSummaryLeadsWithTheTargetAndDropsProse(t *testing.T) {
 func TestSessionRowKeepsTheMetaColumn(t *testing.T) {
 	long := strings.Repeat("a long first message ", 10)
 	row := twoColumn(long, "nodwyn · 4d", 60, false)
-	if !strings.HasSuffix(ansiStrip(row), "nodwyn · 4d") {
+	if !strings.HasSuffix(ansi.Strip(row), "nodwyn · 4d") {
 		t.Fatalf("meta must survive clipping: %q", row)
 	}
-	if width := lipglossWidth(row); width != 60 {
+	if width := lipgloss.Width(row); width != 60 {
 		t.Fatalf("row width %d, want 60: %q", width, row)
 	}
-	short := ansiStrip(twoColumn("untitled", "nodwyn · 4d", 60, false))
+	short := ansi.Strip(twoColumn("untitled", "nodwyn · 4d", 60, false))
 	if !strings.HasPrefix(short, "untitled  ") || !strings.HasSuffix(short, "nodwyn · 4d") {
 		t.Fatalf("short label should be padded to the meta column: %q", short)
 	}

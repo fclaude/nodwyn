@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -104,19 +105,12 @@ func formatJudges(v judgeView) string {
 			out.WriteString(" · default")
 		}
 		if o.State != "" && o.State != "ready" {
-			fmt.Fprintf(&out, " · %s", firstOf(o.Detail, o.State))
+			fmt.Fprintf(&out, " · %s", cmp.Or(o.Detail, o.State))
 		}
 		out.WriteByte('\n')
 	}
 	out.WriteString("\n:judge NAME asks that judge from the task's next question; :judge none asks none. It is chosen while the task is idle.")
 	return out.String()
-}
-
-func firstOf(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // judgeLine is a session.judge record in the conversation.

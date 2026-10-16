@@ -356,11 +356,7 @@ func EgressLine(p log.MCPEgress) (string, bool) {
 // AttachSummary is the one line a transcript shows for an attached file.
 func AttachSummary(a log.Attach) string {
 	if a.Type == "image" {
-		tokens := fmt.Sprint(a.Tokens)
-		for i := len(tokens) - 3; i > 0; i -= 3 {
-			tokens = tokens[:i] + "," + tokens[i:]
-		}
-		return fmt.Sprintf("[attached %s · image · %d×%d · ~%s tokens · goes to %s only]", a.Name, a.Width, a.Height, tokens, a.Destination)
+		return fmt.Sprintf("[attached %s · image · %d×%d · ~%s tokens · goes to %s only]", a.Name, a.Width, a.Height, Thousands(int64(a.Tokens)), a.Destination)
 	}
 	line := fmt.Sprintf("[attached %s · %s · %d bytes", a.Name, a.Type, a.Bytes)
 	if a.Pages > 0 {
@@ -724,14 +720,12 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 		case log.KindTurnCheckpoint:
 			var p log.TurnCheckpoint
 			ev.Decode(&p)
-			fmt.Fprintf(w, "[checkpoint %s: continue=%t, soft=%s]\n", p.Checkpoint.Dimension, p.Choice.Continue, budgetAmount(p.Checkpoint.Dimension, p.Choice.Soft))
+			fmt.Fprintf(w, "[checkpoint %s: continue=%t, soft=%s]\n", p.Checkpoint.Dimension, p.Choice.Continue, budget.Amount(p.Checkpoint.Dimension, p.Choice.Soft))
 		case log.KindSessionEnd:
 			fmt.Fprintf(w, "\n# end (%s)\n", ev.TS.Format(time.RFC3339))
 		}
 	}
 }
-
-func budgetAmount(dimension string, n int64) string { return budget.Amount(dimension, n) }
 
 // choice asks a question with a fixed set of answers, each named by its key.
 func (c *Chat) choice(ev event.Choice) {
@@ -774,7 +768,7 @@ func SettingSummary(p log.SettingChange) string {
 
 func (c *Chat) checkpoint(ev event.Checkpoint) {
 	p := ev.Checkpoint
-	fmt.Fprintf(c.Out, "\n─── checkpoint: %s %s (soft %s, hard %s)\n", p.Dimension, budgetAmount(p.Dimension, p.Used), budgetAmount(p.Dimension, p.Limit.Soft), budgetAmount(p.Dimension, p.Limit.Hard))
+	fmt.Fprintf(c.Out, "\n─── checkpoint: %s %s (soft %s, hard %s)\n", p.Dimension, budget.Amount(p.Dimension, p.Used), budget.Amount(p.Dimension, p.Limit.Soft), budget.Amount(p.Dimension, p.Limit.Hard))
 	spend := ""
 	if s := SpendSoFar(p.State); s != "" {
 		spend = " · " + s

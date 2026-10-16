@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // Colour is applied to the frame only — the title bar, the status line, the
@@ -33,17 +32,9 @@ func bar(style lipgloss.Style, title string, width int) string {
 		return ""
 	}
 	if pad := width - lipgloss.Width(title); pad > 0 {
-		title += spaces(pad)
+		title += strings.Repeat(" ", pad)
 	}
 	return style.Render(title)
-}
-
-func spaces(n int) string {
-	out := make([]byte, n)
-	for i := range out {
-		out[i] = ' '
-	}
-	return string(out)
 }
 
 // repoName is the last element of a workspace path: enough to tell two
@@ -100,11 +91,5 @@ func twoColumn(label, meta string, width int, selected bool) string {
 	if selected {
 		styled = meta
 	}
-	return left + spaces(gap) + styled
+	return left + strings.Repeat(" ", gap) + styled
 }
-
-// ansiStrip and lipglossWidth exist for tests that assert on layout rather
-// than on styling.
-func ansiStrip(s string) string { return ansi.Strip(s) }
-
-func lipglossWidth(s string) int { return lipgloss.Width(s) }
