@@ -394,3 +394,44 @@ func TestSlowRevocationDoesNotHoldTheDaemon(t *testing.T) {
 	unblock()
 	<-removed
 }
+
+// What a credential is allowed for can be taken back from the console, one
+// host at a time, and goes with the credential when it is removed: a mistaken
+// click on "Allow it for a host" is no one-way ratchet, and the next
+// credential that takes the class does not inherit its authority (P2-012).
+func TestCredentialsCanBeUnboundAndTheirRowsGoWithThem(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("keychain.create", map[string]any{"passphrase": "correct horse"})
+	var list credentialsResult
+	json.Unmarshal(c.ok("credentials.add", map[string]any{"class": "github-token", "value": "ghp-canary-1", "dest": "api.github.com", "methods": []string{"GET", "POST"}, "position": "header:Authorization:Bearer"}), &list)
+	id := list.Credentials[0].ID
+	json.Unmarshal(c.ok("credentials.bind", map[string]any{"id": id, "dest": "uploads.github.com", "methods": []string{"PUT"}, "position": "header:Authorization:Bearer"}), &list)
+	if len(list.Credentials[0].Bindings) != 3 {
+		t.Fatalf("bound: %+v", list.Credentials[0].Bindings)
+	}
+	if r := c.call("credentials.unbind", map[string]any{"id": id, "dest": "elsewhere.example", "positions": []string{"header:Authorization:Bearer"}}); r.Error == nil {
+		t.Fatal("unbound a host it was never allowed for")
+	}
+	json.Unmarshal(c.ok("credentials.unbind", map[string]any{"id": id, "dest": "API.github.com", "positions": []string{"header:Authorization:Bearer"}}), &list)
+	if rows := list.Credentials[0].Bindings; len(rows) != 1 || rows[0].Dest != "uploads.github.com" {
+		t.Fatalf("after unbinding api.github.com: %+v", rows)
+	}
+	table, err := binding.Load(o.Paths.Bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := table.Lookup("github-token", "api.github.com", "GET", "header:Authorization:Bearer"); ok {
+		t.Fatal("the daemon still sends the key to a host it was unbound from")
+	}
+	c.ok("credentials.remove", map[string]any{"id": id})
+	if table, _ := binding.Load(o.Paths.Bindings); len(table.Bind) != 0 {
+		t.Fatalf("a removed credential's rows stayed: %+v", table.Bind)
+	}
+	json.Unmarshal(c.ok("credentials.add", map[string]any{"class": "github-token", "value": "ghp-canary-2"}), &list)
+	if len(list.Credentials[0].Bindings) != 0 {
+		t.Fatalf("the next credential of the class inherited %+v", list.Credentials[0].Bindings)
+	}
+}

@@ -108,12 +108,25 @@ var (
 // says to edit it. It returns how many rows it removed, none leaving the file
 // unchanged.
 func RemoveExact(ctx context.Context, path, class, dest string, positions, scopes []string) (int, error) {
+	dest = strings.ToLower(strings.TrimSpace(dest))
+	return remove(ctx, path, fmt.Sprintf("%s at %s", class, dest), func(b Binding) bool {
+		return b.Class == class && strings.ToLower(b.Dest) == dest && sameSet(b.Positions, positions) && sameSet(b.Scopes, scopes)
+	})
+}
+
+// RemoveClass takes every row that allows class out of the file, as
+// RemoveExact does one: a credential removed takes its authority with it, so
+// the next credential given the class does not inherit it.
+func RemoveClass(ctx context.Context, path, class string) (int, error) {
+	return remove(ctx, path, class, func(b Binding) bool { return b.Class == class })
+}
+
+// remove cuts out of the file each [[bind]] table whose row matches, and
+// refuses when a matching row is left in a form it cannot cut; what names
+// the rows in that refusal.
+func remove(ctx context.Context, path, what string, matches func(Binding) bool) (int, error) {
 	if path == "" {
 		return 0, fmt.Errorf("bindings: no persistence path")
-	}
-	dest = strings.ToLower(strings.TrimSpace(dest))
-	matches := func(b Binding) bool {
-		return b.Class == class && strings.ToLower(b.Dest) == dest && sameSet(b.Positions, positions) && sameSet(b.Scopes, scopes)
 	}
 	removed := 0
 	err := policyfile.Update(ctx, path, func(raw []byte) ([]byte, error) {
@@ -165,7 +178,7 @@ func RemoveExact(ctx context.Context, path, class, dest string, positions, scope
 		}
 		for _, b := range after.Bind {
 			if matches(b) {
-				return nil, fmt.Errorf("bindings: a row for %s at %s is written in a form the console cannot edit: change it in %s", class, dest, path)
+				return nil, fmt.Errorf("bindings: a row for %s is written in a form the console cannot edit: change it in %s", what, path)
 			}
 		}
 		if len(before.Bind)-len(after.Bind) != removed {

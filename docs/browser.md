@@ -621,8 +621,9 @@ the top, with a button to add it; so is a keychain without a passphrase.
   on the computer nodwyn runs on, since that is where the provider sends you
   back.
 - **Remove…** asks first, naming what uses it; an OAuth2 credential can be
-  revoked at its provider and removed, or removed here only. Its binding
-  rows stay in `bindings.toml`.
+  revoked at its provider and removed, or removed here only. Its class's
+  rows leave `bindings.toml` with it, so the next credential given the class
+  does not inherit them, unless another credential still has the class.
 - **Remove** on a row of *Where it may go* takes that host back after a
   confirm (`credentials.unbind`): the row as listed, whatever its methods,
   goes from `bindings.toml`, and every other byte of the file, comments

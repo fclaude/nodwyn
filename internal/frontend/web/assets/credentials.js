@@ -414,7 +414,7 @@ function removeControls(c, ctx, redraw) {
       h(
         "div",
         { class: "callout", style: "flex-direction:column;width:100%" },
-        h("div", {}, h("strong", {}, `Remove ${c.class}? `), consequence, "Its bindings stay in bindings.toml."),
+        h("div", {}, h("strong", {}, `Remove ${c.class}? `), consequence, "Its rows in bindings.toml go with it."),
         h(
           "div",
           { class: "row-actions" },

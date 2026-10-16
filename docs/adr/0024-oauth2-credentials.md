@@ -294,3 +294,21 @@ inference, restricted sinks and revocation. Browser checks exercise a
 client-id-free OpenAI authorization request with a synthetic refusal and the
 existing local-provider success flow. Live account eligibility and quota are
 not tested.
+
+## Amendment 2026-10-16: authority can be taken back from the console
+
+The console could add binding rows (`credentials.add` with a host,
+`credentials.bind`) and nothing removed one: a mistaken click on **Allow it for
+a host** was undone by editing `bindings.toml`, and a removed credential's rows
+stayed and applied to the next credential that took the class.
+
+- **`credentials.unbind {id, dest, positions, scopes}`** takes the row the
+  console lists out of `bindings.toml`, whatever its methods, keeping the rest of
+  the file as written and taking the lock `credentials.bind` takes. It is this
+  computer's, like `credentials.bind`. A row written as an inline array cannot be
+  cut out line by line, so the call refuses and says to edit the file, rather
+  than leave the authority standing.
+- **`credentials.remove` removes the class's rows with the credential**, unless
+  another credential still has the class (a keychain made before a class named
+  one credential). The console's confirm says so.
+

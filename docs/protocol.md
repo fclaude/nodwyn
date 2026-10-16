@@ -766,7 +766,7 @@ with.
 | `credentials.replace` | `{"id","value"}` | The list; a static key's new value, same id and class |
 | `credentials.bind` | `{"id","dest","methods","position"}` | The list; one exact binding row per method, with an OAuth2 credential's granted scopes |
 | `credentials.unbind` | `{"id","dest","positions","scopes"?}` | The list; takes back the binding row the list shows for that host, positions and scopes, whatever its methods, leaving every other byte of `bindings.toml`; refused, with the file unchanged, for a row it cannot cut out of the text (edit the file) |
-| `credentials.remove` | `{"id","revoke"?}` | `{revoked, list}`; `revoke` asks an OAuth2 provider to revoke the tokens first |
+| `credentials.remove` | `{"id","revoke"?}` | `{revoked, list}`; `revoke` asks an OAuth2 provider to revoke the tokens first; the class's rows leave `bindings.toml` with it, unless another credential still has the class |
 | `credentials.authorize` | `{"id"}`, or `{"provider","client_id","class"?,"client_secret"?,"scopes"?,"auth_url"?,"token_url"?,"revoke_url"?}` | `{id, class, provider, url, state:"waiting"}` |
 
 Each entry of `credentials` is `{id, class, kind, created, used_by,

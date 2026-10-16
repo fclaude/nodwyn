@@ -213,7 +213,8 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 		if err := params(req.Params, &p, "id", "revoke"); err != nil {
 			return nil, err
 		}
-		if _, err := store.Info(p.ID); err != nil {
+		in, err := store.Info(p.ID)
+		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
 		revoked := false
@@ -234,6 +235,20 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 			}
 		} else if err := store.Delete(p.ID); err != nil {
 			return nil, failure(-32000, err.Error())
+		}
+		// The class's rows go with its credential, so the next credential
+		// given the class does not inherit what this one was allowed; a
+		// keychain made before a class named one credential may still hold
+		// another, which keeps them.
+		if store.HandleForClass(in.Class) == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if _, err := binding.RemoveClass(ctx, s.options.Paths.Bindings, in.Class); err != nil {
+				return nil, failure(-32000, "the credential is removed, but its rows in bindings.toml are not: "+err.Error())
+			}
+			if err := s.reloadBindings(); err != nil {
+				return nil, failure(-32000, err.Error())
+			}
 		}
 		return credentialRemoved{Revoked: revoked, List: s.credentials()}, nil
 	case "credentials.bind":
