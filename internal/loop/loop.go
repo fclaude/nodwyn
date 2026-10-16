@@ -345,6 +345,12 @@ func (l *Loop) Tools() []llm.Tool { return l.tools }
 // definitions in init.scm, a counter called turn say, cannot shadow it.
 const TurnProcedure = "nodwyn-turn"
 
+// TurnStartProcedure is applied to the request just before TurnProcedure, so
+// the state the default habits keep for one turn is reset on the host's side
+// and survives a project that redefines nodwyn-turn (strategy.scm). A
+// project that removes it loses only those resets.
+const TurnStartProcedure = "turn-start"
+
 // Turn runs one turn: the Scheme nodwyn-turn applied to request, the user message
 // the session has already recorded. The strategy runs with harness origin; the
 // tools it runs on the model's behalf run with model origin.
@@ -364,7 +370,15 @@ func (l *Loop) Turn(ctx context.Context, request string) error {
 	l.turn = &turnState{budget: budget.From(ctx)}
 	defer func() { l.turn = nil }()
 
-	_, err := l.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginHarness), strategy, []scheme.Value{scheme.Str(request)})
+	harness := scheme.WithOrigin(ctx, scheme.OriginHarness)
+	args := []scheme.Value{scheme.Str(request)}
+	var err error
+	if start, ok := l.interp.Global().Lookup(TurnStartProcedure); ok && start.IsProcedure() {
+		_, err = l.interp.Apply(harness, start, args)
+	}
+	if err == nil {
+		_, err = l.interp.Apply(harness, strategy, args)
+	}
 	if unwindErr := l.unwind(); unwindErr != nil && err == nil {
 		err = unwindErr
 	}

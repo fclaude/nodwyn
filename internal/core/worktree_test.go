@@ -70,6 +70,28 @@ func countKind(evs []log.Event, kind log.Kind) int {
 	return n
 }
 
+// "Run validate first" is said only where the session has a validate tool, as
+// in nodwyn's own repository: in any other project the model called a tool
+// that does not exist (P2-065).
+func TestWorktreePromptNamesValidateOnlyWhereTheToolExists(t *testing.T) {
+	t.Parallel()
+	repo, _ := gitRepo(t)
+	o := worktreeOptions(t, repo)
+	o.InitFile = filepath.Join(t.TempDir(), "init.scm")
+	if err := os.WriteFile(o.InitFile, []byte(`(register-tool "validate" (lambda () "ok") '((doc . "the repository's check") (params)))`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	section := evalText(t, &rig{t: t, s: s}, "(worktree-section)")
+	if !strings.Contains(section, "run validate first, then call git-land") {
+		t.Fatalf("worktree section:\n%s", section)
+	}
+}
+
 // A session asked for a worktree works in one of its own, on its own
 // branch: what it writes lands there, never in the repository, whose git
 // status stays clean, and the model is told where it is and not to stash.
@@ -116,7 +138,7 @@ func TestWorktreeSessionWritesInItsOwnCheckout(t *testing.T) {
 	}
 	section := evalText(t, &rig{t: t, s: s}, "(worktree-section)")
 	if !strings.Contains(section, w.Branch) || !strings.Contains(section, "from main") || !strings.Contains(section, "Never use git stash here") || !strings.Contains(section, "git archive HEAD") ||
-		!strings.Contains(section, "to push it to main), run validate first, then call git-land") {
+		!strings.Contains(section, "to push it to main), call git-land") || strings.Contains(section, "validate") {
 		t.Fatalf("worktree section:\n%s", section)
 	}
 	// A worktree session is offered git-land, to land its work in one step.

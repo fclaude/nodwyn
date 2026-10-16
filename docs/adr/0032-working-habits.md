@@ -1006,3 +1006,37 @@ or more guessed names, such as `modelForm|credential|host|bind|freeClass|api_key
 repository: the plan's explorer, `second-look-tools` and the optimizer's.
 Whether models use it is measured as ADR 50 §13 says; the rule and the
 tool go if they do not.
+
+## Amendment 2026-10-16: benchmark habits fire only where they fit
+
+Three habits and hints written for the benchmark's runs reached every chat.
+The history hint (`checkloop.scm`: a `git log` or `git blame` before the
+first code edit gets "call second-look with your check script") answered a
+question such as "what changed in the last five commits?" with advice about a
+check script, up to twice a session, and the edit flag it depended on was
+never reset, so it stayed off for the rest of a session after one edit. The
+hint is now given only in a turn that works toward evidence, as the finish
+checks are (`(or (unattended?) (plan-required?) (plan-recorded?))`), and the
+flag is reset at the start of every turn. The check-loop rule in both system
+prompts now says it is for a request that asks for code to change and that a
+question needs no script. The worktree section's "run validate first" named a
+tool only nodwyn's own `.nodwyn/init.scm` defines: in another project's
+worktree the model asked to land its work called it and was told it was
+unknown, or skipped the step. The sentence is added only where `(primitive-info "validate")`
+succeeds, as `git-rule` does for `git-diff`.
+
+The per-turn resets (`turn-stopping`, `stalled`, `compact-writes-at`, the
+check loop's request and edit flag, the sub-agent depth and label) moved from
+wrappers of `nodwyn-turn` to wrappers of a new `turn-start`, which the host
+applies to the request just before `nodwyn-turn`. A project that redefined
+`nodwyn-turn`, as docs/scheme.md tells it to plan its own way, lost them, and
+one turn that filled the context twice with nothing written left every later
+turn of the session asking the model with no tools. `ran-ok?` is defined once,
+in `shell.scm`, which owns it.
+
+Calls the shell habit refuses (a command line sent through `cmd` and `args`)
+reach the progress guard and the tool-call budget, through a third argument of
+`skip-tools`: twelve identical `ls -la | head` calls with a tool-call limit of
+5 ended with no stop after 13 model requests, where the same twelve real calls
+stop at the fourth. The strategy's own skips (a sub-agent's repeats, tools off
+for a handover note) stay out, since the sub-agent ends itself before the guard.

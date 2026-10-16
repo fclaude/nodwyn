@@ -35,10 +35,11 @@
 ;; reads and searches, never runs or changes anything; the model tests the
 ;; ideas itself.
 (define checkloop-request "")
-(define checkloop-base-turn nodwyn-turn)
-(define (nodwyn-turn request)
+(define checkloop-base-turn-start turn-start)
+(define (turn-start request)
   (set! checkloop-request (format "~a" request))
-  (checkloop-base-turn request))
+  (set! checkloop-code-edited #f)
+  (checkloop-base-turn-start request))
 
 (define second-look-rounds 8)
 
@@ -109,6 +110,10 @@
 ;; history instead. Searching the history (git log, git blame) before any
 ;; change to the code, tests aside, is the sign it has not reproduced the
 ;; problem; that result gets a hint to call second-look, a few times at most.
+;; Only in a turn that works toward evidence, a run or an unattended turn or
+;; one with a recorded plan: in a chat that asks what changed in the last five
+;; commits, reading the history is the answer, and the hint to call second-look
+;; with a check script was meaningless (ADR 32, amended 2026-10-16).
 (define second-look-hints 2)
 (define second-look-hinted 0)
 (define checkloop-code-edited #f)
@@ -147,6 +152,7 @@
      (lambda (c r)
        (when (checkloop-code-edit? c r) (set! checkloop-code-edited #t))
        (when (and (not checkloop-code-edited) (< second-look-hinted second-look-hints)
+                  (or (unattended?) (plan-required?) (plan-recorded?))
                   (checkloop-history-search? c))
          (set! second-look-hinted (+ second-look-hinted 1))
          (fold-result (assoc-ref c 'id) (string-append (format "~a" (assoc-ref r 'value "")) second-look-hint))))

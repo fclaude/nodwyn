@@ -13,10 +13,10 @@
 ;; answered while run-calls runs its handler, else "sub-agent".
 (define agent-label #f)
 ;; A turn starts with no agent tool running; a stop inside one left it set.
-(define agents-base-nodwyn-turn nodwyn-turn)
-(define (nodwyn-turn request)
+(define agents-base-turn-start turn-start)
+(define (turn-start request)
   (set! agent-label #f)
-  (agents-base-nodwyn-turn request))
+  (agents-base-turn-start request))
 
 ;; Register a tool the model can call, answered by (handler call args). It is
 ;; offered like any tool, so define it in .nodwyn/init.scm, before the tool

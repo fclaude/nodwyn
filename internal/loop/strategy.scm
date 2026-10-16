@@ -4,10 +4,17 @@
 ;; a plan, so a strategy may also call it itself. A project that plans its
 ;; own way redefines nodwyn-turn.
 (define (nodwyn-turn request)
-  (set! turn-stopping #f)
-  (set! stalled 0)
   (when (plan-required?) (plan-gate request))
   (agent-turn request))
+
+;; What the host calls with the request before nodwyn-turn, every turn, so
+;; the state a turn keeps for itself starts afresh even when a project
+;; redefines nodwyn-turn: the habits' own files wrap it to reset theirs. A
+;; project that redefines nodwyn-turn but not turn-start keeps every reset;
+;; one that redefines turn-start wraps the version it replaces.
+(define (turn-start request)
+  (set! turn-stopping #f)
+  (set! stalled 0))
 
 ;; Set when the turn must end with a report, not more work (compact.scm:
 ;; the context filled twice with nothing written between): from then on the

@@ -146,10 +146,10 @@
 (define compact-writes 0)
 (define compact-writes-at #f)
 
-(define compact-base-nodwyn-turn nodwyn-turn)
-(define (nodwyn-turn request)
+(define compact-base-turn-start turn-start)
+(define (turn-start request)
   (set! compact-writes-at #f)
-  (compact-base-nodwyn-turn request))
+  (compact-base-turn-start request))
 
 (define compact-stop-message
   "The context has filled twice in this turn with no file written between the two times: compacting again would send you back over what you have read. Stop here. In a few lines say what you found, what is done, what is left and what stands in the way; tools are off for this answer, and the turn ends with it.")

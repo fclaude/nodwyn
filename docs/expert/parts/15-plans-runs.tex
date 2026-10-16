@@ -145,10 +145,14 @@ plan, as trusted project code:
 Note that this wraps \code{nodwyn-turn}, not \code{agent-turn}: the host
 calls \code{nodwyn-turn} for every message, so this runs even in a
 supervised run, and since a plan is then recorded, the default gate that
-runs next has nothing left to do. It \emph{wraps} rather than replaces,
-because a working habit (\file{checkloop.scm}) already wraps
-\code{nodwyn-turn} to remember the request for its \code{second-look}
-tool; replacing it outright would quietly switch that off. (The name is specific to \nodwyn{} so that a project's own
+runs next has nothing left to do. It \emph{wraps} rather than replaces so
+that the plan gate and the default strategy still run. The state the working
+habits keep for one turn (the request \file{checkloop.scm} remembers for
+\code{second-look}, the stop after a compaction that wrote nothing) is reset
+in \code{turn-start}, which the host applies to the request just before
+\code{nodwyn-turn}, so replacing \code{nodwyn-turn} outright does not leave
+it stale; a project that redefines \code{turn-start} wraps the one it
+replaces, as the habits do. (The name is specific to \nodwyn{} so that a project's own
 \code{turn}, a counter say, can never shadow it by accident.)
 
 \subsection{The model's own plan}
