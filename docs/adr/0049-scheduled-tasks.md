@@ -403,3 +403,19 @@ untracked and no commit the base lacks; its ignored files stay where they
 are, and the log says it moved. A worktree with work of its own starts
 where it was left. The base branch is the local one: the scheduler fetches
 nothing. The regression is `TestScheduledRunStartsFromTodaysBase`.
+
+## Amendment 2026-10-16: a note is applied only when it covers the conversation; only conversations hand over
+
+§8 narrowed every scheduled message to the last note, though a note is
+prepared only when more than a quarter of the window has been added since the
+last one. A run or a human follow-up below that size was in no note, and the
+next narrowing dropped it from the model's memory: a daily "compare today with
+yesterday" lost yesterday. A note is now applied only when nothing of the
+conversation (user and harness messages, replies, tool results) was written
+after the note's `through`; otherwise the conversation stays whole until a
+later note covers it. The cost is that a run that follows a follow-up is not
+narrowed. Handover preparation also moved from the end of every turn's work to
+the end of a model turn, so an evaluation, a policy read or a friction read on
+a scheduled task no longer makes a model request or holds the task busy. The
+regressions are `TestScheduledSmallRunsSurviveTheNextRun` and
+`TestAnEvaluationOnAScheduledTaskPreparesNoHandover`.

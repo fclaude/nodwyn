@@ -139,6 +139,32 @@ func TestAStoppedTurnSaysWhereItStopped(t *testing.T) {
 	}
 }
 
+// An evaluation, a policy write or a friction read writes no user message,
+// so "this turn" is its own events: one that fails after a chat turn that
+// wrote a file does not report the file (P2-038).
+func TestAFailedEvaluationDoesNotReportTheLastChatTurn(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "a.txt", "content": "a"}}}},
+		fake.Turn{Content: "written"},
+	)
+	if err := r.s.Send("write a.txt"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("y")
+	if err := r.s.StartEval(`(error "boom")`, "test"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("y")
+	end := lastTurnEnd(t, r)
+	if end.Outcome != "error" {
+		t.Fatalf("outcome %q: %+v", end.Outcome, end)
+	}
+	if strings.Contains(end.Where, "a.txt") || strings.Contains(end.Where, "files written") {
+		t.Fatalf("the evaluation reports the chat turn's work: %q", end.Where)
+	}
+}
+
 // lastTurnEnd is the last turn.end in the rig's log.
 func lastTurnEnd(t *testing.T, r *rig) log.TurnEnd {
 	t.Helper()

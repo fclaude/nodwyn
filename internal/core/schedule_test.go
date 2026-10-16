@@ -131,9 +131,80 @@ func TestScheduledHandoverWaitsForNextRun(t *testing.T) {
 	if follow := string(srv.Requests[2].Raw); strings.Contains(follow, "Carry the release number 42") || strings.Contains(follow, "handover note") {
 		t.Fatal("the human follow-up carries the handover's exchange")
 	}
+	// The follow-up is in no note, so the next run keeps the whole
+	// conversation instead of narrowing to a note that lacks it.
 	last := string(srv.Requests[3].Raw)
-	if strings.Contains(last, "Earlier release evidence") || !strings.Contains(last, "Carry the release number 42") {
-		t.Fatal("next run did not start from its handover")
+	if !strings.Contains(last, "Earlier release evidence") || !strings.Contains(last, "What was that evidence?") {
+		t.Fatal("next run dropped the follow-up that no note covers")
+	}
+}
+
+// A scheduled task whose context is large has a handover to prepare after a
+// conversation; an evaluation, which has none, ends without a model request
+// (P2-039). The fake has no turn to give, so a request fails the test.
+func TestAnEvaluationOnAScheduledTaskPreparesNoHandover(t *testing.T) {
+	srv := fake.NewT(t)
+	defer srv.Close()
+	o := diskOptions(t)
+	o.NoConfirm = false
+	o.Provider = llm.NewOllama(srv.URL)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	def := log.SessionSchedule{Definition: schedule.Definition{Message: "check release", Repeat: "daily", At: "2026-10-16T09:00"}}
+	if _, err = s.Record(log.KindSessionSchedule, def); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Record(log.KindUserMsg, log.UserMsg{Text: "Earlier release evidence " + strings.Repeat("z", 50000)}); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.StartEval("(+ 1 2)", "test"); err != nil {
+		t.Fatal(err)
+	}
+	followBudget(t, s, func(event.Checkpoint) { t.Fatal("checkpoint") })
+	if len(srv.Requests) != 0 || s.handover.Load() != nil {
+		t.Fatalf("the evaluation asked the model: %d requests, handover %+v", len(srv.Requests), s.handover.Load())
+	}
+}
+
+// A run that follows a note is in no note and, until a later one covers it,
+// the next run must still see it: narrowing to the old note dropped small
+// runs from the model's memory for good (P2-050). The first run after the
+// note does start from it, as nothing was written after the note.
+func TestScheduledSmallRunsSurviveTheNextRun(t *testing.T) {
+	srv := fake.NewT(t, fake.Turn{Content: "first answer"}, fake.Turn{Content: "Carry the release number 42."}, fake.Turn{Content: "yesterday found gadget 7"}, fake.Turn{Content: "third answer"})
+	defer srv.Close()
+	o := diskOptions(t)
+	o.NoConfirm = false
+	o.Provider = llm.NewOllama(srv.URL)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	def := log.SessionSchedule{Definition: schedule.Definition{Message: "check release", Repeat: "daily", At: "2026-10-16T09:00"}}
+	if _, err = s.Record(log.KindSessionSchedule, def); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Record(log.KindUserMsg, log.UserMsg{Text: "Earlier release evidence " + strings.Repeat("z", 50000)}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err = s.SendScheduled(def.Message, log.ScheduleRun{Manual: true}); err != nil {
+			t.Fatal(err)
+		}
+		followBudget(t, s, func(event.Checkpoint) { t.Fatal("checkpoint") })
+	}
+	if len(srv.Requests) != 4 {
+		t.Fatalf("%d requests", len(srv.Requests))
+	}
+	if second := string(srv.Requests[2].Raw); strings.Contains(second, "Earlier release evidence") || !strings.Contains(second, "Carry the release number 42") {
+		t.Fatal("the run after the note did not start from it")
+	}
+	if third := string(srv.Requests[3].Raw); !strings.Contains(third, "yesterday found gadget 7") {
+		t.Fatal("the third run lost what the second found")
 	}
 }
 

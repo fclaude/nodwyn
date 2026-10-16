@@ -250,12 +250,24 @@ func (s *Session) send(text string, required bool) error {
 	return s.startTurn(func(ctx context.Context) error { return s.turn(ctx, text, required, !required) })
 }
 
-// turn records the user's message and runs the Scheme turn on it, which
+// turn runs a model turn on text and, when it succeeded, prepares the
+// handover of a scheduled task. Only a conversation has something to hand
+// over: an evaluation, a policy read or a friction read ends without it, so
+// opening Settings never costs a model request.
+func (s *Session) turn(ctx context.Context, text string, required, reviewed bool) error {
+	if err := s.runTurn(ctx, text, required, reviewed); err != nil {
+		return err
+	}
+	s.prepareHandover(ctx)
+	return nil
+}
+
+// runTurn records the user's message and runs the Scheme turn on it, which
 // plans when the turn must and then applies agent-turn (strategy.scm). What
 // stays here is the invariant no Scheme can skip: a turn that must plan does
 // nothing irreversible before it records a plan, and fails if it records
 // none (plan.go).
-func (s *Session) turn(ctx context.Context, text string, required, reviewed bool) error {
+func (s *Session) runTurn(ctx context.Context, text string, required, reviewed bool) error {
 	s.planRequired.Store(required)
 	s.planned.Store(false)
 	s.reviewed.Store(reviewed)
@@ -332,6 +344,12 @@ func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.
 	s.turnCancel = cancel
 	s.turns.Add(1)
 	s.mu.Unlock()
+	// Every kind of work starts with no task, plan or marks of its own, and
+	// remembers where in the log it began: an evaluation or a policy read
+	// that fails says where it stopped from its own events, not from the
+	// last chat turn's files and commands (turn() sets the task of a chat).
+	s.setTurnTask("", nil)
+	first := s.eventCount()
 
 	go func() {
 		var turnErr error
@@ -342,7 +360,7 @@ func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.
 			}
 			end := turnOutcome(ctx, turnErr)
 			if end.Outcome != "completed" && end.Outcome != "canceled" {
-				end.Where = s.whereStopped()
+				end.Where = s.whereStopped(first)
 				if kept := s.restoreKept(turnErr); kept != "" {
 					end.Where += "; " + kept
 				}
@@ -368,8 +386,6 @@ func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.
 				_, _ = s.Record(log.KindNote, log.Note{Text: err.Error()})
 			}
 			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})
-		} else {
-			s.prepareHandover(ctx)
 		}
 	}()
 	return nil
@@ -422,8 +438,9 @@ func (s *Session) Abort() {
 	}
 }
 
-// Eval evaluates Scheme with user origin (a front-end command). Output is
-// delivered as Output events; the result is returned.
+// Eval evaluates Scheme with user origin, unrecorded and without taking the
+// session: for the tests and the exfiltration suite, which drive an idle
+// session directly. A front-end uses StartEval.
 func (s *Session) Eval(ctx context.Context, src string) (scheme.Value, error) {
 	defer s.flushOutput()
 	return s.interp.EvalString(scheme.WithOrigin(ctx, scheme.OriginUser), src)

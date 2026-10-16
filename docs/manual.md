@@ -2175,7 +2175,10 @@ handover, it prepares a note for the next scheduled run while its context is
 warm. This uses the same run budget. The note is recorded without replacing
 the current conversation: human follow-ups keep that conversation, without
 the ask for the note or the note. The next scheduled message starts from the
-note. A pending answer prevents preparation.
+note when the note covers the whole conversation; a small run or a follow-up
+after it is in no note, so the conversation stays whole until a later note
+covers it. A pending answer prevents preparation, and only a conversation
+prepares one, never an evaluation or a read in Settings.
 Creating, editing, resuming or removing schedules stays on this computer;
 paired devices can pause and run now. There is no scheduling Scheme primitive.
 Automatic daemon startup at login is not built.

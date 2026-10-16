@@ -49,15 +49,11 @@ func turnOutcome(ctx context.Context, err error) log.TurnEnd {
 // (20261003T002506Z-f564a28c, 20261004T182412Z-747045aa; ADR 18, amended
 // 2026-10-05). It is read from the log, redacted already, and runs nothing:
 // git is not asked, since which program a repository's git configuration
-// would run is not the host's to leave to a stranger's clone.
-func (s *Session) whereStopped() string {
-	events := s.EventsSoFar()
-	start := 0
-	for i, ev := range events {
-		if ev.Kind == log.KindUserMsg {
-			start = i
-		}
-	}
+// would run is not the host's to leave to a stranger's clone. first is the
+// number of events the session held when the turn began: only this turn's
+// events count, whatever kind of work it was.
+func (s *Session) whereStopped(first int) string {
+	events := s.EventsSoFar()[first:]
 	var parts []string
 
 	s.turnMu.Lock()
@@ -82,7 +78,7 @@ func (s *Session) whereStopped() string {
 	var written, command []string // written paths in order; the last command's line
 	ids := map[string]string{}    // call id to the path it writes or the command it runs
 	var status string
-	for _, ev := range events[start:] {
+	for _, ev := range events {
 		switch ev.Kind {
 		case log.KindToolCall:
 			var c log.ToolCallEvent

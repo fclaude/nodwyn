@@ -131,7 +131,11 @@ func (s *Session) SendScheduled(text string, run log.ScheduleRun) error {
 				}
 			}
 		}
-		if note := s.handover.Load(); note != nil && note.Text != "" {
+		// A note stands for the conversation only if it covers all of it: a
+		// run or a follow-up written after the note is in no note, and
+		// narrowing to the note would drop it from the model's memory for
+		// good. Until a later note covers it, the conversation stays whole.
+		if note := s.handover.Load(); note != nil && note.Text != "" && !s.conversationAfter(note.Through) {
 			if _, err := s.Record(log.KindContextNarrow, log.ContextNarrow{System: s.loop.WindowContext().System, Agent: "scheduled handover", Lasting: true}); err != nil {
 				return err
 			}
@@ -141,6 +145,26 @@ func (s *Session) SendScheduled(text string, run log.ScheduleRun) error {
 		}
 		return s.turn(ctx, text, false, true)
 	}, &run)
+}
+
+// isConversation says whether an event is part of what the model was told
+// or said, as against the host's own records.
+func isConversation(kind log.Kind) bool {
+	switch kind {
+	case log.KindUserMsg, log.KindHarnessMsg, log.KindLLMResp, log.KindToolResult:
+		return true
+	}
+	return false
+}
+
+// conversationAfter says whether the conversation has anything after seq.
+func (s *Session) conversationAfter(seq uint64) bool {
+	for _, ev := range s.EventsSoFar() {
+		if ev.Seq > seq && isConversation(ev.Kind) {
+			return true
+		}
+	}
+	return false
 }
 
 // prepareHandover runs before the turn releases its interpreter, while its
@@ -161,11 +185,8 @@ func (s *Session) prepareHandover(ctx context.Context) {
 	}
 	size := 0
 	for _, ev := range history {
-		if ev.Seq > after {
-			switch ev.Kind {
-			case log.KindUserMsg, log.KindHarnessMsg, log.KindLLMResp, log.KindToolResult:
-				size += window.Estimate(string(ev.Payload))
-			}
+		if ev.Seq > after && isConversation(ev.Kind) {
+			size += window.Estimate(string(ev.Payload))
 		}
 	}
 	high := s.loop.WindowContext().HighWater

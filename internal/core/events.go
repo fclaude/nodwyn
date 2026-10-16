@@ -47,6 +47,14 @@ func (s *Session) EventsSoFar() []log.Event {
 	return append([]log.Event(nil), s.events...)
 }
 
+// eventCount is how many events the session holds, so a turn can say where
+// in them it began.
+func (s *Session) eventCount() int {
+	s.evmu.Lock()
+	defer s.evmu.Unlock()
+	return len(s.events)
+}
+
 // History is every event of the session's log, redacted as the events it
 // holds are: read from the log on disk, since a resumed session holds only
 // the end of it. A session whose log is not a file holds all of it.
