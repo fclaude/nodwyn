@@ -77,8 +77,8 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 *Amended 2026-09-21 by ADR 19: the original "never content" rule conflated content with secret values. Seam A needs the ask and the plan.*
 
 - **Seam A:** score a draft **plan** against the **user's ask** (quality/coherence/fulfillment), over the actual text of both. LLM revises on low score, ≤3 rounds.
-- **Seam C:** score an ambiguous egress **situation** on **class + destination + scope**, never the value. *(Amended 2026-10-01 by ADR 18 and ADR 20: in a run started with `--judge`, the judge answers its ordinary confirms. It is shown the task, the plan and the call at the user's `jev.content` level, redacted; the decision is made in Go, and security confirms are never put to it.)*
-- **Jev is an egress edge.** Its credential is a bound data-plane credential (E3) and its payload passes the same redaction controller as the model context (E2/E4). What it may see beyond ask+plan is a user policy (`jev.content`: none / plan / plan+summaries / full), logged per call.
+- **Seam C:** score an ambiguous egress **situation** on **class + destination + scope**, never the value. *(Amended 2026-10-01 by ADR 18 and ADR 20: in a run started with `--judge`, the judge answers its ordinary confirms. It is shown the task, the plan and the call at the user's `judge.content` level, redacted; the decision is made in Go, and security confirms are never put to it.)*
+- **Jev is an egress edge.** Its credential is a bound data-plane credential (E3) and its payload passes the same redaction controller as the model context (E2/E4). What it may see beyond ask+plan is a user policy (`judge.content`: none / plan / plan+summaries / full), logged per call. *(Amended by ADR 46: the judge is a provider's, `[judge]` names the server, and the setting was `jev.content` before it.)*
 - **Never:** a secret value (enforced by redaction, not by withholding content), control flow, or its own loop (control-plane key is exempt).
 
 **Why-not-what principle, restated:** Jev judges intent and plans over *redacted* content; the local stack judges provenance and secret shape, and is the only thing that ever sees a value.
@@ -92,7 +92,8 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 - **RAM =** token-budgeted window, surgical pull on demand.
 - **v0 scope:** no cross-session, no embeddings/prometheus-style index. (Jev 0.84)
 - Retrieval is session-scoped text search (grep); structural outlines and a semantic/embedding index are deferred.
-  *(Amended by ADR 50: the model also searches by words the repository, from a cross-session index of words and line numbers kept per project in the data directory and derived from the files, and its own conversation, recalling an event by its seq, from an index kept in memory and derived from the log; with the person's leave for a project, also the project's earlier tasks, from indexes of their logs kept in memory. Embeddings are designed there, not built.)*
+  *(Amended by ADR 50: the model also searches by words the repository, from a cross-session index of words and line numbers kept per project in the data directory and derived from the files, and its own conversation, recalling an event by its seq, from an index derived from the log; with the person's leave for a project, also the project's earlier tasks, from indexes of their logs. Embeddings are designed there, not built.)*
+  *(Amended by ADR 51: those indexes are `<id>.mem` files beside each log, holding its words and a card for each turn, and nothing is kept in memory between searches.)*
 
 ---
 
@@ -129,7 +130,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 2. Guard at `apply → Prim` (the "boundary").
 3. Binding table + credential register/revoke masked + encrypted keychain + handles.
 4. L1 fast path (regex/entropy/allowlist) — fail-closed.
-5. Noul plan gate + hard-trigger.
+5. The judge's yes/no plan gate + hard-trigger.
 6. L2 taint (scheme-value propagation).
 7. E2/E4 ingress redaction + `[REDACTED class]` placeholders.
 8. L3 feature classifier (optional; public corpus baseline).
