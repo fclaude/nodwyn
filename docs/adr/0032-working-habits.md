@@ -1267,3 +1267,65 @@ this one: at 0.62 of the high water a fold that does not pay waits, and a
 held read stays while the other folds because it pays, where before both
 folded because the context was past half. Its case past three quarters, the
 held and the other read folding in one sweep, passes on both.
+
+## Amendment 2026-10-15: the finish checks are said once, together
+
+Before an unattended turn ended with a change, four checks could each send
+the model back once a turn: the new files git does not track, the plan's
+steps without their evidence, check-without's untested parts and the
+report's stale citations. Each answer was an edit or a script, which re-armed
+the reminders before them ("You changed files after your last test run"),
+and a trusted repository's own reminder ("validate has not run") came on
+top. In the deep study of commit-bench (2026-10-15, reports 12 and 13):
+
+- on five tasks set against Pi, the rounds after the first finished report
+  cost A 0.85M tokens and dsl18m 0.41M, in 21 segments 17 of which edited
+  nothing in the repository; on the ten held-out tasks 8 of A's 10 runs were
+  sent back after a final reply, adding 193 calls, check-without 1.80M of the
+  2.16M;
+- on c97f9a41 (A) six chained reminders cost 0.38M with no edit, among them
+  "validate has not run" twice, right after `make validate` had run in the
+  shell: `.nodwyn/init.scm` sets `validated-state` only when its validate
+  tool runs;
+- deletions made 7 of the 69 parts check-without named, and on 8c795994 one
+  message named nine deleted empty logs "(deleted file, +0 -0 lines)", whose
+  answer cost 19 calls and 200k tokens changing only a script in the scratch
+  directory.
+
+So:
+
+- **One finish review, once a turn.** When a turn with a change first ends
+  and no reminder of the turn's evidence is due (no change, no test run since
+  the last edit, a failing run), `finish-review-points` (strategy.scm)
+  gathers the new files, the plan's unmet evidence (the steps that have it
+  are marked as before), check-without's untested parts and the stale
+  citations, and `finish-review-message` (prompts.scm) says them in one
+  message: one point as before, several numbered, closed by
+  `finish-review-close`, which says it is asked once, asks for the check to
+  run again after any change, and says the next answer ends the turn.
+  `TestTheFinishReviewIsOneMessage`.
+- **The turn is accepted after it.** An answer to the review ends the turn;
+  the evidence reminders are not asked again. `TestAnAnswerAfterTheFinishReviewEndsTheTurn`.
+- **check-without leaves deletions alone.** A deleted file and a hunk that
+  only deletes lines (its added lines, if any, comments or blank) are no
+  parts: a check that passes with the deletion put back cannot be extended to
+  fail without code that is gone, and asked to, models wrote ablation
+  scripts or kept dead code. Documents were never parts (`codeFile`).
+  `TestCheckWithoutLeavesDeletionsAlone`.
+- **A shell make validate is validate's run.** After a run of `make
+  validate` that ran to an exit, `validated-run` sets `validated-state` to
+  `(validation-state)`, as the validate tool does, in a repository whose
+  `init.scm` defines both; elsewhere it does nothing. The benchmark runs the
+  harness against old snapshots whose `init.scm` it cannot change, and every
+  snapshot since validate came (`ea9921b`, 2026-10-03) defines both. `TestAShellMakeValidateCountsAsValidated`.
+
+What is kept: every check still runs at the first finish, with the same
+findings and wording; the evidence reminders still come first, and the
+failing-run reminder still lets a turn end on failures the unchanged code
+shares. What is given up: a second chance after the review, so an edit made
+in answer to it and not tested again ends the turn untested (the review asks
+for the run), and an untested deletion goes unnamed. The analysts estimate
+0.1-0.2M tokens saved per task where the checks fire; the three segments of
+the study in which a reminder led to a stronger test (A and dsl18m on
+1d401bf3, dsl18m on 7513f7eb) would get their message once. Each test above
+fails on `d880bb3` and passes with the change.

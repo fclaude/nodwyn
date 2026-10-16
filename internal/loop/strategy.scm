@@ -741,21 +741,64 @@
     (and (not (string-empty? name))
          (or (string-contains? text p) (string-contains? text name)))))
 
+;; The finish review: what an unattended turn's change lacks, gathered when
+;; the turn first ends with a change and no reminder of its evidence is due,
+;; and said in one message (finish-review-message), once a turn: the new
+;; files git does not track (new, which check-without's parts leave out
+;; rather than name them twice), the plan's steps without their evidence
+;; (planspec.scm), the parts of the change the passing check does not test
+;; (check-without, run when passing is the check that passed since the last
+;; edit), and the commands the report cites that have not run since the last
+;; edit. They were four messages, each once a turn, and each answer, an edit
+;; or a script, re-armed the reminders before them (ADR 32, amended
+;; 2026-10-15).
+(define (finish-review-points reply new passing ran ran-all checked passed)
+  (let* ((plan (if (and plan-language (pair? plan-spec))
+                   (let ((check (plan-language-check passed)))
+                     (plan-language-mark (cadr check))
+                     (car check))
+                   '()))
+         (parts (if (and passing (check-without?))
+                    (filter (lambda (p) (not (member (assoc-ref p "path" "") new))) (untested-parts passing))
+                    '()))
+         (stale (stale-citations (format "~a" (assoc-ref reply 'content "")) ran ran-all checked)))
+    (append (if (pair? new) (list (finish-new-files-message new)) '())
+            (if (pair? plan) (list (plan-language-unmet-message plan)) '())
+            (if (pair? parts) (list (finish-untested-parts-message (command-line passing) parts)) '())
+            (if (pair? stale) (list (finish-stale-citations-message stale)) '()))))
+
+;; A repository's whole check run through the shell counts as its validate
+;; tool's run. nodwyn's .nodwyn/init.scm reminds a turn that changed files
+;; and did not validate after its last change, comparing (validation-state)
+;; with validated-state, which only its validate tool sets; a turn that ran
+;; make validate in the shell was told "validate has not run" (commit-bench,
+;; A c97f9a41: twice, after make validate ran at the calls before each). The
+;; benchmark runs the harness against old snapshots whose init.scm it cannot
+;; change, so the harness sets validated-state as the tool does, after any
+;; run of make validate that ran to an exit, in a repository that defines
+;; both; elsewhere this does nothing.
+(define (validated-run call result)
+  (when (and (run-status result)
+             (let any ((cs (call-commands call)))
+               (and (pair? cs)
+                    (or (equal? (car cs) "make validate") (string-prefix? "make validate " (car cs))
+                        (any (cdr cs))))))
+    (guard (e (else #f))
+      (set! validated-state (validation-state)))))
+
 (define (evidence-loop request)
   ;; passing: the latest check or test call that exited 0 since the last
   ;; edit, for check-without. ran: the command lines run since the last edit,
-  ;; and every program the turn ran, for the report's citations. ablated and
-  ;; cited: whether those two checks were made, once a turn each. named: the
-  ;; new files the untracked-files reminder named, which check-without's
-  ;; answer leaves out rather than name them twice.
+  ;; and every program the turn ran, for the report's citations.
   ;; ran-all: the commands run in the turn; base-ran: those run on the copy
   ;; of the last commit, which no edit makes stale; started-ids and
   ;; started-calls: the background runs started since the last edit
   ;; (started-call).
-  ;; passed: the runs that passed since the last edit (run-entry); planned:
-  ;; whether the plan's evidence was checked (planspec.scm), once a turn.
+  ;; passed: the runs that passed since the last edit (run-entry);
+  ;; review-made: whether the finish review (finish-review-points) was made,
+  ;; once a turn, after which an answer ends the turn.
   (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
-        (passed '()) (planned #f) (ablated #f) (cited #f) (named '()))
+        (passed '()) (review-made #f))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
@@ -768,7 +811,7 @@
     ;; unchanged-told: the no-change reminder was said; a turn that has run a
     ;; check since may then end unchanged, the way out the reminder offers.
     (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0)
-               (scripts '()) (written '()) (noted #f) (excused #f) (reading 0) (outcome 'none)
+               (scripts '()) (written '()) (excused #f) (reading 0) (outcome 'none)
                (told #f) (unchanged-told #f))
       (let ((calls (assoc-ref reply 'tool-calls '())))
         (if (pair? calls)
@@ -811,6 +854,7 @@
                          (set! passing c))
                        (let ((entry (run-entry c r)))
                          (when entry (set! passed (cons entry passed))))
+                       (validated-run c r)
                        ;; A document's edit leaves the plan's evidence standing
                        ;; (passed): no test or check reads a .md or a .tex.
                        (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)) (not (doc-path? (repo-path c))))
@@ -851,7 +895,7 @@
                            (reading (reading-rounds calls reading))
                            (outcome (keep-passed outcome before edited)))
                        (when stuck (add-message (finish-unrunnable-message failed)))
-                       (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted excused
+                       (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written excused
                              reading outcome told unchanged-told)))))
             (let* ((now (and before (git-state)))
                    (new-lines (if now (filter (lambda (l) (not (member l before))) now) '()))
@@ -864,60 +908,41 @@
                                     (git-shows? written new-lines)
                                     (git-shows? written before))
                                 edited))
-                   (reviewed (reviewed?))
-                   (gap (cond (turn-stopping #f)
+                   (gap (cond ((or turn-stopping review-made) #f)
                               ((and (not changed) (not excused) (not (and unchanged-told tested)))
-                               (if reviewed finish-no-change-reviewed-message finish-no-change-message))
+                               (if (reviewed?) finish-no-change-reviewed-message finish-no-change-message))
                               ((and changed (not tested) (not offered)) finish-untested-message)
                               ((and changed (equal? outcome 'failed) (not offered) (not told)) finish-failing-message)
-                              (else #f)))
-                   (new (if (and now changed (not noted))
-                            (filter (lambda (f) (not (plan-names? f))) (git-new-files before now))
-                            '())))
+                              (else #f))))
               (cond ((and gap (< reminders finish-reminders))
                      (add-message gap)
                      ;; A run the model was told failed is not told again
                      ;; until an edit: it may answer that the tests fail on the
                      ;; unchanged code too, and end.
-                     (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted
-                           (or excused (and (not changed) reviewed)) 0 outcome
+                     (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written
+                           (or excused (and (not changed) (reviewed?))) 0 outcome
                            (or told (equal? gap finish-failing-message))
                            (or unchanged-told (not changed))))
-                    ((and (pair? new) (not turn-stopping))
-                     (set! named new)
-                     (add-message (finish-new-files-message new))
-                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0 outcome
-                           told unchanged-told))
-                    ;; The plan's steps set against what happened, when the
-                    ;; plan is data (planspec.scm): what lacks its evidence
-                    ;; is said once; what has it is marked.
-                    ((and changed (not turn-stopping) (not planned) plan-language (pair? plan-spec))
-                     (set! planned #t)
-                     (let* ((check (plan-language-check passed)) (unmet (car check)))
-                       (plan-language-mark (cadr check))
-                       (if (pair? unmet)
-                           (begin (add-message (plan-language-unmet-message unmet))
-                                  (loop (ask-model) edited tested failed-runs offered reminders scripts written noted excused 0
-                                        outcome told unchanged-told))
-                           (loop reply edited tested failed-runs offered reminders scripts written noted excused 0
-                                 outcome told unchanged-told))))
-                    ;; The change's parts the passing check does not test
-                    ;; (check-without), asked once a turn.
-                    ((and changed (not turn-stopping) (not ablated) passing (memq outcome '(passed kept)) (check-without?))
-                     (set! ablated #t)
-                     (let ((parts (filter (lambda (p) (not (member (assoc-ref p "path" "") named))) (untested-parts passing))))
-                       (if (pair? parts)
-                           (begin (add-message (finish-untested-parts-message (command-line passing) parts))
-                                  (loop (ask-model) edited tested failed-runs offered reminders scripts written noted excused 0
-                                        outcome told unchanged-told))
-                           (loop reply edited tested failed-runs offered reminders scripts written noted excused 0
-                                 outcome told unchanged-told))))
-                    ;; A command the report cites that has not run since the
-                    ;; last edit, asked once a turn.
-                    ((and changed (not turn-stopping) (not cited)
-                          (pair? (stale-citations (format "~a" (assoc-ref reply 'content "")) (append ran base-ran) ran-all (or (and passing (whole-check? passing)) (whole-check-passed? passed)))))
-                     (set! cited #t)
-                     (add-message (finish-stale-citations-message
-                                   (stale-citations (format "~a" (assoc-ref reply 'content "")) (append ran base-ran) ran-all (or (and passing (whole-check? passing)) (whole-check-passed? passed)))))
-                     (loop (ask-model) edited tested failed-runs offered reminders scripts written noted excused 0
-                           outcome told unchanged-told)))))))))
+                    ;; The finish review, once a turn: what lacks evidence or
+                    ;; may be wrong, said in one message. An answer after it
+                    ;; ends the turn (the gap above is not asked again): on
+                    ;; commit-bench the checks chained, each answer an edit or
+                    ;; a script that re-armed the next: after the first report,
+                    ;; 0.41-0.85M tokens over five tasks, in segments 17 of 21
+                    ;; of which edited nothing (ADR 32, amended 2026-10-15).
+                    ((and changed (not turn-stopping) (not review-made))
+                     (set! review-made #t)
+                     (let ((points (finish-review-points
+                                    reply
+                                    (if now
+                                        (filter (lambda (f) (not (plan-names? f))) (git-new-files before now))
+                                        '())
+                                    (and (memq outcome '(passed kept)) passing)
+                                    (append ran base-ran) ran-all
+                                    (or (and passing (whole-check? passing)) (whole-check-passed? passed))
+                                    passed)))
+                       (and (pair? points)
+                            (begin (add-message (finish-review-message points))
+                                   (loop (ask-model) edited tested failed-runs offered reminders scripts written excused 0
+                                         outcome told unchanged-told)))))
+                    (else #f))))))))

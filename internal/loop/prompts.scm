@@ -374,6 +374,26 @@
    "Your report cites " (string-join (map (lambda (s) (string-append "`" s "`")) spans) ", ")
    ", which has not run since your last edit. What you say works stands on a run of the code as it is now: run it again and report what it shows, or say the claim is unchecked."))
 
+;; The finish review's points, said in one message once a turn
+;; (strategy.scm, finish-review-points): one point as it is, several
+;; numbered. Each was a message of its own, and each answer re-armed the
+;; next: on commit-bench six chained reminders cost 0.38M tokens with no edit
+;; (A c97f9a41), so the turn ends at the next answer, and the message says so
+;; (ADR 32, amended 2026-10-15).
+(define finish-review-close
+  "This is asked once. Act on each point, or say in your report why you keep what it names; if you change anything, run your check again before you answer. Your next reply without tool calls ends the turn.")
+
+(define (finish-review-message points)
+  (string-append
+   (if (and (pair? points) (null? (cdr points)))
+       (car points)
+       (let number ((ps points) (i 1) (out '()))
+         (if (null? ps)
+             (string-append "Before you finish, a look at your change found " (number->string (- i 1)) " things:\n\n"
+                            (string-join (reverse out) "\n\n"))
+             (number (cdr ps) (+ i 1) (cons (string-append (number->string i) ". " (car ps)) out)))))
+   "\n\n" finish-review-close))
+
 ;; In a git work tree, files new since the turn began that git does not
 ;; track, said once: whatever is left in the repository is in the change.
 (define (finish-new-files-message files)

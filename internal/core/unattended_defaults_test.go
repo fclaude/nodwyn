@@ -791,3 +791,112 @@ func TestABackgroundCheckIsTakenApartLikeAnyOther(t *testing.T) {
 		t.Fatalf("untested parts message: %q", msg)
 	}
 }
+
+// What the end of an unattended turn finds is said in one message, once:
+// here a new file git does not track, a part the passing check does not test
+// and a command the report cites from before the last edit. They were three
+// messages, each once a turn, and each answer re-armed the next; on
+// commit-bench the rounds after the first report cost 0.41-0.85M tokens over
+// five tasks (ADR 32, amended 2026-10-15). An answer to it ends the turn.
+func TestTheFinishReviewIsOneMessage(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py\n"),
+		shellArgs("t1", "bash", "-c", "pytest -q tests || true"), // a run before the last edit
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		write("s", "stray.txt", "left behind\n"),
+		shellArgs("t2", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "Done: `pytest -q tests` passes."}, // reviewed: three points
+		fake.Turn{Content: "stray.txt is gone; two() is part of the change; pytest did not run here."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 6)
+	for _, want := range []string{"found 3 things", "1. These files are new in the repository", "stray.txt", "2. Your check",
+		"calc.py:6 (hunk", "3. Your report cites `pytest -q tests`", "Your next reply without tool calls ends the turn"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the review lacks %q: %q", want, msg)
+		}
+	}
+}
+
+// After the finish review the turn is accepted: an answer ends it, even after
+// an edit the model did not test again, which the review asked it to. On
+// commit-bench (A c97f9a41) six chained reminders, each re-armed by the
+// answer to the one before, cost 0.38M tokens with no edit to the repository
+// (ADR 32, amended 2026-10-15).
+func TestAnAnswerAfterTheFinishReviewEndsTheTurn(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // reviewed: two()'s change is untested
+		write("w2", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2 * 10\n"),
+		fake.Turn{Content: "two() now says what it computes; the check does not cover it."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 4); !strings.Contains(msg, "calc.py:6 (hunk") {
+		t.Fatalf("review: %q", msg)
+	}
+}
+
+// validationTools stands for the part of nodwyn's .nodwyn/init.scm that
+// reminds a turn which changed files to validate: it compares the repository
+// with validated-state, which only its validate tool sets.
+const validationTools = `
+(define validation-base (guard (e (else #f)) validation-base))
+(define (validation-state)
+  (list (filter (lambda (l) (string-prefix? "?? " l)) (or (git-state) '()))
+        (guard (e (else "")) (format "~a" (git-diff "." #f (or validation-base "HEAD"))))))
+(define validated-state (guard (e (else #f)) validated-state))
+(define validate-base-agent-turn (or (guard (e (else #f)) validate-base-agent-turn) default-agent-turn))
+(define (default-agent-turn request)
+  (set! validation-base (guard (e (else #f)) (git-head)))
+  (let ((before (validation-state)))
+    (validate-base-agent-turn request)
+    (let ((now (validation-state)))
+      (when (and (not turn-stopping) (not (equal? now before)) (not (equal? now validated-state)))
+        (add-message "You changed files in this turn and validate has not run since your last change.")
+        (ask-model)))))
+`
+
+// A make validate run through the shell counts as the validate tool's run
+// for a repository's own reminder: on commit-bench (A c97f9a41) "validate
+// has not run" came twice right after make validate had run in the shell,
+// and the harness runs against old snapshots whose init.scm it cannot change
+// (ADR 32, amended 2026-10-15).
+func TestAShellMakeValidateCountsAsValidated(t *testing.T) {
+	t.Parallel()
+	repo := gitWorkTree(t)
+	cmd := exec.Command("sh", "-c", "printf 'validate:\\n\\t@echo \"validate: PASS (0 warnings)\"\\n' > Makefile && git add Makefile && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m make")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	r := trustedRigIn(t, repo, validationTools,
+		write("w", "tracked.txt", "two\n"),
+		shellArgs("v", "bash", "-c", "make validate 2>&1 | tail -n 5"),
+		fake.Turn{Content: "done: validate: PASS (0 warnings)"},
+	)
+	if e := r.turn("change tracked.txt"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 3 {
+		t.Fatalf("%d requests, want 3; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if got := r.results()["v"]; got != "" {
+		t.Fatalf("make validate failed: %s", got)
+	}
+}

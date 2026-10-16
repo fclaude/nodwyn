@@ -22,7 +22,7 @@ import (
 // check-without asks whether a check tests each part of a change: the
 // evidence loop calls it when an unattended turn is about to end on a check
 // that passed (ADR 32, amended 2026-10-11). It takes each part of the change
-// out in turn, a hunk of a changed file or a whole new or deleted file, runs
+// out in turn, a hunk of a changed file or a whole new file, runs
 // the check again, and puts the part back. A check that still passes without
 // a part does not test it: either the part is not needed or the check cannot
 // tell. On the long-context SWE-bench runs every losing attempt, in all three
@@ -36,7 +36,13 @@ import (
 // file, nothing under a protected path, no link), in code only: documents
 // and tests are left alone, since a check that passes without a test or a
 // note says nothing about the check. A hunk that adds or removes only
-// comments and blank lines is left out too: no check can see it. Every file
+// comments and blank lines is left out too: no check can see it. So are a
+// deleted file and a hunk that only deletes lines, its added lines comments
+// or blank if any (amended 2026-10-15): a check that passes with a deletion
+// put back cannot be extended to fail without the code it no longer has,
+// and asked to, models wrote ablation scripts or restored dead code. On
+// commit-bench 7 of the 69 parts named were such deletions, and one message
+// named nine deleted empty logs, "(deleted file, +0 -0 lines)". Every file
 // it changes is put back to the bytes it had, after each run and again at
 // the end whatever happens. The runs share one time budget, so a slow check
 // (a whole test suite) cannot take a turn's wall time: a part not reached
@@ -66,23 +72,22 @@ type withoutPart struct {
 	path           string
 	line           int // the part's first line in the file as it is now; 0 for a whole file
 	added, removed int
-	kind           string // "hunk", "new file" or "deleted file"
+	kind           string // "hunk" or "new file"
 	content        []byte
 	absent         bool
 }
 
 // withoutOriginal is a file as the change left it, to put back.
 type withoutOriginal struct {
-	data   []byte
-	mode   fs.FileMode
-	exists bool
+	data []byte
+	mode fs.FileMode
 }
 
 func checkWithout(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "check-without",
 		Meta: scheme.Meta{
-			Doc: "Run a check again with each part of the uncommitted change taken out in turn (a hunk of a changed code file, or a whole new or deleted one; documents, tests and comment-only hunks are left alone), putting each part back after its run. The check runs once with the whole change first, and fails with an error if it does not exit 0 then. Returns a list with one alist per part: path, line (its first line now, 0 for a whole file), added, removed, kind (hunk, new file or deleted file), and status, the check's exit status without that part, and same, whether it printed what it printed with the whole change (durations, (cached), clock times, hex addresses and long numbers masked); or error. At most " + fmt.Sprint(withoutMaxHunks) + " parts, run within " + withoutBudget.String() + " in all, the run with the whole change included: a part not reached in that time is not in the list. The evidence loop calls it before an unattended turn ends on a passing check; a part whose check still exits 0 and prints the same is one the check does not test.",
+			Doc: "Run a check again with each part of the uncommitted change taken out in turn (a hunk of a changed code file, or a whole new one; documents, tests, comment-only hunks, hunks that only delete lines and deleted files are left alone), putting each part back after its run. The check runs once with the whole change first, and fails with an error if it does not exit 0 then. Returns a list with one alist per part: path, line (its first line now, 0 for a whole file), added, removed, kind (hunk or new file), and status, the check's exit status without that part, and same, whether it printed what it printed with the whole change (durations, (cached), clock times, hex addresses and long numbers masked); or error. At most " + fmt.Sprint(withoutMaxHunks) + " parts, run within " + withoutBudget.String() + " in all, the run with the whole change included: a part not reached in that time is not in the list. The evidence loop calls it before an unattended turn ends on a passing check; a part whose check still exits 0 and prints the same is one the check does not test.",
 			Params: []scheme.Param{
 				{Name: "cmd", Type: "string", Doc: "the check's program, as it was run", Role: "argv"},
 				{Name: "args", Type: "list", Doc: "its arguments", Role: "argv"},
@@ -167,15 +172,7 @@ func runWithout(ctx context.Context, o Options, name string, args []string) ([]w
 		h, inHead := tracked[rel]
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			if !inHead {
-				continue
-			}
-			old, err := k.headBlob(ctx, h.oid)
-			if err != nil {
-				continue
-			}
-			originals[rel] = withoutOriginal{}
-			parts = append(parts, withoutPart{path: rel, kind: "deleted file", content: old, removed: len(splitLines(string(old)))})
+			continue // a deleted file is no part
 		case err != nil:
 			return nil, nil, err
 		case !info.Mode().IsRegular() || info.Size() > withoutMaxFile:
@@ -185,7 +182,7 @@ func runWithout(ctx context.Context, o Options, name string, args []string) ([]w
 			if err != nil {
 				return nil, nil, err
 			}
-			originals[rel] = withoutOriginal{data: cur, mode: info.Mode().Perm(), exists: true}
+			originals[rel] = withoutOriginal{data: cur, mode: info.Mode().Perm()}
 			if !inHead {
 				parts = append(parts, withoutPart{path: rel, kind: "new file", absent: true, added: len(splitLines(string(cur)))})
 				continue
@@ -261,7 +258,8 @@ func codeFile(rel string) bool {
 
 // hunksOf is each run of changed lines between old and cur, as cur with that
 // run alone put back as it was in old. Runs whose changed lines are all
-// comments or blank are left out.
+// comments or blank are left out, and so are runs that only delete: no line
+// they add is code.
 func hunksOf(rel string, old, cur []byte) []withoutPart {
 	a, b := splitLines(string(old)), splitLines(string(cur))
 	if len(a)+len(b) > withoutMaxLines {
@@ -280,16 +278,16 @@ func hunksOf(rel string, old, cur []byte) []withoutPart {
 			j++
 		}
 		p := withoutPart{path: rel, kind: "hunk"}
-		meaningful := false
+		adds := false
 		for _, x := range ops[i:j] {
 			if x.kind == '+' {
 				p.added++
+				adds = adds || !commentOrBlank(x.line)
 			} else {
 				p.removed++
 			}
-			meaningful = meaningful || !commentOrBlank(x.line)
 		}
-		if !meaningful {
+		if !adds {
 			i = j
 			continue
 		}
@@ -350,19 +348,11 @@ func writeWithout(k *Keeper, o Options, p withoutPart) error {
 	return os.WriteFile(abs, p.content, 0o644)
 }
 
-// putBackWithout makes the file what the change left: its bytes and mode, or
-// gone when the change had deleted it.
+// putBackWithout makes the file what the change left: its bytes and mode.
 func putBackWithout(k *Keeper, o Options, rel string, orig withoutOriginal) error {
 	abs := filepath.Join(o.Root, filepath.FromSlash(rel))
 	if !k.inside(abs) {
 		return errors.New("outside the repository")
-	}
-	if !orig.exists {
-		err := os.Remove(abs)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return err

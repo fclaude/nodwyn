@@ -218,11 +218,15 @@ evidence:
     and pytest's 4 and 5) is no failure, and a run on the copy of the last
     commit (\code{\$TMPDIR/base}) that fails too is the comparison done.
   \item At most \code{finish-reminders} (2) such reminders per turn.
-  \item Before a turn with a change ends on a passing check, that check runs
-    again with each part of the change taken out in turn
-    (\code{check-without}); the parts it still passes without are named, once:
-    the check does not test them. A command the report cites that has not run
-    since the last edit is named too, once.
+  \item When a turn with a change first ends and none of those reminders is
+    due, the \textbf{finish review} says what the change lacks, in one
+    message, once a turn: new files git does not track, the plan's steps
+    without their evidence, the parts of the change the passing check does
+    not test (it runs again with each part taken out in turn,
+    \code{check-without}; a deleted file or a hunk that only deletes lines is
+    no part), and a command the report cites that has not run since the last
+    edit. After it the turn is accepted: the model's next answer ends it,
+    and the reminders above are not asked again.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),
     the no-change reminder is \code{finish-no-change-reviewed-message}: make
@@ -254,8 +258,10 @@ command that runs it is a test run; a check fails until the work is done, so
 its failing runs never count against \code{unrunnable-after}. In a git work
 tree git decides what changed, so an edit made through the shell counts and
 a write that changes nothing does not. Files new since the turn began that
-git does not track are named once, with
-\code{(finish-new-files-message files)}, before the turn ends.
+git does not track are named in the finish review, with
+\code{(finish-new-files-message files)}. A \code{make validate} run in the
+shell counts as your \code{init.scm}'s validate tool's run when it keeps
+\code{validated-state} as nodwyn's does.
 
 \begin{tip}
 If your project runs its tests some other way, teach the loop:

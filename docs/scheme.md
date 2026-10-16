@@ -563,16 +563,26 @@ commit (`$TMPDIR/base`, `base-run?`) tests nothing of the change; one that
 fails after the change's run failed is the comparison done, and the failing
 run is not told. After `finish-no-change-message` a turn that has run a test
 or check may end unchanged: the code may already do what the request asks,
-and the message says to show it with a check (ADR 32, amended 2026-10-10). Before such a turn ends with a change, two
-more checks are made, once a turn each. The latest check or test run that
-exited 0 since the last edit runs again with each part of the change taken out
-in turn (`check-without`), and the parts it still passes without, printing
-the same, are named (`finish-untested-parts-message`): a check that cannot
-fail for a part does not test it, and one that prints something else without
-it does, whatever its exit status. And a command the final report cites in
-backquotes, one the turn ran (`shell-commands` reads each command line as the
-shell does) and has not run since the last edit, is named (`stale-citations`,
-`finish-stale-citations-message`); runs on `$TMPDIR/base` never go stale, and
+and the message says to show it with a check (ADR 32, amended 2026-10-10). When such a turn first ends with a change
+and none of those reminders is due, the finish review
+(`finish-review-points`) gathers what the change lacks and says it in one
+message, `(finish-review-message points)`: one point as it is, several
+numbered, closed by `finish-review-close` (asked once; run the check again
+after any change; the next reply without tool calls ends the turn). It is
+made once a turn, and the turn is accepted after it: an answer ends it, and
+the reminders above are not asked again (ADR 32, amended 2026-10-15). Its
+points: files new since the turn began that git does not track
+(`(finish-new-files-message files)`, below); a plan's steps without their
+evidence (§9.5, `plan-language-unmet-message`); the parts of the change the
+latest check or test run that exited 0 since the last edit does not test,
+run again with each part taken out in turn (`check-without`) and naming the
+parts it still passes without, printing the same
+(`finish-untested-parts-message`): a check that cannot fail for a part does
+not test it, and one that prints something else without it does, whatever
+its exit status; and a command the final report cites in backquotes, one
+the turn ran (`shell-commands` reads each command line as the shell does)
+and has not run since the last edit (`stale-citations`,
+`finish-stale-citations-message`). Runs on `$TMPDIR/base` never go stale, and
 once the repository's whole check (`whole-check-words`: make validate, make
 check, make test, …) has passed since the last edit, a cited check command
 stands on it. A command is a test run when its command line contains one of
@@ -607,10 +617,15 @@ Where `git-status` exists, git says whether anything changed, edits made
 through the shell included: a tracked file's status differs from the start
 of the turn, or the file tools wrote a file git now lists as new or listed
 already; files a run leaves behind are no change. Files new
-since the turn began that git does not track get
-`(finish-new-files-message files)` once before the turn ends: whatever is
-left in the repository is in the change. Files the turn's plan names, by path
-or by name (`plan-names?`), are left out of it: the plan asked for them.
+since the turn began that git does not track are a point of the finish
+review, `(finish-new-files-message files)`: whatever is left in the
+repository is in the change. Files the turn's plan names, by path or by name
+(`plan-names?`), are left out of it: the plan asked for them.
+A shell run of `make validate` that ran to an exit counts, for a repository
+whose `.nodwyn/init.scm` defines `validation-state` and `validated-state`
+(nodwyn's does, to remind a turn that has not validated since its last
+change), as its validate tool's run: `validated-run` sets `validated-state`
+as the tool does.
 
 Both loops also count, in `stall-check`, the rounds in a row whose reply
 thought at length (`stall-reasoning-tokens`, 10,000, or more reasoning
@@ -693,7 +708,7 @@ strings (§1.1):
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them; a question is answered, and a request for something never built is told so, with what exists, what is missing and what the model would build, before it builds anything |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach, the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
-| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts)`, `(finish-stale-citations-message spans)` | what the evidence loop tells the model (§9) |
+| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts)`, `(finish-stale-citations-message spans)`, `(finish-review-message points)`, `finish-review-close` | what the evidence loop tells the model (§9); the last four are points of the finish review and the one message that carries them |
 | `(reading-reminder-message n)`, `(reading-reminder-reviewed-message n)` | what the default loop tells a model whose last `n` rounds only looked (§9) |
 | `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5): leads found without running anything, and any fix in them a guess to test |
 | `task-header` `plan-header` | the headers under which the window shows the user's request, at the head of their message, and its plan, as a message of its own after the calls it came with are answered; neither is ever trimmed away. The system prompt stays the same, so a new request or a plan keeps the server's cached prefix (window recipe v15); before v15 the system prompt carried both |
@@ -972,7 +987,7 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `(reviewed?)` | true when a person reads this turn's answer before anything else happens: a chat's turn, and a supervised run's turn that a run checkpoint follows; false in an unattended run, in a run's last turn (no checkpoint follows it) and outside a turn. The evidence loop lets a reviewed turn end unchanged when the request asks for no change yet |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
 | `(keep-passing)` | keep the repository's uncommitted changes as they are now, as a state a test run passed on, and return how many files were kept; `#f` when the session has no keeper, an error saying why when it cannot keep (not a git work tree, a file over 8 MiB, more than 64 MiB or 4000 files). What is kept is the files git lists as changed (modified, new, deleted) as the bytes on disk, in the scratch directory, replacing the earlier keep. A file the credential denylist refuses, a path the guard protects (`.nodwyn/`, `.git/`, `Makefile`, `scripts/` …), a link and a directory are neither kept nor touched, and the index is not. The evidence loop calls it after a passing run in a turn nobody reads; when a hard limit or the progress guard stops the turn, the core puts back what differs from it, from the files kept or from HEAD, never through a link out of the repository, and refuses if HEAD moved. What it replaces is saved under the scratch directory's `kept/discarded` |
-| `(check-without cmd args)` | run a check again with each part of the uncommitted change taken out in turn, and put each part back after its run: a hunk of a changed code file, or a whole new or deleted one; documents, tests, comment-only hunks and what keep-passing leaves alone (credential files, protected paths, links) are not parts, and every file ends with the bytes the change left whatever happens. At most 8 parts, run within 5 minutes in all, so a slow check cannot take the turn's wall time: a part not reached by then is not listed. The check runs once with the whole change first, and it is an error when it does not exit 0 then; that run's output is what each run without a part is compared with (that run counts within the 5 minutes). Returns one alist per part: `path`, `line` (its first line now; 0 for a whole file), `added`, `removed`, `kind` (`hunk`, `new file` or `deleted file`), `status`, the check's exit status without the part, and `same`, whether it printed what it printed with the whole change, with durations, `(cached)`, clock times, hex addresses and numbers of four digits or more masked; or `error`. Hidden from the model; registered in a git work tree. Its `cmd` and `args` are judged by the guard as a command's are. The evidence loop calls it before an unattended turn ends on a passing check: a part the check still passes without, printing the same, is one it does not test (ADR 32, amended 2026-10-11 and 2026-10-12: a check ending in `; echo EXIT=$?` exits 0 without every part) |
+| `(check-without cmd args)` | run a check again with each part of the uncommitted change taken out in turn, and put each part back after its run: a hunk of a changed code file, or a whole new one; documents, tests, comment-only hunks, deleted files, hunks that only delete lines (their added lines, if any, comments or blank) and what keep-passing leaves alone (credential files, protected paths, links) are not parts, and every file ends with the bytes the change left whatever happens. At most 8 parts, run within 5 minutes in all, so a slow check cannot take the turn's wall time: a part not reached by then is not listed. The check runs once with the whole change first, and it is an error when it does not exit 0 then; that run's output is what each run without a part is compared with (that run counts within the 5 minutes). Returns one alist per part: `path`, `line` (its first line now; 0 for a whole file), `added`, `removed`, `kind` (`hunk` or `new file`), `status`, the check's exit status without the part, and `same`, whether it printed what it printed with the whole change, with durations, `(cached)`, clock times, hex addresses and numbers of four digits or more masked; or `error`. Hidden from the model; registered in a git work tree. Its `cmd` and `args` are judged by the guard as a command's are. The evidence loop calls it before an unattended turn ends on a passing check: a part the check still passes without, printing the same, is one it does not test (ADR 32, amended 2026-10-11 and 2026-10-12: a check ending in `; echo EXIT=$?` exits 0 without every part; 2026-10-15: a deletion put back is no part a check can be extended to test) |
 | `(read-data text)` | every datum in `text` as data, unevaluated: the forms, strings, symbols and numbers it holds; an error names where `text` stops being readable. Pure; hidden from the model. planspec.scm reads a plan written as forms with it (ADR 32, amended 2026-10-13) |
 | `(request-names text)` | the names a request gives, in order, each once: spans in backquotes without a space, and words that read as names (a hyphen, an underscore or a dot inside, or a capital after the first letter: `session-id`, `cache_key`, `readResponses`); not links, issue numbers or versions. Pure; hidden. A plan as data must hold each (planspec.scm) |
 | `(plan-evidence names paths)` | a plan set against the uncommitted change as git shows it: an alist of `missing`, the names the change does not add (found whole and in any case in the added lines and new files, so `session-id` is not found in `X-Session-Id`), and `unchanged`, the paths it does not change. Hidden; registered in a git work tree. The evidence loop checks a plan's steps with it before an unattended turn ends (planspec.scm) |
