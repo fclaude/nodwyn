@@ -30,8 +30,8 @@ function parse() {
   const [path, queryString = ""] = hash.split("?");
   const query = new URLSearchParams(queryString);
   const parts = path.split("/").filter(Boolean);
-  if (parts[0] === "search" && parts[1]) return { name: "search", id: decodeURIComponent(parts[1]), query: query.get("q") || "", scope: query.get("scope") || "conversation" };
-  if (parts[0] === "history" && parts[1] && parts[2]) return { name: "history", id: decodeURIComponent(parts[1]), seq: Number(parts[2]), search: query.get("search") || "", query: query.get("q") || "", scope: query.get("scope") || "conversation" };
+  if (parts[0] === "search" && parts[1]) return { name: "search", id: decodeURIComponent(parts[1]), query: query.get("q") || "", scope: query.get("scope") || "project" };
+  if (parts[0] === "history" && parts[1] && parts[2]) return { name: "history", id: decodeURIComponent(parts[1]), seq: Number(parts[2]), search: query.get("search") || "", query: query.get("q") || "", scope: query.get("scope") || "project" };
   if (parts[0] === "task" && parts[1]) return { name: "task", id: decodeURIComponent(parts[1]), review: parts[2] === "review" };
   if (["settings", "workspaces", "connections"].includes(parts[0])) return { name: parts[0], tab: parts[1] };
   return { name: "home" };

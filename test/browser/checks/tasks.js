@@ -287,7 +287,7 @@ check(async () => {
   // It is typed key by key, as a person types: the sidebar is drawn again
   // on each key, and the field keeps its focus and caret through that (each
   // key used to land before the last, and Home took the focus).
-  await page.click('.sidebar-top button[aria-label="Search tasks"]');
+  await page.click('.sidebar-top button[aria-label="Search"]');
   await page.keyboard.type("question 2", { delay: 15 });
   await settled("search", (s) => s.folders.length === 1 && folder(s, "receipts").tasks.join() === "Receipt question 2");
   assert.strictEqual(await page.$eval(".search input", (el) => el.value), "question 2", "the search did not read as typed");

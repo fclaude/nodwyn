@@ -122,7 +122,7 @@ every client's picker, not in the core's guard.
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
 | The model sees what it found under each turn's card, and recalls a turn's message with the card and its events (`index-search`, `recall`) | yes, as any tool's result | yes | yes | `nodwyn run`: yes |
-| A person searches this conversation or earlier tasks | yes, the task header’s **Search**; task/turn groups, snippets and links into recorded history | `:eval (index-search "…" "earlier")`, with `:earlier on` | `:eval`, likewise | `nodwyn memory search`, `nodwyn memory recall`, whatever the switch |
+| A person searches this conversation or earlier tasks | yes, the sidebar's search box (**Search conversations for "…"**) or a task's **Search**; task/turn groups, matches in words with the query marked, and links into recorded history | `:eval (index-search "…" "earlier")`, with `:earlier on` | `:eval`, likewise | `nodwyn memory search`, `nodwyn memory recall`, whatever the switch |
 
 ## Files and changes
 

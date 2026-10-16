@@ -134,5 +134,34 @@ check(async () => {
   await until('phone project results',async()=>await page.locator('.search-task').count()===2);
   assert.strictEqual(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'search overflowed the phone');
   await page.screenshot({path:`${out}/search-results-phone.png`});
+  // One box: the sidebar's search filters the tasks and offers to search what
+  // was said, from Home too, and Enter goes there. This task and the
+  // project's earlier ones are searched together by default (the daemon's two
+  // scopes, this task's results first), and the results say what each match
+  // is in words, with the matched words marked.
+  await page.setViewportSize({width:1440,height:1000});
+  await go('#/');await page.waitForSelector('#task');
+  await page.click('.sidebar-top button[aria-label="Search"]');
+  await page.keyboard.type('starling-lantern');
+  const row=page.locator('.search-row');
+  await row.waitFor();
+  assert.ok((await row.textContent()).includes('Search conversations for “starling-lantern”'),await row.textContent());
+  await page.screenshot({path:`${out}/search-sidebar.png`});
+  const asked=sent.of('conversation.search').length;
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.search-task');
+  assert.ok((await page.evaluate(()=>location.hash)).includes('scope=project'),'the sidebar search did not use the default scope');
+  assert.strictEqual(await page.inputValue('#conversation-scope'),'project');
+  await until('both scopes asked',()=>sent.of('conversation.search').length===asked+2);
+  assert.deepStrictEqual(sent.of('conversation.search').slice(asked).map((p)=>p.scope).sort(),['conversation','earlier']);
+  assert.deepStrictEqual((await page.locator('.search-task').evaluateAll((nodes)=>nodes.map((n)=>n.dataset.task))).sort(),['search-anchor','search-earlier','search-worktree'],'the default scope missed a task of the project');
+  const links=await page.locator('.search-match-link').allTextContents();
+  assert.ok(links.includes('File read: evidence.txt')&&links.includes('A reply'),`matches are not in words: ${JSON.stringify(links)}`);
+  const written=await page.locator('.search-results').innerText();
+  assert.ok(!/\bseq \d/.test(written),`a sequence number reached the page: ${written.slice(0,300)}`);
+  assert.ok((await page.locator('.search-snippet mark').allTextContents()).some((m)=>/starling|lantern/i.test(m)),'the matched words are not marked');
+  assert.strictEqual(await page.locator('.search-snippet script, .search-snippet mark script').count(),0);
+  assert.ok((await page.locator('.search-match-link').first().getAttribute('title')).startsWith('seq '),'the raw heading is not kept as the title');
+  await page.screenshot({path:`${out}/search-words.png`});
   console.log('search scopes, archived/worktree isolation, snippets, bounded context, paging, reload, retries, stale responses and phone layouts');
 });

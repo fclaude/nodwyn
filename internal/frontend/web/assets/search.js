@@ -3,9 +3,53 @@
 import { h, clock } from "./dom.js";
 import { Transcript } from "./transcript.js";
 
-export function searchURL(id, query = "", scope = "conversation") {
+// The scopes: "project" is this task and the project's earlier ones, which
+// the daemon answers as two searches (its "conversation" and "earlier"), the
+// default since the words a person looks for are as likely in last week's
+// task as in this one.
+export function searchURL(id, query = "", scope = "project") {
   return `#/search/${encodeURIComponent(id)}?${new URLSearchParams({ q: query, scope })}`;
 }
+
+// describe says what a match is in a person's words, from the daemon's kind
+// and its heading ("seq 606, the result of fs-read {...}"), which stays as
+// the tooltip.
+const tools = { "fs-read": "File read", "fs-write": "File written", "fs-edit": "File edited", "shell-exec": "Command", "fs-list": "Folder listing", "fs-search": "Search of files" };
+function describe(match) {
+  const head = match.heading.replace(/^seq \d+, /, "");
+  const agent = /, in the (.+?)'s context/.exec(head)?.[1];
+  const note = /, the note of a compaction/.test(head);
+  let what;
+  if (match.kind === "user.msg") what = "Your message";
+  else if (match.kind === "harness.msg") what = "nodwyn's message";
+  else if (match.kind === "llm.resp") what = "A reply";
+  else if (match.kind === "gate.plan") what = "The plan";
+  else if (match.kind === "summary") what = "Summary of earlier messages";
+  else if (match.kind === "attach") what = `Attachment: ${head.replace(/^the attached file /, "").replace(/,.*$/, "")}`;
+  else if (match.kind === "tool.result") {
+    const call = /^the result of (\S+)(?: (.*?))?(, which failed)?(?:, in the .+)?$/.exec(head);
+    let target = "";
+    try {
+      const args = JSON.parse(call?.[2] || "{}");
+      target = args.path || args.command || args.query || "";
+    } catch {
+      /* arguments cut short for a heading: the name stands alone */
+    }
+    what = `${tools[call?.[1]] || `Result of ${call?.[1] || "a tool"}`}${target ? `: ${Array.isArray(target) ? target.join(" ") : target}` : ""}${call?.[3] ? " (failed)" : ""}`;
+  } else what = head;
+  return what + (note ? " (a compaction's note)" : "") + (agent ? ` (in the ${agent}'s context)` : "");
+}
+
+// highlight draws text with the words of the query marked, as text nodes and
+// marks, never as markup.
+function highlight(text, query) {
+  const words = [...new Set((query.toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) || []))].sort((a, b) => b.length - a.length);
+  if (!words.length) return [text];
+  const found = new RegExp(`(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "giu");
+  return text.split(found).map((part, i) => (i % 2 ? h("mark", {}, part) : part));
+}
+
+const when = (time) => new Date(time).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 export class ConversationSearchView {
   constructor(conn, desk, navigate, route) {
@@ -19,8 +63,9 @@ export class ConversationSearchView {
     const item = this.desk.sessions.get(id);
     const input = h("input", { id: "conversation-query", class: "input", type: "search", required: true, maxlength: 4096, value: query, placeholder: "Words from a message, reply or tool result", autocomplete: "off" });
     const where = h("select", { id: "conversation-scope", class: "input" },
-      h("option", { value: "conversation", selected: scope !== "earlier" }, "This task"),
-      h("option", { value: "earlier", selected: scope === "earlier" }, "Earlier tasks in this project"));
+      h("option", { value: "project", selected: scope !== "earlier" && scope !== "conversation" }, "This task and earlier ones in this folder"),
+      h("option", { value: "conversation", selected: scope === "conversation" }, "This task only"),
+      h("option", { value: "earlier", selected: scope === "earlier" }, "Earlier tasks only"));
     const status = h("p", { class: "hint search-status", role: "status" });
     const results = h("div", { class: "search-results" });
     const form = h("form", { class: "conversation-search-form", onsubmit: (event) => {
@@ -28,9 +73,9 @@ export class ConversationSearchView {
       const url = searchURL(id, input.value.trim(), where.value);
       if (location.hash === url) this.open();
       else this.navigate(url);
-    } }, h("label", { for: "conversation-query" }, "Search words", input), h("label", { for: "conversation-scope" }, "Where", where), h("button", { type: "submit", class: "btn dark" }, "Search"));
+    } }, h("label", { for: "conversation-query" }, "Words to find", input), h("label", { for: "conversation-scope" }, "Where", where), h("button", { type: "submit", class: "btn dark" }, "Search"));
     this.root.replaceChildren(h("div", { class: "page-col" }, h("a", { href: `#/task/${encodeURIComponent(id)}` }, "Back to task"), h("h1", {}, "Search conversations"),
-      h("p", { class: "lede" }, item?.title || "Task history"), form,
+      h("p", { class: "lede" }, item ? `${this.desk.folderName(this.desk.project(item))} · ${item.title || "Untitled task"}` : "Task history"), form,
       h("p", { class: "hint" }, "Searches messages, replies, plans, attachments and tool results. Your search does not change what the model may search."), status, results));
     input.focus();
     if (!query) return;
@@ -38,21 +83,29 @@ export class ConversationSearchView {
     const version = ++this.version;
     status.textContent = "Searching conversations…";
     try {
-      const found = await this.conn.call("conversation.search", { id, query, scope, limit: 20 });
+      const ask = (which) => this.conn.call("conversation.search", { id, query, scope: which, limit: 20 });
+      // "This task and earlier ones" is both of the daemon's scopes, this
+      // task's results first.
+      const found = scope === "project"
+        ? await Promise.all([ask("conversation"), ask("earlier")]).then(([a, b]) => ({ tasks: [...a.tasks, ...b.tasks], searched_tasks: a.searched_tasks + b.searched_tasks, searched_events: a.searched_events + b.searched_events, unavailable: a.unavailable + b.unavailable }))
+        : await ask(scope);
       if (version !== this.version) return;
       const count = found.tasks.reduce((n, task) => n + task.turns.reduce((n, turn) => n + turn.matches.length, 0), 0);
-      status.textContent = count ? `Showing ${count} best match${count === 1 ? "" : "es"} (up to 20). Searched ${found.searched_tasks} task(s), ${found.searched_events} events.` : "No matching conversation found.";
+      status.textContent = count ? `${count} best match${count === 1 ? "" : "es"}, in ${found.tasks.length} task${found.tasks.length === 1 ? "" : "s"} (of ${found.searched_tasks} searched).` : "No matching conversation found.";
       if (found.unavailable) status.append(" Some history could not be read; results may be incomplete.");
       for (const task of found.tasks) {
         const section = h("section", { class: "search-task", dataset: { task: task.id } }, h("h2", {}, task.title || "Untitled task", task.archived ? h("span", { class: "badge" }, "Archived") : null));
         for (const turn of task.turns) {
-          const card = h("article", { class: "card search-turn" }, h("h3", {}, turn.heading));
+          // "turn seq 4-758 · completed · 12m34s": its sequence numbers mean
+          // nothing to a person, the first match's time and how it ended do.
+          const ended = turn.heading.replace(/^turn seq \d+-\d*,? ?(· )?/, "");
+          const card = h("article", { class: "card search-turn" }, h("h3", { title: turn.heading }, `${when(turn.matches[0].time)} · turn ${ended}`));
           for (const match of turn.matches) {
             const back = new URLSearchParams({ search: id, q: query, scope });
             card.append(h("div", { class: "search-match", dataset: { seq: String(match.seq) } },
-              h("div", { class: "hint" }, clock(match.time)),
-              h("a", { class: "search-match-link", href: `#/history/${encodeURIComponent(task.id)}/${match.seq}?${back}` }, match.heading),
-              h("pre", { class: "search-snippet" }, match.lines.map((line) => h("span", {}, h("span", { class: "line-number" }, `${line.number}: `), line.text, "\n")))));
+              h("a", { class: "search-match-link", href: `#/history/${encodeURIComponent(task.id)}/${match.seq}?${back}`, title: match.heading }, describe(match)),
+              h("span", { class: "hint" }, ` · ${when(match.time)}`),
+              h("pre", { class: "search-snippet" }, match.lines.map((line) => h("span", {}, h("span", { class: "line-number" }, `${line.number}: `), highlight(line.text, query), "\n")))));
           }
           section.append(card);
         }

@@ -257,6 +257,8 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .nav-task .sub { font-size: 12px; color: var(--faint); }
 .nav-task.dotted .sub { padding-left: 15px; }
 .nav-task.plain .title { font-weight: 400; }
+.nav-task.search-row { border: 1px dashed var(--line-strong); }
+.nav-task.search-row .title span:last-child { white-space: normal; }
 /* Every task not waiting for you sits under its folder (ADR 39). */
 .folders { display: flex; flex-direction: column; gap: 12px; }
 .folder-head {
@@ -1053,6 +1055,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .search-match-link { overflow-wrap: anywhere; }
 .search-snippet { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font-size: 13px; }
 .search-snippet .line-number { color: var(--muted); }
+.search-snippet mark { background: var(--warn-chip); color: var(--warn-ink); border-radius: 3px; padding: 0 2px; }
 .conversation-context .history-transcript { padding: 24px 0; overflow: visible; }
 .conversation-context .conversation-match { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 6px; scroll-margin-block: 70px; }
 .conversation-context .page-col, .conversation-search .page-col { min-width: 0; }

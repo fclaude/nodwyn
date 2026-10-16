@@ -132,6 +132,12 @@ function setFolder(folder, desk) {
   if (desk?.conn?.has("workspace.active")) desk.conn.call("workspace.active", { path: folder }).catch(() => {});
 }
 
+// chosenFolder is the folder Home would start the next task in, as far as
+// this tab knows: what the sidebar's search takes its project from.
+export function chosenFolder() {
+  return chosen || localStorage.getItem(LAST_KEY) || "";
+}
+
 // chooseFolder preselects the folder the next task starts in.
 export function chooseFolder(folder, desk) {
   setFolder(folder, desk);

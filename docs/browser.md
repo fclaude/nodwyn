@@ -391,9 +391,13 @@ of row and only on the computer nodwyn runs on, takes a folder out of the
 lists after a confirm; what it keeps and what brings the folder back is in
 [the manual](manual.md#forgetting-a-folder-in-the-console).
 
-**Finding a task.** The sidebar's magnifier opens a filter over every task's
-title, folder and branch, the archive included; **Escape** clears and closes
-it.
+**Finding a task.** The sidebar's magnifier opens one search box. It filters
+every task's title, folder and branch, the archive included, and, above them,
+offers **Search conversations for "…"**, which looks for what was said in the
+tasks (**Enter** takes it too); **Escape** clears and closes the box. The
+conversation search is anchored on the task on screen, else the newest task in
+the folder Home would start in, else the newest, since the daemon takes the
+project from the task it is given.
 Home offers the
 first six folders; the rest are a click away on Workspaces. The name,
 mounted folders and forgotten markers are kept in `workspaces.toml` in the
@@ -959,21 +963,29 @@ mounts and MCP workspace choices follow the same identity. See
 
 ## Conversation search (ADR 51)
 
-The task header’s Search link opens `#/search/ID?q=WORDS&scope=conversation`
-(or scope `earlier`). It calls the read-only `conversation.search` with the
-anchor task ID, not a project path. The daemon derives the project from that
+The sidebar's search box (**Search conversations for "…"**, or Enter) and a
+task's **Search** (in its menu) open `#/search/ID?q=WORDS&scope=project`; the
+scope is `project` (this task and the project's earlier ones, the default),
+`conversation` (this task only) or `earlier` (the others only). `project` is
+two calls of the read-only `conversation.search`, this task's results first;
+the others are one. It sends the anchor task ID, not a project path. The daemon derives the project from that
 log and uses the existing `.mem` word index and turn ranking. Human search
 is independent of the model’s earlier-tasks switch, as the memory CLI is:
 paired devices and read-only bridges may read these same logs. Nothing resumes
 a task or changes its permissions. Results include archived tasks and worktrees
 of the recorded project, excluding the anchor in earlier scope.
 
-Twenty best matching events are grouped by task and turn; their times, headings
-and up to three snippets are text nodes. A long line retains the matched words,
+Twenty best matching events per call are grouped by task and turn. A match
+says what it is in words (**Your message**, **A reply**, **File read:
+evidence.txt**, **Command: …**, **The plan**, an attachment's name) with its
+time, built from the event's kind and heading, which stays as the tooltip; a
+turn is headed by the time of its first match and how it ended, not its
+sequence numbers; the query's words are marked in the snippets. The times and
+up to three snippets are text nodes (the marks too). A long line retains the matched words,
 and redaction precedes clipping. Missing source reads mark the result incomplete.
 The form survives desk updates, supports empty/error states and Retry, and
 resubmitting a query refreshes it. Query and scope survive reload and Back in
-the URL. The sidebar’s title/folder filter keeps its separate purpose.
+the URL.
 
 A match links to `#/history/ID/SEQ`, retaining its search URL for Back.
 `log.context` selects the containing indexed turn and run and returns at most

@@ -4,6 +4,8 @@
 import { h, icon, ago, minutes } from "./dom.js";
 import { summary } from "./prompts.js";
 import { stateWords } from "./modelpicker.js";
+import { searchURL } from "./search.js";
+import { chosenFolder } from "./home.js";
 
 let filter = "";
 let searching = false;
@@ -112,17 +114,29 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
       )
     : null;
 
+  // What was said in the tasks is searched from the same box, anchored on
+  // the task on screen, else the newest task in the folder Home starts in,
+  // else the newest: the daemon takes the project from the task it is given.
+  const folder = chosenFolder();
+  const all = desk.all().filter((s) => !s.archived);
+  const anchor = (current && desk.sessions.get(current)) || all.find((s) => desk.project(s) === folder) || all[0] || desk.all()[0];
+  const searchWords = () => (anchor && filter.trim() ? searchURL(anchor.id, filter.trim()) : "");
   const search = h("input", {
     class: "input",
     type: "search",
-    placeholder: "Search tasks",
-    "aria-label": "Search tasks",
+    placeholder: "Search tasks and conversations",
+    "aria-label": "Search tasks and conversations",
     value: filter,
     oninput: () => {
       filter = search.value;
       rerender();
     },
     onkeydown: (event) => {
+      if (event.key === "Enter" && searchWords()) {
+        event.preventDefault();
+        location.hash = searchWords();
+        return;
+      }
       if (event.key !== "Escape") return;
       searching = false;
       filter = "";
@@ -146,10 +160,11 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
   const tasks = h(
     "div",
     { class: "nav-tasks" },
+    searchWords() ? h("a", { class: "nav-task search-row", href: searchWords() }, h("span", { class: "title" }, icon("search", 14), h("span", {}, `Search conversations for “${filter.trim()}”`)), h("span", { class: "sub" }, "What was said in this folder's tasks")) : null,
     group("Needs you", needs, true),
     folders.length ? h("div", { class: "folders" }, folders) : null,
     archive,
-    !needs.length && !folders.length && !archived.length ? h("p", { class: "hint", style: "padding: 0 10px" }, filter ? "No task matches." : "No tasks yet.") : null,
+    !needs.length && !folders.length && !archived.length ? h("p", { class: "hint", style: "padding: 0 10px" }, filter ? "No task title matches." : "No tasks yet.") : null,
   );
   nav.replaceChildren(
     ...[
@@ -157,7 +172,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
       "div",
       { class: "sidebar-top" },
       h("div", { class: "brand" }, "nodwyn", h("span", {}, ".")),
-      h("button", { type: "button", class: "icon-btn", "aria-label": "Search tasks", "aria-expanded": String(searching), onclick: () => { searching = !searching; if (!searching) filter = ""; rerender(); if (searching) nav.querySelector("input[type=search]")?.focus(); } }, icon("search")),
+      h("button", { type: "button", class: "icon-btn", "aria-label": "Search", title: "Search tasks and conversations", "aria-expanded": String(searching), onclick: () => { searching = !searching; if (!searching) filter = ""; rerender(); if (searching) nav.querySelector("input[type=search]")?.focus(); } }, icon("search")),
     ),
     searching ? h("div", { class: "search" }, search) : null,
     h("a", { class: "new-task", href: "#/", onclick: () => setTimeout(() => document.getElementById("task")?.focus(), 0) }, icon("plus"), h("span", {}, "New task"), h("kbd", {}, "⌘N")),

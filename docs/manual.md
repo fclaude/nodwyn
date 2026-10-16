@@ -104,8 +104,10 @@ Read a test when you want to know what a claim actually means.
 
 ### Searching what earlier tasks did
 
-In the console, choose **Search** in a task’s header. Enter words and choose
-**This task** or **Earlier tasks in this project**. Earlier means the other
+In the console, type words in the sidebar's search box and choose **Search
+conversations for "…"** (or press Enter), or choose **Search** in a task's
+**⋯** menu. Choose **This task and earlier ones in this folder** (the default),
+**This task only** or **Earlier tasks only**. Earlier means the other
 tasks in the same recorded project, including archived tasks and its git
 worktrees. This is you reading your logs: it works while the model’s earlier-task
 search is off and leaves that setting unchanged. Paired and read-only consoles
