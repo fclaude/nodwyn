@@ -154,6 +154,9 @@ func (p *proc) read(ctx context.Context, wait time.Duration, limit int) (string,
 	}
 }
 
+// stop asks the process group to end, kills it after procStopGrace, and
+// waits a moment more for the kill to be seen, so what it reports next is
+// that the process ended, not that it still runs.
 func (p *proc) stop() {
 	p.mu.Lock()
 	done := p.done
@@ -162,17 +165,25 @@ func (p *proc) stop() {
 		return
 	}
 	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
-	deadline := time.Now().Add(procStopGrace)
-	for time.Now().Before(deadline) {
+	if p.ended(procStopGrace) {
+		return
+	}
+	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+	p.ended(time.Second)
+}
+
+// ended reports whether the process ended within d.
+func (p *proc) ended(d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for {
 		p.mu.Lock()
-		done = p.done
+		done := p.done
 		p.mu.Unlock()
-		if done {
-			return
+		if done || !time.Now().Before(deadline) {
+			return done
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
 }
 
 func (ps *Procs) get(id string) (*proc, error) {

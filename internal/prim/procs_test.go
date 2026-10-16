@@ -122,3 +122,14 @@ func TestShellPrimsNeedASession(t *testing.T) {
 		t.Fatal("shell-start without a process set")
 	}
 }
+
+// A program that ignores SIGTERM is killed, and shell-stop says it ended:
+// it answered "running" for the process it had just killed, and the model
+// tried again or reported a stuck process.
+func TestShellStopReportsAKilledProcessEnded(t *testing.T) {
+	in, _ := procInterp(t)
+	evalStr(t, in, `(shell-start "sh" (list "-c" "trap '' TERM; echo ready; while :; do sleep 1; done"))`)
+	if out := evalStr(t, in, `(shell-stop "p1")`); strings.Contains(out, "running") {
+		t.Fatalf("stop: %q", out)
+	}
+}
