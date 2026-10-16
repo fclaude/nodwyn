@@ -1030,7 +1030,8 @@ progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
 
 Long work is compacted on its own just under the window's high water: the
 model writes a handover note and goes on from it, in that turn and the next
-ones. A turn whose context fills a second time with no file written since
+ones, with the turn's plan and the steps marked so far given back after the
+note. A turn whose context fills a second time with no file written since
 the last compaction stops instead: the model is asked, without tools, what it
 found, what is done, what is left and what is in the way, and that is the
 turn's answer (`compact-stop-unchanged`, `#f` turns it off). Set

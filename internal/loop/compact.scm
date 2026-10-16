@@ -1,7 +1,8 @@
 ;; Context compaction, written as user code over the loop's primitives
 ;; (docs/scheme.md §9.2). When the context grows past compact-threshold
 ;; tokens, the model writes a handover note, and the turn goes on in a
-;; narrowed context holding only the task and that note. The narrowing
+;; narrowed context holding only the task, that note and the turn's plan
+;; with its marks. The narrowing
 ;; lasts: later turns start from the note too, not from the whole
 ;; conversation again. The log keeps the whole conversation, so replay and
 ;; audit see everything.
@@ -85,11 +86,30 @@
             ((string-empty? note) #f)
             (else note)))))
 
+;; The turn's plan as the compacted context gets it back after the note
+;; (compact-plan-message), or #f when the turn has recorded none. The window
+;; shows a plan where it was recorded, and a compaction keeps only what comes
+;; after its narrowing, so the plan went with the cleared conversation: none
+;; of the 37 compactions in commit-bench's trusted runs of 2026-10-14 and 15
+;; left one in the window. On 6e18b7ba (dsl16) the note said the plan was in
+;; plan.md, which is the repository's own roadmap, and the model, finding no
+;; plan, read the code again to work out the design it had already reached
+;; (ADR 32, amended 2026-10-15). The plan is the one recorded, with
+;; the latest mark of each step, as unfinished-plan reads them from the log:
+;; the plan this turn would leave to the next if it ended now.
+(define (compact-plan)
+  (and (pair? (guard (e (else '())) (plan-steps)))
+       (let* ((left (guard (e (else #f)) (unfinished-plan)))
+              (plan (if left (format "~a" (assoc-ref left 'plan "")) "")))
+         (and (not (string-empty? (string-trim plan)))
+              (compact-plan-message plan (assoc-ref left 'marks '()))))))
+
 ;; Compact now: #t once the turn continues in the narrowed context, #f if no
 ;; note came back and the turn goes on in the full one. The narrowing lasts
-;; past the turn, so the next turns start from the note as well. An optional
-;; focus says what the note must keep, and an optional trigger what asked for
-;; it (auto, command, or requested, the default). Either way it is recorded as
+;; past the turn, so the next turns start from the note as well, and the
+;; turn's plan follows the note (compact-plan). An optional focus says what
+;; the note must keep, and an optional trigger what asked for it (auto,
+;; command, or requested, the default). Either way it is recorded as
 ;; context.compact, with the context's size before and after.
 (define (compact-context request . more)
   (let* ((focus (if (pair? more) (car more) ""))
@@ -104,6 +124,8 @@
     (if note
         (begin (narrow-context (session-system-prompt) "compaction" '((lasting . #t)))
                (add-message (compact-handover-prompt request note))
+               (let ((plan (compact-plan)))
+                 (when plan (add-message plan)))
                (record #t)
                #t)
         (begin (add-message "Never mind the handover note; continue the task.")

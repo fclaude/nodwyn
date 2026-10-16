@@ -744,7 +744,10 @@ tool results), `maybe-compact` asks the model for a handover note (the
 task and its example as given, what it found with the evidence for each
 finding, what it changed, how to test, what is unsure or left, and its check
 script), then narrows the
-context to the session's system prompt, the request and that note. The
+context to the session's system prompt, the request and that note, and gives
+the turn's plan back after the note, under `plan-header` with the steps marked
+so far (`compact-plan`), since the window shows a plan where it was recorded,
+which the narrowing leaves behind. The
 narrowing lasts (`narrow-context` with `'((lasting . #t))`, labelled
 `compaction`): the rest of the turn goes on from the note, and so do later
 turns, each under the session's system prompt with its own request, rather
@@ -795,11 +798,13 @@ calls it, in this turn or the next, and the request is used once.
 | `compact-attempts` | replies to the note request that may be tool calls (they are skipped), or notes cut off at the output limit (asked for again, shorter, with `compact-note-cut-message`), before compaction gives up or keeps the cut note; after giving up it waits for the context to grow another quarter of the threshold |
 | `compact-stop-unchanged` | `#t` (the default): the second automatic compaction of a turn with no `fs-write` or `fs-edit` asked for since the first stops the turn instead, with `compact-stop-message` and `turn-stopping` set, so the model's next reply is asked without tools and ends the turn; `#f` compacts as often as the context fills |
 | `turn-stopping` | (strategy.scm) `#f`, or the message that stopped the turn: while it is set `ask-model` offers no tools and the finish checks ask nothing more; each turn starts with it `#f` |
-| `compact-summary-prompt`, `compact-note-cut-message` | the request for the note, at most 600 words with an edit decided and not made first, and the request for a shorter one when it was cut off (prompts, §9.1) |
+| `compact-summary-prompt`, `compact-note-cut-message` | the request for the note, at most 600 words with an edit decided and not made first, and the request for a shorter one when it was cut off (prompts, §9.1). The note leaves the turn's plan out, since it comes back after the note, and says a file holds something only when the work wrote it there or read it there |
+| `(compact-plan)` | the turn's plan as the compacted context gets it back after the note (`compact-plan-message`), or `#f` when the turn recorded none (`plan-steps`): the plan as recorded, with the latest mark of each step, read with `unfinished-plan` |
+| `(compact-plan-message plan marks)` | that message: `plan-header`, the plan, its marks (`Step 3 skipped: why`) under "Marked before the conversation was cleared:", and a line saying the harness keeps the plan and no file holds it (prompts, §9.1) |
 | `(compact-focus-prompt focus)` | what the note must keep, as the user put it after `/compact` or a strategy gave `compact-next-round`, added after `compact-summary-prompt` |
 | `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to make the edit it names as decided and not made, then re-run its reproduction and re-check its findings before building on them |
 | `(maybe-compact request reply)` | compact if a strategy asked for it with `compact-next-round`, or if the context the next `model-turn` would send passed the threshold; call it once the reply's calls are answered (`reply` itself is not read) |
-| `(compact-context request [focus [trigger]])` | compact now, handing over `request`; `#t` if the turn continues in the narrowed context. `trigger` (`auto`, `command`, or `requested`, the default) is what the record says set it off |
+| `(compact-context request [focus [trigger]])` | compact now, handing over `request` and the turn's plan (`compact-plan`); `#t` if the turn continues in the narrowed context. `trigger` (`auto`, `command`, or `requested`, the default) is what the record says set it off |
 | `(compact-next-round [focus])` | compact at the next `maybe-compact`, whatever the size; `compact-requested` holds the request (`#f` when there is none) |
 | `(compact-request? request)` `(compact-turn request)` | whether a message is a `/compact`, and what the default `agent-turn` does with one |
 

@@ -605,6 +605,12 @@
 ;; (django-15280), and a fix found before the clear went in 11 to 13
 ;; minutes after it (django-14351). So: an edit already decided comes
 ;; first, ruled out means a run ruled it out, and the note is short.
+;; On commit-bench (dsl16, 6e18b7ba, ADR 32, amended 2026-10-15) a note
+;; said "plan.md is on disk at repo root with all 19 steps": the plan was
+;; the harness's, and plan.md the repository's own roadmap. The plan now
+;; comes back after the note (compact-plan-message), so the note leaves it
+;; out and says a file holds something only when the work put it there or
+;; read it there.
 (define compact-summary-prompt
   """
   The conversation is getting long and will be cleared to make room. Before that, write a handover note for yourself; it is all you will keep. Do not call tools. Write it straight away, in at most 600 words: a note cut off at the output limit is lost. Include:
@@ -617,6 +623,7 @@
   - what is left to do, in order, and what you ruled out, each with the run that ruled it out. An option you set aside without such a run is an open question, not ruled out.
   Be specific: names, paths and commands, not descriptions of them.
   Name your check script (its path) and what its latest run showed; the script itself is still on disk.
+  The plan recorded for this turn, if there is one, is kept by the harness, not in a file: it comes back after your note with the steps marked so far, so do not copy it, and do not say a file holds it. Say a file holds something only when you wrote it there or read it there.
   """)
 
 ;; Asked again when the note itself was cut off at the output limit
@@ -642,3 +649,22 @@
    Handover note:
    """
    "\n" note))
+
+;; The turn's plan as a compacted context gets it back, after the handover
+;; note (compact.scm, compact-plan): as the window shows a recorded plan,
+;; under plan-header, then the steps marked so far with their notes, as the
+;; window lists a carried plan's marks, and where the plan is kept, since a
+;; note had put it in a file that did not hold it (ADR 32, amended
+;; 2026-10-15). marks are alists of step, state and note, in step order.
+(define (compact-plan-message plan marks)
+  (string-append
+   plan-header "\n" plan
+   (if (null? marks)
+       ""
+       (apply string-append "\n\nMarked before the conversation was cleared:"
+              (map (lambda (m)
+                     (let ((note (format "~a" (assoc-ref m 'note ""))))
+                       (string-append "\nStep " (number->string (assoc-ref m 'step 0)) " " (format "~a" (assoc-ref m 'state ""))
+                                      (if (string-empty? note) "" (string-append ": " note)))))
+                   marks)))
+   "\n\nThis is your plan as it was recorded before the conversation was cleared, kept by the harness: it is in no file in the repository."))

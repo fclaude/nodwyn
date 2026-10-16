@@ -1150,3 +1150,37 @@ met. In that session the model ran it itself (call 1085), which meets it.
   validate now runs the inventory check (ADR 37, amended 2026-10-15); this
   amendment covers repositories, and older snapshots of this one, whose
   whole check does not.
+
+## Amendment 2026-10-15: a compaction gives the plan back
+
+A compaction narrows the context, and the window keeps what follows the
+narrowing: the handover note. The turn's plan is a message where it was
+recorded, before the narrowing, so it went with the cleared conversation. In
+the trusted commit-bench runs of A, dsl16, dsl18m and dsl19 (2026-10-14 and
+15), none of the 37 compactions left a plan in the window, though every one
+of those turns had recorded one. On 6e18b7ba (dsl16) the model had worked out
+all six edits by ten minutes and wrote none before the context filled; its
+note said "plan.md is on disk at repo root with all 19 steps", but plan.md is
+the repository's own roadmap and the plan was the harness's. After the clear
+it concluded the plan "isn't actually in the repository's plan.md file, so I
+need to rebuild it", read the code again and spent 13,200 tokens working out
+the design a second time.
+
+So `compact-context` adds the turn's plan after the note (`compact-plan`,
+compact.scm): the plan as recorded, under `plan-header`, with the latest
+mark of each step and its note under "Marked before the conversation was
+cleared:", as the window lists a carried plan's marks, and a line saying the
+harness keeps it and no file holds it (`compact-plan-message`, prompts.scm).
+It is read from the log with `unfinished-plan`, the plan this turn would
+leave to the next, and only when the turn has recorded one (`plan-steps`):
+a `/compact` between turns adds none, since the next turn carries an
+unfinished plan itself. It is a harness message, so the window and its
+replay are unchanged; it stays in the conversation after the turn, as a
+recorded plan does. The note request now says the plan comes back after the
+note, so the note leaves it out and does not say a file holds it, and that a
+file holds something only when the work wrote it there or read it there.
+
+A compaction now carries about the plan's size more (a few hundred to 2,000
+tokens). `TestCompactionCarriesThePlanWithItsMarks` fails on `d880bb3`: the
+compacted request is the system prompt and the note alone, and the note
+request says nothing of where the plan is.

@@ -206,6 +206,55 @@ func TestCompactionHandsOverInANarrowedContext(t *testing.T) {
 	}
 }
 
+// A compaction gives the turn's plan back after the handover note, under
+// the plan header and with the steps marked so far: the window keeps only
+// what follows the narrowing, and on commit-bench (dsl16, 6e18b7ba) every
+// compaction left the system prompt and the note alone, the note put the
+// plan in a file that did not hold it, and the model read the code again
+// to rebuild it (ADR 32, amended 2026-10-15).
+func TestCompactionCarriesThePlanWithItsMarks(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, "", 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("m", 3, "skipped", "no doc describes main.go"), readPath("a", "big.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
+		fake.Turn{Content: "NOTE: main.go only declares package main; nothing changed yet."},
+		fake.Turn{Content: "done"},
+	)
+	writeTokens(t, r.repo, "big.txt", 1000)
+	r.compactAfter(2000) // passed by the second read, with the plan and its mark
+	if err := r.turn("make main.go print hello"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 5 || r.narrowings() != 1 {
+		t.Fatalf("%d requests and %d narrowings, want 5 and 1", len(r.srv.Requests), r.narrowings())
+	}
+	if ask := lastMessage(r, 3); !strings.Contains(ask, "write a handover note") ||
+		!strings.Contains(ask, "do not say a file holds it") {
+		t.Fatalf("the note request does not say where the plan is kept:\n%s", ask)
+	}
+	after := requestMessages(t, r.srv.Requests[4])
+	if len(after) != 3 || after[1].Role != "user" || !strings.HasSuffix(after[1].Content, "Handover note:\nNOTE: main.go only declares package main; nothing changed yet.") {
+		t.Fatalf("the compacted request is not the system prompt, the hand-over and the plan: %+v", after)
+	}
+	header := strings.Trim(r.eval("plan-header"), `"`)
+	want := header + "\n" + shapedPlan + "\n\nMarked before the conversation was cleared:\nStep 3 skipped: no doc describes main.go"
+	if plan := after[2]; plan.Role != "user" || !strings.HasPrefix(plan.Content, want) || !strings.Contains(plan.Content, "it is in no file in the repository") {
+		t.Fatalf("the plan after the hand-over:\n%s\nwant it to start:\n%s", plan.Content, want)
+	}
+	if c := r.compactions(); len(c) != 1 || c[0].After != requestEst(t, r, 4) {
+		t.Fatalf("context.compact %+v: the size after must count the plan", c)
+	}
+	r.replaysAll()
+}
+
+// requestEst is the window's estimate of request i, as its llm.req records it.
+func requestEst(t *testing.T, r *rig, i int) int {
+	t.Helper()
+	reqs, _ := r.requests()
+	return reqs[i].EstTokens
+}
+
 // Compaction is on by default, late: just under the window's high water
 // (ADR 32), so a short turn never compacts.
 func TestCompactionDefaultsUnderTheHighWater(t *testing.T) {
