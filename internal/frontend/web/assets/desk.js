@@ -245,11 +245,24 @@ export class Desk {
   }
 }
 
-// Desktop notifications are opt-in and generic: they never carry task text,
-// arguments or diffs. The choice lasts for this tab.
+// Desktop notifications are generic: they never carry task text, arguments or
+// diffs. The choice is kept in this browser, so a person who turned them on
+// once is still told the next day that a task waits for an answer. A browser
+// asks permission only when it is turned on; a stored "on" counts only while
+// that permission is still granted, and is never asked for again unprompted.
+// The app needs no permission, so there they are on unless turned off.
+const notifyKey = "nodwyn-notify";
+const storedNotify = () => {
+  try {
+    return localStorage.getItem(notifyKey);
+  } catch {
+    return null;
+  }
+};
+
 class Notifier {
   constructor() {
-    this.enabled = false;
+    this.choice = storedNotify(); // "on", "off", or null when never chosen
     this.open = new Map();
     this.onOpen = null;
   }
@@ -259,19 +272,28 @@ class Notifier {
   get available() {
     return this.native || (typeof Notification !== "undefined" && window.isSecureContext);
   }
+  get enabled() {
+    if (this.native) return this.choice !== "off";
+    return this.choice === "on" && this.available && Notification.permission === "granted";
+  }
   reset() {
     for (const n of this.open.values()) n.close();
     this.open.clear();
   }
   async toggle() {
-    if (this.enabled) this.enabled = false;
-    else if (this.native) this.enabled = true;
+    if (this.enabled) this.choice = "off";
+    else if (this.native) this.choice = "on";
     else {
       try {
-        this.enabled = (await Notification.requestPermission()) === "granted";
+        this.choice = (await Notification.requestPermission()) === "granted" ? "on" : "off";
       } catch {
-        this.enabled = false;
+        this.choice = "off";
       }
+    }
+    try {
+      localStorage.setItem(notifyKey, this.choice);
+    } catch {
+      /* a browser that refuses storage still has the choice for this tab */
     }
     if (!this.enabled) this.reset();
     return this.enabled;
@@ -298,7 +320,7 @@ class Notifier {
       };
       this.open.set(state.id, n);
     } catch {
-      this.enabled = false;
+      this.choice = "off";
     }
   }
 }

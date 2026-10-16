@@ -42,18 +42,13 @@ check(async () => {
   const sent = requests(page);
   const go = (hash) => page.evaluate((h) => (location.hash = h), hash);
 
-  // The OpenAI action is refused by a synthetic RPC reply, before it can
-  // contact OpenAI; the generic success flow below uses the local OAuth fake.
-  const planRequests = [];
+  // The success flow below uses the local OAuth fake.
   let holdList = false;
   await page.routeWebSocket("**/socket", (socket) => {
     const server = socket.connectToServer();
     socket.onMessage((message) => {
       const frame = JSON.parse(message);
-      if (frame.method === "credentials.authorize" && frame.params.provider === "openai") {
-        planRequests.push(frame.params);
-        socket.send(JSON.stringify({ jsonrpc: "2.0", id: frame.id, error: { code: -32000, message: "Fake OpenAI consent unavailable" } }));
-      } else if (frame.method === "credentials.authorize" && frame.params.provider === "custom") {
+      if (frame.method === "credentials.authorize" && frame.params.provider === "custom") {
         holdList = true;
         server.send(message);
       } else if (frame.method === "credentials.list" && holdList) {
@@ -111,6 +106,9 @@ check(async () => {
   await page.fill("#judge-key-jev", "sk-judge-canary-0001");
   await page.click("#judge-add-jev");
   await page.waitForSelector("#judge-Jev", { timeout: 10000 });
+  // The key is stored at once; the judge becomes the default with the bar.
+  await page.click(".save-bar button:text-is('Save')");
+  await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
   await go("#/connections/credentials");
   await page.waitForSelector("#model-keys .cred-row:has-text('model-api-typesafe-ai')", { timeout: 10000 });
   if (await page.locator("#judge").count()) throw new Error("the Judge subpanel is still shown");
@@ -154,14 +152,11 @@ check(async () => {
   // consent page, the provider sends the browser back to nodwyn, and the
   // page shows the new credential.
   await page.click("button:has-text('Connect an account')");
-  await page.click(".card button.chip:text-is('openai')");
-  assert.strictEqual(await page.getAttribute("#oauth-client", "required"), null);
-  assert.ok(await page.isDisabled("#oauth-secret"));
-  await page.click("button:text-is('Continue with ChatGPT')");
-  await page.waitForSelector(".setup-form .error:has-text('Fake OpenAI consent unavailable')");
-  assert.deepStrictEqual(planRequests, [{ provider: "openai", client_id: "" }]);
-  step("ChatGPT sign-in sends a request without a client id and shows a refusal");
-  await page.screenshot({ path: `${out}/credentials-chatgpt.png`, fullPage: true });
+  // A ChatGPT plan has one entrance, Settings › Models, on its provider: the
+  // account form offers no openai, and says where the plan is connected.
+  assert.strictEqual(await page.locator(".card button.chip:text-is('openai')").count(), 0, "Credentials offers ChatGPT sign-in as well as Models");
+  assert.ok((await page.innerText("form.card")).includes("A ChatGPT plan is not connected here but under Settings › Models"), "the account form does not say where ChatGPT is connected");
+  await page.screenshot({ path: `${out}/credentials-account.png`, fullPage: true });
   await page.click(".card button.chip:has-text('custom')");
   assert.strictEqual(await page.getAttribute("#oauth-client", "required"), "");
   assert.ok(await page.isEnabled("#oauth-secret"));
@@ -190,8 +185,28 @@ check(async () => {
   step("account allowed for a host, with its scopes");
   await page.screenshot({ path: `${out}/credentials-oauth.png`, fullPage: true });
 
-  // Remove the key.
+  // Taking back a host narrows where the key may go, and is the safe
+  // direction: Remove on its row asks first, and only the confirm sends
+  // credentials.unbind. The other credentials' rows stay in bindings.toml.
   await page.click(".cred-row:has-text('github-token')");
+  await page.waitForSelector(".cred-detail td:has-text('api.github.com')", { timeout: 10000 });
+  const allowedFile = `${root}/config/nodwyn/bindings.toml`;
+  assert.ok(fs.readFileSync(allowedFile, "utf8").includes('class = "github-token"'), "the key is allowed before it is taken back");
+  await page.click(".cred-detail tr:has-text('api.github.com') button:text-is('Remove')");
+  assert.ok((await page.innerText(".cred-detail")).includes("Stop allowing github-token for api.github.com? Requests that carry it there are refused."), "the row's Remove does not say what follows");
+  assert.strictEqual(sent.of("credentials.unbind").length, 0, "Remove took the host back before it was confirmed");
+  await page.click(".cred-detail tr:has-text('api.github.com') button:text-is('Cancel')");
+  assert.strictEqual(sent.of("credentials.unbind").length, 0, "Cancel took the host back");
+  await page.click(".cred-detail tr:has-text('api.github.com') button:text-is('Remove')");
+  await page.screenshot({ path: `${out}/credentials-unbind.png`, fullPage: true });
+  await page.click(".cred-detail tr:has-text('api.github.com') button:text-is('Remove')");
+  await page.waitForSelector(".cred-detail >> text=Nowhere yet", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("credentials.unbind"), [{ id: replaced.id, dest: "api.github.com", positions: ["header:Authorization:Bearer"] }]);
+  const narrowed = fs.readFileSync(allowedFile, "utf8");
+  assert.ok(!narrowed.includes('class = "github-token"') && narrowed.includes('class = "drive"'), "bindings.toml after taking the host back:\n" + narrowed);
+  step("a host taken back from a key, after a confirm, and only its rows");
+
+  // Remove the key.
   await page.click(".cred-detail button:has-text('Remove…')");
   await page.click(".cred-detail .callout button:text-is('Remove')");
   await page.waitForSelector(".cred-row:has-text('github-token')", { state: "detached", timeout: 10000 });

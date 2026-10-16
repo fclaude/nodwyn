@@ -61,4 +61,31 @@ check(async () => {
   step("posted and answered");
   const gathered = (await page.textContent(".activity summary")).replace(/\s+/g, " ").trim();
   assert.strictEqual(gathered, "Gathered1 server · searched oncechat/search_messages", "the read is gathered without asking");
+
+  // Disconnecting drops the approved tool list and the folders the server is
+  // offered in, so it asks first as every removal does: Cancel keeps it, and
+  // only the confirm sends mcp.remove.
+  await page.evaluate(() => (location.hash = "#/connections"));
+  await page.waitForSelector(".server-row", { timeout: 10000 });
+  // The server's page stays open between visits to Connections.
+  if (!(await page.locator(".server-detail").count())) await page.click(".server-row:has-text('chat')");
+  await page.waitForSelector(".server-detail button:text-is('Disconnect')", { timeout: 10000 });
+  await page.click(".server-detail button:text-is('Disconnect')");
+  await shows(page, ".server-detail", "Its approved tool list and the folders it is offered in are dropped");
+  assert.strictEqual(sent.of("mcp.remove").length, 0, "Disconnect removed the server before it was confirmed");
+  await page.click(".server-detail button:text-is('Cancel')");
+  await page.click(".server-detail button:text-is('Disconnect')");
+  await page.click(".server-detail button:text-is('Disconnect')");
+  await page.waitForSelector(".server-row", { state: "detached", timeout: 10000 });
+  assert.deepStrictEqual(sent.of("mcp.remove"), [{ name: "chat" }]);
+  // The tabs of Connections are the two it manages; the other two went to the
+  // pages that manage models and folders, and their addresses follow.
+  assert.deepStrictEqual(await page.$$eval("[id^='connections-tab-']", (tabs) => tabs.map((t) => t.textContent)), ["Tools", "Credentials"]);
+  await page.evaluate(() => (location.hash = "#/connections/models"));
+  await page.waitForSelector("#section-models");
+  assert.strictEqual(await page.evaluate(() => location.hash), "#/settings/models");
+  await page.evaluate(() => (location.hash = "#/connections/workspaces"));
+  await page.waitForSelector("h1:text-is('Workspaces')");
+  assert.strictEqual(await page.evaluate(() => location.hash), "#/workspaces");
+  step("Disconnect asks first; the tabs that duplicated other pages went to them");
 });

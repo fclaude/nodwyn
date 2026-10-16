@@ -243,13 +243,17 @@ check(async () => {
     await shows(page, "#view", "Settings", "General", "Models", "Judge", "Approvals", "Writing files", "Running commands");
     await until("settings loaded", () => page.evaluate(() => !document.querySelector("#view").innerText.includes("Loading…")));
     assert.strictEqual(await page.getAttribute("#settings-tab-general", "aria-selected"), "true");
-    // The token budget and the reply cap are named for what they are.
-    await shows(page, "#view", "Tokens used", "a prompt token the provider read from its cache counted as a tenth");
-    await page.click("#settings-tab-context");
-    await page.waitForSelector("#section-window");
-    assert.strictEqual(await page.evaluate(() => location.hash), "#/settings/context");
-    await shows(page, "#view", "Fallback reply cap", "and none its provider publishes");
-    assert.strictEqual(await page.locator("#section-approval").count(), 0, "another tab's section is drawn");
+    // What most people never change is folded away, and open on request: the
+    // token budget and the reply cap are named for what they are.
+    assert.strictEqual(await page.$eval("#advanced", (d) => d.open), false, "Advanced starts open");
+    await page.click("#advanced > summary");
+    await shows(page, "#view", "Tokens used", "a prompt token the provider read from its cache counted as a tenth", "Fallback reply cap", "and none its provider publishes");
+    // Context was a tab of its own: its address still opens its section,
+    // and the address bar says where it went.
+    await go(page, "#/settings/context");
+    await page.waitForSelector("#advanced[open] #section-window");
+    assert.strictEqual(await page.evaluate(() => location.hash), "#/settings/general", "the old tab's address was not replaced");
+    assert.strictEqual(await page.locator("[id^='settings-tab-']").count(), 5, "tabs that hold one section each remain");
   });
   for (const tab of ["models", "judge"]) {
     await shoot(`settings-${tab}`, { width: 1280, height: 800 }, "light", async (page) => {
@@ -260,15 +264,8 @@ check(async () => {
   await shoot("connections", { width: 1280, height: 800 }, "light", async (page) => {
     await go(page, "#/connections");
     await page.waitForSelector("text=No MCP servers yet");
-    await shows(page, "#view", "Connections", "BUILT IN", "20 tools", "Add a server");
-    // Opened there, the Models tab is drawn before the models have
-    // answered, and follows them once they do: it stayed on "Checking the
-    // configured models…" until the person went away and back.
-    await page.evaluate(() => {
-      location.hash = "#/connections/models";
-      location.reload();
-    });
-    await ready(page);
-    await page.waitForFunction(() => !document.querySelector("#view").textContent.includes("Checking the configured models"), null, { timeout: 5000 });
+    // The built-in row names no count: which tools a task has is its own.
+    await shows(page, "#view", "Connections", "BUILT IN", "Files, search, notes and commands", "Add a server");
+    assert.ok(!(await page.textContent("#view")).includes("20 tools"), "a tool count from whichever task moved last");
   });
 });

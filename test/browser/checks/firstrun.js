@@ -122,8 +122,10 @@ check(async () => {
   await page.waitForSelector("[data-model='127-0-0-1-fake']");
   assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { server: "127-0-0-1", model: "fake", efforts: [] });
   await page.selectOption("#default-model-model", "127-0-0-1-fake");
-  await page.click("#default-save");
-  await page.waitForSelector("text=Saved. New tasks start on this model", { timeout: 10000 });
+  // The bar hides when the save is done and the page is drawn again; leaving
+  // before that lets the redraw land over the page the check goes to.
+  await page.click(".save-bar button:text-is('Save')");
+  await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
   assert.deepStrictEqual(sent.of("settings.control.write")[1], { name: "127-0-0-1-fake", effort: "" });
   const switched = fs.readFileSync(`${root}/config/nodwyn/config.toml`, "utf8");
   assert.ok(switched.includes('[control]\nserver = "127-0-0-1"\nmodel = "fake"\n') && switched.includes('[models.127-0-0-1-demo]\nserver = "127-0-0-1"\nmodel = "demo"\n') && switched.split(modelURL).length === 2, "another model on the saved server: " + switched);

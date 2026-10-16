@@ -1,9 +1,8 @@
 // The pages that are not tasks: Connections and Workspaces (Settings is
 // settings.js). They show what the daemon reports; where it reports nothing
 // yet, they say so.
-import { h, icon, repoName, shortPath, ago, toast, sizeOf } from "./dom.js";
+import { h, icon, repoName, shortPath, ago, toast, sizeOf, tablist, removal } from "./dom.js";
 import { chooseFolder, forgetFolder } from "./home.js";
-import { modelRows } from "./settings.js";
 import { renderCredentials } from "./credentials.js";
 
 // ---------- workspaces ----------
@@ -40,18 +39,12 @@ export function renderWorkspaces(root, ctx) {
   const row = (folder, ws) => {
     const count = counts.get(folder);
     const mounts = ws?.mounts || [];
-    const actions =
-      removing === folder
-        ? [
-            h("span", { class: "confirm-text" }, "Forget this folder? Its files and tasks stay."),
-            h("button", { type: "button", class: "btn small danger", onclick: () => remove(folder) }, "Forget"),
-            h("button", { type: "button", class: "btn small ghost", onclick: () => { removing = ""; redraw(); } }, "Keep"),
-          ]
-        : [
-            h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder, desk); navigate("#/"); } }, "New task here"),
-            canEdit ? h("button", { type: "button", class: "btn small ghost", onclick: () => { editing = editing === folder ? "" : folder; addingWorkspace = false; removing = ""; redraw(); } }, ws ? "Edit" : "Name it") : null,
-            canRemove ? h("button", { type: "button", class: "btn small danger", "aria-label": `Forget ${desk.folderName(folder)}`, onclick: () => { removing = folder; redraw(); } }, "Forget") : null,
-          ];
+    const asking = removing === folder;
+    const actions = [
+      asking ? null : h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder, desk); navigate("#/"); } }, "New task here"),
+      asking || !canEdit ? null : h("button", { type: "button", class: "btn small ghost", onclick: () => { editing = editing === folder ? "" : folder; addingWorkspace = false; removing = ""; redraw(); } }, ws ? "Edit" : "Name it"),
+      canRemove ? removal({ label: "Forget", name: `Forget ${desk.folderName(folder)}`, consequence: "Forget this folder? Its files and tasks stay.", asking, ask: () => { removing = folder; redraw(); }, cancel: () => { removing = ""; redraw(); }, run: () => remove(folder) }) : null,
+    ];
     const node = h(
       "div",
       { class: "list-row ws-row" },
@@ -191,17 +184,26 @@ export function renderWorkspaces(root, ctx) {
 }
 
 // ---------- connections ----------
-let connectionsTab = "tools";
 let selectedServer = "";
+let disconnecting = ""; // the server whose Disconnect waits for its confirm
 let adding = false;
 const inspections = new Map(); // server name -> { tools, manifest, approved, changed } or { error }
 
-const connectionsTabs = ["tools", "credentials", "workspaces", "models"];
+const connectionsTabs = [
+  { id: "tools", label: "Tools" },
+  { id: "credentials", label: "Credentials" },
+];
+// Workspaces and Models were tabs that only listed what their own pages
+// manage: their addresses go to those pages.
+const connectionsMoved = { workspaces: "#/workspaces", models: "#/settings/models" };
 
 export async function renderConnections(root, ctx) {
-  const { conn, desk } = ctx;
-  if (connectionsTabs.includes(ctx.tab)) connectionsTab = ctx.tab;
-  const tab = (id, label) => h("button", { type: "button", role: "tab", "aria-selected": String(connectionsTab === id), onclick: () => ctx.navigate(`#/connections/${id}`) }, label);
+  const { conn } = ctx;
+  if (connectionsMoved[ctx.tab]) {
+    location.replace(connectionsMoved[ctx.tab]);
+    return;
+  }
+  const tab = connectionsTabs.some((t) => t.id === ctx.tab) ? ctx.tab : "tools";
   const body = h("div", { style: "display:flex;flex-direction:column;gap:24px" });
   root.replaceChildren(
     h(
@@ -211,57 +213,22 @@ export async function renderConnections(root, ctx) {
         "div",
         { class: "page-col" },
         h("h1", {}, "Connections"),
-        h("p", { class: "lede" }, "What nodwyn can reach and what it may do there. Tools from MCP servers cross the same guard as the built-in ones."),
-        h("div", { class: "tabs", role: "tablist" }, tab("tools", "Tools"), tab("credentials", "Credentials"), tab("workspaces", "Workspaces"), tab("models", "Models")),
+        h("p", { class: "lede" }, "What nodwyn can reach and what it may do there: MCP servers, whose tools cross the same guard as the built-in ones, and the credentials it may send. Models are under ", h("a", { href: "#/settings/models" }, "Settings › Models"), ", folders under ", h("a", { href: "#/workspaces" }, "Workspaces"), "."),
+        tablist({ label: "Connections", prefix: "connections", tabs: connectionsTabs, current: tab, href: (id) => `#/connections/${id}` }),
         body,
       ),
     ),
   );
-  if (connectionsTab === "models") {
-    body.append(...modelRows(desk));
+  if (tab === "credentials") {
+    if (conn.has("credentials.list")) return renderCredentials(body, ctx, () => renderConnections(root, ctx));
+    body.append(h("div", { class: "callout plain" }, "Credentials are listed by the computer nodwyn runs on."));
     return;
   }
-  if (connectionsTab === "workspaces") {
-    const rows = desk.workspaces.map((w) =>
-      h("div", { class: "list-row" }, icon("folder", 18), h("div", { class: "main" }, h("strong", {}, w.name), h("span", {}, `${shortPath(w.path, desk.home)}${w.mounts?.length ? ` · ${w.mounts.length} mounted folder${w.mounts.length === 1 ? "" : "s"}` : ""}`))),
-    );
-    body.append(
-      rows.length ? h("div", { class: "list" }, rows) : h("p", { class: "hint" }, "No named workspaces yet."),
-      h("div", { class: "row-actions" }, h("a", { class: "btn", href: "#/workspaces" }, "Manage workspaces")),
-    );
-    return;
-  }
-  if (connectionsTab === "credentials" && conn.has("credentials.list")) return renderCredentials(body, ctx, () => renderConnections(root, ctx));
-  const open = desk.all().find((s) => s.open);
-  let info = null;
-  if (open) {
-    try {
-      info = await conn.call("session.info", { id: open.id });
-    } catch {
-      info = null;
-    }
-  }
-  if (connectionsTab === "credentials") return credentials(body, info, open, desk);
-  return tools(body, ctx, info, () => renderConnections(root, ctx));
+  return tools(body, ctx, () => renderConnections(root, ctx));
 }
 
-function credentials(body, info, open, desk) {
-  if (!info) {
-    body.append(h("div", { class: "callout plain" }, "Open or resume a task to see the credential bindings it loaded."));
-    return;
-  }
-  const rows = (info.bindings || []).map((b) => h("tr", {}, h("td", {}, h("span", { class: "mono" }, b.Class)), h("td", {}, b.Dest), h("td", {}, (b.Methods || []).join(", ")), h("td", {}, (b.Positions || []).join(", "))));
-  body.append(
-    h("p", { class: "hint" }, `As loaded by “${open.title || open.id}” in ${desk.folderName(desk.project(open))}.`),
-    rows.length
-      ? h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Credential"), h("th", {}, "Only for"), h("th", {}, "Methods"), h("th", {}, "Added as"))), h("tbody", {}, rows))
-      : h("div", { class: "callout plain" }, "No credential bindings. A credential is used only where a binding allows it; nodwyn adds it at the last step and the model never sees the value."),
-    h("p", { class: "hint" }, "Edit bindings from a task: Details › Policy."),
-  );
-}
-
-async function tools(body, ctx, info, redraw) {
-  const { conn, desk } = ctx;
+async function tools(body, ctx, redraw) {
+  const { conn } = ctx;
   let servers = [];
   if (conn.has("mcp.list")) {
     try {
@@ -270,7 +237,6 @@ async function tools(body, ctx, info, redraw) {
       body.append(h("p", { class: "error" }, error.message));
     }
   }
-  const builtin = (info?.tools || []).filter((t) => !t.name.includes("__"));
   const canEdit = conn.has("mcp.save");
   // Whether contained servers can run here, and whose image is present.
   let runtime = null;
@@ -309,7 +275,10 @@ async function tools(body, ctx, info, redraw) {
   body.append(
     ...[
     h("h2", { class: "section-title" }, "Built in"),
-    h("div", { class: "list" }, h("div", { class: "list-row" }, icon("terminal", 18), h("div", { class: "main" }, h("strong", {}, "nodwyn"), h("span", {}, info ? `${builtin.length} tools · files, search, notes${builtin.some((t) => t.name === "shell-exec") ? ", commands" : ""}, and the ones a folder defines` : "Open a task to see its tools.")))),
+    // Which tools a task has depends on its folder and its approvals, so the
+    // count is the task's own (Details); this row does not guess one from
+    // whichever task happened to move last.
+    h("div", { class: "list" }, h("div", { class: "list-row" }, icon("terminal", 18), h("div", { class: "main" }, h("strong", {}, "nodwyn"), h("span", {}, "Files, search, notes and commands, and the ones a folder defines. A task's Details lists the tools it has.")))),
     h("h2", { class: "section-title" }, "MCP servers"),
     servers.length ? h("div", { class: "list" }, servers.map(serverRow)) : h("p", { class: "hint" }, "No MCP servers yet. A server's tools stay off until you review them and choose which to offer."),
     canEdit ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", onclick: () => { adding = !adding; selectedServer = ""; redraw(); } }, icon("plus", 15), "Add a server")) : null,
@@ -319,7 +288,6 @@ async function tools(body, ctx, info, redraw) {
   const server = servers.find((s) => s.name === selectedServer);
   if (server) body.append(await serverDetail(server, ctx, redraw, runtime));
   body.append(h("div", { class: "callout plain" }, "An undeclared tool is treated as sending out and irreversible: every call asks you, and anything its credential isn't allowed to reach is refused."));
-  void desk;
 }
 
 function host(u) {
@@ -554,7 +522,30 @@ async function serverDetail(server, ctx, redraw, runtime) {
       "div",
       { class: "card-head" },
       h("div", { style: "display:flex;flex-direction:column;gap:2px" }, h("strong", { style: "font-size:17px" }, server.name), h("span", { class: "hint mono" }, isContained ? server.image : server.url)),
-      canEdit ? h("button", { type: "button", class: "btn small danger", style: "margin-left:auto", onclick: async () => { try { await conn.call("mcp.remove", { name: server.name }); selectedServer = ""; inspections.delete(server.name); redraw(); } catch (e) { toast(e.message); } } }, "Disconnect") : null,
+      canEdit
+        ? h(
+            "div",
+            { class: "row-actions", style: "margin-left:auto" },
+            removal({
+              label: "Disconnect",
+              consequence: `Disconnect ${server.name}? Its approved tool list and the folders it is offered in are dropped: adding it again means a new review.`,
+              asking: disconnecting === server.name,
+              ask: () => ((disconnecting = server.name), redraw()),
+              cancel: () => ((disconnecting = ""), redraw()),
+              run: async () => {
+                disconnecting = "";
+                try {
+                  await conn.call("mcp.remove", { name: server.name });
+                  selectedServer = "";
+                  inspections.delete(server.name);
+                } catch (e) {
+                  toast(e.message);
+                }
+                redraw();
+              },
+            }),
+          )
+        : null,
     ),
     h("p", { class: "hint" }, isContained ? containedWords(server, runtime) : "A remote server: nodwyn sends it the arguments of the calls you allow, and runs nothing of it on this computer."),
     banner,

@@ -658,7 +658,7 @@ export class TaskView {
     this.files.files = kept;
     // "Don't ask" is the session's, in Go: no Scheme reaches it, and only
     // this computer turns it on (session.approve_all; a paired device's
-    // hello does not list the method), and only once Settings › Approvals
+    // hello does not list the method), and only once Settings › General › Approvals
     // offers it (approve_all_offered; ADR 17, amended 2026-10-05).
     const dontAsk = h(
       "label",
@@ -2028,7 +2028,7 @@ export class TaskView {
           canRestore ? h("button", { type: "button", class: "btn small", disabled: this.busy, onclick: () => this.restore(path, v.hash) }, "Restore") : h("span", { class: "mono" }, v.hash.slice(0, 12)),
         ), this.comparison(path, v.hash)),
       ),
-      canRestore ? h("p", { class: "hint" }, "Restoring is a write like any other: it shows the change, and asks first only if writes ask (Settings › Approvals). The current content is kept too.") : h("p", { class: "hint" }, "Resume the task to restore a version."),
+      canRestore ? h("p", { class: "hint" }, "Restoring is a write like any other: it shows the change, and asks first only if writes ask (Settings › General › Approvals). The current content is kept too.") : h("p", { class: "hint" }, "Resume the task to restore a version."),
     ];
   }
   async restore(path, hash) {

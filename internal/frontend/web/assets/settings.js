@@ -3,9 +3,16 @@
 // the computer nodwyn runs on: the daemon validates and writes, tasks
 // started afterwards get the result, and open ones keep what they started
 // with. Appearance and notifications belong to this browser.
-import { h, icon, toast, ago } from "./dom.js";
+//
+// One rule for saving: a choice made here waits in the bar at the foot of the
+// page and is saved with the others. What acts at once is a key or the
+// passphrase (a secret is never staged), a provider or a model, each its own
+// form with its own Save, and the choices of This browser, which change
+// nothing on the computer.
+import { h, icon, toast, ago, tablist, removal } from "./dom.js";
 import { keychainForm, passphraseForm, noPassphraseWarning } from "./setup.js";
-import { modelsRows, resetModelsUi } from "./models.js";
+import { modelsRows, resetModelsUi, stagedDefault, discardDefault } from "./models.js";
+import { judgeStateWords, judgeKinds, judgeLabel } from "./modelpicker.js";
 import { uploadLabels } from "./transcript.js";
 
 // ---------- theme (a per-browser convenience; dark unless chosen) ----------
@@ -58,14 +65,14 @@ const dontAskChoices = [[false, "Not offered"], [true, "Offered in each task"]];
 const commandChoices = [["judge", "The judge, then me"], ["ask", "Ask me"], ["allow", "Without asking"]];
 
 function writesHint(writes) {
-  if (writes === "ask") return "Every write waits for your answer. “Always” covers its folder for the rest of the task.";
-  return "Anywhere in the task's folder. Each change is shown with its diff, and the file's previous version is kept, so Restore or nodwyn undo puts it back; git keeps what it has committed.";
+  if (writes === "ask") return "Every write waits for your answer.";
+  return "Anywhere in the task's folder, each change shown with its diff; Restore or nodwyn undo puts a file back.";
 }
 
 function commandsHint(commands, judge) {
-  if (commands === "ask") return "You answer each command no allow list covers. “Always” covers that command for the rest of the task.";
-  if (commands === "allow") return "Commands, and tools that act such as an MCP server's, run without asking. With writes also free, the model can write code and run it with nobody looking.";
-  return `The judge is shown the task, its plan and the command, and lets it run above its threshold (Judge, below). When it doesn't, you're asked, and told what it answered. “Always” covers that command for the rest of the task.${judge ? "" : " No judge is set up now, so you're asked."}`;
+  if (commands === "ask") return "You answer each command that no allow list covers.";
+  if (commands === "allow") return "Commands, and tools that act, run without asking: with writes also free, nobody is looking.";
+  return judge ? "The judge decides what it can; you're asked about the rest, and told what it answered." : "No judge is set up, so you're asked.";
 }
 
 // ---------- what each setting takes ----------
@@ -149,10 +156,19 @@ function parse(kind, text) {
   return { value: text.trim() };
 }
 
-// changes is what the edits would change, as settings.write takes them.
+// The Google Docs upload answer is not a config.toml setting: it has its own
+// method, and its edit waits in the same map under this name.
+const docsUpload = "docs.google_upload";
+
+// changes is what the edits would change: set, as settings.write takes it;
+// docs, the upload answer for settings.docs.write (undefined when it does not
+// change); and control, the default model and effort the Models tab staged,
+// for settings.control.write. count is how many there are in all.
 function changes(desk) {
   const set = {};
   const errors = [];
+  const docs = edits.has(docsUpload) && edits.get(docsUpload) !== (desk.settings?.docs?.google_upload || "") ? edits.get(docsUpload) : undefined;
+  const control = stagedDefault(desk);
   for (const [name, edit] of edits) {
     const v = values(desk)[name];
     const spec = specs[name];
@@ -171,7 +187,7 @@ function changes(desk) {
     if (parsed.error) errors.push(`${spec.label} takes ${parsed.error}.`);
     else if (!same(parsed.value, v.value) || !v.set) set[name] = parsed.value;
   }
-  return { set, errors };
+  return { set, errors, docs, control, count: Object.keys(set).length + (docs === undefined ? 0 : 1) + (control ? 1 : 0) };
 }
 
 // ---------- fields ----------
@@ -246,24 +262,26 @@ const section = (id, title, intro, ...rows) => h("section", { class: "settings-s
 // ---------- the page ----------
 
 // tabs are Settings' pages, each a few sections: what a task does, the
-// models, the judge (ADR 47), the context window, documents and containers,
-// keys and devices, and this browser. The tab is in the address
-// (#/settings/judge), so a link opens it and a reload keeps it; an unknown
-// one is the first.
+// models, the judge (ADR 47), keys and devices, and this browser. The tab is
+// in the address (#/settings/judge), so a link opens it and a reload keeps
+// it; an unknown one is the first.
 const tabs = [
   { id: "general", label: "General" },
   { id: "models", label: "Models" },
   { id: "judge", label: "Judge" },
-  { id: "context", label: "Context" },
-  { id: "tools", label: "Documents & containers" },
   { id: "keys", label: "Keys & devices" },
   { id: "browser", label: "This browser" },
 ];
+// moved are tabs that held one rarely used section each and were folded into
+// General's Advanced fold; their addresses still open it.
+const moved = new Set(["context", "tools"]);
 // tabOf is the tab a route names, else the first.
 export const tabOf = (name) => (tabs.some((t) => t.id === name) ? name : tabs[0].id);
 let shownTab = "";
 
-// passphraseOpen is whether the passphrase fold is open on Keys & devices.
+// advancedOpen is whether General's Advanced fold is open, and
+// passphraseOpen whether the passphrase fold is open on Keys & devices.
+let advancedOpen = false;
 let passphraseOpen = false;
 
 export function renderSettings(root, ctx) {
@@ -278,6 +296,19 @@ export function renderSettings(root, ctx) {
   if (!before) {
     resetModelsUi();
     resetJudgeUi();
+    // A task that asked may have saved an answer to Google Docs uploads since
+    // the desk read the settings.
+    if (desk.settings?.docs && conn.has("settings.read")) {
+      conn.call("settings.read").then((settings) => {
+        desk.settings = settings;
+        if (root.querySelector(":scope > main.settings-page")) redraw();
+      }).catch(() => {});
+    }
+  }
+  // The address of a tab that was folded into General opens its fold.
+  if (ctx.tab && moved.has(ctx.tab)) {
+    advancedOpen = true;
+    history.replaceState(null, "", "#/settings/general");
   }
   // Another tab starts at its top; a redraw of the same one stays where it was.
   const scrolled = before && shownTab === tab ? before.scrollTop : 0;
@@ -290,20 +321,14 @@ export function renderSettings(root, ctx) {
   // Only the tab shown is drawn; the edits waiting in the bar are kept across
   // tabs, so a change made in one is saved with one made in another.
   const build = {
-    general: () => (known ? [approvalSection(ctx, redraw), limitsSection(ctx)] : [h("p", { class: "hint" }, "This daemon's settings live in config.toml.")]),
+    general: () => (known ? [approvalSection(ctx, redraw), advancedFold(ctx, redraw)] : [h("p", { class: "hint" }, "This daemon's settings live in config.toml.")]),
     models: () => [modelsSection(ctx, root)],
     judge: () => (known ? [judgeSection(ctx, redraw, root)] : [h("p", { class: "hint" }, "This daemon's judge is set in config.toml.")]),
-    context: () => (known ? [windowSection(ctx)] : []),
-    tools: () => [documentsSection(ctx), ...(known ? [containersSection(ctx, redraw)] : [])],
-    keys: () => [keysSection(ctx, root)],
+    keys: () => [keysSection(ctx, root, redraw)],
     browser: () => [browserSection(ctx), connectionSection(ctx)],
   };
   const sections = build[tab]().filter(Boolean);
-  const nav = h(
-    "nav",
-    { class: "settings-tabs", role: "tablist", "aria-label": "Settings" },
-    tabs.map((t) => h("a", { class: "settings-tab", role: "tab", id: `settings-tab-${t.id}`, href: `#/settings/${t.id}`, "aria-selected": String(t.id === tab), "aria-current": t.id === tab ? "page" : null }, t.label)),
-  );
+  const nav = tablist({ label: "Settings", prefix: "settings", tabs, current: tab, href: (id) => `#/settings/${id}` });
   const bar = h("div", { class: "save-bar", role: "region", "aria-label": "Unsaved settings", hidden: true });
   refreshBar = () => drawBar(bar, ctx, redraw);
 
@@ -314,7 +339,8 @@ export function renderSettings(root, ctx) {
       "div",
       { class: "page-col" },
       h("h1", {}, "Settings"),
-      known && !editable(conn) ? h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
+      h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys and the passphrase act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
+      known && !editable(conn) ?h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
       nav,
       h("div", { class: "settings-panel", role: "tabpanel", "aria-labelledby": `settings-tab-${tab}`, id: `settings-panel-${tab}` }, ...sections),
       bar,
@@ -325,8 +351,6 @@ export function renderSettings(root, ctx) {
   refreshBar();
   const devices = root.querySelector("#devices");
   if (devices && conn.has("devices.list")) showDevices(devices, ctx);
-  const uploads = root.querySelector("#uploads");
-  if (uploads && desk.settings?.docs) showUploads(uploads, ctx);
   if (focus) {
     const node = document.getElementById(focus.id);
     node?.focus({ preventScroll: true });
@@ -338,13 +362,14 @@ export function renderSettings(root, ctx) {
   }
 }
 
-// drawBar shows the unsaved edits and saves them together: one
-// settings.write, so changes that only make sense together (a soft limit
-// above the old hard one) are judged together.
+// drawBar shows the unsaved edits and saves them together. The config.toml
+// settings go in one settings.write, so changes that only make sense together
+// (a soft limit above the old hard one) are judged together; the default
+// model and the Docs upload answer have methods of their own, and each is
+// forgotten once saved, so a refusal of a later one leaves only what failed.
 function drawBar(bar, ctx, redraw) {
   const { conn, desk } = ctx;
-  const { set, errors } = changes(desk);
-  const count = Object.keys(set).length;
+  const { set, errors, docs, control, count } = changes(desk);
   bar.hidden = !editable(conn) || (count === 0 && errors.length === 0 && !saveError);
   if (bar.hidden) return;
   const now = "approval.dont_ask" in set ? ", but follow Don't ask at once" : "";
@@ -354,7 +379,7 @@ function drawBar(bar, ctx, redraw) {
     h(
       "div",
       { class: "row-actions" },
-      h("button", { type: "button", class: "btn ghost", onclick: () => { edits.clear(); saveError = ""; redraw(); } }, "Discard"),
+      h("button", { type: "button", class: "btn ghost", onclick: () => { edits.clear(); discardDefault(); saveError = ""; redraw(); } }, "Discard"),
       h(
         "button",
         {
@@ -366,7 +391,18 @@ function drawBar(bar, ctx, redraw) {
             saveError = "";
             drawBar(bar, ctx, redraw);
             try {
-              desk.settings = await conn.call("settings.write", { set });
+              if (control) {
+                // The effort is sent even when empty: the default model's effort
+                // is what is asked, never what the model happened to have.
+                desk.settings = await conn.call("settings.control.write", { name: control.name, effort: control.effort });
+                discardDefault();
+                await desk.refreshModels();
+              }
+              if (docs !== undefined) {
+                desk.settings = await conn.call("settings.docs.write", { google_upload: docs });
+                edits.delete(docsUpload);
+              }
+              if (Object.keys(set).length) desk.settings = await conn.call("settings.write", { set });
               edits.clear();
               // "Don't ask" is the one setting open tasks follow at once.
               if ("approval.dont_ask" in set) toast(set["approval.dont_ask"] ? "Saved. Every task now offers Don't ask, off until you switch it on there." : "Saved. Don't ask is no longer offered, and is off in every open task.");
@@ -391,8 +427,7 @@ function approvalSection(ctx, redraw) {
   return section(
     "approval",
     "Approvals",
-    "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/), content that looks like a credential, and a command built from what a tool returned always ask, and nothing outside the task's folder is written.",
-    ...row("Credentials over remote HTTP", choice(ctx, "policy.allow_insecure_http", [[false, "Require HTTPS"], [true, "Allow HTTP"]], redraw), h("p", { class: "hint" }, "Off by default. Allow HTTP only for servers you choose to trust on an unencrypted connection: anyone on the route can read or change credentials and content. Localhost remains available. Saved settings apply to new or resumed tasks; certificate checks, bindings and redirect refusals still apply.")),
+    "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/), content that looks like a credential, and a command built from what a tool returned always ask, and nothing outside the task's folder is written. “Always”, in a question, covers that command or folder for the rest of the task.",
     ...row("Writing files", choice(ctx, "approval.writes", writeChoices, redraw), h("p", { class: "hint" }, writesHint(picked(desk, "approval.writes")))),
     ...row("Running commands", choice(ctx, "approval.commands", commandChoices, redraw), h("p", { class: "hint" }, commandsHint(picked(desk, "approval.commands"), !!desk.settings?.judge))),
     ...row(
@@ -400,7 +435,48 @@ function approvalSection(ctx, redraw) {
       choice(ctx, "approval.dont_ask", dontAskChoices, redraw),
       String(picked(desk, "approval.dont_ask")) === "true"
         ? dontAskWarning()
-        : h("p", { class: "hint" }, "A task has no switch that stops the questions. Commands go to whoever “Running commands” names, one at a time."),
+        : h("p", { class: "hint" }, "A task has no switch that stops the questions."),
+    ),
+    ...docsRow(ctx, redraw),
+  );
+}
+
+// docsRow is the answer to a task's upload to Google Docs: asked each time,
+// always allowed or never. It is staged like the settings, and only drawn once
+// there is a Google credential or an answer to show.
+function docsRow(ctx, redraw) {
+  const { conn, desk } = ctx;
+  const docs = desk.settings?.docs;
+  if (!docs || !(docs.google || docs.google_upload)) return [];
+  const editableDocs = conn.has("settings.docs.write");
+  const current = edits.has(docsUpload) ? edits.get(docsUpload) : docs.google_upload || "";
+  const chip = (value) =>
+    h(
+      "button",
+      {
+        type: "button",
+        class: "chip",
+        id: `set-${docsUpload}-${value}`,
+        "aria-pressed": String(current === value),
+        disabled: !editableDocs,
+        onclick: () => {
+          edits.set(docsUpload, value);
+          saveError = "";
+          redraw();
+        },
+      },
+      uploadLabels[value].replace(/^./, (c) => c.toUpperCase()),
+    );
+  return row(
+    "Google Docs uploads",
+    h("div", { class: "row-actions", role: "group", "aria-label": "Google Docs uploads" }, chip("ask"), chip("allow"), chip("deny")),
+    h(
+      "p",
+      { class: "hint" },
+      current ? "" : "Not set yet: the first upload asks. ",
+      "Allow by hand asks before each upload, and --yolo, --judge and unattended runs never upload. Always allow uploads without asking, wherever the binding table allows it. Deny never uploads.",
+      docs.google ? "" : " No Google credential is stored, so no task can upload.",
+      editableDocs ? "" : " Only the computer nodwyn runs on can change this.",
     ),
   );
 }
@@ -478,25 +554,20 @@ function limitsSection(ctx) {
   );
 }
 
-export function modelRows(desk) {
-  if (!desk.models) return [h("p", { class: "hint" }, "Checking the configured models…")];
-  const words = { ready: "answers", missing: "server answers; model not installed", unreachable: "does not answer", unconfigured: "not set up", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed" };
-  return [
-    h(
-      "div",
-      { class: "list" },
-      desk.models.map((m) =>
-        h(
-          "div",
-          { class: "list-row" },
-          h("span", { class: `dot ${m.state === "ready" ? "ok" : m.state === "unreachable" ? "bad" : "warn"}` }),
-          h("div", { class: "main" }, h("strong", {}, m.name === "control" ? "Default model" : m.name), h("span", {}, m.model ? `${m.model} · ${m.provider}${m.host ? ` at ${m.host}` : ""}` : "No model configured")),
-          h("div", { class: "end" }, m.detail || words[m.state] || m.state),
-        ),
-      ),
-    ),
-    h("p", { class: "hint" }, "A reachability check: nodwyn asks each model server for its list of models and sends no credential."),
-  ];
+// advancedFold holds what most people never change: the limits on a turn,
+// the context window and the container runtime. It is open when the address
+// that was folded into it asked for it, or when something in it waits in the
+// bar, so a change is never hidden.
+function advancedFold(ctx, redraw) {
+  const waiting = [...edits.keys()].some((name) => name.startsWith("budget.") || name.startsWith("loop.") || name.startsWith("window.") || name === "mcp.runtime");
+  return h(
+    "details",
+    { class: "advanced", id: "advanced", open: advancedOpen || waiting, ontoggle: (event) => (advancedOpen = event.target.open) },
+    h("summary", {}, "Advanced: limits, context window, containers"),
+    limitsSection(ctx),
+    windowSection(ctx),
+    containersSection(ctx, redraw),
+  );
 }
 
 function modelsSection(ctx, root) {
@@ -513,13 +584,11 @@ function modelsSection(ctx, root) {
 // What the Judge tab is typing: a key for a judge being added, by kind, kept
 // out of the page's state the moment it is sent, and dropped when Settings
 // is left.
-const judgeKeys = { jev: "", openai: "", busy: "", replacing: "", replacement: "", removing: "" };
+const judgeKeys = { jev: "", openai: "", busy: "", removing: "" };
 export function resetJudgeUi() {
-  Object.assign(judgeKeys, { jev: "", openai: "", busy: "", replacing: "", replacement: "", removing: "" });
+  Object.assign(judgeKeys, { jev: "", openai: "", busy: "", removing: "" });
 }
 
-const judgeWords = { ready: "ready", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed", plan: "needs an API key" };
-const judgeKind = { jev: "Jev", openai: "OpenAI Decisions" };
 const usd = (x) => `$${x}`;
 
 // judgePrice says what a judge's questions cost, as far as anyone says.
@@ -536,30 +605,10 @@ function judgeCard(ctx, j, redraw) {
   const { conn, desk } = ctx;
   const dot = j.state === "ready" ? "ok" : "warn";
   // A Jev server carries no model, so it is kept here rather than under
-  // Models: its key is replaced and it is removed here. An OpenAI server is
-  // a model provider too, kept under Models.
+  // Models: it is removed here. An OpenAI server is a model provider too,
+  // kept under Models. Either one's key is replaced under Credentials.
   const server = (desk.settings?.servers || []).find((s) => s.name === j.name);
   const jev = j.provider === "jev" && server && conn.has("settings.provider.write");
-  const replacing = judgeKeys.replacing === j.name;
-  const key = h("input", { class: "input", id: `judge-replace-${j.name}`, type: "password", autocomplete: "off", spellcheck: false, placeholder: "New API key", oninput: () => (judgeKeys.replacement = key.value) });
-  key.value = judgeKeys.replacement;
-  const replace = async () => {
-    const value = judgeKeys.replacement;
-    judgeKeys.replacement = "";
-    judgeKeys.busy = j.name;
-    redraw();
-    try {
-      desk.settings = await conn.call("settings.provider.write", { name: j.name, provider: "jev", url: server.url, api_key: value });
-      judgeKeys.replacing = "";
-      toast(`${j.name}'s key replaced.`);
-      await desk.refreshModels();
-    } catch (error) {
-      toast(error.message);
-    } finally {
-      judgeKeys.busy = "";
-      redraw();
-    }
-  };
   const remove = async () => {
     judgeKeys.removing = "";
     try {
@@ -575,12 +624,8 @@ function judgeCard(ctx, j, redraw) {
     ? h(
         "div",
         { class: "row-actions" },
-        replacing
-          ? [key, h("button", { type: "button", class: "btn small", disabled: !!judgeKeys.busy, onclick: replace }, judgeKeys.busy === j.name ? "Saving…" : "Save the key"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((judgeKeys.replacing = ""), (judgeKeys.replacement = ""), redraw()) }, "Cancel")]
-          : h("button", { type: "button", class: "btn small", onclick: () => ((judgeKeys.replacing = j.name), redraw()) }, "Replace the key"),
-        judgeKeys.removing === j.name
-          ? [h("span", { class: "muted" }, "Remove it? Its key stays in the keychain."), h("button", { type: "button", class: "btn small danger", onclick: remove }, "Remove"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((judgeKeys.removing = ""), redraw()) }, "Cancel")]
-          : h("button", { type: "button", class: "btn small danger", disabled: j.default, title: j.default ? "New tasks ask it: choose another default first" : "", onclick: () => ((judgeKeys.removing = j.name), redraw()) }, "Remove"),
+        h("a", { class: "btn small", href: "#/connections/credentials" }, "Replace the key"),
+        removal({ label: "Remove", consequence: "Remove it? Its key stays in the keychain.", asking: judgeKeys.removing === j.name, ask: () => ((judgeKeys.removing = j.name), redraw()), cancel: () => ((judgeKeys.removing = ""), redraw()), run: remove, disabled: j.default, title: j.default ? "New tasks ask it: choose another default first" : "" }),
       )
     : null;
   return h(
@@ -594,11 +639,11 @@ function judgeCard(ctx, j, redraw) {
         "div",
         { class: "main" },
         h("strong", {}, j.name, j.default ? h("span", { class: "badge plain default-badge" }, "default") : null),
-        h("span", {}, `${judgeKind[j.provider] || j.provider} · ${j.host} · ${j.model}`),
+        h("span", {}, `${judgeKinds[j.provider] || j.provider} · ${j.host} · ${j.model}`),
         h("span", { class: "judge-price" }, judgePrice(j)),
-        j.state !== "ready" ? h("span", { class: "warn-text" }, j.detail || judgeWords[j.state] || j.state) : null,
+        j.state !== "ready" ? h("span", { class: "warn-text" }, j.detail || judgeStateWords[j.state] || j.state) : null,
       ),
-      h("div", { class: "end" }, h("span", { class: "state-word" }, judgeWords[j.state] || j.state)),
+      h("div", { class: "end" }, h("span", { class: "state-word" }, judgeStateWords[j.state] || j.state)),
     ),
     actions,
   );
@@ -625,10 +670,12 @@ async function addJudge(ctx, kind, redraw) {
   try {
     desk.settings = await conn.call("settings.provider.write", params);
     const made = (desk.settings.judges || []).find((j) => j.name === name);
+    // The default is a setting, so it waits in the bar like any other: adding
+    // the key is what acts at once.
     if (!values(desk)["judge.server"]?.value && made?.state === "ready") {
-      desk.settings = await conn.call("settings.write", { set: { "judge.server": name } });
-      toast(`${name} added, and new tasks ask it.`);
-    } else toast(made?.state && made.state !== "ready" ? `${name} added, but ${made.detail || judgeWords[made.state]}.` : `${name} added. Choose it for new tasks above, or for a task beside its model.`);
+      edits.set("judge.server", name);
+      toast(`${name} added. Save to have new tasks ask it.`);
+    } else toast(made?.state && made.state !== "ready" ? `${name} added, but ${made.detail || judgeStateWords[made.state]}.` : `${name} added. Choose it for new tasks above, or for a task beside its model.`);
     await desk.refreshModels();
   } catch (error) {
     toast(error.message);
@@ -690,15 +737,18 @@ function judgeSection(ctx, redraw, root) {
     : server !== saved
       ? `Save to have new tasks ask ${server}.`
       : content === "none"
-        ? "Off in config.toml (judge.content = \"none\"): no task asks the judge."
+        ? "No task asks the judge, because what it sees is set to nothing. Choose what it sees under Tuning to turn it on."
         : chosen?.state === "ready"
           ? `New tasks ask ${server}. Its key is stored, unlocked and allowed for ${chosen.host}; whether the service takes it shows on its first answer.`
           : `New tasks ask ${server}, which can't be asked now: ${chosen?.detail || "it is not set up"}. You answer instead.`;
-  const levels = [["plan", "The task and plan"], ...(content === "plan+summaries" ? [["plan+summaries", "Plan and summaries"]] : []), ["full", "Also what calls would send"], ...(content === "none" ? [["none", "Nothing (off)"]] : [])];
+  // Off is No judge, one way to turn it off: the two levels are all the
+  // console offers. A hand-written config.toml may hold another (none, or the
+  // reserved plan+summaries); it then shows none pressed, and choosing one
+  // replaces it.
+  const levels = [["plan", "The task and plan"], ["full", "Also what calls would send"]];
+  const odd = !levels.some(([value]) => value === content);
   const contentHint = {
-    none: "The judge is not asked anything, by any task.",
-    plan: "It is shown the task and the plan, which is all the plan gate needs. The default.",
-    "plan+summaries": "Reserved: for now the judge sees what it sees at “The task and plan”.",
+    plan: "It is shown the task and the plan. The default.",
     full: "When it answers a command it also sees what the call would send, and the model may ask it questions itself (judge-* tools). Credentials are never shown to it.",
   };
   const kinds = new Set(judges.map((j) => (j.provider === "openai" && j.state === "plan" ? "plan" : j.provider)));
@@ -708,14 +758,17 @@ function judgeSection(ctx, redraw, root) {
   const own = (name) => !!values(desk)[name]?.set;
   const providerModel = chosen?.provider_model || "";
   const wrongModel = chosen && model?.set && model.value && model.value !== providerModel && edits.get("judge.model") !== "";
-  return section(
+  // The tuning is folded away unless something in it is not at its default,
+  // or waits in the bar, or the judge has no price to count with.
+  const tuned = ["judge.content", "judge.approve_threshold", "judge.timeout", "judge.price_input", "judge.price_output"].some((name) => own(name) || edits.has(name));
+  const page = section(
     "judge",
     "Judge",
     "The judge scores a task's plan before it acts, and answers its commands before you're asked (General › Approvals). Each task asks the judge chosen for it beside its model; new tasks start with the default here.",
     ...row("Status", h("p", { class: "hint", id: "judge-status" }, status)),
     ...row(
       "Default for new tasks",
-      choice(ctx, "judge.server", [["", "No judge"], ...judges.map((j) => [j.name, `${j.name}${judgeKind[j.provider] && judgeKind[j.provider] !== j.name ? ` · ${judgeKind[j.provider]}` : ""}${j.state !== "ready" ? ` (${judgeWords[j.state] || j.state})` : ""}`])], redraw),
+      choice(ctx, "judge.server", [["", "No judge"], ...judges.map((j) => [j.name, `${judgeLabel(j)}${j.state !== "ready" ? ` (${judgeStateWords[j.state] || j.state})` : ""}`])], redraw),
       h("p", { class: "hint" }, "A task's own choice, beside its model, changes only that task. Tasks already open keep theirs."),
     ),
     ...row(
@@ -723,7 +776,7 @@ function judgeSection(ctx, redraw, root) {
       judges.length ? h("div", { class: "judges" }, judges.map((j) => judgeCard(ctx, j, redraw))) : h("p", { class: "hint" }, "No judge is set up yet."),
       kinds.has("jev") ? null : addJudgeCard(ctx, "jev", redraw),
       kinds.has("openai") ? null : addJudgeCard(ctx, "openai", redraw),
-      h("p", { class: "hint" }, "An OpenAI judge is on a model provider, whose key is replaced under ", h("a", { href: "#/settings/models" }, "Models"), ". A key is stored encrypted in the keychain and sent only to its judge's address."),
+      h("p", { class: "hint" }, "An OpenAI judge is on a model provider, listed under ", h("a", { href: "#/settings/models" }, "Models"), ". A key is stored encrypted in the keychain and sent only to its judge's address; ", h("a", { href: "#/connections/credentials" }, "Credentials"), " replaces it."),
     ),
     ...(wrongModel
       ? row(
@@ -736,34 +789,36 @@ function judgeSection(ctx, redraw, root) {
           ),
         )
       : []),
-    ...row("What it sees", choice(ctx, "judge.content", levels, redraw), h("p", { class: "hint" }, contentHint[content] || "")),
-    ...row("Allows a command at", input(ctx, "judge.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a command go ahead. Below that, or with no answer, you're asked.")),
-    ...row("Waits for an answer", input(ctx, "judge.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
-    ...(saved
-      ? row(
-          "Your own prices",
-          h(
-            "details",
-            { class: "judge-prices", open: own("judge.price_input") || own("judge.price_output") || (chosen && chosen.price_input === undefined) },
-            h("summary", {}, `For ${saved} only, if its published price is wrong`),
-            h(
-              "div",
-              { class: "row-actions" },
-              input(ctx, "judge.price_input", { width: "narrow", prefix: "$", placeholder: settings.judge_published?.price_input !== undefined ? String(settings.judge_published.price_input) : "unknown" }),
-              h("span", { class: "muted" }, "input,"),
-              input(ctx, "judge.price_output", { width: "narrow", prefix: "$", placeholder: settings.judge_published?.price_output !== undefined ? String(settings.judge_published.price_output) : "unknown" }),
-              h("span", { class: "muted" }, "output, per million tokens"),
-            ),
-            h("p", { class: "hint" }, "The judge reports what each request used, never what it cost, so a price estimates it. Empty is what its provider publishes. Tasks show the judge's spend, and a spend limit counts it."),
-          ),
-        )
-      : []),
   );
-}
-
-function documentsSection(ctx) {
-  if (!ctx.desk.settings?.docs) return null;
-  return section("documents", "Documents", "", ...row("Google Docs uploads", h("div", { class: "value", id: "uploads" })));
+  page.append(
+    h(
+      "details",
+      { class: "judge-tuning", id: "judge-tuning", open: tuned || odd || (chosen && chosen.price_input === undefined) },
+      h("summary", {}, "Tuning: what it sees, how sure it must be, what it costs"),
+      h(
+        "div",
+        { class: "settings-grid" },
+        ...row("What it sees", choice(ctx, "judge.content", levels, redraw), h("p", { class: "hint" }, odd ? `config.toml has “${content}”, which nothing here sets: choose one of these to replace it.` : contentHint[content] || "")),
+        ...row("Allows a command at", input(ctx, "judge.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "How sure the judge must be that a command is safe, from above 0 to 1, for it to go ahead. Below that, or with no answer, you're asked.")),
+        ...row("Waits for an answer", input(ctx, "judge.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
+        ...(saved
+          ? row(
+              "Your own prices",
+              h(
+                "div",
+                { class: "row-actions" },
+                input(ctx, "judge.price_input", { width: "narrow", prefix: "$", placeholder: settings.judge_published?.price_input !== undefined ? String(settings.judge_published.price_input) : "unknown" }),
+                h("span", { class: "muted" }, "input,"),
+                input(ctx, "judge.price_output", { width: "narrow", prefix: "$", placeholder: settings.judge_published?.price_output !== undefined ? String(settings.judge_published.price_output) : "unknown" }),
+                h("span", { class: "muted" }, "output, per million tokens"),
+              ),
+              h("p", { class: "hint" }, `For ${saved} only, if its published price is wrong. The judge reports what each request used, never what it cost, so a price estimates it. Empty is what its provider publishes; a spend limit counts it.`),
+            )
+          : []),
+      ),
+    ),
+  );
+  return page;
 }
 
 function containersSection(ctx, redraw) {
@@ -774,7 +829,7 @@ function containersSection(ctx, redraw) {
     ...row(
       "Runtime",
       choice(ctx, "mcp.runtime", [["", "Automatic"], ["podman", "Podman"], ["docker", "Docker"]], redraw),
-      h("p", { class: "hint" }, "What contained MCP servers run in (Connections › Tools). Automatic uses podman if it's installed, else docker."),
+      h("p", { class: "hint" }, "What contained MCP servers run in (Connections). Automatic uses podman if it's installed, else docker."),
     ),
   );
 }
@@ -796,14 +851,25 @@ function windowSection(ctx) {
   );
 }
 
-function keysSection(ctx, root) {
-  const { conn, desk } = ctx;
-  if (!conn.has("keychain.status") && !conn.has("devices.list")) return null;
+function keysSection(ctx, root, redraw) {
+  const { conn } = ctx;
+  const known = !!ctx.desk.settings?.values;
+  if (!conn.has("keychain.status") && !conn.has("devices.list") && !known) return null;
   return section(
     "keys",
-    "Keys and devices",
+    "Keys & devices",
     "",
     conn.has("keychain.status") ? row("Keychain", keychainSettings(ctx, () => renderSettings(root, ctx))) : [],
+    // A credential is sent only where a binding allows it; this is the one
+    // exception to the HTTPS the guard otherwise requires, so it sits with the
+    // keys rather than among the approvals.
+    known
+      ? row(
+          "Credentials over remote HTTP",
+          choice(ctx, "policy.allow_insecure_http", [[false, "Require HTTPS"], [true, "Allow HTTP"]], redraw),
+          h("p", { class: "hint" }, "Off by default. Allow HTTP only for servers you trust on an unencrypted connection: anyone on the route can read or change credentials and content. Localhost is always available, and certificate checks, bindings and redirect refusals still apply."),
+        )
+      : [],
     conn.has("devices.list") ? [h("div", { class: "label" }, "Other devices"), h("div", { class: "value", id: "devices" }, h("p", { class: "hint" }, "Loading…"))] : [],
   );
 }
@@ -842,7 +908,7 @@ function browserSection(ctx) {
     ? "This browser can't show desktop notifications here (they need a secure page)."
     : typeof Notification !== "undefined" && Notification.permission === "denied"
       ? "Notifications are blocked for this page in the browser's settings."
-      : "Only “nodwyn needs your answer”: never the task, the arguments or a diff.";
+      : "Only “nodwyn needs your answer”: never the task, the arguments or a diff. Kept in this browser; the app has them on until you turn them off.";
   return section(
     "browser",
     "This browser",
@@ -851,7 +917,7 @@ function browserSection(ctx) {
     ...row("The model's thinking", h("div", { class: "row-actions" }, thinkingButton(false, "Hidden"), thinkingButton(true, "Shown")), h("p", { class: "hint" }, "Hidden unless you choose otherwise: shown, it sits with the calls it led to, under its first line. The log keeps it either way. Kept in this browser only.")),
     ...row(
       "Desktop notifications",
-      h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", disabled: !notifier.available || !conn.live, onclick: async () => { await notifier.toggle(); rerender(); } }, notifier.enabled ? "Turn off for this tab" : "Turn on for this tab")),
+      h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", disabled: !notifier.available || !conn.live, onclick: async () => { await notifier.toggle(); rerender(); } }, notifier.enabled ? "Turn off" : "Turn on")),
       h("p", { class: "hint" }, notifyNote),
     ),
   );
@@ -873,43 +939,10 @@ function connectionSection(ctx) {
   );
 }
 
-// showUploads is how an upload to Google Docs is handled. A task that asked
-// may have saved an answer since the page loaded, so it reads it again.
-async function showUploads(node, ctx) {
-  const { conn, desk } = ctx;
-  const draw = () => {
-    const docs = desk.settings?.docs || {};
-    const current = docs.google_upload || "";
-    const editable = conn.has("settings.docs.write");
-    const choose = async (value) => {
-      try {
-        desk.settings = await conn.call("settings.docs.write", { google_upload: value });
-      } catch (error) {
-        toast(error.message);
-      }
-      draw();
-    };
-    const chip = (value) => h("button", { type: "button", class: "chip", "aria-pressed": String(current === value), disabled: !editable, onclick: () => choose(value) }, uploadLabels[value].replace(/^./, (c) => c.toUpperCase()));
-    node.replaceChildren(
-      h("div", { class: "row-actions" }, chip("ask"), chip("allow"), chip("deny")),
-      h(
-        "p",
-        { class: "hint" },
-        current ? "" : "Not set yet: the first upload asks. ",
-        "Allow by hand asks before each upload, and --yolo, --judge and unattended runs never upload. Always allow uploads without asking, wherever the binding table allows it. Deny never uploads.",
-        docs.google ? "" : " No Google credential is configured, so no task can upload yet.",
-        editable ? "" : " Only the computer nodwyn runs on can change this.",
-      ),
-    );
-  };
-  draw();
-  try {
-    desk.settings = await conn.call("settings.read");
-    draw();
-  } catch {
-    /* keep what the page loaded with */
-  }
-}
+// revoking is the device whose Revoke waits for its confirm. A device that
+// is revoked is locked out at once, and pairing it again needs a terminal,
+// so a click is not enough.
+let revoking = "";
 
 async function showDevices(node, ctx) {
   const { conn } = ctx;
@@ -920,36 +953,33 @@ async function showDevices(node, ctx) {
     node.replaceChildren(h("p", { class: "error" }, error.message));
     return;
   }
-  const rows = list.map((d) =>
-    h(
-      "div",
-      { class: "list-row" },
-      h("div", { class: "main" }, h("strong", {}, d.name), h("span", {}, `paired ${ago(d.paired)} · last seen ${ago(d.last_seen)}`)),
-      h(
-        "div",
-        { class: "end" },
-        h(
-          "button",
-          {
-            type: "button",
-            class: "btn small danger",
-            onclick: async () => {
-              try {
-                await conn.call("devices.revoke", { name: d.name });
-                toast(`${d.name} can no longer reach nodwyn.`);
-                showDevices(node, ctx);
-              } catch (error) {
-                toast(error.message);
-              }
-            },
-          },
-          "Revoke",
-        ),
-      ),
-    ),
-  );
-  node.replaceChildren(
-    rows.length ? h("div", { class: "list" }, rows) : h("p", { class: "hint" }, "No other device is paired."),
-    h("p", { class: "hint" }, "Paired browsers on other machines, such as your phone. They can answer and send messages, never change settings, keys or policy."),
-  );
+  const revoke = async (name) => {
+    revoking = "";
+    try {
+      await conn.call("devices.revoke", { name });
+      toast(`${name} can no longer reach nodwyn.`);
+    } catch (error) {
+      toast(error.message);
+    }
+    showDevices(node, ctx);
+  };
+  const draw = () =>
+    node.replaceChildren(
+      list.length
+        ? h(
+            "div",
+            { class: "list" },
+            list.map((d) =>
+              h(
+                "div",
+                { class: "list-row" },
+                h("div", { class: "main" }, h("strong", {}, d.name), h("span", {}, `paired ${ago(d.paired)} · last seen ${ago(d.last_seen)}`)),
+                h("div", { class: "end" }, removal({ label: "Revoke", consequence: `Revoke ${d.name}? It is locked out at once, and pairing it again needs a terminal.`, asking: revoking === d.name, ask: () => ((revoking = d.name), draw()), cancel: () => ((revoking = ""), draw()), run: () => revoke(d.name) })),
+              ),
+            ),
+          )
+        : h("p", { class: "hint" }, "No other device is paired."),
+      h("p", { class: "hint" }, "Paired browsers on other machines, such as your phone. They can answer and send messages, never change settings, keys or policy. To pair one, run ", h("span", { class: "mono" }, "nodwyn ui --listen ADDRESS:PORT"), " in a terminal on this computer (a tailnet address is typical; a wildcard one also needs --name): it prints a pairing code there, and the other browser opens that address and enters the code and a name for itself."),
+    );
+  draw();
 }

@@ -322,10 +322,13 @@ providers and the models and efforts to choose between ("Choosing models"
 below), the default model's tuning, the judges ("The judge" below) and what
 a task does without asking (`[approval]`, "Confirms" below), keeping every
 other line of `config.toml` as written. It is tabs, each at an address of its
-own (`#/settings/models`, `#/settings/judge`): General, Models, Judge,
-Context, Documents & containers, Keys & devices and This browser. Tasks
-started afterwards get the new values; open ones keep theirs ([the browser
-view](browser.md), "Settings").
+own (`#/settings/models`, `#/settings/judge`): General (its approvals, and
+under Advanced the limits, the context window and the container runtime),
+Models, Judge, Keys & devices and This browser. A choice made there waits in
+a bar at the foot of the page and is saved with the others; only keys, the
+passphrase, a provider or a model (each its own form) and This browser act at
+once. Tasks started afterwards get the new values; open ones keep theirs
+([the browser view](browser.md), "Settings").
 
 Line mode is one client of several: `nodwyn tui` is a full-screen terminal
 client ([the TUI](tui.md)), `nodwyn app` and `nodwyn ui` show the console in
@@ -617,7 +620,7 @@ wants it left out redefines `(project-instructions-section)` in
 
 ### Confirms
 
-What asks you is `[approval]` in `config.toml`, which Settings › Approvals
+What asks you is `[approval]` in `config.toml`, which Settings › General › Approvals
 changes (ADR 35):
 
 ```toml
@@ -778,7 +781,7 @@ included, and it is never saved: a resumed task asks again. Since writes in
 the folder already go ahead by default (`[approval]`, "Confirms" above), it
 matters most for commands: while it is on, the judge is not asked.
 
-The switch is not there until you offer it: Settings › Approvals › **Don't
+The switch is not there until you offer it: Settings › General › Approvals › **Don't
 ask in tasks** (`[approval] dont_ask = true`), off by default, with a red
 warning while it is on. Under the switch, models in this project's own
 sessions loaded the person's SSH key into an agent, read through the shell a
@@ -980,8 +983,9 @@ another count.
 Every judge call is a guarded egress: bound credential, L1 redaction of
 what leaves, a `jev.req` log line with origin, size, hash and the answer
 (read into the same shape whichever provider gave it; a Decisions API
-refusal is no answer). Set `judge.content = "none"` in `config.toml` to
-turn it off. Without its server's key stored nothing is sent and the loop
+refusal is no answer). Choose *No judge* in Settings › Judge to turn it off
+(`judge.content = "none"` in `config.toml` does too, and the console shows it
+until a level is chosen). Without its server's key stored nothing is sent and the loop
 runs without a gate.
 
 With `[approval] commands = "judge"`, the default, the judge also answers a
@@ -1184,7 +1188,7 @@ larger examples, each a behaviour written as a user would write it:
 Credentials in headers, queries and bodies require HTTPS, with HTTP allowed on
 localhost and literal loopback addresses. For remote HTTP you deliberately accept,
 set `[policy] allow_insecure_http = true` in the user's config.toml, or choose
-**Settings > Approvals > Credentials over remote HTTP > Allow HTTP**. Off is the
+**Settings › Keys & devices › Credentials over remote HTTP › Allow HTTP**. Off is the
 default. New/resumed tasks take the setting; provider tests and model lists use the
 daemon's current value; provider setup also honours the saved choice. On HTTP,
 an observer on the route can read or change the credential and payload. Binding
@@ -1322,10 +1326,9 @@ Then add a model from the provider's list, Test it, and choose it as the default
 for new tasks. No file editing is needed. Switching back to **API key** requires
 a new key and keeps the connected account in the keychain.
 
-You can also use **Connections › Credentials › Connect an account**, choose
-**openai**, leave Client id empty, and select **Continue with ChatGPT**.
-OpenAI registers nodwyn during consent; no client secret or pre-registered
-client is required. The keychain saves a stable host identifier before
+This is the one place a ChatGPT plan is connected: **Connect an account** in
+Connections › Credentials offers no openai. OpenAI registers nodwyn during
+consent; no client secret or pre-registered client is required. The keychain saves a stable host identifier before
 sign-in, then verifies the returned ID token's signature, issuer, issued
 client id, expiry and nonce, and requires the granted plan-use scopes.
 Tokens stay in the encrypted keychain. OpenAI controls eligibility, the
@@ -1819,7 +1822,8 @@ records the effort it asked for (`llm.req`), and replays to its hash.
 **Settings › Models.** The console sets all of this up without the file, on
 this computer only. Each provider is a card with the models on it listed
 under it, and **Add a model** on it there; the default for new tasks is its
-Model · Effort · Judge, saved together:
+Model · Effort, which waits in Settings' bar with the other settings (the
+default judge is on the Judge tab):
 
 - *Providers* lists each `[servers.NAME]` but Jev's, which is a judge under
   Settings › Judge (and the address a model gives inline, read-only), says
@@ -1839,8 +1843,9 @@ Model · Effort · Judge, saved together:
   Ollama, and Other) that only fill the form in. The key goes to the
   keychain with two binding rows for the address's host, `POST` for the model
   and `GET` for its model list, as a bearer header (Anthropic's: the `x-api-key`
-  header), never into `config.toml`, never into the page; replacing it replaces
-  it in place. A key requires HTTPS or loopback by default; the user's
+  header), never into `config.toml`, never into the page; replacing it, under
+  Connections › Credentials (the one place a stored key's value is changed;
+  the provider's form links to it), replaces it in place. A key requires HTTPS or loopback by default; the user's
   **Credentials over remote HTTP** setting also permits an HTTP provider. It follows a
   change of path or port, and never a change of host: a provider moved to
   another host has no key until you type one. **Test** sends one short request,
@@ -1849,7 +1854,7 @@ Model · Effort · Judge, saved together:
   the request* (an effort the model does not take, for one), or *no quota*. A
   provider that models are on is not removed; its key stays in the keychain
   (Connections › Credentials removes it).
-- *Models you can choose*, under each provider, are the list the pickers
+- The models under each provider are the list the pickers
   offer: `[control]` and each `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
   own list, asked with its key, fills in suggestions) and the efforts it
   takes: *As published* (offered once the id is given, for a model its
@@ -2341,7 +2346,7 @@ and its reply always fit the context. The cap is the model's `max_output`
 it is the longest reply its provider publishes, at most a quarter of its
 context (gpt-6.1-sol's 128,000), and for a model nothing is published of,
 `window.output_reserve` (16384 by default, *Fallback reply cap* in
-Settings › Context window), but a context too small for the window and that
+Settings › General › Advanced), but a context too small for the window and that
 reply gives it no more than a quarter, so a small model keeps most of its
 context for the conversation. A remote
 reasoning model whose thinking needs more room sets its own; a

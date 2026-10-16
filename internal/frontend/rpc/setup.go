@@ -618,7 +618,7 @@ func controlServer(p controlParams, servers map[string]config.Server, old config
 	}
 	// The user's transport setting applies to first setup as well as later edits.
 	if (keyed || (write && srv.Credential != "")) && parsed.Scheme != "https" && !loopback(host) && !insecure {
-		return "", srv, "", false, failure(-32602, "a model with a key must be reached over https; to use remote HTTP, enable Credentials over remote HTTP in Approvals")
+		return "", srv, "", false, failure(-32602, "a model with a key must be reached over https; to use remote HTTP, enable Credentials over remote HTTP in Settings › Keys & devices")
 	}
 	return name, srv, host, write, nil
 }

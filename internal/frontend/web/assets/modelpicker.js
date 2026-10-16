@@ -10,7 +10,10 @@ import { h } from "./dom.js";
 // Models in these states cannot be asked at all, whatever the provider does;
 // "unreachable" may pass, so it only warns.
 const blocking = new Set(["needs_key", "locked", "unbound", "unconfigured", "missing"]);
-const suffix = { needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed", unreachable: "not answering", missing: "not installed", unconfigured: "not set up" };
+// stateWords is how every page says what models.status reported of a model or
+// a provider, so one state reads the same in the sidebar, the picker and
+// Settings.
+export const stateWords = { ready: "ready", missing: "model not installed", unreachable: "not answering", unconfigured: "not set up", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed" };
 
 export const choicesOf = (desk) => desk.settings?.choices || [];
 export const choiceNamed = (desk, name) => choicesOf(desk).find((c) => c.name === name) || null;
@@ -73,7 +76,7 @@ export function problem(desk, selection, extra) {
   const status = listed ? statusOf(desk, listed.name) : null;
   if (status && status.state !== "ready") {
     const kind = blocking.has(status.state) ? "error" : "warn";
-    return { kind, text: status.detail || `${status.model} is ${suffix[status.state] || status.state}.`, fix: kind === "error" ? "Settings › Models" : "" };
+    return { kind, text: status.detail || `${status.model} is ${stateWords[status.state] || status.state}.`, fix: kind === "error" ? "Settings › Models" : "" };
   }
   return null;
 }
@@ -88,8 +91,10 @@ export const judgesOf = (desk) => desk.settings?.judges || [];
 export const judgeNamed = (desk, name) => judgesOf(desk).find((j) => j.name === name) || null;
 // defaultJudge is the judge new tasks start with: [judge]'s server, or "".
 export const defaultJudge = (desk) => judgesOf(desk).find((j) => j.default)?.name || "";
-const judgeKinds = { jev: "Jev", openai: "OpenAI Decisions" };
-const judgeSuffix = { needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed", plan: "needs an API key" };
+export const judgeKinds = { jev: "Jev", openai: "OpenAI Decisions" };
+// judgeStateWords is the same for a judge: a model's words, and plan, which is
+// a ChatGPT plan that cannot ask the Decisions API.
+export const judgeStateWords = { ready: "ready", needs_key: stateWords.needs_key, locked: stateWords.locked, unbound: stateWords.unbound, plan: "needs an API key" };
 // judgeLabel names a judge as the pickers list it.
 export const judgeLabel = (j) => (j ? `${j.name}${judgeKinds[j.provider] && judgeKinds[j.provider] !== j.name ? ` · ${judgeKinds[j.provider]}` : ""}` : "No judge");
 
@@ -98,7 +103,7 @@ export function judgeProblem(desk, name) {
   if (!name) return null;
   const j = judgeNamed(desk, name);
   if (!j) return { kind: "warn", text: `The judge ${name} is no longer set up, so you answer this task's commands.`, fix: "Settings › Judge" };
-  if (j.state !== "ready") return { kind: "warn", text: `${j.detail || `${j.name} ${judgeSuffix[j.state] || j.state}`}. Until it can be asked, you answer the commands.`, fix: "Settings › Judge" };
+  if (j.state !== "ready") return { kind: "warn", text: `${j.detail || `${j.name} ${judgeStateWords[j.state] || j.state}`}. Until it can be asked, you answer the commands.`, fix: "Settings › Judge" };
   return null;
 }
 
@@ -169,7 +174,7 @@ export class ModelPicker {
     choices.forEach((c, i) => {
       const where = c.server ? `${c.server} · ${c.host}` : c.host;
       if (!groups.has(where)) groups.set(where, []);
-      const note = suffix[states[i]] ? ` — ${suffix[states[i]]}` : "";
+      const note = states[i] && states[i] !== "ready" ? ` — ${stateWords[states[i]] || states[i]}` : "";
       groups.get(where).push(h("option", { value: c.name }, `${c.model}${c.default ? " (default)" : ""}${note}`));
     });
     const options = [...groups].map(([where, list]) => h("optgroup", { label: where }, list));
@@ -207,7 +212,7 @@ export class ModelPicker {
     // what the task has.
     this.judgeField.hidden = judges === null;
     if (judges !== null) {
-      const opts = [h("option", { value: "" }, "No judge"), ...judges.map((j) => h("option", { value: j.name }, `${judgeLabel(j)}${j.default ? " (default)" : ""}${judgeSuffix[j.state] ? ` — ${judgeSuffix[j.state]}` : ""}`))];
+      const opts = [h("option", { value: "" }, "No judge"), ...judges.map((j) => h("option", { value: j.name }, `${judgeLabel(j)}${j.default ? " (default)" : ""}${j.state !== "ready" ? ` — ${judgeStateWords[j.state] || j.state}` : ""}`))];
       if (judge && !judges.some((j) => j.name === judge)) opts.push(h("option", { value: judge }, `${judge} (no longer set up)`));
       this.judge.replaceChildren(...opts);
       this.judge.value = judge || "";

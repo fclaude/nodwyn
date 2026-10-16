@@ -552,7 +552,7 @@ check(async () => {
 
   // The transport exception is off, saved explicitly, and retained after a
   // reload; turning it off again sends and persists false, not an empty string.
-  await page.evaluate(() => (location.hash = "#/settings"));
+  await page.evaluate(() => (location.hash = "#/settings/keys"));
   await page.waitForSelector("[id='set-policy.allow_insecure_http-default']");
   assert.strictEqual(await page.getAttribute("[id='set-policy.allow_insecure_http-default']", "aria-pressed"), "true");
   for (const allow of [true, false]) {

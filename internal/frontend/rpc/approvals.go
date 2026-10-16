@@ -103,7 +103,7 @@ func (s *server) approveAll(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32602, "Approving without asking is turned on only on the computer nodwyn runs on, not from a paired device")
 	}
 	if p.On && !s.options.Config.Approval.DontAsk {
-		return nil, failure(-32602, "Don't ask is not offered: turn it on in Settings › Approvals first")
+		return nil, failure(-32602, "Don't ask is not offered: turn it on in Settings › General › Approvals first")
 	}
 	if err := open.session.SetApproveAll(p.On, client.actor); err != nil {
 		return nil, failure(-32000, err.Error())

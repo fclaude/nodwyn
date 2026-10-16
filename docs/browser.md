@@ -127,7 +127,7 @@ model's context.
 
 ## Other pages
 
-**Connections** (tools, credentials, workspaces, models),
+**Connections** (MCP tools and credentials),
 **Workspaces** and **Settings** hold the rest; Settings also creates,
 unlocks and sets the passphrase of the keychain. The
 U3 inspectors described below sit under a task's **Details**, in the
@@ -138,28 +138,39 @@ window and first-run setup see [app.md](app.md).
 
 Settings is what tasks start with when nobody says otherwise, kept in
 `config.toml`; every other line of the file, comments included, stays as
-you wrote it. It is tabs, each at an address of its own (`#/settings/judge`),
-so a link opens one and a reload keeps it; `#/settings` is the first. Only
-the tab shown is drawn, and the bar of unsaved changes keeps those made in
-every tab. The tabs:
+you wrote it. It is five tabs, each at an address of its own
+(`#/settings/judge`), so a link opens one and a reload keeps it;
+`#/settings` is the first. Only the tab shown is drawn, and the bar of
+unsaved changes keeps those made in every tab. The tabs:
 
-- **General** — Approvals and Limits:
+- **General** — Approvals, and under a fold called Advanced, what most people
+  never change:
   - **Approvals** — what a task does without asking you (ADR 35): whether it
   writes files in its folder without asking (the default) or asks first,
   and who answers a command no allow list covers: the judge, then you when
-  it refuses or there is none (the default); you; or nobody, and it runs. A
+  it refuses or there is none (the default); you; or nobody, and it runs;
+  whether tasks offer **Don't ask**; and, once a Google credential is stored,
+  how uploads to Google Docs are handled (the manual, "Documents out"). A
   write to a protected file, content that looks like a credential and a
   command built from what a tool returned always ask. The transcript says
   which calls went ahead, which the judge allowed, and why it refused one.
-  - **Limits** — each turn's tool calls, tokens used, actions and time: where
-  it stops, and, if you set it lower, where it asks first whether to go
-  on (by default it doesn't); the spend limit on a whole
+  - **Advanced** — **Limits**: each turn's tool calls, tokens used, actions
+  and time: where it stops, and, if you set it lower, where it asks first
+  whether to go on (by default it doesn't); the spend limit on a whole
   task, in dollars, off until you set where it stops; and how long a model
-  reply and a command may take.
+  reply and a command may take. **Context window**: the water marks between
+  which a task's context is summarized or trimmed (unset, they follow each
+  model's context less its reply cap; set, they shrink only for a model that
+  cannot hold them), the largest tool result shown whole, and the fallback
+  reply cap of a model that has none of its own and none its provider
+  publishes. **Containers**: podman, docker, or whichever is installed, for
+  contained MCP servers. The fold is closed, and open while a change waits in
+  it. The addresses `#/settings/context` and `#/settings/tools`, which were
+  tabs of their own, open it and are replaced by `#/settings/general`.
 - **Models** (ADR 41, ADR 47) — two things.
-  *Default for new tasks* is a model from the list, its default effort and the
-  judge new tasks ask, side by side as a task chooses them, saved together on
-  their own button, since they are writes the bar below does not carry.
+  *Default for new tasks* is a model from the list and its default effort, as
+  a task chooses them; it waits in the bar like the settings (the judge new
+  tasks ask is the Judge tab's, which this row links to).
   *Providers and their models* lists each model server as a card with the
   models on it under it, each with whether it can
   be used and, when not, the sentence that says what to fix (needs its key,
@@ -167,8 +178,11 @@ every tab. The tabs:
   request and shows the reply or the provider's refusal; **Check again** asks
   every server now; **Add a provider** and **Edit** take a kind, an address, a
   dialect and an API key (kept in the keychain, bound for the provider's
-  requests and its model list, never in the page again), with presets that only fill the form. *Models you can
-  choose* is the list the pickers offer, each with the efforts it takes and
+  requests and its model list, never in the page again; the form takes a key
+  for a provider that has none, and a stored key's value is changed under
+  Credentials, which the form links to), with presets that only fill the form.
+  The models under each provider are the list the pickers offer, each with the
+  efforts it takes and
   a line saying its context length and prices; **Add a model** and **Edit**
   take a provider, a model id (suggested from what the provider lists, asked
   with its key), its efforts (*As published*, the provider's, once the id is
@@ -196,29 +210,37 @@ every tab. The tabs:
   or why not. *Default for new tasks* chooses among them, or none. *Judges*
   is a card for each judge set up, with its host, its model and its price
   (both known: its provider's judge model, and the price nodwyn keeps for its
-  questions), and, for Jev, **Replace the key** and **Remove**. A judge not
+  questions), and, for Jev, **Replace the key** (a link to Credentials) and
+  **Remove**. A judge not
   set up yet is offered in place: paste Jev's key, or an OpenAI API key, and
-  that is all; one added when there is none becomes the default. A ChatGPT
+  that is all; one added when there is none is chosen as the default, which
+  waits in the bar like the rest. A ChatGPT
   plan's server is no judge, since the Decisions API takes an API key, and
-  the OpenAI card says so. *What it sees*, *Allows a command at* and *Waits
-  for an answer* follow, and under a fold, the default judge's own prices,
-  each empty for the published one. A `[judge] model` its provider does not
-  answer to is said, with a button that clears it.
-- **Context** — the water marks between which a task's context is
-  summarized or trimmed (unset, they follow each model's context less its
-  reply cap; set, they shrink only for a model that cannot hold them), the
-  largest tool result shown whole, and the fallback reply cap of a model
-  that has none of its own and none its provider publishes.
-- **Documents & containers** — how uploads to Google Docs are handled (the
-  manual, "Documents out"), and podman, docker, or whichever is installed,
-  for contained MCP servers.
-- **Keys & devices** — the keychain and paired devices.
+  the OpenAI card says so. Under a fold called **Tuning**, closed unless
+  something in it is set: *What it sees* (the task and plan, or also what
+  calls would send; the judge is turned off by *No judge*, and a hand-written
+  `judge.content` of `none` or `plan+summaries` is shown as such until one of
+  the two is chosen), *Allows a command at*, *Waits for an answer* and the
+  default judge's own prices, each empty for the published one. A `[judge]
+  model` its provider does not answer to is said, with a button that clears
+  it.
+- **Keys & devices** — the keychain; **Credentials over remote HTTP**; and the
+  paired devices, each with **Revoke**, which asks first, and, when none is
+  paired, how to pair one (`nodwyn ui --listen`, which prints the pairing code
+  in the terminal it runs in).
 - **This browser** — its appearance, whether it shows the model's thinking,
   its notifications, and this connection.
 
+**Saving.** One rule, said at the top of the page. A choice made in Settings
+waits in the bar at the bottom of the page and is saved with the others:
+the settings of every tab, the default model and effort, and the answer for
+uploads to Google Docs. Acting at once are keys and the passphrase (a secret is
+never staged), a provider or a model, each its own form with its own Save, and
+the choices of **This browser**, which change nothing on the computer.
+
 A field left empty takes its default, which it shows; clearing one puts the
-default back. Changes wait in a bar at the bottom of the page and are saved
-together, and the daemon checks them together as it would on loading the
+default back. The daemon checks the settings together as it would on loading
+the
 file, so a soft limit can be raised past the old hard one along with it.
 They apply to tasks started afterwards; an open task keeps the limits and
 model it started with, and its Budget details say which. A task's model and
@@ -227,7 +249,7 @@ its credentials, the keys of the providers (beyond saving one with its
 provider) and the other `[policy]` entries are set where they are reviewed, or in
 `config.toml`.
 
-**Credential transport.** Approvals also offers **Credentials over remote HTTP**,
+**Credential transport.** Keys & devices offers **Credentials over remote HTTP**,
 set to **Require HTTPS** by default. **Allow HTTP** saves
 `policy.allow_insecure_http = true` in user configuration. New/resumed tasks take
 that choice; provider tests and model lists use the daemon's current choice.
@@ -461,7 +483,7 @@ shown as a deletion. This read-only comparison does not restore anything or
 refresh automatically. Open previews and comparisons survive redraws; replies
 for closed History lists, old requests or another task are discarded.
 **Restore** writes a kept version back as a write like any other (it
-asks only when Settings › Approvals has writes ask), and keeps the current
+asks only when Settings › General › Approvals has writes ask), and keeps the current
 content too. From a terminal: `nodwyn versions FILE` and `nodwyn undo FILE`.
 
 **Tools from MCP servers.** Connections › Tools adds a remote server (HTTPS, or
@@ -487,7 +509,7 @@ connection its proxy refused shows in the task.
 ## Credentials
 
 **Connections › Credentials** (`#/connections/credentials`, or Settings ›
-Keychain › Manage credentials) lists what the keychain holds: each
+Keys & devices › Manage credentials) lists what the keychain holds: each
 credential's class, kind (an API key, or an OAuth2 account with its provider
 and granted scopes, and when its access token runs out), what is configured
 to send it (the main model, another model, a model server, an MCP server,
@@ -519,8 +541,13 @@ the top, with a button to add it; so is a keychain without a passphrase.
   back.
 - **Remove…** asks first, naming what uses it; an OAuth2 credential can be
   revoked at its provider and removed, or removed here only. Its binding
-  rows stay in `bindings.toml`: narrowing or removing a row is an edit of that
-  file, or of a task's Details › Policy.
+  rows stay in `bindings.toml`.
+- **Remove** on a row of *Where it may go* takes that host back after a
+  confirm (`credentials.unbind`): the row as listed, whatever its methods,
+  goes from `bindings.toml`, and every other byte of the file, comments
+  included, stays. A row the text cannot be cut at (written as an inline
+  array) is refused with the file unchanged: edit it in the file, or in a
+  task's Details › Policy.
 
 No reply carries a value or a token. A paired device sees the list but
 changes nothing.
@@ -548,7 +575,7 @@ kernel identity followed by `via web:NAME`.
 A device can read tasks, start and steer them, and answer approvals — one-time,
 for this turn, or for the session, as the core offers; it can also restore a
 kept file version, save project notes, read the policy files, see the
-credentials, and stop a run. Its tasks ask what Settings › Approvals, chosen
+credentials, and stop a run. Its tasks ask what Settings › General › Approvals, chosen
 on the computer nodwyn runs on, says they ask. It cannot start or resume a
 run that answers its own requests (unattended, judged, or saying yes), turn
 on "don't ask", turn a task's limits off or on (its tasks start with them on),
@@ -652,7 +679,7 @@ protected-path questions still ask, the conversation says when it was switched
 and each call it approved says so. It is the daemon's, not Scheme's
 (`session.approve_all`, [protocol](protocol.md)), it is never saved, so a
 resumed task starts asking again, and only this computer turns it on: a
-paired device does not see it. The switch is shown only while Settings ›
+paired device does not see it. The switch is shown only while Settings › General ›
 Approvals offers it (**Don't ask in tasks**, `approval.dont_ask`, off by
 default), or while it is still on; offering it shows a red warning in place
 of the hint, and taking the offer away turns the switch off in every open
@@ -812,10 +839,13 @@ list offers **Allow once** beside **Review** only for a plain command or write;
 a security confirmation or a send to another host offers **Review** alone, since
 its reasons, destination and diff are on the task's card.
 
-Desktop notifications are optional. In Settings › Desktop notifications, **Turn
-on for this tab** asks this browser for permission; the choice is held only in
-this tab. In the app window the system's notifications are used instead, with
-no browser permission to grant. When the page
+Desktop notifications are optional. In Settings › This browser › Desktop
+notifications, **Turn on** asks this browser for permission; the choice is
+kept in this browser (`nodwyn-notify` in local storage), so it holds across
+reloads, and counts only while the browser still allows them: a permission
+taken back turns them off, and nodwyn never asks for it again unprompted. In
+the app window the system's notifications are used instead, with no browser
+permission to grant, and are on until turned off. When the page
 is hidden, a new needs-answer transition can produce a generic notification.
 It never includes task text, prompt arguments, diffs, credential classes or
 values. Clicking it opens the corresponding session for review. Resolution
@@ -834,7 +864,7 @@ exercised by those mocks.
 
 Every task Home starts is a chat (ADR 35). A request that takes long is a
 message like any other: the turn goes on until the model answers or a hard
-limit stops it, and asks you only what Settings › Approvals leaves to you.
+limit stops it, and asks you only what Settings › General › Approvals leaves to you.
 
 `nodwyn run` carries a task to its end with no conversation, for scripts
 and benchmarks ([runs](runs.md)). The console shows such a run like any
@@ -884,4 +914,5 @@ project/worktree/archived isolation, literal untrusted snippets, reload, failure
 and stale-response paths, and desktop/phone layouts.
 
 This slice adds keyword search and focused history. A History panel listing
-all cards, Settings › Search and semantic ranking remain unbuilt.
+all cards, and search settings with semantic ranking, remain unbuilt: Settings
+has no search section.

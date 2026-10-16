@@ -849,7 +849,7 @@ export class Transcript {
     else if (p.decision === "confirm" && p.actor === "judge") text = p.answer === "yes" ? "the judge allowed" : "the judge refused";
     else if (p.decision === "confirm" && p.actor === "unattended") text = "declined: nobody to ask";
     else if (p.decision === "confirm" && p.scope === "all") text = "allowed: don't ask";
-    else if (p.decision === "confirm" && p.actor === "setting") text = "allowed by Settings › Approvals";
+    else if (p.decision === "confirm" && p.actor === "setting") text = "allowed by Settings › General › Approvals";
     else if (p.decision === "confirm") text = p.answer === "yes" ? (p.scope && p.scope !== "once" ? `you allowed · ${p.scope}` : "you allowed once") : p.answer === "turn" ? "allowed for this turn" : "you denied";
     // An index build reads every file through the guard: those reads are
     // its own, summed by its index.update, and a file left out does not

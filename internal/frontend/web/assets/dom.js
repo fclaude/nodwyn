@@ -173,3 +173,27 @@ export function toolLabel(name) {
 export function isMCP(name) {
   return String(name || "").indexOf("__") > 0;
 }
+
+// tablist is the row of tabs of a page that has them (Settings, Connections):
+// links, so a tab has an address that a reload and a shared link keep. Ids
+// are `${prefix}-tab-${id}`, which the page's panel names as its label.
+export function tablist({ label, prefix, tabs, current, href }) {
+  return h(
+    "nav",
+    { class: "settings-tabs", role: "tablist", "aria-label": label },
+    tabs.map((t) => h("a", { class: "settings-tab", role: "tab", id: `${prefix}-tab-${t.id}`, href: href(t.id), "aria-selected": String(t.id === current), "aria-current": t.id === current ? "page" : null }, t.label)),
+  );
+}
+
+// removal is a destructive action asked twice, the same way wherever it is
+// offered: a button, and once pressed one sentence of what follows, the verb
+// to confirm, and Cancel. The page keeps whether it is asking (asking, with
+// ask and cancel to change it), so a redraw does not lose the question.
+export function removal({ label, verb = label, consequence, asking, ask, cancel, run, disabled, title, id, name }) {
+  if (!asking) return h("button", { type: "button", class: "btn small danger", id, disabled, title, "aria-label": name, onclick: ask }, label);
+  return [
+    h("span", { class: "muted confirm-text" }, consequence),
+    h("button", { type: "button", class: "btn small danger", id: id ? `${id}-confirm` : null, onclick: run }, verb),
+    h("button", { type: "button", class: "btn small ghost", onclick: cancel }, "Cancel"),
+  ];
+}

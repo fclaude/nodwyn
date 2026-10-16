@@ -1091,8 +1091,11 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .judge-add > .row-actions { padding: 0; }
 .judge-add .main { display: flex; flex-direction: column; gap: 4px; }
 .judge-add .main .hint { margin: 0; }
-.judge-prices > summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
-.judge-prices[open] > .row-actions { margin-top: 10px; }
+/* Folds of rarely changed settings: General's Advanced and the judge's Tuning. */
+.judge-tuning > summary, .advanced > summary { cursor: pointer; font-weight: 500; font-size: 13.5px; color: var(--ink-2); }
+.judge-tuning[open] > .settings-grid { margin-top: 14px; }
+.advanced[open] > summary { margin-bottom: 4px; }
+.advanced > .settings-section { margin-top: 12px; }
 .callout.warn { flex-direction: column; }
 .callout.warn p { margin: 0; }
 .mp-summary-judge[hidden], .mp-field[hidden] { display: none; }

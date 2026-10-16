@@ -3,6 +3,7 @@
 // person archived (ADR 39), then the places that are not tasks.
 import { h, icon, ago, minutes } from "./dom.js";
 import { summary } from "./prompts.js";
+import { stateWords } from "./modelpicker.js";
 
 let filter = "";
 let searching = false;
@@ -136,8 +137,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
   const was = searching && document.activeElement?.matches?.("#sidebar input[type=search]") ? document.activeElement : null;
   const typing = was && { start: was.selectionStart, end: was.selectionEnd };
   const control = desk.control();
-  const attention = { missing: "model missing", unconfigured: "not set up", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed" };
-  const modelState = !conn.live ? ["bad", "offline"] : !control ? ["", "checking"] : control.state === "ready" ? ["ok", desk.running().length ? "working" : "ready"] : attention[control.state] ? ["warn", attention[control.state]] : ["bad", "unreachable"];
+  const modelState = !conn.live ? ["bad", "offline"] : !control ? ["", "checking"] : control.state === "ready" ? ["ok", desk.running().length ? "working" : "ready"] : [control.state === "unreachable" ? "bad" : "warn", stateWords[control.state] || control.state];
   const link = (href, name, label) => h("a", { class: "nav-link", href, "aria-current": route.name === href.slice(2) ? "page" : null }, icon(name), h("span", {}, label));
 
   nav.replaceChildren(

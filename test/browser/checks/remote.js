@@ -112,4 +112,31 @@ check(async () => {
   step("the log names the phone");
   const devices = execFileSync(process.env.NODWYN, ["devices"], { env }).toString().trim();
   assert.match(devices, /^phone\s+paired /m, "nodwyn devices lists the phone");
+
+  // A browser on this computer, paired with the code, lists the phone under
+  // Keys & devices. Revoking locks it out at once and pairing it again needs
+  // a terminal, so Revoke asks first: Cancel sends nothing, the confirm does.
+  const desk = watch(await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage(), "computer");
+  const deskSent = requests(desk);
+  // Unpaired, its socket is refused first.
+  expectError(/^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/socket' failed: .*403$/);
+  await desk.goto(`http://127.0.0.1:${port}/`);
+  await desk.fill("#pair-code", code);
+  await desk.click("button[type=submit]");
+  await desk.waitForSelector("html[data-ready]", { timeout: 10000 });
+  await desk.evaluate(() => (location.hash = "#/settings/keys"));
+  await desk.waitForSelector("#devices .list-row:has-text('phone')");
+  await desk.click("#devices .list-row:has-text('phone') button:text-is('Revoke')");
+  await shows(desk, "#devices", "Revoke phone? It is locked out at once, and pairing it again needs a terminal.");
+  assert.strictEqual(deskSent.of("devices.revoke").length, 0, "Revoke locked the phone out before it was confirmed");
+  await desk.click("#devices button:text-is('Cancel')");
+  assert.strictEqual(deskSent.of("devices.revoke").length, 0, "Cancel revoked the phone");
+  await desk.click("#devices .list-row:has-text('phone') button:text-is('Revoke')");
+  await desk.screenshot({ path: `${out}/revoke-confirm.png` });
+  await desk.click("#devices button:text-is('Revoke')");
+  await until("the phone gone from the list", async () => (await desk.locator("#devices .list-row").count()) === 0);
+  assert.deepStrictEqual(deskSent.of("devices.revoke"), [{ name: "phone" }]);
+  // With none paired, the page says how to pair one.
+  await shows(desk, "#devices", "No other device is paired.", "nodwyn ui --listen ADDRESS:PORT", "pairing code");
+  step("Revoke asks first and then locks the phone out; with none paired, the page says how to pair one");
 });

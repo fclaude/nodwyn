@@ -2,7 +2,7 @@
 // sent and what uses it (ADR 5, ADR 24). Values go in and never come back:
 // the daemon answers with metadata only, and the keychain adds a key to a
 // request at the last step, where a binding allows it.
-import { h, icon, ago, clock, shortPath, toast } from "./dom.js";
+import { h, icon, ago, clock, shortPath, toast, removal } from "./dom.js";
 import { keychainForm, noPassphraseWarning } from "./setup.js";
 
 let selected = ""; // the credential whose detail is open: its id, and where it is shown
@@ -10,6 +10,7 @@ let selectedPanel = ""; // "models" or "": the subpanel whose detail is open
 let adding = ""; // "key" or "oauth2": the add form that is open
 let addingPanel = ""; // the subpanel whose add form is open: "" is the generic one below
 let draft = {}; // what the add-a-key form was given before a redraw
+let unbinding = ""; // the binding row whose Remove waits for its confirm
 let poll = 0;
 const dismissed = new Set(); // failed authorizations the person has read
 const begun = new Set(); // authorizations this page started and has not yet said how they ended
@@ -123,7 +124,7 @@ export async function renderCredentials(body, ctx, redraw) {
       credential && !selectedPanel ? detail(credential, list, ctx, redraw) : null,
     ].filter(Boolean),
   );
-  body.append(h("p", { class: "hint" }, "A credential is sent only where a binding allows it, and the model never sees the value. Bindings are kept in ", h("span", { class: "mono" }, shortPath(list.bindings_file, ctx.desk.home)), "; to narrow or remove one, edit that file, or a task's Details › Policy."));
+  body.append(h("p", { class: "hint" }, "A credential is sent only where a binding allows it, and the model never sees the value. Bindings are kept in ", h("span", { class: "mono" }, shortPath(list.bindings_file, ctx.desk.home)), "; a host's Remove takes it back, and a row written in a form that button cannot cut is edited in that file, or in a task's Details › Policy."));
   // While the provider has not sent the person back, look again.
   clearTimeout(poll);
   if (waiting.length) {
@@ -166,10 +167,11 @@ function sentence(names) {
   return capital(`${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 }
 
-// modelsCard is the Provider keys subpanel: a summary of the credentials
-// the providers send, for their models and the judge, kept where they are
-// changed — the Settings form that binds a key when it saves one. open is
-// the credential whose detail shows in this panel, if any.
+// modelsCard is the Provider keys subpanel: the credentials the providers
+// send, for their models and the judge. A key is first entered with its
+// provider, in Settings, which also allows it for the provider's host; from
+// then on its value is changed here, and only here. open is the credential
+// whose detail shows in this panel, if any.
 function modelsCard(list, creds, missing, open, ctx, redraw, pick) {
   const { conn } = ctx;
   const canEdit = conn.has("credentials.add");
@@ -243,16 +245,33 @@ function detail(c, list, ctx, redraw) {
   const { conn } = ctx;
   const canEdit = conn.has("credentials.add");
   const panel = h("section", { class: "card cred-detail" });
-  const rows = grouped(c.bindings).map((b) =>
-    h(
+  // Taking back a host is the safe direction: it narrows where the key may go,
+  // so each row has its own Remove, asked twice like every removal.
+  const canUnbind = canEdit && conn.has("credentials.unbind");
+  const unbind = async (b) => {
+    unbinding = "";
+    try {
+      await conn.call("credentials.unbind", { id: c.id, dest: b.dest, positions: b.positions, ...(b.scopes?.length ? { scopes: b.scopes } : {}) });
+      toast(`${c.class} may no longer go to ${b.dest}.`);
+    } catch (e) {
+      toast(e.message);
+    }
+    redraw();
+  };
+  const rows = grouped(c.bindings).map((b) => {
+    const key = `${c.id} ${b.dest} ${b.positions.join(",")} ${(b.scopes || []).join(",")}`;
+    return h(
       "tr",
       {},
       h("td", {}, b.dest),
       h("td", {}, b.methods.join(", ")),
       h("td", {}, h("span", { class: "mono" }, b.positions.join(", "))),
       c.kind === "oauth2" ? h("td", {}, b.scopes?.length ? b.scopes.map(shortScope).join(", ") : "any") : null,
-    ),
-  );
+      canUnbind
+        ? h("td", {}, h("div", { class: "row-actions" }, removal({ label: "Remove", name: `Stop allowing ${c.class} for ${b.dest}`, consequence: `Stop allowing ${c.class} for ${b.dest}? Requests that carry it there are refused.`, asking: unbinding === key, ask: () => ((unbinding = key), redraw()), cancel: () => ((unbinding = ""), redraw()), run: () => unbind(b) })))
+        : null,
+    );
+  });
   const provider = list.providers.find((p) => p.name === c.provider);
   panel.append(
     ...[
@@ -266,7 +285,7 @@ function detail(c, list, ctx, redraw) {
       h("p", { class: "hint" }, c.used_by.length ? `Used by ${c.used_by.join(", ")}.` : "Nothing configured names it. A tool or a folder's Scheme can still ask for it by its class."),
       h("h2", { class: "section-title" }, "Where it may go"),
       rows.length
-        ? h("div", { class: "table-wrap" }, h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Host"), h("th", {}, "Methods"), h("th", {}, "Added as"), c.kind === "oauth2" ? h("th", {}, "Scopes") : null)), h("tbody", {}, rows)))
+        ? h("div", { class: "table-wrap" }, h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Host"), h("th", {}, "Methods"), h("th", {}, "Added as"), c.kind === "oauth2" ? h("th", {}, "Scopes") : null, canUnbind ? h("th", {}, "") : null)), h("tbody", {}, rows)))
         : h("p", { class: "hint" }, "Nowhere yet: nodwyn refuses every request that would carry it until you allow a host."),
       canEdit ? allowForm(c, provider, ctx, redraw) : null,
       canEdit ? h("h2", { class: "section-title" }, c.kind === "oauth2" ? "Authorization" : "Value") : null,
@@ -401,7 +420,7 @@ function removeControls(c, ctx, redraw) {
           { class: "row-actions" },
           c.kind === "oauth2" ? h("button", { type: "button", class: "btn dark", onclick: () => remove(true) }, "Revoke and remove") : null,
           h("button", { type: "button", class: c.kind === "oauth2" ? "btn" : "btn dark", onclick: () => remove(false) }, c.kind === "oauth2" ? "Remove here only" : "Remove"),
-          h("button", { type: "button", class: "btn ghost", onclick: () => holder.replaceChildren(button) }, "Keep it"),
+          h("button", { type: "button", class: "btn ghost", onclick: () => holder.replaceChildren(button) }, "Cancel"),
         ),
       ),
     );
@@ -459,7 +478,9 @@ function addKey(ctx, redraw) {
 }
 
 function addAccount(ctx, list, redraw) {
-  const names = [...list.providers.map((p) => p.name), "custom"];
+  // openai is a ChatGPT plan, connected on its provider under Settings ›
+  // Models, so it has one entrance and not two.
+  const names = [...list.providers.map((p) => p.name).filter((name) => name !== "openai"), "custom"];
   let provider = names[0];
   const cls = h("input", { class: "input", id: "oauth-class", spellcheck: false, autocomplete: "off", placeholder: provider });
   const client = h("input", { class: "input", id: "oauth-client", required: true, spellcheck: false, autocomplete: "off" });
@@ -485,16 +506,7 @@ function addAccount(ctx, list, redraw) {
     scopes.placeholder = p?.scopes?.length ? `${p.scopes.join(", ")} (the narrowest useful set)` : "as the provider names them, comma-separated";
     secretHint.textContent = p?.needs_secret ? `${provider} issues no token without the client's secret.` : "Only if the provider insists on one: PKCE protects the exchange without it.";
     secret.required = !!p?.needs_secret;
-    const plan = provider === "openai";
-    client.required = !plan;
-    client.placeholder = plan ? "Leave empty to register nodwyn during sign-in" : "";
-    secret.disabled = plan;
-    if (plan) secret.value = "";
-    accountHint.textContent = plan
-      ? 'Continue with ChatGPT to authorize eligible model requests against your ChatGPT plan quota. No client id or secret is needed. After connecting, choose this account under Settings › Models › ChatGPT plan and save the provider to configure its address and model bindings.'
-      : "nodwyn opens the provider's consent page in your browser; when you agree, the provider sends you back to nodwyn on this computer, and the tokens go into the keychain. Register nodwyn as an OAuth client with the provider first, with a loopback redirect (http://127.0.0.1).";
-    continueButton.textContent = plan ? "Continue with ChatGPT" : "Continue to the provider";
-    secretHint.textContent = plan ? "ChatGPT plan sign-in takes no client secret." : secretHint.textContent;
+    accountHint.textContent = "nodwyn opens the provider's consent page in your browser; when you agree, the provider sends you back to nodwyn on this computer, and the tokens go into the keychain. Register nodwyn as an OAuth client with the provider first, with a loopback redirect (http://127.0.0.1). A ChatGPT plan is not connected here but under Settings › Models, on its provider.";
     custom.hidden = provider !== "custom";
     authURL.required = tokenURL.required = provider === "custom";
   };

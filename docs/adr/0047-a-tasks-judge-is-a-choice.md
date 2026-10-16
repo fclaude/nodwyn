@@ -121,3 +121,34 @@ with the model settings revamped together.
 - Asking OpenAI's Decisions API for real: the tests ask a fake that speaks it
   as its guide documents. A person's first question with an API key is still
   the first evidence that it answers.
+
+## Amendment 2026-10-16: Settings is five tabs, saves one way, and has one place for each thing
+
+Settings had grown seven tabs, three ways of saving and two places to set the
+default judge, so that a person could not tell what a click had saved. Now:
+
+- **One rule for saving.** A choice made in Settings waits in the bar at the
+  foot of the page and is saved with the others: every `settings.write`
+  setting, the default model and effort (`settings.control.write`) and the
+  answer for uploads to Google Docs (`settings.docs.write`), each written once
+  the bar saves and forgotten once it has. What acts at once is a key or the
+  passphrase (a secret is never staged), a provider or a model (each its own
+  form with its own Save) and the choices of This browser, which change
+  nothing on the computer. The page says so once, at its top.
+- **Five tabs.** Context, and Documents & containers, each held one rarely
+  used section; they are folded into General under an Advanced fold (the
+  limits, the context window, the container runtime), and the Google Docs
+  answer is an approval. `#/settings/context` and `#/settings/tools` open the
+  fold and are replaced by `#/settings/general`. The transport exception
+  (`policy.allow_insecure_http`) is a key matter and moved to Keys & devices.
+- **The default judge is the Judge tab's alone.** The Models tab's default
+  row is a model and an effort, and links to it. Judge off has one way, *No
+  judge*: the reserved `plan+summaries` level and the *Nothing (off)* chip are
+  not offered (a hand-written value is shown until a level is chosen), and the
+  threshold, timeout and prices are a Tuning fold.
+- **One place for a key's value.** Credentials changes it; a provider's form
+  and a judge's card link there. A ChatGPT plan is connected on its provider
+  under Models only: Connect an account offers no openai.
+- **Paths in words.** A reference to Settings names a tab (and, under General,
+  a section): `TestSettingsPathsNameATabAndSection` reads the docs and the
+  console's own strings for it.

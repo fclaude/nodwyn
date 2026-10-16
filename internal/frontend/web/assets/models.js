@@ -9,8 +9,8 @@
 // redraw while one is being typed into (the models' readiness arrives
 // minutes after the page, and again on every check) loses nothing, and a
 // key typed is kept out of the page's own state the moment it is sent.
-import { h, icon, toast } from "./dom.js";
-import { ModelPicker, choicesOf, effortLabel, statusOf, defaultSelection, defaultJudge, judgesOf } from "./modelpicker.js";
+import { h, icon, toast, removal } from "./dom.js";
+import { ModelPicker, choicesOf, effortLabel, statusOf, defaultSelection, stateWords } from "./modelpicker.js";
 import { keychainForm } from "./setup.js";
 
 // What each kind of provider needs, said before it is asked for: where it is,
@@ -21,12 +21,12 @@ const kinds = {
   ollama: { label: "Ollama", needs: "Ollama on this computer or your network. It needs an address, and no key." },
   openai: { label: "OpenAI-compatible", needs: "Any server that speaks OpenAI's API, chat completions or Responses. It needs an address and, for a hosted one, an API key or an eligible ChatGPT account, kept in the keychain." },
   anthropic: { label: "Anthropic", needs: "Claude on Anthropic's own API, the Messages API. It needs its address and an API key, which is kept in the keychain and sent in the x-api-key header." },
-  jev: { label: "Jev", needs: "TypeSafe's judge, which answers the judge's questions and has no chat models: choose it under Judge once it is saved. It needs its address and an API key, kept in the keychain and sent only with the judge's questions." },
 };
 // hasKey says whether a kind of server takes a key.
-const hasKey = (kind) => kind === "openai" || kind === "anthropic" || kind === "jev";
+const hasKey = (kind) => kind === "openai" || kind === "anthropic";
 // carriesModels says whether models can be on a provider: a Jev server only
-// answers the judge (ADR 46).
+// answers the judge (ADR 46), and is kept under Settings › Judge, so the
+// lists here never show one.
 const carriesModels = (p) => !p.inline && p.provider !== "jev";
 const presets = [
   { id: "ollama", label: "Ollama", kind: "ollama", url: "http://localhost:11434", dialect: "" },
@@ -54,9 +54,6 @@ const effortSets = [
   { id: "custom", label: "Other…", efforts: null },
 ];
 
-const state = {
-  words: { ready: "ready", missing: "model not installed", unreachable: "not answering", unconfigured: "not set up", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed" },
-};
 const dotOf = (s) => (s === "ready" ? "ok" : s === "unreachable" ? "bad" : s ? "warn" : "");
 
 let ui = fresh();
@@ -67,9 +64,6 @@ function fresh() {
     removing: "", // "provider:NAME" or "model:NAME" waiting for its confirm
     results: new Map(), // "provider:NAME" | "model:NAME" | "form" -> the last test, or {pending: true}
     offered: new Map(), // provider name -> model ids it lists, or the reason it does not
-    defaultPick: null, // {name, effort} chosen for the default, not yet saved
-    defaultJudge: null, // the judge chosen for new tasks, not yet saved ("" for none)
-    savingDefault: false,
   };
 }
 // A visit to Settings starts with nothing half-typed.
@@ -95,77 +89,42 @@ function worst(desk, provider) {
 
 // ---------- the default for new tasks ----------
 
-// defaultRow is what a new task starts on: a model, its effort and the judge
-// (ADR 47), chosen as a task chooses them, beside each other, and saved
-// together.
+// The default model and effort chosen and not yet saved. Settings' save bar
+// saves them with every other setting (settings.js), so the choice waits here
+// as the bar's other edits wait there: across a redraw, and a visit to Settings.
+let defaultPick = null; // {name, effort}
+
+// stagedDefault is the default the person chose, when it differs from the
+// one saved; null when nothing waits. Models can be listed with none chosen
+// as the default (a config.toml with [models.NAME] entries and no
+// [control]): choosing one is then a change.
+export function stagedDefault(desk) {
+  const current = defaultSelection(desk);
+  return defaultPick && (!current || defaultPick.name !== current.name || defaultPick.effort !== current.effort) ? defaultPick : null;
+}
+export function discardDefault() {
+  defaultPick = null;
+}
+
+// defaultRow is what a new task starts on: a model and its effort, chosen as
+// a task chooses them. The judge new tasks ask is the Judge tab's.
 function defaultRow(ctx, redraw) {
   const { conn, desk } = ctx;
-  const choices = choicesOf(desk);
-  if (!choices.length) return row("Default for new tasks", h("p", { class: "hint" }, "No model is set up yet. Add a provider and a model below."));
-  const current = defaultSelection(desk);
-  const selection = ui.defaultPick || current;
-  const judgeNow = defaultJudge(desk);
-  const judge = ui.defaultJudge ?? judgeNow;
-  const canJudge = conn.has("settings.write") && judgesOf(desk).length > 0;
-  // Models can be listed with none chosen as the default (a config.toml with
-  // [models.NAME] entries and no [control]): the picker then shows none, and
-  // choosing one is what saves.
-  const modelDirty = !!ui.defaultPick && (!current || ui.defaultPick.name !== current.name || ui.defaultPick.effort !== current.effort);
-  const judgeDirty = ui.defaultJudge !== null && ui.defaultJudge !== judgeNow;
-  const dirty = modelDirty || judgeDirty;
+  if (!choicesOf(desk).length) return row("Default for new tasks", h("p", { class: "hint" }, "No model is set up yet. Add a provider and a model below."));
   const picker = (ui.defaultPicker ||= new ModelPicker("default-model"));
   picker.update({
     desk,
-    selection,
-    disabled: !conn.has("settings.control.write") || ui.savingDefault,
+    selection: defaultPick || defaultSelection(desk),
+    disabled: !conn.has("settings.control.write"),
     onPick: (next) => {
-      ui.defaultPick = next;
+      defaultPick = next;
       redraw();
     },
-    ...(canJudge
-      ? {
-          judge,
-          onJudge: (name) => {
-            ui.defaultJudge = name;
-            redraw();
-          },
-        }
-      : {}),
   });
-  const save = h(
-    "button",
-    {
-      type: "button",
-      class: "btn accent",
-      id: "default-save",
-      disabled: !dirty || ui.savingDefault || !conn.has("settings.control.write"),
-      onclick: async () => {
-        ui.savingDefault = true;
-        redraw();
-        try {
-          // The effort is sent even when empty: the default model's effort is
-          // what is asked, never what the model happened to have.
-          if (modelDirty) desk.settings = await conn.call("settings.control.write", { name: selection.name, effort: selection.effort });
-          if (judgeDirty) desk.settings = await conn.call("settings.write", { set: { "judge.server": ui.defaultJudge || null } });
-          ui.defaultPick = null;
-          ui.defaultJudge = null;
-          await desk.refreshModels();
-          toast(judgeDirty && !modelDirty ? "Saved. New tasks start with this judge; open tasks keep theirs." : "Saved. New tasks start on this model and effort; open tasks keep theirs.");
-        } catch (error) {
-          toast(error.message);
-        } finally {
-          ui.savingDefault = false;
-          redraw();
-        }
-      },
-    },
-    ui.savingDefault ? "Saving…" : "Save the default",
-  );
   return row(
     "Default for new tasks",
     picker.el,
-    h("div", { class: "row-actions" }, save, dirty ? h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.defaultPick = null), (ui.defaultJudge = null), redraw()) }, "Discard") : null),
-    h("p", { class: "hint" }, `New tasks start on this model and effort${canJudge ? ", and ask this judge (Settings › Judge sets it up)" : ""}. A task's own choice, under its message box, changes only that task, and this stays as it is. Tasks already open keep what they started with.`),
+    h("p", { class: "hint" }, "New tasks start on this model and effort, and ask the default ", h("a", { href: "#/settings/judge" }, "judge"), ". A task's own choice, under its message box, changes only that task. Tasks already open keep what they started with."),
   );
 }
 
@@ -189,20 +148,8 @@ function providerRows(ctx, redraw) {
     const status = worst(desk, p);
     const result = ui.results.get(key);
     const first = (p.uses || []).find((name) => choicesOf(desk).some((c) => c.name === name)) || (p.uses || [])[0];
-    const judgeOnly = p.provider === "jev";
-    const detail =
-      status.detail ||
-      (judgeOnly
-        ? p.judge
-          ? "The judge asks it: whether it accepts the key shows on the judge's first answer."
-          : "Not used yet: choose it as the judge's provider under Judge."
-        : status.state
-          ? ""
-          : first
-            ? "Not checked yet: Test asks it for a reply."
-            : "No model is on it yet: add one to test it.");
+    const detail = status.detail || (status.state ? "" : first ? "Not checked yet: Test asks it for a reply." : "No model is on it yet: add one to test it.");
     const users = [...(p.uses || []), ...(p.judge ? ["the judge"] : [])];
-    const confirming = ui.removing === key;
     const models = onProvider(p);
     return h(
       "div",
@@ -218,14 +165,14 @@ function providerRows(ctx, redraw) {
           h("span", {}, `${kinds[p.provider]?.label || p.provider}${p.dialect ? ` (${p.dialect})` : ""} · ${p.host}${p.credential ? (p.authentication === "chatgpt" ? " · ChatGPT plan" : p.key === "ready" ? " · key stored" : "") : hasKey(p.provider) ? " · no key" : ""}${p.judge ? " · the judge's" : ""}`),
           detail ? h("span", { class: status.state && status.state !== "ready" ? "warn-text" : "" }, detail) : null,
         ),
-        h("div", { class: "end" }, status.state ? h("span", { class: "state-word" }, state.words[status.state] || status.state) : null),
+        h("div", { class: "end" }, status.state ? h("span", { class: "state-word" }, stateWords[status.state] || status.state) : null),
       ),
       h(
         "div",
         { class: "row-actions provider-actions" },
-        judgeOnly ? null : h("button", { type: "button", class: "btn small", disabled: !first || !conn.has("models.test") || result?.pending, title: first ? "Sends one short request to a model on this provider, as a task would" : "Add a model on this provider to test it", onclick: () => test(ctx, key, first ? { name: first } : null, redraw) }, "Test"),
+        h("button", { type: "button", class: "btn small", disabled: !first || !conn.has("models.test") || result?.pending, title: first ? "Sends one short request to a model on this provider, as a task would" : "Add a model on this provider to test it", onclick: () => test(ctx, key, first ? { name: first } : null, redraw) }, "Test"),
         editable && !p.inline ? h("button", { type: "button", class: "btn small", onclick: () => openProvider(ctx, p, redraw) }, "Edit") : null,
-        editable && !p.inline ? (confirming ? [h("span", { class: "muted" }, "Remove it? Its key stays in the keychain."), h("button", { type: "button", class: "btn small danger", onclick: () => removeProvider(ctx, p.name, redraw) }, "Remove"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((ui.removing = ""), redraw()) }, "Cancel")] : h("button", { type: "button", class: "btn small danger", disabled: users.length > 0, title: users.length ? `Still used by ${users.join(", ")}` : "", onclick: () => ((ui.removing = key), redraw()) }, "Remove")) : null,
+        editable && !p.inline ? removal({ label: "Remove", consequence: "Remove it? Its key stays in the keychain.", asking: ui.removing === key, ask: () => ((ui.removing = key), redraw()), cancel: () => ((ui.removing = ""), redraw()), run: () => removeProvider(ctx, p.name, redraw), disabled: users.length > 0, title: users.length ? `Still used by ${users.join(", ")}` : "" }) : null,
       ),
       p.inline ? h("p", { class: "hint" }, "Given by a model's own table in config.toml. Choosing a default model on a provider moves it to one.") : null,
       resultLine(result),
@@ -424,7 +371,7 @@ function providerForm(ctx, redraw, first = false) {
           ui.provider = null;
           await desk.refreshModels();
           const key = saved ? worst(desk, saved) : null;
-          toast(saved?.key && saved.key !== "ready" ? `Saved, but ${saved.key_detail}.` : key?.state && key.state !== "ready" ? `Saved, but ${key.detail || state.words[key.state]}.` : adding ? (params.provider === "jev" ? "Provider saved. Choose it under Judge to have the judge ask it." : first ? "Provider saved. Choose its model." : "Provider saved. Add a model on it, then Test.") : "Provider saved.");
+          toast(saved?.key && saved.key !== "ready" ? `Saved, but ${saved.key_detail}.` : key?.state && key.state !== "ready" ? `Saved, but ${key.detail || stateWords[key.state]}.` : adding ? (first ? "Provider saved. Choose its model." : "Provider saved. Add a model on it, then Test.") : "Provider saved.");
         } catch (error) {
           f.error = error.message;
           f.saving = false;
@@ -434,8 +381,6 @@ function providerForm(ctx, redraw, first = false) {
     },
     h("h3", { class: "form-title" }, adding ? (first ? "Where does the model run?" : "Add a provider") : `Change ${f.name}`),
     adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), (f.authentication = "api_key"), redraw()) }, p.label))) : null,
-    // Models are set up here, which a Jev server cannot carry: it is added
-    // as a judge, under Settings › Judge (ADR 47).
     h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai"), kind("anthropic")),
     h("p", { class: "hint" }, kinds[f.kind].needs),
     field("provider-name", "Name", h("input", { class: "input", id: "provider-name", spellcheck: false, autocomplete: "off", disabled: !adding, value: f.name, placeholder: adding ? "named after its address" : "", oninput: (event) => (f.name = event.target.value) }), adding ? "What models name it. Two providers can share an address, such as an API key and a ChatGPT plan at OpenAI." : ""),
@@ -451,21 +396,15 @@ function providerForm(ctx, redraw, first = false) {
         }
         redraw();
       } }, auth === "chatgpt" ? "ChatGPT plan" : "API key"))) : null,
-    field("provider-url", "Address", url, f.kind === "ollama" ? "Such as http://localhost:11434, or http://workshop:11434 on your network." : f.kind === "jev" ? "Without a version: https://api.typesafe.ai." : `Including the version, such as ${f.kind === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"}.`),
+    field("provider-url", "Address", url, f.kind === "ollama" ? "Such as http://localhost:11434, or http://workshop:11434 on your network." : `Including the version, such as ${f.kind === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"}.`),
     f.kind === "openai" ? field("provider-dialect", "How it reads the protocol", dialect, "Chosen by you, never guessed from the address. Cerebras needs its own for reasoning to survive tool calls; OpenAI needs Responses for a reasoning model to take an effort and tools together.") : null,
+    // A key's value is changed in one place, Credentials (it is stored there
+    // whichever page took it): this form takes a key for a provider that has
+    // none, one at another address, or one replacing a ChatGPT plan.
     hasKey(f.kind) && !plan
-      ? field(
-          "provider-key",
-          "API key",
-          key,
-          !keychainReady
-            ? "Create or unlock the keychain first: keys are kept there, never in config.toml."
-            : f.hasKey
-              ? "Stored encrypted and sent only to this address. Type a new key to replace it."
-              : f.kind === "jev"
-                ? "Stored encrypted and sent only to this address, with the judge's questions."
-                : "Stored encrypted and sent only to this address. Every model on this provider uses it.",
-        )
+      ? adding || !f.hasKey || !sameHostNow || f.credentialClass
+        ? field("provider-key", "API key", key, !keychainReady ? "Create or unlock the keychain first: keys are kept there, never in config.toml." : "Stored encrypted and sent only to this address. Every model on this provider uses it.")
+        : h("div", { class: "field" }, h("label", {}, "API key"), h("p", { class: "hint", id: "provider-key-stored" }, "Stored encrypted and sent only to this address. ", h("a", { href: "#/connections/credentials" }, "Replace it under Credentials"), "."))
       : null,
     plan ? h("div", { class: "chatgpt-setup" },
       h("p", { class: "hint" }, "Use your eligible ChatGPT plan quota. Sign in with OpenAI in your browser; no API key or client id is needed. Save the provider to allow model requests and model discovery. OpenAI decides model access and remaining quota."),
@@ -512,7 +451,6 @@ function modelRow(ctx, c, redraw) {
   const key = `model:${c.name}`;
   const status = statusOf(desk, c.name);
   const result = ui.results.get(key);
-  const confirming = ui.removing === key;
   const inline = !c.server;
   return h(
     "div",
@@ -528,16 +466,16 @@ function modelRow(ctx, c, redraw) {
         h("span", {}, c.efforts?.length ? `effort: ${c.efforts.map(effortLabel).join(" · ")}${c.effort ? `, starts at ${effortLabel(c.effort)}` : ""}` : "no effort setting"),
         c.labels?.length ? h("span", { class: "model-labels" }, c.labels.map((l) => h("span", { class: "badge plain" }, l))) : null,
         h("span", { class: "model-settings" }, settingsLine(c.settings, c.provider, c.published)),
-        status && status.state !== "ready" ? h("span", { class: "warn-text" }, status.detail || state.words[status.state]) : null,
+        status && status.state !== "ready" ? h("span", { class: "warn-text" }, status.detail || stateWords[status.state]) : null,
       ),
-      h("div", { class: "end" }, status ? h("span", { class: "state-word" }, state.words[status.state] || status.state) : h("span", { class: "state-word" }, "checking")),
+      h("div", { class: "end" }, status ? h("span", { class: "state-word" }, stateWords[status.state] || status.state) : h("span", { class: "state-word" }, "checking")),
     ),
     h(
       "div",
       { class: "row-actions model-actions" },
       h("button", { type: "button", class: "btn small", disabled: !conn.has("models.test") || result?.pending, title: "Sends one short request to this model, as a task would", onclick: () => test(ctx, key, { name: c.name }, redraw) }, "Test"),
       editable && !inline ? h("button", { type: "button", class: "btn small", onclick: () => openModel(c, redraw) }, "Edit") : null,
-      editable && !inline && !c.default ? (confirming ? [h("span", { class: "muted" }, "Remove it from the list?"), h("button", { type: "button", class: "btn small danger", onclick: () => removeModel(ctx, c.name, redraw) }, "Remove"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((ui.removing = ""), redraw()) }, "Cancel")] : h("button", { type: "button", class: "btn small danger", onclick: () => ((ui.removing = key), redraw()) }, "Remove")) : null,
+      editable && !inline && !c.default ? removal({ label: "Remove", consequence: "Remove it from the list?", asking: ui.removing === key, ask: () => ((ui.removing = key), redraw()), cancel: () => ((ui.removing = ""), redraw()), run: () => removeModel(ctx, c.name, redraw) }) : null,
     ),
     inline ? h("p", { class: "hint" }, "Gives its own address in config.toml, so its efforts and settings are set there. Choosing it as the default moves it to a provider.") : null,
     resultLine(result),
@@ -641,7 +579,7 @@ const tokens = (raw) => Number(String(raw).replace(/[,_\s]/g, "")) || 0;
 // context length and reply cap, sized as the daemon sizes it
 // (config.Window.ReplyCap, Sized): the reply cap comes out of the context,
 // and the window has three quarters of the rest, or the water marks
-// Settings › Context window sets when the context holds them.
+// Settings › General › Advanced sets when the context holds them.
 function windowLine(f, kind, desk) {
   const v = desk.settings?.values || {};
   const reserve = Number(v["window.output_reserve"]?.value) || 16384;
@@ -719,7 +657,7 @@ function settingsFields(f, kind, redraw, desk) {
       box("max_output", "Reply cap", { placeholder: count(published.max_output) || count(reserve), suffix: "tokens", width: "", sizes: true }),
       published.max_output
         ? `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${count(published.max_output)}: the longest reply its provider publishes, at most a quarter of the context.`
-        : `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${count(reserve)}, the fallback reply cap (Settings › Context window), or a quarter of a small context. A reasoning model at a high effort may need more.`,
+        : `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${count(reserve)}, the fallback reply cap (Settings › General › Advanced), or a quarter of a small context. A reasoning model at a high effort may need more.`,
     ),
     summary,
     h(

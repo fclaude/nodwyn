@@ -114,7 +114,7 @@ insecure remote service, set this in the **user's** config.toml:
 allow_insecure_http = true
 ```
 
-The same switch is in **Settings > Approvals > Credentials over remote HTTP**.
+The same switch is in **Settings › Keys & devices › Credentials over remote HTTP**.
 False is the default. New and resumed tasks take the saved value; existing tasks
 keep theirs. Provider setup, tests and model-list requests use the current user
 setting. On HTTP, anyone able to intercept the route can read or change credentials

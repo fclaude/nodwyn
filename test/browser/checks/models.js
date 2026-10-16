@@ -79,25 +79,30 @@ check(async () => {
   const browser = await launch();
   const page = watch(await browser.newPage({ viewport: { width: 1280, height: 1000 } }));
   const sent = requests(page);
-  // saveDefault chooses a default model and effort in Settings and waits for
-  // the page to have finished with it. The toast is the last thing before
-  // the settings page redraws itself, and that redraw replaces whatever page
-  // is shown (renderSettings draws straight into the view): a wait that a
-  // toast still up from an earlier save satisfies returns before it, and the
-  // redraw then lands over the task the check goes back to. The toast is
-  // hidden first, so the wait sees this save's own.
-  const saveDefault = async (name, effort) => {
-    await page.selectOption("#default-model-model", name);
-    if (effort) await page.selectOption("#default-model-effort", effort);
+  // saveBar saves what waits in Settings' bar, and waits for the page to have
+  // finished with it. The toast is the last thing before the settings page
+  // redraws itself, and that redraw replaces whatever page is shown
+  // (renderSettings draws straight into the view): a wait that a toast still
+  // up from an earlier save satisfies returns before it, and the redraw then
+  // lands over the task the check goes back to. The toast is hidden first, so
+  // the wait sees this save's own.
+  const saveBar = async () => {
     await page.evaluate(() => {
       const toast = document.querySelector("#toast");
       if (toast) toast.hidden = true;
     });
-    await page.click("#default-save");
+    await page.click(".save-bar button:text-is('Save')");
     await page.waitForFunction(() => {
       const toast = document.querySelector("#toast");
-      return !!toast && !toast.hidden && toast.textContent.includes("Saved. New tasks start on this model and effort");
+      return !!toast && !toast.hidden && toast.textContent.startsWith("Saved.") && document.querySelector(".save-bar")?.hidden;
     }, null, { timeout: 10000 });
+  };
+  // saveDefault chooses a default model and effort in Settings and saves it
+  // with the bar.
+  const saveDefault = async (name, effort) => {
+    await page.selectOption("#default-model-model", name);
+    if (effort) await page.selectOption("#default-model-effort", effort);
+    await saveBar();
   };
   const go = (hash) => page.evaluate((h) => (location.hash = h), hash);
   const config = () => fs.readFileSync(configFile, "utf8");
@@ -221,13 +226,22 @@ check(async () => {
   assert.strictEqual(await page.locator("#model-form .test-result").count(), 0, "a cancelled form's test result showed in the next one");
   await page.click("#model-form button:text-is('Cancel')");
 
-  // ---------- the key is replaced; the same test now passes ----------
+  // ---------- the key is replaced under Credentials; the same test now passes ----------
+  // A key's value is changed in one place: the provider's form has no field
+  // for a key that is stored, and links to it.
   await page.click("#provider-127-0-0-1 button:text-is('Edit')");
-  await page.fill("#provider-key", goodKey);
-  await page.click("#provider-save");
-  await page.waitForSelector("#provider-form", { state: "detached" });
-  assert.deepStrictEqual(sent.of("settings.provider.write")[1], { name: "127-0-0-1", provider: "openai", url: chatURL, api_key: goodKey });
+  assert.strictEqual(await page.locator("#provider-key").count(), 0, "the provider form takes a new key as well as Credentials");
+  await shows("#provider-form", "Replace it under Credentials");
+  await page.click("#provider-form a:text-is('Replace it under Credentials')");
+  await page.waitForSelector("#model-keys .cred-row", { timeout: 10000 });
+  await page.click("#model-keys .cred-row >> nth=0");
+  await page.fill("#model-keys .cred-detail input[type=password]", goodKey);
+  await page.click("#model-keys .cred-detail button:has-text('Replace')");
+  await page.waitForSelector("text=has its new value", { timeout: 10000 });
+  assert.strictEqual(sent.of("credentials.replace").at(-1).value, goodKey, "the key sent was not the one typed");
   assert.ok(!(await page.content()).includes(goodKey), "the page shows the key");
+  await go("#/settings/models");
+  await page.waitForSelector("#provider-127-0-0-1");
   await page.click("#provider-127-0-0-1 button:text-is('Test')");
   await page.waitForSelector("#provider-127-0-0-1 .test-result.ok", { timeout: 20000 });
   await shows("#provider-127-0-0-1 .test-result", "answered");
@@ -309,10 +323,11 @@ check(async () => {
   await page.selectOption("#default-model-model", "127-0-0-1-reasoner");
   assert.strictEqual(await page.isDisabled("#default-model-effort"), false);
   await page.selectOption("#default-model-effort", "high");
-  await page.click("#default-save");
-  // The button is disabled from the moment it saves, so only the page's own
-  // word that the save is done says the default is drawn again.
-  await page.waitForSelector("text=Saved. New tasks start on this model and effort", { timeout: 10000 });
+  // The default waits in the bar with every other setting: nothing is written
+  // until it is saved.
+  await shows(".save-bar", "1 unsaved change");
+  assert.strictEqual(sent.of("settings.control.write").length, 0, "the default was written before the bar saved it");
+  await saveBar();
   assert.deepStrictEqual(sent.of("settings.control.write").at(-1), { name: "127-0-0-1-reasoner", effort: "high" });
   const cfg2 = config();
   assert.ok(cfg2.includes('[control]\nserver = "127-0-0-1"\nmodel = "reasoner"\neffort = "high"\n'), "default not written:\n" + cfg2);
@@ -848,11 +863,10 @@ check(async () => {
   await go("#/settings/models");
   await page.waitForSelector("#default-model-model", { timeout: 15000 });
   assert.strictEqual(await selected("#default-model-model"), "No model");
-  assert.strictEqual(await page.isDisabled("#default-save"), true, "nothing to save yet");
+  assert.strictEqual(await page.$eval(".save-bar", (b) => b.hidden), true, "nothing to save yet");
   await shows("[data-model='demo']", "demo");
   await page.selectOption("#default-model-model", "demo");
-  await page.click("#default-save");
-  await page.waitForSelector("text=Saved. New tasks start on this model", { timeout: 10000 });
+  await saveBar();
   assert.deepStrictEqual(sent.of("settings.control.write").at(-1), { name: "demo", effort: "" });
   assert.ok(config().includes('[control]\nprovider = "ollama"'), "no default written:\n" + config());
   step("models listed with no default: none is shown as chosen, and choosing one saves it");
@@ -1006,8 +1020,13 @@ check(async () => {
   await page.fill("#judge-key-jev", "sk-judge-canary-0001");
   await page.click("#judge-add-jev");
   await page.waitForSelector("#judge-Jev", { timeout: 10000 });
-  await page.waitForSelector(".toast >> text=Jev added, and new tasks ask it.", { timeout: 10000 });
+  await page.waitForSelector(".toast >> text=Jev added. Save to have new tasks ask it.", { timeout: 10000 });
   assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { name: "Jev", provider: "jev", url: "https://api.typesafe.ai", api_key: "sk-judge-canary-0001" });
+  // The key went at once, as keys do; making the judge the default is a
+  // setting, so it waits in the bar like the others.
+  await shows(".save-bar", "1 unsaved change");
+  assert.strictEqual(sent.of("settings.write").length, 0, "the default judge was written before the bar saved it");
+  await saveBar();
   assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": "Jev" } });
   assert.ok(config().includes('[servers.Jev]\nprovider = "jev"\nurl = "https://api.typesafe.ai"\ncredential = "model-api-typesafe-ai"\n'), "the Jev provider in config.toml:\n" + config());
   assert.ok(/\[judge\]\nserver = "Jev"\n/.test(config()), "the default judge is not in [judge]:\n" + config());
@@ -1028,7 +1047,10 @@ check(async () => {
   await page.click("#add-provider");
   assert.strictEqual(await page.locator("#preset-jev").count(), 0, "Models offers Jev as a model provider");
   await page.click("#provider-form >> text=Cancel");
-  assert.deepStrictEqual(await page.$$eval("#default-model-judge option", (o) => o.map((x) => x.value)), ["", "Jev"], "the default's judge beside its model");
+  // The judge new tasks ask is set in one place, the Judge tab: Models only
+  // links to it.
+  assert.strictEqual(await page.isVisible("#default-model-judge"), false, "Models sets the default judge as well as Judge");
+  assert.ok(await page.locator("#default-model a[href='#/settings/judge'], #section-models a[href='#/settings/judge']").count(), "Models links to the Judge tab");
   step("Jev is added as a judge in place, its model and price known, and becomes the default; Models keeps it out");
 
   // A new task and a conversation choose their judge beside their model:
@@ -1079,7 +1101,7 @@ check(async () => {
 
   // A price for the default judge is its own, under a fold: it overrides
   // the published one, and empty puts that back.
-  await page.click("#section-judge .judge-prices > summary");
+  await page.click("#judge-tuning > summary");
   assert.strictEqual(await page.getAttribute("[id='set-judge.price_input']", "placeholder"), "0.042", "the published input price");
   await page.fill("[id='set-judge.price_input']", "0.05");
   await page.click(".save-bar button:text-is('Save')");

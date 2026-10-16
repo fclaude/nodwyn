@@ -88,8 +88,8 @@ check(async () => {
   await fresh.evaluate(() => (location.hash = "#/workspaces"));
   const row = (folder) => fresh.locator(`.ws-row:has(span.mono[title="${folder}"])`);
   await row(receipts).getByRole("button", { name: /^Forget/ }).click();
-  await row(receipts).getByRole("button", { name: "Keep", exact: true }).click();
-  assert.strictEqual(sent.of("workspace.remove").length, 0, "Keep removed a folder");
+  await row(receipts).getByRole("button", { name: "Cancel", exact: true }).click();
+  assert.strictEqual(sent.of("workspace.remove").length, 0, "Cancel removed a folder");
   await row(receipts).getByRole("button", { name: /^Forget/ }).click();
   await row(receipts).getByRole("button", { name: "Forget", exact: true }).click();
   await row(receipts).waitFor({ state: "detached" });

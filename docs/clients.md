@@ -95,7 +95,7 @@ it can see the thing but not change it.
 | Choose a task's judge as it opens | yes, New task's picker | not built: `[judge]`'s; use `:judge` before the first message | `[judge]`'s | `nodwyn run`: `[judge]`'s |
 | Move a task to another judge, or none | yes, between turns | yes, `:judge NAME`, `:judge none` | not built | — |
 | Set a judge up: Jev's key, an OpenAI API key | Settings › Judge, in place | — | — | edit `config.toml`, `:eval (credential-register …)` |
-| The default judge | Settings › Judge, or beside the default model under Models | — | — | `[judge] server` |
+| The default judge | Settings › Judge (Models links to it) | — | — | `[judge] server` |
 | Choosing from a paired device | refused (ADR 30, ADR 47) | — | — | — |
 
 ## Memory (ADR 51)
@@ -156,14 +156,15 @@ needs.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
-| Providers, models, efforts, judges, limits, timeouts | Settings, one tab each (General, Models, Judge, Context) | — | — | edit `config.toml` |
+| Providers, models, efforts, judges, limits, timeouts | Settings: Models, Judge, and General (limits, timeouts and the context window under Advanced); one Save bar for the settings | — | — | edit `config.toml` |
 | MCP servers: add, inspect, approve, pull | Connections › Tools | — | — | `nodwyn mcp` |
-| Credentials, OAuth2 sign-in | Connections › Credentials | — | — | `nodwyn credential` |
+| Credentials: add, replace, allow a host, take a host back, remove; OAuth2 sign-in | Connections › Credentials (a ChatGPT plan is connected on its provider, Settings › Models) | — | — | `nodwyn credential` (taking a host back is an edit of `bindings.toml`) |
 | Keychain: create, unlock, passphrase | Settings › Keys & devices, and beside a provider form that needs it | unlocks at start | unlocks at start | `nodwyn keychain` |
 | Named workspaces and mounts | Workspaces | — | — | edit `workspaces.toml` |
 | Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor; a task's Workspace tab says which | yes, `:earlier`, `:earlier on`, `:earlier off` | — | edit `workspaces.toml` (`earlier_tasks = true`) |
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
-| Pair and revoke devices | yes, on this computer | — | — | `nodwyn devices` |
+| Pair devices | no: `nodwyn ui --listen` prints the pairing code in its terminal (Settings › Keys & devices says so) | — | — | `nodwyn ui --listen` |
+| List and revoke devices | yes, on this computer, Revoke after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME` |
 
 ## Runs (ADR 35)
 
