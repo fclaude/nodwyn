@@ -81,7 +81,7 @@ func TestIndexGrepRejectsBypassAndInvalidQueries(t *testing.T) {
 		t.Fatal("invalid regex accepted in empty directory")
 	}
 	h.in.SetGate(guard.New(nil, nil, Checkers(DefaultOptions(h.root), nil, nil)...).WithSchemeEval(h.in.Apply))
-	_, err := h.in.EvalString(context.Background(), `(register-check "no-read" "deny" (lambda (name args) (equal? name "fs-read")))`)
+	_, err := h.in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginUser), `(register-check "no-read" "deny" (lambda (name args) (equal? name "fs-read")))`)
 	if err != nil {
 		t.Fatal(err)
 	}

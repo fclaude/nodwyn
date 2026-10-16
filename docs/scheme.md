@@ -532,7 +532,11 @@ in.Global().Restore(snap)                    // put them back, unbinding names b
 ```
 
 `ctx` cancellation is checked at every application; a cancelled evaluation
-returns the context's error.
+returns the context's error. `ctx` also says who started the evaluation
+(`scheme.WithOrigin`: the user, the model or the loop's strategy); a context
+that does not say is the strategy's, never the user's, so an embedder gives
+the user's powers (`wipe`, `register-check`, `policy-write`) only where it
+says so.
 
 ## 9. The agent loop
 

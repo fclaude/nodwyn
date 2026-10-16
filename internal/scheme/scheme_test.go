@@ -627,3 +627,12 @@ func TestGuardCatchesAPrimitivesOwnTimeout(t *testing.T) {
 		t.Fatal("guard caught a timeout after the turn was cancelled")
 	}
 }
+
+// An evaluation whose context says nothing of who started it is not the
+// user's: the user's powers (wipe, register-check, policy-write) need an
+// entry point that says so.
+func TestAnUnsaidOriginIsNotTheUsers(t *testing.T) {
+	if got := OriginFrom(context.Background()); got == OriginUser {
+		t.Fatalf("no origin reads as %s", got)
+	}
+}
