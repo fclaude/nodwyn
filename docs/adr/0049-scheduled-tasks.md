@@ -433,3 +433,19 @@ resume), so there is never a second session on the same log. The per-tick
 scan of every stored task is not changed. The regression is
 `TestIdleCloseDoesNotHoldTheLifecycleLock`, whose task's MCP server holds the
 end of its session to make the close slow.
+
+## Amendment 2026-10-16: the TUI and line mode still replay a resumed task whole
+
+Resume reads only the tail of the log (§10), but `Session.History`, which the
+TUI (`tui/backend.go`) and line mode (`plain/chat.go`) call to show the
+conversation on open, reads and redacts every event. For a daily task whose
+log has grown to gigabytes that is seconds and memory before the first
+screen, though the console pages through `ReadLatestRun` and `ReadLog`. This
+is not changed here: starting from the latest run in those two clients means
+a way to ask for earlier runs in each of them (a command and its rendering in
+a terminal, with a test in each), which is more than a bounded fix, and
+`docs/clients.md` already lists it as a deliberate gap. The way to close it is
+`Store.ReadLatestRun` for the first screen and `ReadLog` pages behind a
+`:earlier` command, keeping `History` for a session whose log is not a file;
+until then `nodwyn replay` and the console are how to read a task whose log is
+that large.
