@@ -621,3 +621,46 @@ No RPC, log or schema changes. The worktrees and screens checks fail on the
 previous sidebar implementation and pass on this one; controlled-response
 guards and transcript, approve and firstrun checks pass on both. Branch approval,
 Changes consolidation and persistent review drafts are not built.
+
+## Amendment 2026-10-16: The day-to-day pages carry one hierarchy
+
+A review of the console's daily pages (Home, a task, the sidebar, search,
+the schedule dialog) found the same faults in each: every control at once,
+errors as passing toasts, a phone screen spent on chrome. What was decided,
+and the pages follow it:
+
+- **Errors stay.** A confirmation is a four-second toast at the top of the
+  window; an error is a separate alert that stays until it is dismissed, is
+  not replaced by a later message, is shown once when identical and may offer
+  Retry. A read the desk makes that fails is such an error, never "an older
+  daemon" (only a method the daemon does not offer is); a page that throws
+  while it is drawn is replaced by its failure with Reload and Home.
+- **A control for the state, a menu for the rest.** A task's heading shows
+  Stop while it works or Resume once it is saved, and one menu for Search,
+  Schedule, Close, Archive and Delete. Home's composer shows Attach, Options
+  (worktree, Limits, helpers, Schedule, with a count of what is off its
+  default), the model and Send. Scheduling has one name, Schedule, and Repeat
+  is only the field for how often.
+- **The composer answers.** Enter sends in both composers and Shift+Enter
+  breaks the line, with a hint under the box; a saved task's reply box works
+  and resumes the task first; Schedule on Home asks for its message in its
+  own dialog.
+- **The phone's screen is the request's.** While a request waits the reply
+  box is hidden; only Needs you comes above Home's composer; targets are 44
+  px; the topbar's pill is a link.
+- **Only the task list scrolls** in the sidebar; the side panel's tabs sit
+  above their content and its summary is spend, turn time and context (tool
+  calls and the cache rate are in Statistics).
+- **One search box**: it filters tasks and offers the search of what was
+  said, over this task and the project's earlier ones by default, with
+  matches said in words and the query marked.
+- **Nothing is thrown away by a slip**: removing a schedule and discarding
+  a policy draft ask first; review comments and the notes draft survive a
+  reload of the same task.
+
+Not built: moving the judge select into Options (it stays in the model
+picker, where it appears only when a judge is configured); the setup pages
+(Settings, Models, Credentials, Setup, Connections, Workspaces) still call
+the old toast for their errors, and five of the ten inline column styles
+remain there; reading a saved worktree task's diff from its retained
+worktree, so that review would need no resume.
