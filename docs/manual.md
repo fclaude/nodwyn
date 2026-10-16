@@ -55,11 +55,14 @@ This is the spine. Read these in order and you have read the system.
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
 | `internal/budget` | one turn's budgets and checkpoints | `budget.go` |
 | `internal/extract` | attachments: text by file type, images checked but never read as text | `extract.go`, `image.go` |
-| `internal/mcp` | the client for remote MCP servers; it runs no server and starts no process | `client.go` |
+| `internal/memory`, `internal/retrieval` | what a task remembers of its history (a card for each turn, an episode for each compaction note), and the words-only ranking `index-search` uses over the repository, the conversation and earlier tasks ([docs/memory.md](memory.md)) | `memory/card.go`; `retrieval/index.go` |
+| `internal/schedule` | the civil-time repeats of scheduled tasks; it owns no timers or files ([ADR 49](adr/0049-scheduled-tasks.md)) | `schedule.go` |
+| `internal/catalogue` | what providers publish about their models (context, effort, price), as models.dev collects it ([ADR 41](adr/0041-model-providers-and-efforts.md)) | `catalogue.go`, `modelsdev.go` |
+| `internal/termemu`, `internal/frontend/termvt` | the terminal primitives' emulator seam, and the Charm emulator behind it, kept under `frontend` by the boundary lint ([ADR 48](adr/0048-experimental-terminal.md)) | `termemu.go`; `termvt.go` |
 | `internal/policyfile` | atomic writes of the policy files the console edits | `update.go` |
 | `internal/keychain` | encrypted credentials, opaque handles and injection; OAuth2 token sets, refresh and acquisition | `store.go`, `oauth.go`, `acquire.go` |
 | `internal/binding` | binding loading and authorization lookup | `binding.go` `Lookup`; Scheme call decoding lives in `guard/egress_facts.go` |
-| `internal/mcp` | the MCP client, over streamable HTTP or a contained server's stdio | `client.go`, `stdio.go`; sessions use it from `core/mcp.go` |
+| `internal/mcp` | the MCP client, over streamable HTTP or a contained server's stdio; it starts no process itself, and a contained server is run by `internal/container` | `client.go`, `stdio.go`; sessions use it from `core/mcp.go` |
 | `internal/container`, `internal/egress` | running a contained MCP server with podman or docker; the allowlisting proxy it reaches the network through (`cmd/nodwyn-egress`) | `server.go` `Start`, `proxy.go` |
 | `internal/redact`, `internal/detect/l1` | text redaction and credential-shape detection | `redact.go`, `l1.go` |
 | `internal/event` | what a front-end sees | `event.go` |
@@ -75,9 +78,11 @@ This is the spine. Read these in order and you have read the system.
 | `dev/`, `.nodwyn/` | this repository's own tools and standing approvals | `dev/go.scm` |
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
 | `test/browser` | the console's checks in headless Chromium | `README.md` |
+| `test/release`, `test/sessions` | the release publisher's tests against a fake Gitea, and recorded session logs the replay tests read | `test_release.py`; `README.md` |
+| `scripts/validate` | what `validate` runs and checks for a change ([ADR 37](adr/0037-validate-before-done.md)) | `main.go` |
 | `test/fakes/ollama` | scriptable fake of the model server; `serve` runs it for the selfcheck | `ollama.go` |
-| `test/fakes/jev`, `mcp`, `oauth`, `drive` | fakes of the judge, an MCP server, an OAuth2 provider and Drive's upload endpoint: no test reaches a real service | each package's comment |
-| `test/fakes/mcp`, `test/fakes/container` | a fake MCP server (HTTP or stdio) and a fake container runtime that is the test binary run again | `mcp.go`, `container.go` |
+| `test/fakes/jev`, `mcp`, `oauth`, `drive` | fakes of the judge, an MCP server (HTTP or stdio), an OAuth2 provider and Drive's upload endpoint: no test reaches a real service | each package's comment |
+| `test/fakes/container`, `chat`, `home` | a fake container runtime that is the test binary run again; a fake chat-completions provider; an isolated HOME for packages whose tests build a guard or commit | `container.go`, `chat.go`, `home.go` |
 
 ### The invariants and the tests that hold them
 

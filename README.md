@@ -18,8 +18,10 @@ for a behaviour-preserving simplification plan.
 
 ## Maintainer map
 
-The packages follow responsibilities that remain useful as nodwyn gains more
-integrations and front-ends:
+The packages and what to read first in each are the package map in
+[the manual](docs/manual.md#package-map), kept there once. Their
+responsibilities, which stay useful as nodwyn gains more integrations and
+front-ends:
 
 | Packages | Responsibility |
 |---|---|
@@ -31,6 +33,9 @@ integrations and front-ends:
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible, Anthropic) and price their requests; derive their context; redact text; detect credential shapes. |
+| `memory`, `retrieval` | Make a task's history searchable by words and keep its per-turn cards, as views of the log that the log never records. |
+| `schedule`, `catalogue` | Compute scheduled tasks' civil-time repeats; hold what providers publish about their models. |
+| `termemu`, `frontend/termvt` | Give the terminal primitives an emulator behind an interface, with the Charm library only under `frontend`. |
 | `mcp`, `extract` | Talk to remote MCP servers (pinned manifests, bound keys); turn attached documents into redacted text, check attached images by their content, and read all a document carries before it is sent. |
 | `frontend/run` | Chain planned turns under a finite deadline and turn count; ask a person to continue, or, unattended, go on only after a turn that marked a plan step done. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nodwyn` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
@@ -101,8 +106,8 @@ a project, its earlier tasks. See
 ## Run
 
 ```
-bin/nodwyn daemon               # local sessions, turns and event delivery (U2)
-bin/nodwyn tui                  # opt-in full-screen terminal client (P9)
+bin/nodwyn daemon               # local sessions, turns and event delivery
+bin/nodwyn tui                  # opt-in full-screen terminal client
 bin/nodwyn app                  # the whole thing in one program: a window, and a daemon if none runs
 bin/nodwyn ui                   # the browser console for a running daemon
 bin/nodwyn ui --listen IP:7777  # also for other devices (a phone on your tailnet)
@@ -171,26 +176,22 @@ redirect refusals and certificate verification. See [the security reference](doc
 The guarded file tools pin paths to the
 repository; credential-shaped files are unreadable, network tools on a
 command line need confirmation, and child processes get a scrubbed
-environment. P7 redacts recognized credential shapes from user messages,
+environment. Redaction removes recognized credential shapes from user messages,
 tool results, logs, and frontend events. Responses are buffered until complete
 so split stream chunks cannot expose a key. Unknown or encoded secrets are
-not guaranteed to be detected; L3 remains P8. Approved commands run with the
+not guaranteed to be detected; a classifier for them (the optional L3) is
+not built. Approved commands run with the
 user account's privileges; these checks do not sandbox an approved executable.
 
 Gitea runs `.gitea/workflows/ci.yml` on every push and pull request using the
 isolated `self-hosted` runner. It executes `make accept` with fresh race tests,
 then cross-compiles Linux and macOS binaries for amd64 and arm64 with cgo
-disabled. Only the Linux amd64 binary is executed on that runner. After a
-successful main-branch check, a separate job builds and publishes the binaries
-and both books as a [Gitea release](http://git.example.com/fc/nodwyn/releases).
-Its selfcheck uses a fake model, so no paid model or real model credentials are needed.
-
-Cross-compilation does not test macOS behavior or provide Developer ID signing
-and notarisation. Portable releases open the browser instead of a native webview.
-Each archive includes `nodwyn` and the Linux `nodwyn-egress` used inside MCP
-containers. See [releases](docs/releases.md) for downloads, checksums and reruns.
-Publishing is separate from local `nodwyn-stable` promotion. GitHub CI is
-manual-only while Gitea is the primary build and release service.
+disabled. Only the Linux amd64 binary is executed on that runner. Its selfcheck
+uses a fake model, so no paid model or real model credentials are needed.
+Pushes never publish: a release is a manual workflow run on `main` with a
+version. [Releases](docs/releases.md) says what each one holds, how to check
+its digest and how a run publishes. Publishing is separate from local
+`nodwyn-stable` promotion.
 
 Turns also stop when the model repeats an identical tool call four times in a
 row, retries a denied call three times, gets ten consecutive tool errors, or
@@ -225,7 +226,7 @@ redacted `turn.checkpoint` log record. A new turn starts with fresh accounting.
 invocation. Explicit legacy
 `loop.max_tool_calls` settings still work; do not also set
 `budget.tool_calls_hard` in that file. Configurations without a legacy override
-now use the ADR 18 default of 500 hard tool calls (previously 200).
+get the ADR 18 default of 500 hard tool calls.
 
 Actions count authorized irreversible host attempts, including every nested
 write or command inside a Scheme tool. Denials consume no action allowance.
@@ -236,7 +237,7 @@ output usage each model request reports, the control model's and any other
 configured model's: a response can overshoot a token ceiling, but no
 subsequent operation starts after that usage is observed. Judge requests are
 not model requests and are not counted against tokens; their usage is
-recorded and shown, and their cost, priced by `[jev] price_input` and
+recorded and shown, and their cost, priced by `[judge] price_input` and
 `price_output`, counts against a spend limit.
 
 After each reply the front-ends show its tokens, the share read from the
@@ -267,7 +268,7 @@ for one session or one run (`nodwyn run --budget-cost 5`, kept on resume).
 An unattended run's soft checkpoint goes on to the hard limit, as for the
 other budgets.
 
-### Local daemon (U2)
+### Local daemon
 
 `nodwyn daemon` serves a versioned local session protocol over a private Unix
 socket. Clients can manage sessions, send and abort turns, subscribe to events,
@@ -285,7 +286,7 @@ See [the protocol guide](docs/protocol.md) for startup, methods, catch-up cursor
 queue limits and ownership.
 
 
-### Terminal client (P9)
+### Terminal client
 
 `nodwyn tui --repo /path/to/project` starts the full-screen client locally;
 `nodwyn tui --socket /path/to/sock` attaches to a daemon. Choose or resume a
@@ -311,7 +312,7 @@ See [the TUI guide](docs/tui.md) for controls, ownership and the acceptance cove
 and [the clients](docs/clients.md) for what each front-end can do.
 
 See [session memory](docs/memory.md) for exact request replay, summary creation
-and revocation, and the remaining structural-retrieval work.
+and revocation, and retrieval.
 
 ### The console (ADR 21, ADR 30)
 
@@ -322,8 +323,7 @@ it the plan with the steps the model marked, this turn's budget, changes
 with their history, attachments (documents and images),
 project notes and the workspace. Connections adds and reviews MCP servers
 and manages credentials (keys, OAuth2 accounts, and where each may go);
-Workspaces names folders, their kind (documents, code or both) and mounted
-folders; Settings, in tabs, sets what a task does without asking you (writes
+Workspaces names folders and their mounted folders; Settings, in tabs, sets what a task does without asking you (writes
 in its folder, and who answers a command: the judge, then you, by default),
 the limits, the providers with their models, the judges (Jev or an OpenAI
 API key, set up with the key alone) and the context window, and unlocks the
@@ -356,9 +356,10 @@ for completion semantics and recovery.
 Without a person: `--yolo` answers a run's ordinary confirms yes (never a
 security confirm). `--judge` puts each ordinary confirm to the judge
 instead, which allows a call only when its probability of "allow" reaches
-`jev.approve_threshold` (0.8 by default) and declines security confirms; the
+`judge.approve_threshold` (0.8 by default) and declines security confirms; the
 decision is made in Go, so a project's Scheme can only refuse more. It
-needs the judge (Jev enabled, a `jev-key` stored) and excludes `--yolo`.
+needs a judge (`[judge]` naming a provider whose key is stored; see
+[the judge](docs/manual.md#the-judge)) and excludes `--yolo`.
 `--unattended` means nobody answers anything: confirms are declined unless
 `--yolo` or `--judge` answers them, soft budget checkpoints go on to the
 hard limit, and the run goes on after a turn only if that turn marked a
