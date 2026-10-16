@@ -62,3 +62,28 @@ func TestCleanNameCutsLongNames(t *testing.T) {
 		t.Errorf("the extension was lost: %q", got)
 	}
 }
+
+// A repository that commits .nodwyn as a link to somewhere else does not
+// get a copy written there: the copy and its .gitignore went where the link
+// pointed, outside the repository.
+func TestAttachWritesOnlyInTheRepositorysOwnFolder(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, false)
+	elsewhere := t.TempDir()
+	if err := os.RemoveAll(filepath.Join(r.repo, ".nodwyn")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(r.repo, ".nodwyn")); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "report.txt")
+	if err := os.WriteFile(src, []byte("report\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.s.Attach(src, "", "unix:test"); err == nil {
+		t.Fatal("attached through a linked .nodwyn")
+	}
+	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+		t.Fatalf("written where the link points: %v", entries)
+	}
+}

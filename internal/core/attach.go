@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/fclaude/nodwyn/internal/extract"
 	"github.com/fclaude/nodwyn/internal/guard"
@@ -54,12 +53,14 @@ func (s *Session) Attach(path, name, actor string) (log.Attach, error) {
 	if err != nil {
 		return log.Attach{}, err
 	}
-	id, rel, dest := s.attachmentPath(name)
+	id, rel, dest, err := s.attachmentPath(name)
+	if err != nil {
+		return log.Attach{}, fmt.Errorf("attach: keeping a copy: %w", err)
+	}
 	size, sum, err := copyFile(path, dest)
 	if err != nil {
 		return log.Attach{}, fmt.Errorf("attach: keeping a copy: %w", err)
 	}
-	ignoreDir(filepath.Join(s.opts.Repo, ".nodwyn", "attachments"))
 	clean := redact.Redact(result.Text, nil)
 	var classes []string
 	for _, e := range clean.Events {
@@ -123,11 +124,13 @@ func (s *Session) attachImage(ctx context.Context, path, name, actor string) (lo
 		}
 		return log.Attach{}, fmt.Errorf("attach: %s is not attached: its confirm was %s", name, why)
 	}
-	id, rel, dest := s.attachmentPath(name)
+	id, rel, dest, err := s.attachmentPath(name)
+	if err != nil {
+		return log.Attach{}, fmt.Errorf("attach: keeping a copy: %w", err)
+	}
 	if err := writeNew(dest, data); err != nil {
 		return log.Attach{}, fmt.Errorf("attach: keeping a copy: %w", err)
 	}
-	ignoreDir(filepath.Join(s.opts.Repo, ".nodwyn", "attachments"))
 	record := log.Attach{ID: id, Name: name, Type: "image", Bytes: int64(len(data)), SHA256: hex.EncodeToString(digest[:]), Stored: rel,
 		MediaType: img.MediaType, Width: img.Width, Height: img.Height, Tokens: tokens, Destination: host,
 		ApprovedBy: approval.Actor, PromptID: approval.PromptID, Actor: actor}
@@ -236,19 +239,27 @@ func thousands(n int) string {
 	return s
 }
 
-// attachmentPath names a new attachment's copy: an id, its path relative to
-// the workspace root as the log records it, and its path on disk.
-func (s *Session) attachmentPath(name string) (id, rel, dest string) {
+// attachmentPath makes a new attachment's folder and names its copy: an id,
+// its path relative to the workspace root as the log records it, and its
+// path on disk. The folders are the repository's own (ownDir): a .nodwyn
+// the repository commits as a link would otherwise take the copy where it
+// points.
+func (s *Session) attachmentPath(name string) (id, rel, dest string, err error) {
 	id = strings.ToLower(rand.Text()[:10])
+	dir, err := ownDir(s.opts.Repo, 0o700, ".nodwyn", "attachments")
+	if err != nil {
+		return "", "", "", err
+	}
+	ignoreAll(dir, "# nodwyn's copies of attached files\n*\n")
+	if err := os.Mkdir(filepath.Join(dir, id), 0o700); err != nil {
+		return "", "", "", err
+	}
 	rel = filepath.Join(".nodwyn", "attachments", id, name)
-	return id, filepath.ToSlash(rel), filepath.Join(s.opts.Repo, rel)
+	return id, filepath.ToSlash(rel), filepath.Join(s.opts.Repo, rel), nil
 }
 
 // writeNew writes data to a new private file.
 func writeNew(dest string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-		return err
-	}
 	out, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -314,11 +325,7 @@ func cleanName(name, path string) string {
 		if len(ext) > 16 {
 			ext = ""
 		}
-		keep := 120 - len(ext)
-		for keep > 0 && !utf8.RuneStart(name[keep]) {
-			keep--
-		}
-		name = name[:keep] + ext
+		name = cutRunes(name, 120-len(ext)) + ext
 	}
 	return name
 }
@@ -329,9 +336,6 @@ func copyFile(src, dest string) (int64, string, error) {
 		return 0, "", err
 	}
 	defer in.Close()
-	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-		return 0, "", err
-	}
 	out, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return 0, "", err
@@ -349,14 +353,6 @@ func copyFile(src, dest string) (int64, string, error) {
 		return 0, "", err
 	}
 	return n, hex.EncodeToString(hash.Sum(nil)), nil
-}
-
-// ignoreDir keeps nodwyn's own copies out of a repository's commits.
-func ignoreDir(dir string) {
-	path := filepath.Join(dir, ".gitignore")
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		_ = os.WriteFile(path, []byte("# nodwyn's copies of attached files\n*\n"), 0o600)
-	}
 }
 
 func cutRunes(s string, n int) string {

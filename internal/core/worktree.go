@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -162,35 +163,49 @@ func samePath(a, b string) bool {
 	return errA == nil && errB == nil && ra == rb
 }
 
-// ensureWorktreesDir makes .nodwyn/worktrees/ in repository, ignoring
-// itself with a "*" .gitignore, as .nodwyn/attachments/ does: the
-// repository's git status stays clean, and git add -A there never stages a
-// worktree as a gitlink. Each folder on the way must be a folder, never a
-// link: a clone could otherwise commit .nodwyn/worktrees as a link and have
-// the next worktree checked out wherever it points.
+// ensureWorktreesDir makes .nodwyn/worktrees in repository, a folder of its
+// own that git ignores (ownDir).
 func ensureWorktreesDir(repository string) (string, error) {
-	dir := worktreesDir(repository)
-	for _, d := range []string{filepath.Dir(dir), dir} {
-		// Another task's worktree may be made at the same moment: a folder
-		// that exists is fine, and a link is refused whoever made it.
-		if err := os.Mkdir(d, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+	dir, err := ownDir(repository, 0o755, config.FolderDir, "worktrees")
+	if err != nil {
+		return "", err
+	}
+	ignoreAll(dir, "*\n")
+	return dir, nil
+}
+
+// ownDir makes each folder of parts under root, in turn, and returns the
+// last. A repository can commit .nodwyn, or a folder in it, as a link to
+// anywhere: a part that is a link, or not a folder, is refused, so nodwyn
+// writes only in folders of the repository's own. A folder that exists is
+// fine, since another task may make it at the same moment.
+func ownDir(root string, mode os.FileMode, parts ...string) (string, error) {
+	dir := root
+	for _, part := range parts {
+		dir = filepath.Join(dir, part)
+		if err := os.Mkdir(dir, mode); err != nil && !errors.Is(err, os.ErrExist) {
 			return "", err
 		}
-		st, err := os.Lstat(d)
+		st, err := os.Lstat(dir)
 		if err != nil {
 			return "", err
 		}
 		if !st.IsDir() {
-			return "", fmt.Errorf("%s is not a folder: nodwyn makes worktrees only in a folder of the repository's own", d)
-		}
-	}
-	ignore := filepath.Join(dir, ".gitignore")
-	if _, err := os.Lstat(ignore); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(ignore, []byte("*\n"), 0o644); err != nil {
-			return "", err
+			return "", fmt.Errorf("%s is not a folder: nodwyn writes only in a folder of the repository's own", dir)
 		}
 	}
 	return dir, nil
+}
+
+// ignoreAll gives dir a .gitignore that ignores everything in it, unless it
+// has one; a link in its place is not followed.
+func ignoreAll(dir, text string) {
+	f, err := os.OpenFile(filepath.Join(dir, ".gitignore"), os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o644)
+	if err != nil {
+		return
+	}
+	_, _ = f.WriteString(text)
+	_ = f.Close()
 }
 
 // discardWorktree removes a worktree nothing has happened in yet, with its
