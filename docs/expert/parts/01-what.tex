@@ -135,8 +135,9 @@ knows where the edges are.
     \file{*.pem}, \file{id\_*}, \file{\textasciitilde/.ssh},
     \file{\textasciitilde/.aws}, \nodwyn's own config and data directories
     wherever \code{XDG\_CONFIG\_HOME} and \code{XDG\_DATA\_HOME} put them
-    (all but the session's scratch directory, which lives in the data
-    directory), and more.
+    (the session's scratch directory is in the system's temporary directory,
+    outside them, and stays open should \code{TMPDIR} be set inside one),
+    and more.
   \item \textbf{A write in the folder can be undone.} By default it goes
     ahead without asking: its diff is logged and shown, and the file's
     previous content is kept, so it can be put back. A few paths always

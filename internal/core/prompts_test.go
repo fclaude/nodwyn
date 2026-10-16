@@ -72,6 +72,26 @@ func TestDefaultPrompts(t *testing.T) {
 	}
 }
 
+// Both system prompts say where the model's scratch is and what that means
+// for its commands: they run with TMPDIR set to it, outside nodwyn's
+// protected directories, so tests that make temporary files work and no HOME
+// or TMPDIR of its own is needed (ADR 32, amended 2026-10-16).
+func TestPromptsSayWhereScratchIs(t *testing.T) {
+	t.Parallel()
+	for name, r := range map[string]*rig{"interactive": newRig(t, true), "unattended": unattendedRig(t)} {
+		system := r.s.loop.WindowContext().System
+		for _, want := range []string{
+			"Your commands run with TMPDIR set to it",
+			"do not set TMPDIR or HOME to another place",
+			"do not use /tmp",
+		} {
+			if !strings.Contains(system, want) {
+				t.Errorf("the %s system prompt lacks %q", name, want)
+			}
+		}
+	}
+}
+
 // The system prompt is the start of every request, the prefix a provider
 // caches (ADR 9): two sessions of one repository send the same one, so it
 // names $TMPDIR, never a session's own scratch directory.

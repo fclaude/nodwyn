@@ -138,10 +138,16 @@
 ;; there is none (a session always has one; the check keeps the prompt
 ;; buildable without it). It names $TMPDIR, not the directory's path,
 ;; which differs per session: the system prompt stays the same across a
-;; repository's sessions.
+;; repository's sessions. The second sentence says what the directory being
+;; the commands' TMPDIR means: until 2026-10-16 it was inside nodwyn's
+;; protected data directory, and on commit-bench (dsl20r, 2026-10-16, review
+;; of 67a1f950, 855e90e7 and 7513f7eb) 5 to 17 calls of a run went on working
+;; around that: HOME and TMPDIR set to paths in /tmp (13 of the 23 shell
+;; commands refused in 26 runs named /tmp) or to a folder of the repository
+;; (ADR 32, amended 2026-10-16).
 (define (scratch-rule dir)
   (if dir
-      "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends."
+      "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends. Your commands run with TMPDIR set to it, so a test suite or a tool that makes temporary files puts them there without being told: do not set TMPDIR or HOME to another place, and do not use /tmp, which is outside what you may use."
       ""))
 
 ;; The system prompt's rule for the read-only git tools, or "" where they

@@ -32,7 +32,7 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output
 - [0026](./0026-the-loop-is-scheme.md) — The agent loop is a Scheme procedure
 - [0027](./0027-models-and-narrowed-contexts.md) — Configured models and narrowed contexts
-- [0028](./0028-scratch-directory.md) — A scratch directory beside the repository (amended: in the data directory, excepted from the denylist)
+- [0028](./0028-scratch-directory.md) — A scratch directory beside the repository (amended: in the data directory, excepted from the denylist; then in the system's temporary directory, outside the protected ones)
 - [0029](./0029-optional-tool-parameters.md) — Optional tool parameters
 - [0030](./0030-one-app-three-ways-to-reach-it.md) — One app, three ways to reach it: desktop, browser, phone
 - [0031](./0031-renamed-to-nodwyn.md) — The project is renamed nodwyn

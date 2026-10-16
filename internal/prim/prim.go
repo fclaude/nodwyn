@@ -182,8 +182,9 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 
 // denylist is the credential denylist for a session in o.Root. It adds
 // nodwyn's own directories where the session found them to the default
-// places. The scratch directory lives in nodwyn's data directory, which the
-// list protects; it is the one place there the session's tools may use.
+// places. The scratch directory is in the system's temporary directory,
+// outside the directories the list protects; should TMPDIR put that inside
+// one of them, it is the one place there the session's tools may use.
 func denylist(o Options) guard.PathDenylist {
 	d := guard.DefaultDenylist()
 	d.Root = o.Root

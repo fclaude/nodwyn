@@ -68,13 +68,28 @@ func argumentPath(token, root string, absolute bool) string {
 	return ""
 }
 
+// pathRisk is why a standing approval cannot cover path. A path inside the
+// repository, written by the absolute path the system prompt gives for it,
+// is refused like any other, and says what to write: a command already runs
+// in the repository root (commit-bench, 7513f7eb: a "cd <repository> && go
+// test" the model had no need to write, refused for good in an unattended
+// run).
+func pathRisk(path, root string) string {
+	reason := "standing approval cannot cover an absolute or repository-escaping path: " + path
+	if root != "" && filepath.IsAbs(path) && !slices.Contains(strings.Split(path, string(filepath.Separator)), "..") &&
+		within(resolveExisting(filepath.Clean(path)), resolveExisting(root)) {
+		reason += " (it is inside the repository, where the command already runs: write it relative to the repository root)"
+	}
+	return reason
+}
+
 func commandArgumentRisk(argv []string, root string) string {
 	if len(argv) == 0 {
 		return ""
 	}
 	for _, arg := range argv {
 		if path := argumentPath(arg, root, true); path != "" {
-			return "standing approval cannot cover an absolute or repository-escaping path: " + path
+			return pathRisk(path, root)
 		}
 	}
 	program := filepath.Base(argv[0])
@@ -159,7 +174,7 @@ func (c *CommandAllow) argumentRisk(argv []string) string {
 			for _, words := range append([]shellCommand{{words: argv[:1]}}, cmds...) {
 				for _, arg := range words.words {
 					if path := argumentPath(arg, c.root, true); path != "" {
-						return "standing approval cannot cover an absolute or repository-escaping path: " + path
+						return pathRisk(path, c.root)
 					}
 				}
 			}

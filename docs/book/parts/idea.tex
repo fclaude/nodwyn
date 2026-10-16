@@ -418,11 +418,12 @@ anything is sent, and \code{doc.upload} records what left.
 The session log, the keychain, the policy files, a scratch directory per
 session, the version store and the notes a repository keeps between
 sessions all live on disk, under \nodwyn's configuration and data
-directories or the workspace's \file{.nodwyn/}. The model cannot write any
-of them directly: the configuration and data directories are outside every
-root and denied, except the session's own scratch directory, which lives
-in the data directory and is the model's to use; and \file{.nodwyn/}
-always asks. \code{nodwyn paths} prints where the configuration, the
+directories or the workspace's \file{.nodwyn/}, except the scratch
+directory, which is in the system's temporary directory. The model cannot
+write any of them directly: the configuration and data directories are
+outside every root and denied (the session's own scratch directory is
+outside them, and is the model's to use, and stays so should \code{TMPDIR}
+be set inside one); and \file{.nodwyn/} always asks. \code{nodwyn paths} prints where the configuration, the
 binding table, the keychain and the session logs are.
 
 \section{The edges, by substrate}

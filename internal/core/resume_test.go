@@ -257,7 +257,9 @@ func TestResumeAfterProcessKilled(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 	child := exec.Command(os.Args[0], "-test.run=^TestResumeCrashHelper$")
-	child.Env = append(os.Environ(), "NODWYN_TEST_CRASH_DIR="+dir, "NODWYN_TEST_CRASH_URL="+srv.URL)
+	// The killed child cannot remove its scratch directory, which is in the
+	// system's temporary directory: give it one that goes with the test.
+	child.Env = append(os.Environ(), "NODWYN_TEST_CRASH_DIR="+dir, "NODWYN_TEST_CRASH_URL="+srv.URL, "TMPDIR="+dir)
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}

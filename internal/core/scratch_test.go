@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/llm"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // A session's scratch directory takes throwaway files without a prompt, is
-// the TMPDIR of its commands, lives under nodwyn's data directory, and is gone
+// the TMPDIR of its commands, lives under the system's temporary directory
+// and not in nodwyn's data directory, which the guard protects, and is gone
 // when the session closes; a resumed session gets a new, empty one. The
 // system prompt names $TMPDIR, not the per-session path.
 func TestScratchDirectory(t *testing.T) {
@@ -37,8 +39,8 @@ func TestScratchDirectory(t *testing.T) {
 	}
 	dir := s.scratch
 	data, _ := filepath.EvalSymlinks(o.Paths.DataDir)
-	if dir == "" || strings.HasPrefix(dir, o.Repo) || !strings.HasPrefix(dir, filepath.Join(data, "scratch")+string(filepath.Separator)) {
-		t.Fatalf("scratch directory %q", dir)
+	if dir == "" || strings.HasPrefix(dir, o.Repo) || !strings.HasPrefix(dir, scratchRoot()+string(filepath.Separator)) || strings.HasPrefix(dir, data+string(filepath.Separator)) {
+		t.Fatalf("scratch directory %q: want one under the system's temporary directory %q, outside the data directory %q", dir, scratchRoot(), data)
 	}
 	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
 		t.Fatalf("scratch directory mode: %v %v", info, err)
@@ -78,24 +80,48 @@ func TestScratchDirectory(t *testing.T) {
 }
 
 // A scratch directory a crashed session left behind is swept once it is a
-// week old; a recent one is kept.
+// week old; a recent one is kept. The system's temporary directory is shared,
+// so only this user's directories named for a scratch directory go, never a
+// link to one; and the directories sessions before 2026-10-16 left in the
+// data directory go too.
 func TestScratchSweep(t *testing.T) {
-	t.Parallel()
+	root := t.TempDir()
+	t.Setenv("TMPDIR", root)
+	root = scratchRoot()
 	data := t.TempDir()
-	root := scratchRoot(data)
+	legacy := legacyScratchRoot(data)
 	os.MkdirAll(filepath.Join(root, "nodwyn-scratch-old-1"), 0o700)
 	os.MkdirAll(filepath.Join(root, "nodwyn-scratch-new-1"), 0o700)
 	os.MkdirAll(filepath.Join(root, "unrelated"), 0o700)
+	os.MkdirAll(filepath.Join(legacy, "nodwyn-scratch-old-2"), 0o700)
+	os.MkdirAll(filepath.Join(legacy, "nodwyn-scratch-new-2"), 0o700)
 	week := time.Now().Add(-8 * 24 * time.Hour)
-	os.Chtimes(filepath.Join(root, "nodwyn-scratch-old-1"), week, week)
-	os.Chtimes(filepath.Join(root, "unrelated"), week, week)
+	elsewhere := t.TempDir()
+	os.Chtimes(elsewhere, week, week)
+	if err := os.Symlink(elsewhere, filepath.Join(root, "nodwyn-scratch-link-1")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{filepath.Join(root, "nodwyn-scratch-old-1"), filepath.Join(root, "unrelated"), filepath.Join(legacy, "nodwyn-scratch-old-2")} {
+		os.Chtimes(p, week, week)
+	}
 	dir, err := makeScratch(data, "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, want := range map[string]bool{"nodwyn-scratch-old-1": false, "nodwyn-scratch-new-1": true, "unrelated": true} {
-		if _, err := os.Stat(filepath.Join(root, name)); (err == nil) != want {
-			t.Errorf("%s: exists=%v, want %v", name, err == nil, want)
+	if filepath.Dir(dir) != root {
+		t.Fatalf("scratch directory %q is not directly in %q", dir, root)
+	}
+	for path, want := range map[string]bool{
+		filepath.Join(root, "nodwyn-scratch-old-1"):  false,
+		filepath.Join(root, "nodwyn-scratch-new-1"):  true,
+		filepath.Join(root, "unrelated"):             true,
+		filepath.Join(root, "nodwyn-scratch-link-1"): true,
+		elsewhere: true,
+		filepath.Join(legacy, "nodwyn-scratch-old-2"): false,
+		filepath.Join(legacy, "nodwyn-scratch-new-2"): true,
+	} {
+		if _, err := os.Lstat(path); (err == nil) != want {
+			t.Errorf("%s: exists=%v, want %v", path, err == nil, want)
 		}
 	}
 	removeScratch(dir)
@@ -114,11 +140,13 @@ func TestScratchSweep(t *testing.T) {
 	}
 }
 
-// With nodwyn's default layout (HOME, no XDG overrides) the scratch
-// directory is in ~/.local/share/nodwyn, which the denylist protects: the
-// model's fs-write and fs-read of $TMPDIR/... still go through, index-grep
-// searches it, and the rest of the data directory, named directly or through
-// a link in the scratch directory, stays denied.
+// With nodwyn's default layout (HOME, no XDG overrides) the data directory
+// is ~/.local/share/nodwyn, which the denylist protects, and the scratch
+// directory is not in it: the model's fs-write and fs-read of $TMPDIR/...
+// go through, index-grep searches it, a program run with that TMPDIR that
+// builds a guard of its own (nodwyn's tests, run by nodwyn) is not refused
+// its temporary files, and the data directory, named directly or through a
+// link in the scratch directory, stays denied.
 func TestScratchDirectoryWithTheDefaultLayout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -154,8 +182,21 @@ func TestScratchDirectoryWithTheDefaultLayout(t *testing.T) {
 	if b, err := os.ReadFile(filepath.Join(s.scratch, "a.py")); err != nil || string(b) != "print(1)\n" {
 		t.Fatalf("the model's scratch file: %q %v", b, err)
 	}
-	if !strings.HasPrefix(s.scratch, config.CanonicalPath(filepath.Join(paths.DataDir, "scratch"))+string(filepath.Separator)) {
-		t.Fatalf("scratch directory %q", s.scratch)
+	if !strings.HasPrefix(s.scratch, scratchRoot()+string(filepath.Separator)) {
+		t.Fatalf("scratch directory %q, want one under %q", s.scratch, scratchRoot())
+	}
+	// What a program run with this TMPDIR meets: its own guard, built from
+	// the default denylist, which protects ~/.local/share/nodwyn. Until
+	// 2026-10-16 the scratch directory was in it, so every temporary
+	// repository of a test run by the model was refused ("path README.md is
+	// under the protected directory"), and the model went to /tmp, or set HOME
+	// and TMPDIR itself (commit-bench, 5 to 17 calls a run).
+	made := filepath.Join(s.scratch, "TestSomething001", "README.md")
+	if reason := guard.DefaultDenylist().Denies(made); reason != "" {
+		t.Errorf("a file a program makes in TMPDIR is refused by the default denylist: %s", reason)
+	}
+	if reason := guard.DefaultDenylist().Denies(filepath.Join(paths.DataDir, "scratch", "x.go")); reason == "" {
+		t.Error("the data directory is no longer protected by the default denylist")
 	}
 	if got := r.eval(`(let ((found (index-grep "$TMPDIR" "print"))) (list (assoc-ref found "files") (assoc-ref found "skipped")))`); got != "(1 0)" {
 		t.Errorf("index-grep in the scratch directory: files and skipped %s", got)
@@ -167,6 +208,50 @@ func TestScratchDirectoryWithTheDefaultLayout(t *testing.T) {
 	os.Symlink(paths.DataDir, filepath.Join(s.scratch, "data"))
 	for _, path := range []string{secret, "$TMPDIR/data/sessions/other.jsonl"} {
 		if _, err := s.Eval(t.Context(), `(fs-read "`+path+`")`); err == nil || !strings.Contains(err.Error(), "denied") {
+			t.Errorf("fs-read %s: %v", path, err)
+		}
+	}
+}
+
+// A TMPDIR that an operator put inside nodwyn's data directory puts the
+// scratch directory there, and it is still the one place in it the tools may
+// use: the exception to the denylist is by what the session made, not by
+// where the system keeps temporary files (ADR 28). The rest of the directory,
+// the temporary directory's other files included, stays denied.
+func TestScratchInsideTheDataDirectoryIsStillTheOnePlaceToUse(t *testing.T) {
+	// The data directory is inside the repository, so the repository pin
+	// lets every path through and only the denylist is asked.
+	repo := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(repo, "xdg-config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(repo, "xdg-data"))
+	paths, err := config.DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := filepath.Join(paths.DataDir, "tmp")
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", tmp)
+	if err := os.WriteFile(filepath.Join(tmp, "other.txt"), []byte("not the session's"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(Options{Repo: repo, Paths: paths, Config: config.Default(), NoConfirm: true, Provider: llm.NewOllama("http://127.0.0.1:1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !strings.HasPrefix(s.scratch, config.CanonicalPath(tmp)+string(filepath.Separator)) {
+		t.Fatalf("scratch directory %q, want one in %q", s.scratch, tmp)
+	}
+	for _, src := range []string{`(fs-write "$TMPDIR/a.py" "print(1)\n")`, `(fs-read "$TMPDIR/a.py")`} {
+		if _, err := s.Eval(t.Context(), src); err != nil {
+			t.Errorf("%s: %v", src, err)
+		}
+	}
+	for _, path := range []string{"xdg-data/nodwyn/tmp/other.txt", "xdg-data/nodwyn/tmp", "xdg-config/nodwyn/bindings.toml"} {
+		if _, err := s.Eval(t.Context(), `(fs-read "`+path+`")`); err == nil || !strings.Contains(err.Error(), "protected directory") {
 			t.Errorf("fs-read %s: %v", path, err)
 		}
 	}
@@ -211,7 +296,9 @@ func TestDenylistFollowsTheConfiguredDirectories(t *testing.T) {
 // $TMPDIR, and a write there needs no approval. A turn marks the directory
 // in use for the sweep.
 func TestTmpdirNamesTheScratchDirectoryInEveryTool(t *testing.T) {
-	t.Parallel()
+	// The test ages its scratch directory by a week, which another session's
+	// start sweeps from the shared temporary directory: use one of its own.
+	t.Setenv("TMPDIR", t.TempDir())
 	srv := fake.NewT(t, fake.Turn{Content: "ok"})
 	defer srv.Close()
 	o := diskOptions(t) // NoConfirm: any prompt would be refused

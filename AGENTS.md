@@ -139,8 +139,12 @@ A plan's `Docs:` steps name every file this list asks for the change.
 
 ## When nodwyn runs its own tests
 
-TMPDIR is then the session's scratch directory, inside nodwyn's protected data
-directory, and commits may find no signing agent. Packages whose tests build a
-guard or commit isolate HOME with `test/fakes/home`; a new such package does
-the same in its `TestMain`. A test that fails on the unchanged code too is not
-yours: say so rather than fix around it.
+TMPDIR is then the session's scratch directory, a private directory in the
+system's temporary directory (until 2026-10-16 it was inside nodwyn's protected
+data directory, where every test repository was refused), and commits may find
+no signing agent. Packages whose tests build a guard or commit isolate HOME
+with `test/fakes/home`; a new such package does the same in its `TestMain`. A
+test that starts a session and kills it, or never closes it, leaves its scratch
+directory in the temporary directory: give it a `TMPDIR` of its own
+(`TestResumeAfterProcessKilled` does). A test that fails on the unchanged code
+too is not yours: say so rather than fix around it.

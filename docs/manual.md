@@ -462,20 +462,30 @@ the end of the conversation. This folds the display only; `/compact
 ### The scratch directory
 
 Each session gets a scratch directory outside the repository, a private
-directory (mode 0700) under nodwyn's data directory, for throwaway files: a
-script that reproduces a bug, notes, temporary output. The default system
-prompt names it as `$TMPDIR`, so the prompt is the same in every session, and
-`$TMPDIR` means it everywhere: commands run with `TMPDIR` set to it, and a
-file primitive's path or a command's argument that starts with `$TMPDIR/`
-(or `${TMPDIR}/`) is rewritten to it before the guard sees it. Writes there
-need no approval. Nothing in it reaches the repository or its diff; a clean
-close removes it, and a resumed session gets a new, empty one. A session
-touches it at every turn, and directories untouched for a week, left by
-sessions that ended without closing, are swept. It is the one place in
-nodwyn's data directory the tools may use: everything else outside the
-repository stays refused, the rest of the data directory included (wherever
-`XDG_DATA_HOME` puts it), and a symbolic link out of the scratch directory
-does not escape it (ADR 28).
+directory (mode 0700, a name no one can guess) in the system's temporary
+directory (`TMPDIR`, else `/tmp`), for throwaway files: a script that
+reproduces a bug, notes, temporary output. It is outside nodwyn's
+configuration and data directories, which the guard protects, so a test
+suite or a tool a command runs, with the scratch directory as its `TMPDIR`,
+makes its temporary files and directories there as it would anywhere, and is
+not refused them. The default system prompt names it as `$TMPDIR`, so the
+prompt is the same in every session, and `$TMPDIR` means it everywhere:
+commands run with `TMPDIR` set to it, and a file primitive's path or a
+command's argument that starts with `$TMPDIR/` (or `${TMPDIR}/`) is
+rewritten to it before the guard sees it. Writes there need no approval.
+Nothing in it reaches the repository or its diff; a clean close removes it,
+and a resumed session gets a new, empty one. A session touches it at every
+turn, and directories untouched for a week, left by sessions that ended
+without closing (in the temporary directory, and in the data directory, where
+sessions before 2026-10-16 kept theirs), are swept; only this user's own,
+named for a scratch directory, are removed. It is the one place outside the
+repository the tools may use: everything else outside it stays refused, the
+configuration and data directories included (wherever `XDG_CONFIG_HOME` and
+`XDG_DATA_HOME` put them; and if `TMPDIR` is itself set inside one, the
+scratch directory is still the one place there that is open), and a symbolic
+link out of the scratch directory does not escape it (ADR 28). A system whose
+temporary directory forbids running programs from it needs a `TMPDIR` for
+nodwyn that does not.
 
 ### Notes kept across sessions
 

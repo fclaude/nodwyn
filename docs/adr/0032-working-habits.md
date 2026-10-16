@@ -1639,3 +1639,20 @@ measure of whether that buys the tests it asks for. Not built: reading
 coverage output in the loop; a check that an assumption was compared with a
 test; the report's other candidates (gate work, sandbox paths, re-reads after
 folds).
+
+## Amendment 2026-10-16: the scratch rule says what TMPDIR is
+
+The review of the nine tasks' dsl20r transcripts (commit-bench, Muse,
+2026-10-16, `muse-review-2026-10-16.md`) found a cost the working rules could name.
+
+- **The scratch directory and the commands that use it.** The model's
+  `TMPDIR` was inside the guard-protected data directory: 5 to 17 calls of a
+  run (67a1f950, 855e90e7, 7513f7eb) went on tests that failed because their
+  temporary directory was a protected path, and on `HOME` and `TMPDIR` set to
+  `/tmp` paths (13 of the 23 shell commands refused in the 26 runs named
+  `/tmp`) or to a folder of the repository. The directory is now in the
+  system's temporary directory (ADR 28, amended 2026-10-16), and the scratch
+  rule adds the sentence that follows from it: commands run with `TMPDIR` set
+  to it, so a test suite puts its temporary files there without being told;
+  do not set `TMPDIR` or `HOME` elsewhere, and do not use `/tmp`.
+  `TestPromptsSayWhereScratchIs`.

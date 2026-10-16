@@ -680,9 +680,11 @@ it or the session closes, and at most four run at once.
 
 \section{The scratch directory}
 
-Each session has a private scratch directory outside the repository, for
-throwaway files: a reproduction script, notes, temporary output.
-\code{(scratch-dir)} names it, but a program rarely needs to: in every
+Each session has a private scratch directory outside the repository, in
+the system's temporary directory and so outside \nodwyn's own configuration
+and data directories, for throwaway files: a reproduction script, notes,
+temporary output; a test suite a command runs makes its temporary
+directories there without being refused them. \code{(scratch-dir)} names it, but a program rarely needs to: in every
 path argument and every command argument, a value that is \code{\$TMPDIR}
 or starts with \code{\$TMPDIR/} (or \code{\$\{TMPDIR\}/}) is rewritten to
 it before the guard sees the call, and commands get it as \code{TMPDIR}.

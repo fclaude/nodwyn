@@ -1,8 +1,9 @@
 // Package home gives a test binary a home directory of its own, so its
 // tests do not depend on the machine they run on: on where TMPDIR is
 // (nodwyn's denylist protects its directories under HOME, and when nodwyn
-// runs its own tests TMPDIR is a session's scratch directory inside its
-// data directory, where every test repository was refused), on the user's
+// runs its own tests TMPDIR was a session's scratch directory inside its
+// data directory, where every test repository was refused; since 2026-10-16
+// it is in the system's temporary directory), on the user's
 // git configuration (commit signing through an agent a test cannot reach),
 // or on their nodwyn configuration.
 package home

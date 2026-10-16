@@ -308,9 +308,11 @@ feature: a strategy you write cannot accidentally keep a runaway turn alive.
 
 \section{The scratch directory}
 
-Every session gets a private scratch directory outside your folder, for
-throwaway files: a script that reproduces a bug, notes, temporary output.
-The model knows it as \code{\$TMPDIR}: commands run with \code{TMPDIR} set to
+Every session gets a private scratch directory outside your folder, in the
+system's temporary directory (so outside \nodwyn's own configuration and
+data directories, which the guard protects, and a test suite a command runs
+is not refused the temporary files it makes there), for throwaway files: a
+script that reproduces a bug, notes, temporary output. The model knows it as \code{\$TMPDIR}: commands run with \code{TMPDIR} set to
 it, and a path or command argument starting with \code{\$TMPDIR/} is
 rewritten to it before the guard sees it. Writes there need no approval.
 Nothing in it reaches your folder or its diff. A clean exit removes it; a
@@ -319,7 +321,7 @@ resumed session gets a fresh one.
 \begin{tryit}
 \begin{txt}
 you> :eval (scratch-dir)
-"/home/you/.local/share/nodwyn/scratch/nodwyn-scratch-2026...-e0550e21-5431"
+"/tmp/nodwyn-scratch-2026...-e0550e21-5431"
 \end{txt}
 \end{tryit}
 
