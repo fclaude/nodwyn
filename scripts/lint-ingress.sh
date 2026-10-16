@@ -15,7 +15,9 @@ for p in root.rglob('*.go'):
 assert writes == [('internal/core/events.go', 's.events = append(s.events, ev)')], writes
 s = Path('internal/core/events.go').read_text()
 record = s.split('func (s *Session) Record(',1)[1].split('\n}\n',1)[0]
-assert record.index('redact.Payload(') < record.index('s.logw.Append(') < record.index('s.remember(')
+assert record.index('redact.Payload(') < record.index('s.recordInOrder(')
+ordered = s.split('func (s *Session) recordInOrder(',1)[1].split('\n}\n',1)[0]
+assert 'redact' not in ordered and ordered.index('s.logw.Append(') < ordered.index('s.remember(')
 restore = s.split('func (s *Session) restoreHistory(',1)[1].split('\n}\n',1)[0]
 assert restore.index('redact.JSON(') < restore.index('s.remember(')
 remember_calls = []
