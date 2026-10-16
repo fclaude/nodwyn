@@ -36,7 +36,11 @@ check(async () => {
   await page.fill('#schedule-at', '2099-10-16T09:30');
   await page.fill('#schedule-cost', '1.25');
   await until("daemon next-time preview", () => sent.of('schedule.next').some((p) => p.at === '2099-10-16T09:30' && p.repeat === 'weekly'));
-  await page.waitForFunction(() => document.querySelector('.schedule-form [role=status]')?.textContent.includes('2099-10-16 09:30'));
+  // The preview says when in words, with the daemon's times and offsets for
+  // the title.
+  await page.waitForFunction(() => document.querySelector('.schedule-form [role=status]')?.title.includes('2099-10-16 09:30'));
+  const preview = await page.textContent('.schedule-form [role=status]');
+  assert.ok(/^Next: .*9:30.*, then every week$/.test(preview) && !preview.includes('2099-10-16'), `the preview is not in words: ${preview}`);
   await page.click('.schedule-form button[type=submit]');
   await page.waitForSelector('.task[data-loaded]');
   const id = await page.evaluate(() => location.hash.split('/')[2]);
@@ -62,6 +66,17 @@ check(async () => {
   await page.reload(); await ready(page); await page.waitForSelector('.task[data-loaded]');
   await manage(); await status('Scheduled');
   assert.strictEqual(await page.inputValue('#schedule-message'), 'Write scheduled', 'saved message did not reload');
+  // The dialog holds what a person came to see: the status, the message and
+  // when it runs next in words (the raw times are a tooltip), with Close at
+  // its top right and the edit form folded away until Edit is chosen.
+  const dialog = await page.$eval('dialog.schedule-dialog', (el) => {
+    const close = el.querySelector('[aria-label="Close schedule"]').getBoundingClientRect(), title = el.querySelector('h2').getBoundingClientRect(), box = el.getBoundingClientRect();
+    return { text: el.innerText, closeAtRight: close.right > box.right - 40 && Math.abs(close.top - title.top) < 20, folded: !el.querySelector('.schedule-edit').open, next: el.querySelector('.hint[title]')?.title };
+  });
+  assert.ok(dialog.closeAtRight, `Close is not at the top right: ${JSON.stringify(dialog)}`);
+  assert.ok(dialog.folded && !dialog.text.includes('Spend limit per run'), 'the edit form is not folded away');
+  assert.ok(/Next: .*9:30.*, then every week/.test(dialog.text) && !dialog.text.includes('2099-10-16 09:30') && dialog.next.includes('2099-10-16 09:30'), `the next time is not in words, with the times for a tooltip: ${dialog.text}`);
+  await page.click('.schedule-edit > summary');
   await page.click('button:text-is("Pause schedule")'); await status('Paused');
   assert.strictEqual(sent.of('schedule.pause').at(-1).paused, true);
   await page.fill('#schedule-message', 'Write scheduled-again');
@@ -97,7 +112,7 @@ check(async () => {
   const figures = await page.locator('[data-totals]').textContent();
   assert.match(figures, /Total spend.*\$5\.00/);
   assert.match(figures, /This run\$0\.0000/, 'this run inherited the whole-task spend');
-  await manage(); await status("Scheduled"); await page.waitForFunction(() => document.querySelector(".schedule-form [role=status]")?.textContent.includes("2099")); await page.screenshot({ path: `${out}/schedule-controls.png` });
+  await manage(); await status("Scheduled"); await page.waitForFunction(() => document.querySelector(".schedule-form [role=status]")?.title.includes("2099")); await page.screenshot({ path: `${out}/schedule-controls.png` });
   // Removing asks first, as every removal does: Cancel keeps it.
   await page.click('button:text-is("Remove schedule")');
   assert.ok((await page.locator('.schedule-dialog').textContent()).includes('Remove the schedule? The task and what it has done stay.'));

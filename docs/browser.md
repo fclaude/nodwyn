@@ -111,8 +111,11 @@ button is disabled and says why. **Schedule…** in a task's **⋯** menu, with 
 saved definition and controls; **Remove schedule** asks first. The dialog is
 titled **Schedule** here and on Home: scheduling has that one name, and
 **Repeat** is only the field for how often.
-`schedule.next` supplies the preview; displayed ISO times retain the daemon’s
-local offset even when a browser uses another timezone. Schedule creation and
+`schedule.next` supplies the preview, which reads as "Next: tomorrow 9:30 AM,
+then every day" on the schedule's own wall clock (the browser's zone does not
+move it); the full list, ISO times with the daemon’s local offset, is its
+tooltip. The dialog shows the status, the message and that line, with **Close**
+at its top right and the edit form folded behind **Edit**. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,
 as do edits and removal. Runs discard Don’t ask and use normal approvals.
 Home lists next times and paused schedules, each card with Pause or Resume and

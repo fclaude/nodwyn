@@ -1025,7 +1025,7 @@ export class TaskView {
     // An item of the menu: choosing it folds the menu away first, so the
     // redraw that follows its action does not leave it open.
     const entry = (label, handler, { danger = false, disabled = false, title = "" } = {}) =>
-      h("button", { type: "button", class: `menu-item${danger ? " danger" : ""}`, disabled: disabled || !this.conn.live || this.acting, title: title || undefined, onclick: () => { this.menuOpen = false; handler(); } }, label);
+      h("button", { type: "button", class: `menu-item${danger ? " danger" : ""}`, disabled: disabled || !this.conn.live || this.acting, title: title || undefined, onclick: (event) => { this.menuOpen = false; event.target.closest("details")?.removeAttribute("open"); handler(); } }, label);
     if (this.conn.has("conversation.search") && this.conn.has("log.context")) menu.push(h("a", { class: "menu-item", href: `#/search/${encodeURIComponent(item.id)}`, "aria-label": "Search conversation", onclick: () => (this.menuOpen = false) }, "Search"));
     if (this.conn.has("schedule.read") && (this.conn.has("schedule.set") || item.schedule?.definition)) menu.push(entry("Schedule…", () => manageSchedule(this.conn, item.id, async () => { await this.desk.refresh(); if (this.item?.id === item.id) { this.item = this.desk.sessions.get(item.id) || item; this.header(); if (this.item.open) await this.loadInfo(); } })));
     // A run comes from nodwyn run (ADR 35): Stop ends it, and a message

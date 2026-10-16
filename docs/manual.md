@@ -2147,9 +2147,9 @@ tasks appear on Home with their next time or Paused, and a card has **Pause
 schedule** (or **Resume schedule**) and **Run now**; Home says "Nothing
 scheduled." when there is none.
 
-On an existing task, **Schedule…** in its **⋯** menu, whether it has a schedule or not, shows
-its message, next times and last skip, and lets you save changes, pause, resume,
-run now or remove it (after a confirm). Run now also works while paused and leaves the automatic
+On an existing task, **Schedule…** in its **⋯** menu adds a schedule, or
+shows its message, when it runs next and its last skip, and lets you save changes
+(behind **Edit**), pause, resume, run now or remove it (after a confirm). Run now also works while paused and leaves the automatic
 next time unchanged. Resuming a paused schedule starts after now, without
 catching up the paused interval. Retiming starts the new series; changing
 only its message or spend preserves the times already handled. Removing a
