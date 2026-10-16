@@ -9,8 +9,9 @@ import (
 )
 
 // StartEval is the asynchronous, serialized frontend entrypoint for user
-// Scheme. Eval remains available to the existing in-process frontend. Source
-// and result are redacted on the durable path; neither enters model context.
+// Scheme, and the one every client uses: it is recorded (eval.req and
+// eval.result) and cannot overlap a turn. Source and result are redacted on
+// the durable path; neither enters model context.
 func (s *Session) StartEval(source, actor string) error {
 	return s.startTurn(func(ctx context.Context) error {
 		_, err := s.evalRecorded(ctx, source, actor)

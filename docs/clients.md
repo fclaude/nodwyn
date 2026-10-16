@@ -52,7 +52,7 @@ it can see the thing but not change it.
 | Open at the latest run; page back through collapsed earlier runs (ADR 49) | yes; earlier contents load on expansion | deliberate gap: replays the conversation whole | replays whole | `replay` reads whole |
 | Send a message, abort a turn | yes | yes; Ctrl+C aborts, and clears an unsent draft before it quits | yes | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |
-| Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` | `nodwyn eval`, `nodwyn repl` |
+| Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` (recorded as `eval.req` and `eval.result`, as in the TUI) | `nodwyn eval`, `nodwyn repl` |
 | Thinking | inline, folded | `:thinking` toggles it | `--show-thinking` | `--show-thinking replay` |
 | Tool calls | grouped into one Activity row per stretch between replies | one line per call; `:details` expands them | a card per call | — |
 | Retrieval calls said in words (`index-search` and where it searched, `recall` and its seq, `index-update`; ADR 50) | yes, folded as looks (`searched 3 times · recalled 1 event · updated the index`) | yes | yes | `replay` |

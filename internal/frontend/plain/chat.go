@@ -18,7 +18,6 @@ import (
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Chat is the line-mode agent front-end: one goroutine reads the user's
@@ -96,37 +95,6 @@ func (c *Chat) banner() {
 		names = append(names, t.Name)
 	}
 	fmt.Fprintf(c.Out, "nodwyn session %s\nrepo  %s\ntools %s\n:h for commands\n", s.ID(), s.Repo(), strings.Join(names, " "))
-}
-
-// evalFollowing evaluates src while rendering the session's events, so a
-// prompt the evaluation raises (credential-register's masked input, a
-// confirm) is shown and answered instead of waiting for a reply that the
-// front-end would only read after Eval returned.
-func (c *Chat) evalFollowing(ctx context.Context, src string) (scheme.Value, error) {
-	type result struct {
-		v   scheme.Value
-		err error
-	}
-	done := make(chan result, 1)
-	go func() {
-		v, err := c.Session.Eval(ctx, src)
-		done <- result{v, err}
-	}()
-	for {
-		select {
-		case r := <-done:
-			c.drainIdle()
-			return r.v, r.err
-		case ev, ok := <-c.Session.Events():
-			if !ok {
-				r := <-done
-				return r.v, r.err
-			}
-			if ev.Seq == 0 || ev.Seq > c.replayedSeq {
-				c.show(ev)
-			}
-		}
-	}
 }
 
 // drainIdle consumes buffered events without blocking.
@@ -225,6 +193,13 @@ func (c *Chat) show(ev event.Event) {
 			fmt.Fprintf(c.Out, "◂ %s ok (%d bytes, %d ms)\n", p.Name, len(p.Value), p.Millis)
 		} else {
 			fmt.Fprintf(c.Out, "◂ %s error: %s\n", p.Name, p.Error)
+		}
+	case string(log.KindEvalResult):
+		endStream()
+		// The value was redacted as it was recorded; a failure is shown by
+		// the error event the turn emits.
+		if p := ev.Payload.(log.EvalResult); p.Error == "" && p.Value != "" {
+			fmt.Fprintln(c.Out, p.Value)
 		}
 	case string(log.KindIndexUpdate):
 		endStream()
@@ -520,13 +495,14 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 		}
 	case ":eval":
 		src := strings.TrimSpace(strings.TrimPrefix(line, ":eval"))
-		v, err := c.evalFollowing(ctx, src)
-		if err != nil {
+		// The same recorded, serialized path as the TUI and the console, so
+		// the log shows what ran; following its events shows a prompt it
+		// raises (credential-register's masked input, a confirm) and answers
+		// it instead of waiting for a reply read only afterwards.
+		if err := c.Session.StartEval(src, "line"); err != nil {
 			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
-		} else if v.Kind != scheme.KVoid {
-			fmt.Fprintln(c.Out, redact.Redact(scheme.WriteWithStrings(v, func(text string) string {
-				return redact.Redact(text, nil).Text
-			}), nil).Text)
+		} else {
+			c.follow(ctx)
 		}
 	case ":allow":
 		for _, a := range c.Session.Allowed() {
