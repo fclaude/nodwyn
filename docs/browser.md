@@ -176,8 +176,9 @@ unsaved changes keeps those made in every tab. The tabs:
   be used and, when not, the sentence that says what to fix (needs its key,
   keychain locked, key not allowed, not answering); **Test** sends it one short
   request and shows the reply or the provider's refusal; **Check again** asks
-  every server now; **Add a provider** and **Edit** take a kind, an address, a
-  dialect and an API key (kept in the keychain, bound for the provider's
+  every server now; **Add a provider** and **Edit** take a preset (which says
+  the kind), an address, a dialect, a name (under a **More** fold, when
+  adding) and an API key (kept in the keychain, bound for the provider's
   requests and its model list, never in the page again; the form takes a key
   for a provider that has none, and a stored key's value is changed under
   Credentials, which the form links to), with presets that only fill the form.
@@ -185,8 +186,11 @@ unsaved changes keeps those made in every tab. The tabs:
   efforts it takes and
   a line saying its context length and prices; **Add a model** and **Edit**
   take a provider, a model id (suggested from what the provider lists, asked
-  with its key), its efforts (*As published*, the provider's, once the id is
-  given and `models.published` describes it) and its own settings (ADR 41,
+  with its key as the form opens, and offered as buttons when the list is
+  short) and, under a **More** fold that is closed when adding and open when
+  changing, its efforts (*As published*, the provider's, once the id is
+  given and `models.published` describes it), what it is for and the effort
+  it starts at; and its own settings (ADR 41,
   amended 2026-10-05), each with what the provider publishes as its
   placeholder: its context length, its reply cap, which comes out of it, with
   a line under both saying what the conversation is left with as they are

@@ -223,7 +223,7 @@ function providerDraft(p, preset = "openai") {
   const f = p
     ? { mode: "edit", name: p.name, preset: "", kind: p.provider, url: p.url, dialect: p.dialect || "", key: "", hasKey: !!p.credential, host: p.host, error: "" }
     : { mode: "add", name: "", preset, kind: dflt.kind, url: dflt.url, dialect: dflt.dialect, key: "", hasKey: false, host: "", error: "" };
-  return Object.assign(f, { authentication: p?.authentication || "api_key", credential: "", credentialClass: p?.authentication === "chatgpt" ? p.credential : "", accounts: null, authorization: null, connecting: false });
+  return Object.assign(f, { more: false, authentication: p?.authentication || "api_key", credential: "", credentialClass: p?.authentication === "chatgpt" ? p.credential : "", accounts: null, authorization: null, connecting: false });
 }
 
 function openProvider(ctx, p, redraw) {
@@ -334,7 +334,6 @@ function providerForm(ctx, redraw, first = false) {
       return true;
     }
   })();
-  const kind = (id) => h("button", { type: "button", class: "chip", "aria-pressed": String(f.kind === id), disabled: !adding, onclick: () => ((f.kind = id), (f.preset = ""), (f.authentication = "api_key"), redraw()) }, kinds[id].label);
   const form = h(
     "form",
     {
@@ -381,9 +380,9 @@ function providerForm(ctx, redraw, first = false) {
     },
     h("h3", { class: "form-title" }, adding ? (first ? "Where does the model run?" : "Add a provider") : `Change ${f.name}`),
     adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), (f.authentication = "api_key"), redraw()) }, p.label))) : null,
-    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai"), kind("anthropic")),
+    // The presets say the kind (Other server is the OpenAI-compatible one), so
+    // there is one choice to make, not a preset and then a kind.
     h("p", { class: "hint" }, kinds[f.kind].needs),
-    field("provider-name", "Name", h("input", { class: "input", id: "provider-name", spellcheck: false, autocomplete: "off", disabled: !adding, value: f.name, placeholder: adding ? "named after its address" : "", oninput: (event) => (f.name = event.target.value) }), adding ? "What models name it. Two providers can share an address, such as an API key and a ChatGPT plan at OpenAI." : ""),
     f.kind === "openai" ? h("div", { class: "row-actions", role: "group", "aria-label": "Authentication" },
       ["api_key", "chatgpt"].map((auth) => h("button", { type: "button", class: "chip", id: `provider-auth-${auth}`, disabled: f.saving || f.connecting, "aria-pressed": String(f.authentication === auth), onclick: () => {
         f.authentication = auth;
@@ -422,6 +421,17 @@ function providerForm(ctx, redraw, first = false) {
       account?.needs_reauth ? h("p", { class: "warn-text" }, "This account needs you to sign in again before saving.") : null) : null,
     !plan && !sameHostNow && f.hasKey ? h("p", { class: "warn-text" }, "This is another host. The saved key is not sent there: type its key, or the provider is left without one.") : null,
     !plan && f.credentialClass && !f.key ? h("p", { class: "hint" }, "Type an API key to switch this provider from its ChatGPT plan. The connected account stays in the keychain.") : null,
+    // Almost nobody names a provider: one left unnamed is named after its
+    // address, so the field waits under a fold.
+    adding
+      ? h(
+          "details",
+          { class: "more-settings", id: "provider-more", open: f.more },
+          // The state is set as the summary is clicked, not when the fold reports it: a redraw between the two (the models answer) would otherwise close it.
+          h("summary", { onclick: () => (f.more = !f.more) }, "More: a name for it"),
+          field("provider-name", "Name", h("input", { class: "input", id: "provider-name", spellcheck: false, autocomplete: "off", value: f.name, placeholder: "named after its address", oninput: (event) => (f.name = event.target.value) }), "What models name it. Two providers can share an address, such as an API key and a ChatGPT plan at OpenAI."),
+        )
+      : null,
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
     h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn accent", id: "provider-save", disabled: f.saving || f.connecting || (plan && (!keychainReady || !account || account.needs_reauth)) || (!plan && !!f.credentialClass && !f.key) || (hasKey(f.kind) && !!f.key && !keychainReady) }, f.saving ? "Saving…" : "Save the provider"), cancellable ? h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.provider = null), redraw()) }, "Cancel") : null),
   );
@@ -694,7 +704,7 @@ function settingsFields(f, kind, redraw, desk) {
       : null,
     h(
       "details",
-      { class: "more-settings", open: f.more, ontoggle: (event) => (f.more = event.target.open) },
+      { class: "more-settings", id: "model-more-settings", open: f.more, ontoggle: (event) => (f.more = event.target.open) },
       h("summary", {}, "More settings"),
       h(
         "div",
@@ -815,7 +825,16 @@ function modelForm(ctx, redraw, first = false) {
   const efforts = effortsOf(f);
   const server = h("select", { class: "input", id: "model-provider", disabled: !adding, onchange: () => ((f.server = server.value), askOffered(ctx, f.server, redraw), askPublished(ctx, f, redraw), redraw()) }, providers.map((p) => h("option", { value: p.name }, `${p.name} · ${p.host}`)));
   server.value = f.server;
+  // The models the provider lists are asked for as the form opens, so there
+  // is something to pick from without a click in the field first.
+  if (adding && f.server && !ui.offered.has(f.server)) askOffered(ctx, f.server, redraw);
   const offered = ui.offered.get(f.server);
+  // What most models need none of is folded away when adding, open when
+  // changing. Clicking the summary sets it at once, since the form is drawn
+  // again as the provider answers and a fold left to report itself would close.
+  const extrasOpen = f.extras ?? !adding;
+  // A short list is offered as buttons; a long one (OpenRouter's) is typed to.
+  const listed = Array.isArray(offered) && offered.length > 0 && offered.length <= 8;
   // The buttons follow what is typed without a redraw of the form under it.
   const save = h("button", { type: "submit", class: "btn accent", id: "model-save" }, f.saving ? "Saving…" : first ? "Save and use it" : "Save the model");
   const testButton = h("button", { type: "button", class: "btn", id: "model-test", title: "Sends one short request to this model, without saving it", onclick: () => test(ctx, "form", { server: f.server, model: f.model.trim() }, redraw) }, "Test it");
@@ -892,32 +911,47 @@ function modelForm(ctx, redraw, first = false) {
       },
     },
     h("h3", { class: "form-title" }, adding ? (first ? "Which model?" : "Add a model") : `Change ${f.model}`),
-    field("model-provider", "Provider", server),
-    field("model-id", "Model", [id, options], Array.isArray(offered) ? `${f.server} offers ${offered.length} model${offered.length === 1 ? "" : "s"}: type to pick one.` : typeof offered === "string" ? `${offered}. Type the model's name.` : ""),
+    // The first run has just said which provider this is, so it is not asked
+    // again; the select stays for the form to read.
+    first ? h("div", { hidden: true }, server) : field("model-provider", "Provider", server),
+    field(
+      "model-id",
+      "Model",
+      [id, options, listed ? h("div", { class: "row-actions", role: "group", "aria-label": "Models it offers" }, offered.map((name) => h("button", { type: "button", class: "chip", dataset: { offered: name }, "aria-pressed": String(f.model.trim() === name), onclick: () => ((f.model = name), redraw(), askPublished(ctx, f, redraw)) }, name))) : null],
+      Array.isArray(offered) ? `${f.server} offers ${offered.length} model${offered.length === 1 ? "" : "s"}: ${listed ? "pick one, or type another" : "type to pick one"}.` : typeof offered === "string" ? `${offered}. Type the model's name.` : "",
+    ),
+    // What most models need none of: the efforts it takes (the provider's, as
+    // published, when it says), what it is for and the effort it starts at.
+    // Closed on the first run and when adding; open when changing a model.
     h(
-      "div",
-      { class: "field" },
-      h("label", {}, "Efforts it takes"),
+      "details",
+      { class: "more-settings", id: "model-more", open: extrasOpen },
+      h("summary", { onclick: () => (f.extras = !extrasOpen) }, "More: efforts it takes, what it is for, the effort it starts at"),
       h(
         "div",
-        { class: "row-actions", role: "group", "aria-label": "Efforts it takes" },
-        effortSets.filter((s) => s.id !== "published" || f.published?.efforts?.length).map((s) => h("button", { type: "button", class: "chip", id: `efforts-${s.id}`, "aria-pressed": String(f.set === s.id), onclick: () => ((f.set = s.id), (f.setChosen = true), redraw()) }, s.label)),
+        { class: "field" },
+        h("label", {}, "Efforts it takes"),
+        h(
+          "div",
+          { class: "row-actions", role: "group", "aria-label": "Efforts it takes" },
+          effortSets.filter((s) => s.id !== "published" || f.published?.efforts?.length).map((s) => h("button", { type: "button", class: "chip", id: `efforts-${s.id}`, "aria-pressed": String(f.set === s.id), onclick: () => ((f.set = s.id), (f.setChosen = true), redraw()) }, s.label)),
+        ),
+        f.set === "custom" ? custom : null,
+        h("p", { class: "hint" }, efforts.length ? `Offered as ${efforts.map(effortLabel).join(", ")}${f.set === "published" ? ", as its provider publishes them" : ""}. Sent as the provider's own words: ${{ anthropic: "output_config.effort, with adaptive thinking, to Anthropic (Claude 4.6 and later)", ollama: "think to Ollama" }[providerOf(desk, f.server)?.provider] || "reasoning_effort to a chat-completions server"}.` : "No effort setting is sent to this model, and none is offered."),
+        // Efforts typed before nodwyn knew the provider's may have gone stale.
+        f.set !== "published" && f.published?.efforts?.length ? h("p", { class: "hint", id: "efforts-published-differ" }, `Its provider publishes ${f.published.efforts.map(effortLabel).join(", ")}: As published follows them.`) : null,
       ),
-      f.set === "custom" ? custom : null,
-      h("p", { class: "hint" }, efforts.length ? `Offered as ${efforts.map(effortLabel).join(", ")}${f.set === "published" ? ", as its provider publishes them" : ""}. Sent as the provider's own words: ${{ anthropic: "output_config.effort, with adaptive thinking, to Anthropic (Claude 4.6 and later)", ollama: "think to Ollama" }[providerOf(desk, f.server)?.provider] || "reasoning_effort to a chat-completions server"}.` : "No effort setting is sent to this model, and none is offered."),
-      // Efforts typed before nodwyn knew the provider's may have gone stale.
-      f.set !== "published" && f.published?.efforts?.length ? h("p", { class: "hint", id: "efforts-published-differ" }, `Its provider publishes ${f.published.efforts.map(effortLabel).join(", ")}: As published follows them.`) : null,
+      h(
+        "div",
+        { class: "field" },
+        h("label", { for: "model-labels" }, "What it is for"),
+        labels,
+        h("div", { class: "row-actions", role: "group", "aria-label": "Common labels" }, hintButtons),
+        h("p", { class: "hint" }, "Words of your own, such as fast or strong, separated by commas. A task you let hand work to other models shows the model its helpers by these, so it can choose without knowing their names; a change reaches tasks already open."),
+      ),
+      efforts.length && !f.isDefault ? field("model-effort", "Starts at", effort, first ? "The effort a new task asks of it unless one is chosen." : "The effort a task asks of this model unless one is chosen.") : null,
+      efforts.length && f.isDefault ? h("p", { class: "hint" }, "The effort a new task starts at is the default's, above.") : null,
     ),
-    h(
-      "div",
-      { class: "field" },
-      h("label", { for: "model-labels" }, "What it is for"),
-      labels,
-      h("div", { class: "row-actions", role: "group", "aria-label": "Common labels" }, hintButtons),
-      h("p", { class: "hint" }, "Words of your own, such as fast or strong, separated by commas. A task you let hand work to other models shows the model its helpers by these, so it can choose without knowing their names; a change reaches tasks already open."),
-    ),
-    efforts.length && !f.isDefault ? field("model-effort", "Starts at", effort, first ? "The effort a new task asks of it unless one is chosen." : "The effort a task asks of this model unless one is chosen.") : null,
-    efforts.length && f.isDefault ? h("p", { class: "hint" }, "The effort a new task starts at is the default's, above.") : null,
     first ? h("p", { class: "hint" }, "Its context length, prices and the rest of its settings are what its provider publishes, and Settings › Models changes them once it answers.") : settingsFields(f, providerOf(desk, f.server)?.provider, redraw, desk),
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
     resultLine(testing),

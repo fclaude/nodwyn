@@ -58,7 +58,11 @@ check(async () => {
   for (const preset of ["ollama", "openai", "anthropic", "baseten", "openrouter", "cerebras", "other"]) assert.strictEqual(await page.locator(`#preset-${preset}`).count(), 1, `no ${preset} preset`);
   // Jev answers the judge and carries no model, so the first run does not offer it.
   assert.strictEqual(await page.locator("#preset-jev").count(), 0, "the first run offers the Jev preset");
-  assert.strictEqual(await page.locator("[aria-label='Kind of server'] button:text-is('Jev')").count(), 0, "the first run offers the Jev kind");
+  // One choice, not a preset and then a kind; a name is for those who want
+  // one, under a fold.
+  assert.strictEqual(await page.locator("[aria-label='Kind of server']").count(), 0, "the first run asks for a kind after the preset");
+  assert.strictEqual(await page.$eval("#provider-more", (d) => d.open), false, "the provider's name is not folded away");
+  assert.strictEqual(await page.isVisible("#provider-name"), false);
   assert.strictEqual(await page.locator("#first-model button:text-is('Cancel')").count(), 0, "the first provider form can be cancelled");
   assert.strictEqual(await page.locator("#add-model, #add-provider").count(), 0, "setup shows Settings' own buttons");
   await page.screenshot({ path: `${out}/firstrun-setup.png` });
@@ -83,9 +87,13 @@ check(async () => {
   assert.strictEqual(await page.locator("#first-another").count(), 1, "no way back to another provider");
   assert.strictEqual(await page.locator("#model-form button:text-is('Cancel')").count(), 0, "the first model form can be cancelled");
   assert.strictEqual(await page.locator("#model-num_ctx").count(), 0, "setup asks for a context length");
-  await page.focus("#model-id");
-  await page.waitForFunction(() => [...document.querySelectorAll("#model-id-options option")].map((o) => o.value).join() === "demo,fake", null, { timeout: 10000 });
-  await page.fill("#model-id", "demo");
+  // The models the saved provider lists are offered as buttons without a click
+  // in the field first, and efforts, labels and the starting effort are folded.
+  await page.waitForFunction(() => [...document.querySelectorAll("[data-offered]")].map((b) => b.dataset.offered).join() === "demo,fake", null, { timeout: 10000 });
+  assert.strictEqual(await page.isVisible("#model-provider"), false, "setup asks for the provider it has just been told");
+  assert.strictEqual(await page.$eval("#model-more", (d) => d.open), false, "efforts and labels are asked before anything works");
+  await page.click("[data-offered='demo']");
+  assert.strictEqual(await page.inputValue("#model-id"), "demo");
   await page.screenshot({ path: `${out}/firstrun-model-setup.png` });
   await page.click("#model-save");
   await page.waitForSelector("#task", { timeout: 10000 });

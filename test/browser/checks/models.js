@@ -194,6 +194,7 @@ check(async () => {
   await shows("#model-form", "did not accept the key (401): replace it. Type the model's name.");
   assert.strictEqual(await page.locator("#model-id-options option").count(), 0, "a provider that refused the key offered models");
   await page.fill("#model-id", "reasoner");
+  await page.click("#model-more > summary");
   await page.click("#efforts-lmh");
   await page.selectOption("#model-effort", "medium");
   await page.click("#model-test");
@@ -303,6 +304,7 @@ check(async () => {
   await page.click("#add-provider");
   await page.click("#preset-other");
   await page.fill("#provider-url", chatURL);
+  await page.click("#provider-more > summary");
   await page.fill("#provider-name", "127-0-0-1");
   await page.click("#provider-save");
   await page.waitForSelector("#provider-form .error");
@@ -361,7 +363,7 @@ check(async () => {
   await page.click("#model-save");
   await shows("#model-form .error", "The price of output takes a number");
   await page.fill("#model-price_output", "40");
-  await page.click("#model-form .more-settings > summary");
+  await page.click("#model-more-settings > summary");
   await page.click("#model-cache_control-ephemeral");
   await page.locator("#model-form").screenshot({ path: `${out}/models-settings-form.png` });
   await page.click("#model-save");
@@ -386,7 +388,7 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#model-max_output"), "128,000");
   await shows("#model-window", "past 691,500");
   assert.strictEqual(await page.inputValue("#model-price_output"), "40");
-  await page.click("#model-form .more-settings > summary");
+  await page.click("#model-more-settings > summary");
   assert.strictEqual(await page.getAttribute("#model-cache_control-ephemeral", "aria-pressed"), "true");
   assert.strictEqual(await page.locator("#model-output_field-default").count(), 1, "a chat-completions model has no reply cap field");
   await page.click("#model-form >> text=Cancel");
@@ -801,11 +803,12 @@ check(async () => {
   await page.selectOption("#model-provider", claude);
   // More settings are opened first: the form redraws as the provider answers
   // what it lists and publishes, and keeps them open once they are.
-  await page.click("#model-form .more-settings > summary");
+  await page.click("#model-more-settings > summary");
   await page.fill("#model-id", "reasoner");
   assert.strictEqual(await page.getAttribute("#model-cache_control-ephemeral", "aria-pressed"), "true", "a model on Anthropic does not start with the ask to cache");
   for (const gone of ["#model-seed", "#model-output_field-default", "#model-cache_key-default"]) assert.strictEqual(await page.locator(gone).count(), 0, `${gone} is offered for Anthropic`);
   await shows("#model-form", "Its API has no seed");
+  await page.click("#model-more > summary");
   await page.click("#efforts-lmh");
   await page.selectOption("#model-effort", "high");
   await page.click("#model-save");
@@ -948,7 +951,7 @@ check(async () => {
   // the form offers no field and says so of the seed.
   await page.click("[data-model='openai-a'] button:text-is('Edit')");
   await page.waitForSelector("#model-form");
-  await page.click("#model-form .more-settings > summary");
+  await page.click("#model-more-settings > summary");
   assert.strictEqual(await page.locator("#model-output_field-default").count(), 0, "a Responses model is offered a reply cap field it does not read");
   await shows("#model-form", "The Responses API has no seed");
   await page.fill("#model-price_output", "99");
@@ -964,8 +967,10 @@ check(async () => {
   await page.selectOption("#model-provider", "openai");
   await page.fill("#model-id", second);
   await page.press("#model-id", "Tab");
-  await page.waitForSelector("#efforts-published[aria-pressed=true]", { timeout: 10000 });
+  // The efforts are under the fold, which is closed when adding a model.
+  await page.waitForSelector("#efforts-published[aria-pressed=true]", { state: "attached", timeout: 10000 });
   assert.deepStrictEqual(sent.of("models.published").at(-1), { server: "openai", model: second });
+  await page.click("#model-more > summary");
   await shows("#model-form", `Offered as ${b.m.efforts.map(label).join(", ")}, as its provider publishes them`);
   await page.click("#model-save");
   await page.waitForSelector(`[data-model='openai-${second.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}']`, { timeout: 10000 });

@@ -35,9 +35,12 @@ until they are done. First the provider, from the presets Settings has
 (Ollama, OpenAI, Anthropic, Baseten, OpenRouter, Cerebras, or another server),
 started on Ollama, on this computer or another one on the network, which needs
 no key. Then the model, on the provider just saved: the models it lists are
-offered, the efforts it takes are chosen (or the provider's own, as published),
-and **Save and use it** saves the model and makes it the default for new tasks
-at that effort. Its context length, prices and the rest of its settings are
+offered as buttons (a long list is typed to), and **Save and use it** saves
+the model and makes it the default for new tasks. The efforts it takes (the
+provider's own, as published, when it says), what it is for and the effort it
+starts at wait under a closed **More** fold, as the provider's name does in
+the provider form; neither form asks for anything that does not have to be
+answered before a task works. Its context length, prices and the rest of its settings are
 what its provider publishes, and Settings › Models changes them, adds more
 providers and models, and chooses another default (the manual, "Choosing
 models"). The provider is written to a `[servers.NAME]` table of `config.toml`,

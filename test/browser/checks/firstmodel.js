@@ -113,7 +113,17 @@ check(async () => {
   // ---------- the model ----------
   await page.focus("#model-id");
   await page.waitForFunction(() => [...document.querySelectorAll("#model-id-options option")].map((o) => o.value).sort().join() === "fast,reasoner", null, { timeout: 15000 });
-  await page.fill("#model-id", "reasoner");
+  // What the provider lists is offered as buttons, asked for as the form
+  // opens; the provider is not asked again, and what most models need none
+  // of waits under a fold that is closed.
+  await page.waitForSelector("[data-offered='reasoner']", { timeout: 15000 });
+  assert.deepStrictEqual(await page.$$eval("[data-offered]", (b) => b.map((x) => x.dataset.offered).sort()), ["fast", "reasoner"]);
+  assert.strictEqual(await page.isVisible("#model-provider"), false, "the first run asks for the provider it has just been told");
+  assert.strictEqual(await page.$eval("#model-more", (d) => d.open), false, "efforts, labels and the starting effort are not folded away");
+  assert.strictEqual(await page.isVisible("#efforts-lmh"), false);
+  await page.click("[data-offered='reasoner']");
+  assert.strictEqual(await page.inputValue("#model-id"), "reasoner", "a model offered did not fill the field");
+  await page.click("#model-more > summary");
   await page.click("#efforts-lmh");
   await page.selectOption("#model-effort", "high");
   await page.screenshot({ path: `${out}/firstmodel-model.png` });

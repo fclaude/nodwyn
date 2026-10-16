@@ -1833,14 +1833,15 @@ default judge is on the Judge tab):
   to that host), *not answering*, or *model not installed*. The key's state is
   read from the keychain and the binding table before the server is asked,
   since that is what to fix; **Check again** asks every server now. **Add a
-  provider** takes a name (left empty, one is chosen from its kind, such as
-  `openai` or `ollama`; a name already in use is refused, and a second
-  provider can share an address under another name, such as an API key and a
-  ChatGPT plan at OpenAI), a kind (Ollama, OpenAI-compatible, or Anthropic), an
-  address, for an OpenAI-compatible one a dialect, and an API key for either
-  of those (an OpenAI-compatible one can use a ChatGPT plan credential instead),
-  and has presets (OpenAI, Anthropic, Baseten, OpenRouter, Cerebras,
-  Ollama, and Other) that only fill the form in. The key goes to the
+  provider** is a preset (Ollama, OpenAI, Anthropic, Baseten, OpenRouter,
+  Cerebras, or Other server, which is OpenAI-compatible; the preset says the
+  kind, and only fills the form in), an address, for an OpenAI-compatible one
+  a dialect, and an API key for either of those (an OpenAI-compatible one can
+  use a ChatGPT plan credential instead), and, under a **More** fold, a name
+  (left empty, one is chosen from its kind, such as `openai` or `ollama`; a
+  name already in use is refused, and a second provider can share an address
+  under another name, such as an API key and a ChatGPT plan at OpenAI). The
+  key goes to the
   keychain with two binding rows for the address's host, `POST` for the model
   and `GET` for its model list, as a bearer header (Anthropic's: the `x-api-key`
   header), never into `config.toml`, never into the page; replacing it, under
@@ -1856,8 +1857,9 @@ default judge is on the Judge tab):
   (Connections › Credentials removes it).
 - The models under each provider are the list the pickers
   offer: `[control]` and each `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
-  own list, asked with its key, fills in suggestions) and the efforts it
-  takes: *As published* (offered once the id is given, for a model its
+  own list, asked with its key as the form opens, is offered as buttons when
+  it is short) and, under a **More** fold that is closed when adding, the
+  efforts it takes: *As published* (offered once the id is given, for a model its
   provider publishes; the entry then lists none, so the provider's apply, and
   a model whose typed efforts differ from them is told so), shortcuts
   (low · medium · high, minimal added, off · on) or any other words, and the
