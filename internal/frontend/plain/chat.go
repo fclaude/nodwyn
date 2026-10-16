@@ -430,7 +430,7 @@ func (c *Chat) confirm(p event.Confirm) {
 	if p.Prompt.Binding != nil && !p.Prompt.Security {
 		prompt = "allow? [y/N/b=bind this exact scope persistently and allow] "
 	}
-	line, ok := c.lines.read(prompt)
+	line, ok := c.lines.answer(prompt)
 	if !ok {
 		line = "n"
 	}
@@ -709,7 +709,7 @@ func (c *Chat) choice(ev event.Choice) {
 		fmt.Fprintf(c.Out, "  %-6s %s: %s\n", o.Key, o.Label, o.Detail)
 	}
 	for {
-		line, ok := c.lines.read("[" + strings.Join(keys, "/") + "] ")
+		line, ok := c.lines.answer("[" + strings.Join(keys, "/") + "] ")
 		if !ok {
 			// Nobody is left to answer, and the session closes only when
 			// the turn waiting on this answer has ended: stop the turn.
@@ -754,7 +754,7 @@ func (c *Chat) checkpoint(ev event.Checkpoint) {
 		fmt.Fprintf(c.Out, "  commands: %s\n", strings.Join(p.State.Commands, "; "))
 	}
 	for {
-		line, ok := c.lines.read("continue? [y=double soft/N/absolute soft limit] ")
+		line, ok := c.lines.answer("continue? [y=double soft/N/absolute soft limit] ")
 		if !ok {
 			line = "n"
 		}

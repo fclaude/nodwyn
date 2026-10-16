@@ -39,6 +39,18 @@ func newLineReader(in io.Reader, out io.Writer) *lineReader {
 	return lr
 }
 
+// answer reads the answer to a question (a confirm, a choice, a limit). On a
+// terminal, what was typed before the question was shown is dropped: the
+// terminal queues keys pressed while a turn runs, and the next read took a
+// "yes" typed to an earlier question, or to nothing, as the answer to a
+// security confirm nobody had read.
+func (lr *lineReader) answer(prompt string) (line string, ok bool) {
+	if lr.tty != nil {
+		_ = discardTypeAhead(int(lr.tty.Fd()))
+	}
+	return lr.read(prompt)
+}
+
 // read returns the next line without its newline. ok is false at EOF (or
 // Ctrl-C / Ctrl-D on a terminal).
 func (lr *lineReader) read(prompt string) (line string, ok bool) {
@@ -76,6 +88,7 @@ func (lr *lineReader) secret(prompt string) (line string, ok bool) {
 		}
 		return lr.scanner.Text(), true
 	}
+	_ = discardTypeAhead(int(lr.tty.Fd())) // as answer does
 	fmt.Fprint(lr.out, prompt)
 	buf, err := term.ReadPassword(int(lr.tty.Fd()))
 	if err != nil {
