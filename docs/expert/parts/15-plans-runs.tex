@@ -225,8 +225,11 @@ evidence:
     not test (it runs again with each part taken out in turn,
     \code{check-without}; a deleted file or a hunk that only deletes lines is
     no part), and a command the report cites that has not run since the last
-    edit. After it the turn is accepted: the model's next answer ends it,
-    and the reminders above are not asked again.
+    edit. When that check passed, it also names what the change removed
+    (\code{change-removals}): a definition gone from its package that the
+    request does not name, and the cases and assertions of existing tests
+    it removed or rewrote. After it the turn is accepted: the model's next
+    answer ends it, and the reminders above are not asked again.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),
     the no-change reminder is \code{finish-no-change-reviewed-message}: make

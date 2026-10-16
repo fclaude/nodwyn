@@ -65,6 +65,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree: what changed, since the last commit or since \code{against}, and the commit HEAD is on; read-only, no approval \\
 \code{(keep-passing)} & keep the changes as a test run passed on them (hidden): an unattended turn that a hard limit or the progress guard stops has its files put back to it, and what they held saved \\
 \code{(check-without cmd args)} & run a check again with each part of the change taken out in turn, putting each back (hidden): the parts it still passes without are the ones it does not test \\
+\code{(change-removals request)} & what the change takes away that its check cannot show (hidden): the definitions gone from their package, and the cases and assertions of existing tests removed or rewritten \\
 \code{(shell-exec cmd args)} & run a program with a list of arguments, no shell, in the folder (irreversible) \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background (irreversible) \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\

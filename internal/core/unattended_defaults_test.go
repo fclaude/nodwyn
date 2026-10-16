@@ -900,3 +900,81 @@ func TestAShellMakeValidateCountsAsValidated(t *testing.T) {
 		t.Fatalf("make validate failed: %s", got)
 	}
 }
+
+// goRepo is a git repository with a Go package calc: Root calls the helper
+// evalOr, and calc_test.go has a table of two cases.
+func goRepo(t *testing.T) string {
+	t.Helper()
+	repo := gitWorkTree(t)
+	for name, content := range map[string]string{
+		"calc/calc.go":      "package calc\n\nfunc evalOr(p string) string { return p }\n\nfunc Root(p string) string { return evalOr(p) }\n",
+		"calc/calc_test.go": "package calc\n\nvar cases = []string{\n\t\"a\",\n\t\"b\",\n}\n",
+	} {
+		if err := os.MkdirAll(filepath.Join(repo, filepath.Dir(name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("sh", "-c", "git add calc && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m calc")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return repo
+}
+
+// The finish review names what the change removed that its passing check
+// could not show: a definition HEAD had and the package no longer has, and
+// a case of an existing test. dsl16 and Pi deleted evalOr, which the hidden
+// test of 67a1f950 called, and Pi deleted or rewrote existing cases its
+// change broke (ef04de9c, 94f5cac4), each after its own tests had passed
+// (ADR 32, amended 2026-10-15).
+func TestTheReviewNamesWhatTheChangeRemoved(t *testing.T) {
+	t.Parallel()
+	repo := goRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'func Root' calc/calc.go\n"),
+		write("w", "calc/calc.go", "package calc\n\nfunc Root(p string) string { return p + \"x\" }\n"),
+		write("t", "calc/calc_test.go", "package calc\n\nvar cases = []string{\n\t\"a\",\n}\n"),
+		shellArgs("r", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // reviewed
+		fake.Turn{Content: "Root no longer needs evalOr; the request drops case b."},
+	)
+	if e := r.turn("make Root add an x to its path"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 5)
+	for _, want := range []string{"Your change removes `evalOr` (calc/calc.go), which the request does not name",
+		"have its callers go through it", "expectations of existing tests:\n- calc/calc_test.go:5: \"b\","} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the review lacks %q: %q", want, msg)
+		}
+	}
+}
+
+// A removal the request names, and a change to a test that only adds a case,
+// are nothing to say: the turn ends at its answer. The analysts found 6 of
+// 73 original commits deleting a function and 39 editing existing test
+// lines (ADR 32, amended 2026-10-15).
+func TestTheReviewIsQuietOnRemovalsTheRequestNames(t *testing.T) {
+	t.Parallel()
+	repo := goRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'p + \"x\"' calc/calc.go\n"),
+		write("w", "calc/calc.go", "package calc\n\nfunc Root(p string) string { return p + \"x\" }\n"),
+		write("t", "calc/calc_test.go", "package calc\n\nvar cases = []string{\n\t\"a\",\n\t\"b\",\n\t\"c\",\n}\n"),
+		shellArgs("r", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("make Root add an x to its path and drop evalOr"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}

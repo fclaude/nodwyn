@@ -394,6 +394,31 @@
              (number (cdr ps) (+ i 1) (cons (string-append (number->string i) ". " (car ps)) out)))))
    "\n\n" finish-review-close))
 
+;; What the change removed that its check could not show (strategy.scm,
+;; change-removals), points of the finish review. dsl16 and Pi deleted
+;; evalOr, a helper the hidden test called, as dead code once they had
+;; rerouted its callers (67a1f950); a kept helper its callers go through
+;; keeps the name and is not dead. Pi rewrote or deleted existing cases its
+;; change broke (94f5cac4, ef04de9c), against the working rule that names
+;; each changed test with the request's words (ADR 32, amended 2026-10-15).
+(define (finish-removed-definitions-message defs)
+  (let ((one (null? (cdr defs))))
+    (string-append
+     "Your change removes "
+     (string-join (map (lambda (d) (string-append "`" (format "~a" (assoc-ref d "name" "")) "` (" (format "~a" (assoc-ref d "path" "")) ")")) defs) ", ")
+     ", which the request does not name. Tests and code you cannot see may call " (if one "it" "them")
+     " by name, and your check passed without " (if one "it" "them") ". Unless removing " (if one "it" "one")
+     " is the task, keep it and have its callers go through it with the new behaviour (it may call what replaced it); if the request removes it, say so in your report with its words.")))
+
+(define (finish-removed-expectations-message lines)
+  (string-append
+   "Your change removes or rewrites these expectations of existing tests:"
+   (apply string-append
+          (map (lambda (l) (string-append "\n- " (format "~a" (assoc-ref l "path" "")) ":" (number->string (assoc-ref l "line" 0))
+                                          ": " (format "~a" (assoc-ref l "text" ""))))
+               lines))
+   "\nAn existing test of something the request does not change is a constraint: restore each such line and fix the code instead, or quote in your report the request's words that change it."))
+
 ;; In a git work tree, files new since the turn began that git does not
 ;; track, said once: whatever is left in the repository is in the change.
 (define (finish-new-files-message files)

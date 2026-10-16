@@ -752,7 +752,14 @@
 ;; edit. They were four messages, each once a turn, and each answer, an edit
 ;; or a script, re-armed the reminders before them (ADR 32, amended
 ;; 2026-10-15).
-(define (finish-review-points reply new passing ran ran-all checked passed)
+;; When the latest run since the last edit passed (quiet: the model's own
+;; check did not notice), it also names what the change removed
+;; (change-removals): definitions HEAD had that are gone from their package,
+;; and expectations of existing tests removed or rewritten. On commit-bench
+;; a deleted helper the hidden test called failed dsl16's and Pi's builds
+;; (67a1f950), and Pi's rewritten and deleted cases failed three tasks
+;; (94f5cac4, ef04de9c, 5040f9fe), each after its own tests had passed.
+(define (finish-review-points request reply new passing quiet ran ran-all checked passed)
   (let* ((plan (if (and plan-language (pair? plan-spec))
                    (let ((check (plan-language-check passed)))
                      (plan-language-mark (cadr check))
@@ -761,11 +768,25 @@
          (parts (if (and passing (check-without?))
                     (filter (lambda (p) (not (member (assoc-ref p "path" "") new))) (untested-parts passing))
                     '()))
-         (stale (stale-citations (format "~a" (assoc-ref reply 'content "")) ran ran-all checked)))
+         (stale (stale-citations (format "~a" (assoc-ref reply 'content "")) ran ran-all checked))
+         (removed (if (and quiet (host-primitive? "change-removals"))
+                      (guard (e (else (log-note (string-append "change-removals failed: " (format "~a" (assoc-ref e 'message ""))))
+                                      '()))
+                        (change-removals request))
+                      '()))
+         (defs (assoc-ref removed "definitions" '()))
+         (lines (assoc-ref removed "expectations" '())))
     (append (if (pair? new) (list (finish-new-files-message new)) '())
             (if (pair? plan) (list (plan-language-unmet-message plan)) '())
             (if (pair? parts) (list (finish-untested-parts-message (command-line passing) parts)) '())
-            (if (pair? stale) (list (finish-stale-citations-message stale)) '()))))
+            (if (pair? stale) (list (finish-stale-citations-message stale)) '())
+            (if (pair? defs) (list (finish-removed-definitions-message defs)) '())
+            (if (pair? lines) (list (finish-removed-expectations-message lines)) '()))))
+
+;; Whether the host offers a primitive hidden from the model, as the analyses
+;; of a git work tree are.
+(define (host-primitive? name)
+  (guard (e (else #f)) (primitive-info name) #t))
 
 ;; A repository's whole check run through the shell counts as its validate
 ;; tool's run. nodwyn's .nodwyn/init.scm reminds a turn that changed files
@@ -933,11 +954,12 @@
                     ((and changed (not turn-stopping) (not review-made))
                      (set! review-made #t)
                      (let ((points (finish-review-points
-                                    reply
+                                    request reply
                                     (if now
                                         (filter (lambda (f) (not (plan-names? f))) (git-new-files before now))
                                         '())
                                     (and (memq outcome '(passed kept)) passing)
+                                    (memq outcome '(passed kept))
                                     (append ran base-ran) ran-all
                                     (or (and passing (whole-check? passing)) (whole-check-passed? passed))
                                     passed)))

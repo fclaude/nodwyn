@@ -1329,3 +1329,68 @@ for the run), and an untested deletion goes unnamed. The analysts estimate
 the study in which a reminder led to a stronger test (A and dsl18m on
 1d401bf3, dsl18m on 7513f7eb) would get their message once. Each test above
 fails on `d880bb3` and passes with the change.
+
+## Amendment 2026-10-15: the finish review names what the change removed
+
+Three of the benchmark's losses came from what a change took away, each after
+the model's own tests had passed (deep study of commit-bench, 2026-10-15,
+reports 02, 03 and 04):
+
+- on 67a1f950 dsl16 and Pi fixed the behaviour by rerouting `rootRefusal` and
+  deleting `evalOr` as dead code; the hidden test calls `evalOr`, which the
+  task never names, so neither patch built against it. check-without named
+  the deletion and dsl16 kept it, "rather than reintroduce an unused helper";
+- on 94f5cac4 Pi turned the visible case "count 0 is an error" into one for
+  -1 before its first test run, and dsl16 followed its planner in the same;
+- on ef04de9c Pi deleted the negative case its new JWT pattern broke, and on
+  5040f9fe it rewrote the stream cases of the test that then failed as a
+  pass-to-pass test.
+
+The working rule that names each changed test and the request's words behind
+it was in every one of these versions, and was not followed.
+
+So `change-removals` (internal/prim/removed.go, hidden) reads the change
+against HEAD and the finish review names, when the latest run since the last
+edit passed (the model's check did not notice):
+
+- **Definitions gone from their package.** A top-level Go function, method,
+  type, variable or constant (Python's functions and classes, Scheme's
+  defines) that HEAD has in a changed non-test file and no file of the same
+  language in its directory defines now; a name in another case counts,
+  since a test calls it by name. A name the request gives is left out, whole
+  or in words that spell it ("the guard's workspace-kind checker is gone"
+  for `WorkspaceKind`, "the first known finding" for `firstKnown`).
+  `finish-removed-definitions-message` asks to keep it and have its callers
+  go through it with the new behaviour, which a hidden caller and staticcheck
+  both accept, or to say which words of the request remove it.
+- **Expectations of existing tests.** A line of an existing test
+  (`x_test.go`, `test_x.py`, `x_test.py`) that states an expectation, a case
+  of a table (a line ending in a comma that holds a literal) or an assertion
+  that carries one (testify, Python's `assert`), removed and added back
+  nowhere in the change's test files once white space and trailing comments
+  are set aside: gofmt's realigned columns and a case moved to another file
+  are not removed. A `t.Errorf`'s message and the `if` before it are not
+  counted: with them the replay below flagged 84 patches, most of them
+  ordinary rewrites. `finish-removed-expectations-message` asks to restore
+  each line the request does not change, or to quote the words that change
+  it.
+
+`TestTheReviewNamesWhatTheChangeRemoved`, `TestTheReviewIsQuietOnRemovalsTheRequestNames`,
+`TestRemovedDefinitionsAreTheOnesGoneFromThePackage`,
+`TestRemovedDefinitionsTheRequestNamesAreNotNamed`,
+`TestRemovedExpectationsAreCasesAndAssertions`,
+`TestChangeRemovalsReadsTheWorkingTree`.
+
+Replayed over the benchmark's patches (each applied to its task's parent,
+306 that apply: 233 attempts and 73 original commits): definitions are
+named in 12 attempts and 5 originals, among them dsl16's and Pi's `evalOr`;
+6 of the 12 remove what the original removes too (e752f151's `errDocsEval`
+and `code-workspace?`, 1fd4c3e7's `latex`). Expectations are named in 31
+attempts, among them Pi's ef04de9c, 94f5cac4 and 5040f9fe cases; the
+originals cannot be counted, since their patches leave out the hidden test
+files. So the note stays advisory, and costs a round on its own in at most
+about one attempt in six. Not built: running the change's check with the
+test files as HEAD had them (report 04's "tests as they were"), which would
+name only cases the change breaks, at the cost of a run of the check; and
+the planner rule that a `(change ...)` step fixes a function rather than
+deleting it (report 02), held for want of more than one case.

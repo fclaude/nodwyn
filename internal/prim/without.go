@@ -42,7 +42,8 @@ import (
 // put back cannot be extended to fail without the code it no longer has,
 // and asked to, models wrote ablation scripts or restored dead code. On
 // commit-bench 7 of the 69 parts named were such deletions, and one message
-// named nine deleted empty logs, "(deleted file, +0 -0 lines)". Every file
+// named nine deleted empty logs, "(deleted file, +0 -0 lines)". The
+// definitions a change removes are change-removals' to name. Every file
 // it changes is put back to the bytes it had, after each run and again at
 // the end whatever happens. The runs share one time budget, so a slow check
 // (a whole test suite) cannot take a turn's wall time: a part not reached
