@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 253 of 509 tracked Go files: every non-test Go file, 57,887 of 105,778 Go source lines (54.7\% by lines). It also includes all 35 tracked Scheme files (3,278 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 257 of 515 tracked Go files: every non-test Go file, 59,067 of 107,480 Go source lines (55.0\% by lines). It also includes all 35 tracked Scheme files (3,278 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -118,6 +118,8 @@ Begin with \src{cmd/nodwyn/main.go} and its command dispatch. The mode files ass
 
 \sourcefile{cmd/nodwyn/mcp.go}{Go}
 
+\sourcefile{cmd/nodwyn/memory.go}{Go}
+
 \sourcefile{cmd/nodwyn/replay.go}{Go}
 
 \sourcefile{cmd/nodwyn/run.go}{Go}
@@ -229,6 +231,8 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 \sourcefile{internal/core/log_read.go}{Go}
 
 \sourcefile{internal/core/mcp.go}{Go}
+
+\sourcefile{internal/core/memory.go}{Go}
 
 \sourcefile{internal/core/model.go}{Go}
 
@@ -433,6 +437,14 @@ Read \src{internal/retrieval/words.go} for how text becomes the words a search m
 \sourcefile{internal/retrieval/store.go}{Go}
 
 \sourcefile{internal/retrieval/words.go}{Go}
+
+\chapter{What a task remembers}
+
+Read the Folder in \src{internal/memory/card.go}: it takes a log's events in order and makes a card for each turn and an episode for each compaction note, in Go, recording nothing. Then the word ranking in \src{internal/memory/rank.go}. Core keeps the entries beside each log as \file{<id>.mem}, folded from the end and checked against the log as the index is (\src{internal/core/memory.go}), and offers the model memory-search and memory-read (ADR 51). Tests: \file{internal/memory/memory\_test.go} and \file{internal/core/memory\_test.go}.
+
+\sourcefile{internal/memory/card.go}{Go}
+
+\sourcefile{internal/memory/rank.go}{Go}
 
 \chapter{Provider wire formats}
 

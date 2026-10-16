@@ -50,6 +50,7 @@ var commands = map[string]func(*cli) error{
 	"daemon":     (*cli).daemon,
 	"replay":     (*cli).replay,
 	"summary":    (*cli).summary,
+	"memory":     (*cli).memory,
 	"sessions":   (*cli).sessions,
 	"keychain":   (*cli).keychain,
 	"credential": (*cli).credential,
@@ -171,6 +172,8 @@ func (c *cli) daemon() error {
 }
 
 func (c *cli) summary() error { return summaryCommand(c.paths, c.rest()) }
+
+func (c *cli) memory() error { return memoryCommand(c.paths, c.repo, c.rest()) }
 
 func (c *cli) showPaths() error {
 	fmt.Printf("config:   %s\nbindings: %s\nkeychain: %s\nsessions: %s\n",

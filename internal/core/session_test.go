@@ -236,7 +236,7 @@ func TestUnknownToolAndBadArgsAreResults(t *testing.T) {
 	)
 	r.s.Send("go")
 	r.drain("n")
-	if raw := string(r.srv.Requests[1].Raw); !strings.Contains(raw, `unknown tool`) || !strings.Contains(raw, `available: doc-export, fs-edit, fs-find, fs-list, fs-read, fs-write, index-grep, index-search, plan-step, plan-write, project-notes-save, read-definition, recall, second-look, shell-exec`) {
+	if raw := string(r.srv.Requests[1].Raw); !strings.Contains(raw, `unknown tool`) || !strings.Contains(raw, `available: doc-export, fs-edit, fs-find, fs-list, fs-read, fs-write, index-grep, index-search, memory-read, memory-search, plan-step, plan-write, project-notes-save, read-definition, recall, second-look, shell-exec`) {
 		t.Fatalf("unknown tool: %s", r.srv.Requests[1].Raw)
 	}
 	if !strings.Contains(string(r.srv.Requests[2].Raw), `missing argument`) {

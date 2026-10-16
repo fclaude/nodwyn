@@ -95,6 +95,13 @@ it can see the thing but not change it.
 | The default judge | Settings › Judge, or beside the default model under Models | — | — | `[judge] server` |
 | Choosing from a paired device | refused (ADR 30, ADR 47) | — | — | — |
 
+## Memory (ADR 51)
+
+| | Console | TUI | Line mode | CLI |
+|---|---|---|---|---|
+| The model searches its task's turns (`memory-search`, `memory-read`), and the project's other tasks' when earlier tasks are on (ADR 50 §9) | yes, as any tool | yes | yes | `nodwyn run`: yes |
+| A person searches earlier tasks | not built (ADR 51, with ADR 49 §11) | `:eval (memory-search "…" "project")`, with `:earlier on` | `:eval`, likewise | `nodwyn memory search`, `nodwyn memory read`, whatever the switch |
+
 ## Files and changes
 
 | | Console | TUI | Line mode | CLI |

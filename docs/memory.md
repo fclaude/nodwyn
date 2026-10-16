@@ -277,7 +277,36 @@ the 73 earlier tasks of nodwyn among the 78 local logs (17,663 events)
 were indexed in 3.6 seconds, read in parallel, and the cache held 87 MB;
 a search after that reads it in about a millisecond. The memory is mostly
 the words of tool results, and it grows with the logs and stays for as
-long as the process runs. Nothing is written beside the logs.
+long as the process runs. Nothing of it is written beside the logs.
 
-Across sessions, a repository keeps its project notes (`project-notes`, docs/scheme.md) and its index (above), and, when the person allows it, the model searches its earlier tasks (above); there is no embedding index.
+## Task memory
+
+A step up from events, each task keeps a card for every turn and the note
+of every compaction (ADR 51): what was asked, how the turn ended, how long
+it took and what it cost, its plan with the marks made, the files written,
+the commands run and how they ended, errors, and the start of the answer.
+The cards are made in Go from the log, so they cost nothing, and kept beside
+it as `<id>.mem`, extended a whole turn at a time from where they end and
+checked against the log line they end at, as the index is; deleting them is
+safe.
+
+```scheme
+(memory-search "flaky pager test")                    ; this task's turns
+(memory-search "flaky pager test" "project")          ; the repository's tasks
+(memory-search "connection reset by peer" "task" #t)  ; the words as written
+(memory-read "m:20261004T073130Z-40187c24:6-648:1")   ; a turn and its events
+```
+
+Cards and notes are ranked by BM25 over their own text, words split as
+code names them. With `exact`, the tasks' messages, replies and tool output
+are scanned for the words as written, newest first, each log read backwards
+through its index's marks. A task's own memory is always searched; the
+repository's other tasks' only under the leave above, `earlier_tasks`, read
+at every call. The person searches them all from a terminal with
+`nodwyn memory search` and `nodwyn memory read`.
+
+Across sessions, a repository keeps its project notes (`project-notes`,
+docs/scheme.md), its index (above), its tasks' memory (above) and, when the
+person allows it, the model searches its earlier tasks (above); there is no
+embedding index.
 That is not a claim made by this P10 implementation.

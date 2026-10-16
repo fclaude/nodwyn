@@ -472,6 +472,9 @@ func (s *Session) initialize() (err error) {
 	s.interp.SetGate(turnGate{Gate: g, s: s})
 	s.connectMCP()
 	s.interp.SetExpand(expandScratch(s.scratch))
+	if err := s.registerMemory(); err != nil {
+		return err
+	}
 	if err := s.registerHistory(); err != nil {
 		return err
 	}

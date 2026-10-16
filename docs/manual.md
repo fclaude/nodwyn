@@ -97,6 +97,31 @@ Read a test when you want to know what a claim actually means.
 | No path exists for the canary to leak | [test/exfil](../test/exfil/): each scenario asserts the decision *and* greps the canary out of log, output and result |
 | Request prefix is byte-stable | [session_test.go](../internal/core/session_test.go) `TestTurnWithToolCall` compares request N's messages with request N+1's prefix |
 
+### Searching what earlier tasks did
+
+Every turn of every task leaves a card: what was asked, how it ended, its
+plan and the marks made, the files written, the commands run and how they
+ended, errors, and the start of the answer. Each compaction leaves its note.
+The model searches its own task's with `memory-search` and opens one with
+`memory-read` (ADR 51). It searches the other tasks of its repository with
+`(memory-search "…" "project")` only when you let it search earlier tasks
+for that folder, the switch `index-search` heeds too (ADR 50 §9): the
+folder's editor on Workspaces, or `:earlier on` in the TUI. Never another
+repository's. From a terminal, you search them all:
+
+```
+nodwyn --repo ~/src/your-repo memory search flaky pager test
+nodwyn --repo ~/src/your-repo memory search --exact "connection reset by peer"
+nodwyn --repo ~/src/your-repo memory read m:20261004T073130Z-40187c24:6-648:1
+```
+
+`search` ranks the cards and notes by the words they share with yours (an
+identifier is also found by its parts: "pager" finds `TestPagerOrder`);
+`--exact` finds the words as written in the tasks' messages, replies and
+tool output, newest first; `--task SESSION` keeps to one task. The cards
+are kept beside each log as `<id>.mem`, made again from the log whenever it
+does not match, so deleting them is safe. Nothing is sent anywhere.
+
 ### Reading a session log
 
 ```
@@ -199,8 +224,8 @@ nodwyn-stable                       # pins every path to this directory
 nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
 tools doc-export fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep index-search
-      index-update plan-step plan-write read-definition recall second-look shell-exec shell-read
-      shell-send shell-start shell-stop
+      index-update memory-read memory-search plan-step plan-write read-definition recall second-look
+      shell-exec shell-read shell-send shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence

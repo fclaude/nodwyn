@@ -273,9 +273,11 @@ func (s Store) Delete(id string) error {
 	if err := log.Remove(path); err != nil {
 		return err
 	}
-	// The log's index is the log's: it goes with it.
-	if err := os.Remove(indexPath(s.Dir, id)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	// The log's index and memory are the log's: they go with it.
+	for _, derived := range []string{indexPath(s.Dir, id), memPath(s.Dir, id)} {
+		if err := os.Remove(derived); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	infoCache.mu.Lock()
 	delete(infoCache.entries, path)

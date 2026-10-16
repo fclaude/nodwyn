@@ -81,6 +81,8 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(judge-available?)} & whether the task has a judge now whose key is stored (the plan gate asks it) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions; the second is also the model's tool \\
+\code{(memory-search query [scope [exact]])} & earlier turns and compaction notes of this task, or with \code{\"project\"} and the person's leave of the repository's tasks, ranked by shared words; with exact, the logs scanned for the words (ADR 51); also the model's tool \\
+\code{(memory-read id)} & one result whole, a turn with its events; also the model's tool \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, as the system prompt carries it \\
 \code{(request-context)} & what the latest request answers: the agent's last answer before it, and the names of the files attached to it (the loop's; Chapter~\ref{ch:turn}) \\
 \code{(workspace)} & the folder's mounted folders \\

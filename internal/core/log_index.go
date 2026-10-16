@@ -247,8 +247,7 @@ func extendIndex(f *os.File, id string, idx logIndex) (logIndex, bool, error) {
 			return err
 		}
 		idx.Resume.observe(ev)
-		sum := sha256.Sum256(line)
-		idx.Seq, idx.Start, idx.End, idx.Hash = ev.Seq, start, base+end, hex.EncodeToString(sum[:])
+		idx.Seq, idx.Start, idx.End, idx.Hash = ev.Seq, start, base+end, lineHash(line)
 		return nil
 	})
 	truncated := errors.Is(err, log.ErrTruncated)
@@ -271,26 +270,46 @@ func loadIndex(path string, f *os.File) (logIndex, bool) {
 		uint64(len(idx.Marks)) != (idx.Seq-1)/markEvery+1 || len(idx.MarkSpend) != len(idx.Marks) || idx.Marks[0] != 0 {
 		return logIndex{}, false
 	}
-	line := make([]byte, idx.End-idx.Start)
-	if _, err := f.ReadAt(line, idx.Start); err != nil || line[len(line)-1] != '\n' {
-		return logIndex{}, false
-	}
-	line = bytes.TrimSpace(line)
-	sum := sha256.Sum256(line)
-	var ev log.Event
-	if hex.EncodeToString(sum[:]) != idx.Hash || json.Unmarshal(line, &ev) != nil || ev.Seq != idx.Seq {
+	if !lineMatches(f, idx.Seq, idx.Start, idx.End, idx.Hash) {
 		return logIndex{}, false
 	}
 	return idx, true
 }
 
+// lineMatches reports whether f holds, from start to end, the whole line of
+// event seq whose SHA-256 is hash: what a file derived from a log checks
+// before it trusts that it is that log's.
+func lineMatches(f *os.File, seq uint64, start, end int64, hash string) bool {
+	if start < 0 || end <= start {
+		return false
+	}
+	line := make([]byte, end-start)
+	if _, err := f.ReadAt(line, start); err != nil || line[len(line)-1] != '\n' {
+		return false
+	}
+	line = bytes.TrimSpace(line)
+	sum := sha256.Sum256(line)
+	var ev log.Event
+	return hex.EncodeToString(sum[:]) == hash && json.Unmarshal(line, &ev) == nil && ev.Seq == seq
+}
+
+// lineHash is the SHA-256 lineMatches compares.
+func lineHash(line []byte) string {
+	sum := sha256.Sum256(line)
+	return hex.EncodeToString(sum[:])
+}
+
 // saveIndex writes idx beside the log, whole or not at all.
-func saveIndex(dir, id string, idx logIndex) error {
-	raw, err := json.Marshal(idx)
+func saveIndex(dir, id string, idx logIndex) error { return writeDerived(dir, id, ".idx", idx) }
+
+// writeDerived writes v as JSON beside session id's log, as <id><ext>, whole
+// or not at all: a temporary file renamed into place.
+func writeDerived(dir, id, ext string, v any) error {
+	raw, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, id+".idx.*")
+	tmp, err := os.CreateTemp(dir, id+ext+".*")
 	if err != nil {
 		return err
 	}
@@ -302,7 +321,7 @@ func saveIndex(dir, id string, idx logIndex) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), indexPath(dir, id))
+	return os.Rename(tmp.Name(), filepath.Join(dir, id+ext))
 }
 
 // errPageFull ends a page's read once it holds what it asked for.

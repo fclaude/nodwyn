@@ -27,6 +27,8 @@ commands:
   replay SESSION       print a session log as a transcript (id or path)
   replay SESSION --window SEQ  reconstruct and verify a recorded model request
   summary [flags] SESSION  inspect, add or revoke a conversation summary
+  memory search [--task SESSION] [--exact] WORDS...  search what this repository's tasks did
+  memory read ID       one result of memory search, with a turn's events
   sessions             list sessions
   versions FILE        list a file's kept previous versions (--repo sets the workspace)
   undo FILE            put back a file's newest kept version

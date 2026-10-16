@@ -37,7 +37,10 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
  "payload":{"args":"(\".\")","decision":"allow","origin":"model","prim":"fs-list"}}
 \end{txt}
 
-Beside it, \file{SESSION.idx} is the log's index (ADR 49): the session's
+Beside it, \file{SESSION.mem} holds the session's memory (ADR 51): a card
+for each whole turn and each compaction's note, kept and checked against the
+log the way the index is, and made again whenever it does not match. And
+\file{SESSION.idx} is the log's index (ADR 49): the session's
 listing and where every 256th line starts, so that listing the session and
 reading a page of its log do not read the whole log again as it grows. It
 is derived from the log and checked against the log's line where it ends
