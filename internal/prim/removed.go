@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -28,6 +29,13 @@ import (
 // The evidence loop reads this before an unattended turn ends on a passing
 // check; what it says is advisory, since 6 of 73 original commits delete a
 // function and 39 edit existing test lines.
+//
+// On 5040f9fe (dsl21, replicate 2) the lines it read were too few: the request
+// added the response's Content-Type to an error, the model reworded the error
+// so that the phrase an existing test pins was split, and then edited that
+// test's `want := "..."` to match. The real commit left the test alone and
+// appended to the phrase. A want string is no table case and no testify
+// assert, so nothing named it (ADR 32, amended 2026-10-16).
 
 const (
 	removalsMaxDefs  = 6
@@ -111,6 +119,7 @@ type removedLine struct {
 	path string
 	line int // its line at HEAD
 	text string
+	lits []string // the string literals on it, for a line that moved
 }
 
 // definedNames is the top-level names a source file defines, with their
@@ -338,16 +347,33 @@ var (
 	goAssertRE   = regexp.MustCompile(`\b(assert|require)\.[A-Z]\w*\(`)
 	pyAssertRE   = regexp.MustCompile(`^assert\b|\bself\.assert[A-Z]\w*\(|\bpytest\.raises\b|\.assert_\w+\(`)
 	literalLeads = regexp.MustCompile("[\"'`]|\\b\\d|\\b(true|false|nil|None|True|False)\\b")
+	// wantAssignRE is an assignment to a variable a test names for what it
+	// expects: want, expect, expected, and wantErr, expectedMsg, want_err
+	// and the like. Its group is what is assigned; `want == x` is no
+	// assignment.
+	wantAssignRE = regexp.MustCompile(`^(?:var\s+)?(?:want|expect|expected)(?:[A-Z_0-9]\w*)?(?:\s+[\w.*\[\]]+)?\s*:?=\s*([^=].*)$`)
+	// literalStart is what a literal value, or a list or map of them, opens
+	// with; the assigned text must also hold a literal, so a `want := []string{`
+	// that opens a table is left to the cases inside it.
+	literalStart = regexp.MustCompile("^(?:[\"'`]|-?\\d|(?:true|false|nil|None|True|False)\\b|\\[|map\\[|\\{)")
+	// stringCheckRE is Go's checks of a string for a phrase, the way
+	// `if !strings.Contains(err.Error(), "ended without") {` asserts one.
+	stringCheckRE = regexp.MustCompile(`\b(?:strings|bytes)\.(?:Contains|ContainsAny|HasPrefix|HasSuffix|EqualFold)\(`)
 )
 
 // expectationLine is whether a test's line states what is expected: a case
 // of a table (a line ending in a comma that holds a literal: `{"1 0",
-// "count must be at least 1"},`), or an assertion that carries its
-// expectation (testify's assert.Equal, Python's assert). Both losses on the
-// benchmark were cases of a table. A t.Errorf's message says nothing of what
-// is expected, and the if before it is rewritten as often as a test is
-// refactored: counted, they flagged 84 of the 306 patches replayed, against
-// the 62 that cases and assertions flag.
+// "count must be at least 1"},`), an assertion that carries its
+// expectation (testify's assert.Equal, Python's assert), a literal assigned
+// to a variable named for the expectation (`want := "..."`, `wantErr =
+// true`, `expected = 3`), or a Go check of a string for a phrase
+// (`strings.Contains(err.Error(), "...")`). The first two were all of them
+// at first: both losses on the benchmark were cases of a table. The others
+// are what 5040f9fe changed (a want string beside a Contains check), which
+// they did not name. A t.Errorf's message says nothing of what is expected,
+// and the if before it is rewritten as often as a test is refactored:
+// counted, they flagged 84 of the 306 patches replayed, against the 62 that
+// cases and assertions flag.
 func expectationLine(rel, line string) bool {
 	code := strings.TrimSpace(codePart(rel, line))
 	switch {
@@ -355,8 +381,83 @@ func expectationLine(rel, line string) bool {
 		return false
 	case strings.HasSuffix(rel, ".py") && pyAssertRE.MatchString(code), strings.HasSuffix(rel, ".go") && goAssertRE.MatchString(code):
 		return true
+	case strings.HasSuffix(rel, ".go") && stringCheckRE.MatchString(code) && !strings.HasPrefix(code, "case ") && len(nonEmpty(stringLiterals(rel, code))) > 0:
+		return true // a case of a switch picks the expectation; the want it sets is the expectation
+	}
+	if m := wantAssignRE.FindStringSubmatch(code); m != nil {
+		if rest := strings.TrimSpace(m[1]); literalStart.MatchString(rest) && literalLeads.MatchString(rest) {
+			return true
+		}
 	}
 	return strings.HasSuffix(code, ",") && literalLeads.MatchString(code)
+}
+
+// stringLiterals is the contents of the string literals on a line, as they
+// are written (escapes left in): Go's "..." and `...`, Python's also '...'.
+// A Go rune ('"') is skipped whole, so it opens nothing. A literal that does
+// not close on the line is left out.
+func stringLiterals(rel, line string) []string {
+	code := codePart(rel, line)
+	python := strings.HasSuffix(rel, ".py")
+	var out []string
+	for i := 0; i < len(code); i++ {
+		q := code[i]
+		if q != '"' && q != '`' && q != '\'' {
+			continue
+		}
+		j := i + 1
+		for j < len(code) && code[j] != q {
+			if code[j] == '\\' && q != '`' {
+				j++
+			}
+			j++
+		}
+		if j >= len(code) {
+			break
+		}
+		if q != '\'' || python {
+			out = append(out, code[i+1:j])
+		}
+		i = j
+	}
+	return out
+}
+
+// nonEmpty is the literals that say something: an empty string ("") is in
+// every comparison with one.
+func nonEmpty(lits []string) []string {
+	var out []string
+	for _, l := range lits {
+		if l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// kept is whether the string literals of a line a change removes all stand
+// on one line the change adds: the case moved, from a map to a direct
+// assertion, into another shape, and what the test pins is the same. A line
+// with no string literal is never kept by this (a number or a boolean says
+// too little); it is kept only when added whole (normalLine).
+func kept(lits []string, added [][]string) bool {
+	want := nonEmpty(lits)
+	if len(want) == 0 {
+		return false
+	}
+	for _, have := range added {
+		all := true
+		for _, w := range want {
+			if !slices.Contains(have, w) {
+				all = false
+				break
+			}
+		}
+		if all {
+			return true
+		}
+	}
+	return false
 }
 
 // codePart is a line without its trailing comment (// in Go, # in Python),
@@ -395,9 +496,12 @@ func normalLine(rel, line string) string {
 // removedExpectations is the expectation lines (expectationLine) of the
 // tests HEAD has that the change removes and adds nowhere in its test files,
 // as whitespace and trailing comments aside they are: a case moved to
-// another test file, or realigned, is not removed.
+// another test file, or realigned, is not removed. Nor is a line whose
+// string literals all stand on one line the change adds (kept): the replay of
+// 94f5cac4 named a case that had only moved from a map to a direct assertion.
 func removedExpectations(c changeFiles) []removedLine {
 	added := map[string]bool{}
+	var addedLits [][]string
 	type change struct {
 		rel     string
 		removed []removedLine
@@ -424,9 +528,12 @@ func removedExpectations(c changeFiles) []removedLine {
 			switch op.kind {
 			case '+':
 				added[normalLine(rel, op.line)] = true
+				if lits := nonEmpty(stringLiterals(rel, op.line)); len(lits) > 0 {
+					addedLits = append(addedLits, lits)
+				}
 			case '-':
 				if expectationLine(rel, op.line) {
-					ch.removed = append(ch.removed, removedLine{path: rel, line: op.ai + 1, text: strings.TrimSpace(op.line)})
+					ch.removed = append(ch.removed, removedLine{path: rel, line: op.ai + 1, text: strings.TrimSpace(op.line), lits: stringLiterals(rel, op.line)})
 				}
 			}
 		}
@@ -435,7 +542,7 @@ func removedExpectations(c changeFiles) []removedLine {
 	var out []removedLine
 	for _, ch := range changes {
 		for _, r := range ch.removed {
-			if !added[normalLine(ch.rel, r.text)] {
+			if !added[normalLine(ch.rel, r.text)] && !kept(r.lits, addedLits) {
 				out = append(out, r)
 			}
 		}
@@ -450,7 +557,7 @@ func changeRemovalsPrim(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "change-removals",
 		Meta: scheme.Meta{
-			Doc:    "What the uncommitted change takes away that its own check cannot show: an alist of definitions, the top-level definitions (Go functions, methods as Type.Method, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, names request gives left out, at most " + fmt.Sprint(removalsMaxDefs) + ", each an alist of path, name, kind and line (at HEAD); and expectations, the lines of existing tests (x_test.go, test_x.py, x_test.py) that state an expectation (a case of a table: a line ending in a comma that holds a literal; or an assertion that carries one: testify's assert and require, Python's assert) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, at most " + fmt.Sprint(removalsMaxLines) + ", each an alist of path, line (at HEAD) and text. Hidden; registered in a git work tree. The evidence loop reads it before an unattended turn ends on a passing check (ADR 32, amended 2026-10-15).",
+			Doc:    "What the uncommitted change takes away that its own check cannot show: an alist of definitions, the top-level definitions (Go functions, methods as Type.Method, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, names request gives left out, at most " + fmt.Sprint(removalsMaxDefs) + ", each an alist of path, name, kind and line (at HEAD); and expectations, the lines of existing tests (x_test.go, test_x.py, x_test.py) that state an expectation (a case of a table: a line ending in a comma that holds a literal; an assertion that carries one: testify's assert and require, Python's assert; a literal assigned to want, expect, expected or a name that starts with one (wantErr, expected_msg); or, in Go, a strings or bytes check (Contains, ContainsAny, HasPrefix, HasSuffix, EqualFold) of a string literal) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, or whose string literals all stand on one line it adds (a case moved into another shape), at most " + fmt.Sprint(removalsMaxLines) + ", each an alist of path, line (at HEAD) and text. Hidden; registered in a git work tree. The evidence loop reads it before an unattended turn ends on a passing check (ADR 32, amended 2026-10-15).",
 			Params: []scheme.Param{{Name: "request", Type: "string", Doc: "the request: a name it gives is not counted as removed"}},
 			Host:   true,
 			Hidden: true,

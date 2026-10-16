@@ -227,6 +227,115 @@ func TestRemovedExpectationsAreCasesAndAssertions(t *testing.T) {
 	}
 }
 
+// The expectations of a test are also the literal a want variable holds and
+// the phrase a Contains check looks for, not only the cases of a table and
+// testify's asserts. On 5040f9fe the request added the response's
+// Content-Type to an error; the model reworded the error so that the phrase an
+// existing test pins was split, and edited that test's `want := "..."` and
+// not a case or an assert, so nothing named it (ADR 32, amended 2026-10-16).
+// Not named: a want that is computed, a table's opening line, a comparison,
+// a literal that only changed its variable's name, and a case that moved
+// from a map to a direct assertion, which the replay of 94f5cac4 named.
+func TestRemovedExpectationsAreAlsoWantsAndPhraseChecks(t *testing.T) {
+	head := map[string]string{
+		"llm/responses_test.go": "package llm\n\nfunc TestMissingTerminal(t *testing.T) {\n" +
+			"\t\twant := \"Responses stream ended without a terminal response\"\n" +
+			"\t\tswitch {\n\t\tcase failed:\n\t\t\twant = \"the response failed: quota refused\"\n\t\t}\n" +
+			"\t\tif err == nil || !strings.Contains(err.Error(), want) {\n\t\t\tt.Fatal(err)\n\t\t}\n" +
+			"\t\tif !strings.HasPrefix(err.Error(), \"openai: \") {\n\t\t\tt.Fatal(err)\n\t\t}\n" +
+			"\t\twantErr := true\n\t\texpected := 3\n\t\twantMsg := \"kept phrase\"\n" +
+			"\t\twant2 := compute()\n\t\twant3 := []string{\n\t\tvar wantTyped string = \"typed\"\n}\n",
+		"idx/idx_test.go": "package idx\n\nfunc TestErrors(t *testing.T) {\n" +
+			"\tfor src, want := range map[string]string{\n" +
+			"\t\t`(index-grep \"pkg\" \"(\")`: \"invalid regular expression\",\n\t} {\n\t\tcheck(src, want)\n\t}\n}\n",
+		"py/test_calc.py": "def test_one():\n    expected = \"one\"\n    want_n = 1\n    assert_it(expected, want_n)\n",
+	}
+	now := map[string]string{
+		"llm/responses_test.go": "package llm\n\nfunc TestMissingTerminal(t *testing.T) {\n" +
+			"\t\twant := \"ended without a terminal response\"\n" +
+			"\t\tswitch {\n\t\tcase failed:\n\t\t\twant = \"the response failed: quota refused\"\n\t\t}\n" +
+			"\t\tif err == nil || !strings.Contains(err.Error(), want) {\n\t\t\tt.Fatal(err)\n\t\t}\n" +
+			"\t\tif !strings.HasPrefix(err.Error(), \"openai: bad\") {\n\t\t\tt.Fatal(err)\n\t\t}\n" +
+			"\t\twantErr := false\n\t\texpected := 4\n\t\tphrase := \"kept phrase\"\n" +
+			"\t\twant2 := other()\n\t\twant3 := []string{\n\t\tvar wantTyped string = \"typed\"\n}\n",
+		"idx/idx_test.go": "package idx\n\nfunc TestErrors(t *testing.T) {\n" +
+			"\tif _, err := eval(`(index-grep \"pkg\" \"(\")`); err == nil || !strings.Contains(err.Error(), \"invalid regular expression\") {\n\t\tt.Errorf(\"%v\", err)\n\t}\n}\n",
+		"py/test_calc.py": "def test_one():\n    expected = \"uno\"\n    want_n = 1\n    assert_it(expected, want_n)\n",
+	}
+	var got []string
+	for _, l := range removedExpectations(fakeChange(head, now)) {
+		got = append(got, fmt.Sprintf("%s:%d %s", l.path, l.line, l.text))
+	}
+	want := []string{
+		"llm/responses_test.go:4 want := \"Responses stream ended without a terminal response\"",
+		"llm/responses_test.go:12 if !strings.HasPrefix(err.Error(), \"openai: \") {",
+		"llm/responses_test.go:15 wantErr := true",
+		"llm/responses_test.go:16 expected := 3",
+		"py/test_calc.py:2 expected = \"one\"",
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("removed expectations:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// What an expectation line is: the forms above, and not a comparison, a
+// computed want, a rune that holds a quote, or a comment.
+func TestExpectationLinesOfWantsAndPhraseChecks(t *testing.T) {
+	for _, c := range []struct {
+		rel, line string
+		want      bool
+	}{
+		{"a_test.go", `want := "x"`, true},
+		{"a_test.go", `var want string = "x"`, true},
+		{"a_test.go", `wantErr = true`, true},
+		{"a_test.go", `expected := 3`, true},
+		{"a_test.go", `expectedMsg := ` + "`raw`", true},
+		{"a_test.go", `want := []string{"a", "b"}`, true},
+		{"a_test.go", `want_err := nil`, true},
+		{"a_test.go", `if !strings.Contains(err.Error(), "phrase") {`, true},
+		{"a_test.go", `if strings.HasSuffix(got, "x") {`, true},
+		{"a_test.go", `if !bytes.Contains(out, []byte("x")) {`, true},
+		{"a_test.go", `want := compute("x")`, false},
+		{"a_test.go", `want := []string{`, false},
+		{"a_test.go", `want == "x"`, false},
+		{"a_test.go", `wanted := "x"`, false},
+		{"a_test.go", `wantX.y = "x"`, false},
+		{"a_test.go", `if !strings.Contains(err.Error(), want) {`, false},
+		{"a_test.go", `case strings.Contains(body, "response.failed"):`, false},
+		{"a_test.go", `if req.session != key || inBody != (setting == "") || strings.Contains(req.body, id) {`, false},
+		{"a_test.go", `want := "x" // a comment`, true},
+		{"a_test.go", `// want := "x"`, false},
+		{"a_test.go", `if strings.IndexRune(s, '"') >= 0 {`, false},
+		{"test_a.py", `expected = "x"`, true},
+		{"test_a.py", `want_n = 2`, true},
+		{"test_a.py", `expected = compute()`, false},
+		{"test_a.py", `if "x" in text:`, false},
+	} {
+		if got := expectationLine(c.rel, c.line); got != c.want {
+			t.Errorf("expectationLine(%q, %q) = %v, want %v", c.rel, c.line, got, c.want)
+		}
+	}
+}
+
+// A line's string literals are Go's "..." and `...` and Python's also '...',
+// as written; a rune, a comment and a literal that does not close are none.
+func TestStringLiterals(t *testing.T) {
+	if got := stringLiterals("a_test.go", `f("a\"b", `+"`c`"+`, '"', 'x') // "z"`); !reflect.DeepEqual(got, []string{`a\"b`, "c"}) {
+		t.Errorf("Go literals: %q", got)
+	}
+	if got := stringLiterals("a_test.py", `f("a", 'b') # "z"`); !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Errorf("Python literals: %q", got)
+	}
+	if got := stringLiterals("a_test.go", `f("open`); len(got) != 0 {
+		t.Errorf("an open literal: %q", got)
+	}
+	if !kept([]string{"a", "b"}, [][]string{{"b"}, {"b", "a", "c"}}) || kept([]string{"a", "b"}, [][]string{{"a"}, {"b"}}) || kept(nil, [][]string{{"a"}}) || kept([]string{""}, [][]string{{""}}) {
+		t.Error("a line is kept when one added line holds all its literals, and only then")
+	}
+}
+
 // (change-removals request) reads the working tree against HEAD and answers
 // with an alist of definitions and expectations.
 func TestChangeRemovalsReadsTheWorkingTree(t *testing.T) {
