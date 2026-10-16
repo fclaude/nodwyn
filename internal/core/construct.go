@@ -406,12 +406,15 @@ func (s *Session) trustedProject() (config.ProjectFiles, error) {
 
 func (s *Session) loadInit() error {
 	ctx := scheme.WithOrigin(context.Background(), scheme.OriginUser)
+	before := s.interp.Global().Snapshot()
 	if s.opts.InitFile != "" {
-		return s.interp.LoadFile(ctx, s.opts.InitFile)
-	}
-	if _, err := s.interp.EvalString(ctx, string(s.initSource)); err != nil {
+		if err := s.interp.LoadFile(ctx, s.opts.InitFile); err != nil {
+			return err
+		}
+	} else if _, err := s.interp.EvalString(ctx, string(s.initSource)); err != nil {
 		return fmt.Errorf("core: init: %w", err)
 	}
+	s.noteInitChanges(before, s.interp.Global().Snapshot())
 	return nil
 }
 

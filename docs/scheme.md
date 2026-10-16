@@ -515,6 +515,8 @@ v, err = in.Apply(ctx, proc, args)           // call a procedure
 err = in.Register(&scheme.Prim{...})         // add a host primitive
 in.SetGate(g)                                // install the guard (B2)
 fp := in.Fingerprint()                       // kernel fingerprint
+snap := in.Global().Snapshot()               // copy the global bindings
+in.Global().Restore(snap)                    // put them back, unbinding names bound since
 ```
 
 `ctx` cancellation is checked at every application; a cancelled evaluation
@@ -869,7 +871,7 @@ works here, while the session runs:
 |---|---|
 | `(session-list [n])` | this repository's sessions, newest first (all, or the latest `n`); each an alist with `id`, `first-message`, `last-event`, `current`, `in-flight` and `truncated`. Other repositories' sessions are not listed |
 | `(session-events id [kinds])` | one of those sessions as its log events, optionally only the kinds listed (`'("user.msg" "tool.result")`); each an alist with `seq`, `ts`, `kind` and `payload`, the event's JSON redacted and parsed as `json-parse` does. The values carry the `external:log` taint, like a tool's output |
-| `(reload)` | run the currently trusted revision of `.nodwyn/init.scm` again, with the caller's origin; changed or revoked project trust refuses before evaluating any code. An explicit Go-host `Options.InitFile` remains host-authorised. The strategy, compaction settings, agent-tool handlers and anything else read when used apply from the next turn; a tool keeps its schema and takes a changed body. What a session is fixed with (ADR 9) does not change: new or changed tools, guard checks (`register-check`) and prompts are returned as notes and apply from the next session or a resume |
+| `(reload)` | run the currently trusted revision of `.nodwyn/init.scm` again, with the caller's origin; changed or revoked project trust refuses before evaluating any code. An explicit Go-host `Options.InitFile` remains host-authorised. The strategy, compaction settings, agent-tool handlers and anything else read when used apply from the next turn; a tool keeps its schema and takes a changed body. What a session is fixed with (ADR 9) does not change: new or changed tools, guard checks (`register-check`) and prompts are returned as notes and apply from the next session or a resume. The file runs over what it found the first time: each global the first run changed is put back first, so a wrapper's `(define base-x x)` captures the default again, not its own earlier wrapper; globals a turn set are kept. A reload that fails puts every global back as it was |
 
 The optimizer (`internal/loop/optimize.scm`) is user code over these. The
 user starts it with a message; the default `agent-turn` runs it instead of

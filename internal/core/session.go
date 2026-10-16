@@ -29,7 +29,8 @@ type Session struct {
 	schedule     atomic.Pointer[log.SessionSchedule]
 	scheduledRun atomic.Pointer[log.ScheduleRun]
 	handover     atomic.Pointer[log.ContextHandover]
-	initSource   []byte // The exact project startup snapshot whose trust was checked.
+	initSource   []byte                 // The exact project startup snapshot whose trust was checked.
+	initDefaults map[string]initDefault // What each global init.scm changed was bound to before it (reload.go).
 	opts         Options
 	id           string
 	logw         *log.Writer

@@ -111,6 +111,51 @@ func TestReloadAppliesWhatTheSessionAllows(t *testing.T) {
 	}
 }
 
+// TestReloadRunsAWrapperOverWhatItFoundFirst: the wrap-and-extend init.scm
+// docs/scheme.md teaches captures the default in a base- name. Run again over
+// the bindings it left, it captured its own wrapper, which then called itself
+// without end. A reload runs it over what it found the first time, keeps the
+// globals a turn set, and puts every global back when it fails.
+func TestReloadRunsAWrapperOverWhatItFoundFirst(t *testing.T) {
+	t.Parallel()
+	o := diskOptions(t)
+	wrapper := `
+(define base-system-prompt system-prompt)
+(define (system-prompt repo) (string-append (base-system-prompt repo) " Extra."))`
+	r := diskSession(t, o, wrapper)
+	r.eval(`(define turn-tally 5)`)
+	extras := func() int {
+		return strings.Count(r.eval(`(system-prompt "repo")`), " Extra.")
+	}
+	if n := extras(); n != 1 {
+		t.Fatalf("before reload the prompt has %d extras", n)
+	}
+	for i := 0; i < 2; i++ {
+		r.eval(`(reload)`)
+		if n := extras(); n != 1 {
+			t.Fatalf("after reload %d the prompt has %d extras", i+1, n)
+		}
+	}
+	if got := r.eval(`turn-tally`); got != "5" {
+		t.Fatalf("reload reset a global init.scm never set: %s", got)
+	}
+
+	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
+(define base-system-prompt system-prompt)
+(define (system-prompt repo) "Replaced.")
+(define half-loaded #t)
+(car 1)`), 0o644)
+	if _, err := evalValue(t, r, `(reload)`); err == nil {
+		t.Fatal("a failing init file reloaded")
+	}
+	if n := extras(); n != 1 {
+		t.Fatalf("a failed reload left the prompt with %d extras", n)
+	}
+	if got := r.eval(`(guard (e (#t 'unbound)) half-loaded)`); got != "unbound" {
+		t.Fatalf("a failed reload left what it defined: %s", got)
+	}
+}
+
 func TestOptimizeImprovesInitFromHistory(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)

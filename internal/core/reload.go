@@ -43,6 +43,14 @@ func (s *Session) registerReload() error {
 				}
 				source = files.Init
 			}
+			// The file runs again over what it found the first time, not over
+			// itself: a wrapper's (define base-x x) would otherwise capture
+			// the wrapper it made before, which then calls itself. A reload
+			// that fails leaves every global as it was.
+			global := s.interp.Global()
+			before := global.Snapshot()
+			global.Restore(s.initFresh(before))
+			fresh := global.Snapshot()
 			s.interp.BeginReload()
 			var err error
 			if s.opts.InitFile != "" {
@@ -52,12 +60,15 @@ func (s *Session) registerReload() error {
 			}
 			notes := s.interp.EndReload()
 			if err != nil {
+				global.Restore(before)
 				return scheme.Void, fmt.Errorf("reload: %w", err)
 			}
 			changed, err := s.loop.PromptChanges(s.opts.Repo)
 			if err != nil {
+				global.Restore(before)
 				return scheme.Void, fmt.Errorf("reload: %w", err)
 			}
+			s.noteInitChanges(fresh, global.Snapshot())
 			for _, name := range changed {
 				notes = append(notes, fmt.Sprintf("%s changed: prompts are fixed for this session, so it applies from the next one", name))
 			}
@@ -68,4 +79,47 @@ func (s *Session) registerReload() error {
 			return scheme.List(out...), nil
 		},
 	})
+}
+
+// initDefault is how a global was bound before init.scm first changed it.
+type initDefault struct {
+	value scheme.Value
+	bound bool
+}
+
+// noteInitChanges records, for each global that init.scm changed between
+// two snapshots, its binding before the first change. A primitive is not
+// recorded: the name register-tool binds belongs to the session's tool
+// table, which a reload keeps and only gives a changed body.
+func (s *Session) noteInitChanges(before, after map[string]scheme.Value) {
+	if s.initDefaults == nil {
+		s.initDefaults = map[string]initDefault{}
+	}
+	for name, v := range after {
+		old, had := before[name]
+		if (had && scheme.Eqv(old, v)) || v.Kind == scheme.KPrim {
+			continue
+		}
+		if _, seen := s.initDefaults[name]; !seen {
+			s.initDefaults[name] = initDefault{old, had}
+		}
+	}
+}
+
+// initFresh is current with every global init.scm changed put back as it
+// was before init.scm ran. Globals the turn changes, such as a strategy's
+// counters, are left as they are.
+func (s *Session) initFresh(current map[string]scheme.Value) map[string]scheme.Value {
+	fresh := make(map[string]scheme.Value, len(current))
+	for name, v := range current {
+		fresh[name] = v
+	}
+	for name, d := range s.initDefaults {
+		if d.bound {
+			fresh[name] = d.value
+		} else {
+			delete(fresh, name)
+		}
+	}
+	return fresh
 }

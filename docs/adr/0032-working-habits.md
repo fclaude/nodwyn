@@ -778,6 +778,22 @@ reports that it has not run, while ordinary reload failures still roll back.
 This is a host-authority correction, not a new model working rule; the regression
 is `TestOptimizeKeepsAnEditPendingTrustReview`, using a scripted model.
 
+## Amendment 2026-10-16: a reload runs init.scm over what it first found
+
+`(reload)` evaluated `init.scm` again over the bindings its first run left.
+The wrap-and-extend pattern docs/scheme.md teaches, `(define base-system-prompt
+system-prompt)` before redefining `system-prompt`, then captured its own
+wrapper, which called itself without end, and before ADR 7's 2026-10-16
+amendment that ended the daemon. The session now records, when `init.scm`
+first loads, each global it changed and how that global was bound before; a
+reload puts those back, runs the file, and records what the new revision
+changes. Globals a turn sets are left alone, and names `register-tool` binds
+stay with the tool table. A reload that fails, or whose prompt check fails,
+puts every global back as it was, so the failure the optimiser reports leaves
+the running strategy unchanged as well as the file. This is a host
+correction, not a working rule; the regression is
+`TestReloadRunsAWrapperOverWhatItFoundFirst`.
+
 ## Amendment 2026-10-06: a failing test run is told, and an empty reply is asked again
 
 Two checks in the default loop, built after a review of its finish gate. The

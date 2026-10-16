@@ -36,3 +36,21 @@ func (e *Env) Set(name string, v Value) bool {
 	}
 	return false
 }
+
+// Snapshot copies this frame's bindings (not its ancestors').
+func (e *Env) Snapshot() map[string]Value {
+	m := make(map[string]Value, len(e.vars))
+	for k, v := range e.vars {
+		m[k] = v
+	}
+	return m
+}
+
+// Restore makes this frame's bindings a copy of a snapshot: names bound
+// since are unbound again. Closures over the frame see the restored values.
+func (e *Env) Restore(m map[string]Value) {
+	e.vars = make(map[string]Value, len(m))
+	for k, v := range m {
+		e.vars[k] = v
+	}
+}
