@@ -105,3 +105,18 @@ Other sessions observe updates at their next egress check. Binding scope remains
 hostname-based (not URL path, port or scheme), as in the existing table format.
 Audit replay does not restore permission. The protocol exposes an explicit
 `session.binding.create` operation, with identity derived from its local peer.
+
+## Amendment 2026-10-16: a record is one step
+
+`Session.Record` wrote the log, kept the event for the window and sent it to
+the front-end as separate steps, and the turn and the requests that change a
+setting during it (Don't ask, the model, the limits, a rename) recorded at the
+same time. In a three-second test with six writers, hundreds of delivered
+events had a lower `Seq` than one delivered before them; the stream and the
+window disagreed on order, and a client that subscribed then took its
+watermark from the last event it was given and lost the one before it. The
+steps now run under one lock (`recMu`), so the log, the window's events and
+the stream have one order. The lock is held while the event waits for a
+front-end that is not draining, which blocks other recorders as the unbuffered
+send already did; nothing that reads the events takes it. The regression is
+`TestConcurrentRecordsKeepOneOrder`.

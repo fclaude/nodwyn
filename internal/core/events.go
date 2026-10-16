@@ -14,7 +14,25 @@ func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
 	if err != nil {
 		return log.Event{}, err
 	}
-	payload = clean
+	ev, err := s.recordInOrder(kind, clean)
+	if err != nil {
+		return ev, err
+	}
+	return ev, s.recordRedactions(ev.Seq, redactions)
+}
+
+// recordInOrder does the steps of a record under one lock, so the log, the
+// events the window is built from and the stream the front-end reads all
+// have the same order. The turn and a request that changes a setting during
+// it (Don't ask, the model, the limits) record at the same time, and with
+// the steps apart a later event could reach the stream and the window
+// before an earlier one: a client that subscribed then took the watermark
+// from the last event it was given and lost the one before it. Emit may wait
+// for a front-end that is not draining, so the lock may be held that long;
+// nothing that reads the events (EventsSoFar) takes it.
+func (s *Session) recordInOrder(kind log.Kind, payload any) (log.Event, error) {
+	s.recMu.Lock()
+	defer s.recMu.Unlock()
 	ev, err := s.logw.Append(kind, payload)
 	if err != nil {
 		return ev, err
@@ -23,7 +41,7 @@ func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
 	s.noteSchedule(ev)
 	s.remember(ev)
 	s.Emit(event.FromLog(ev, payload))
-	return ev, s.recordRedactions(ev.Seq, redactions)
+	return ev, nil
 }
 
 func (s *Session) recordRedactions(source uint64, redactions []redact.Event) error {

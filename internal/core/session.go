@@ -36,7 +36,8 @@ type Session struct {
 	id           string
 	logw         *log.Writer
 	events       []log.Event
-	evmu         sync.Mutex
+	evmu         sync.Mutex // guards events
+	recMu        sync.Mutex // keeps the log's, the events' and the stream's order the same (Record)
 	outputMu     sync.Mutex
 	output       strings.Builder
 	out          chan event.Event
