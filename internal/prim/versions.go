@@ -15,7 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -31,8 +31,6 @@ type Versions struct {
 	Skip func(abs string) bool
 	// Record is told of every kept version, for the session log.
 	Record func(Version)
-
-	mu sync.Mutex
 }
 
 // Version is one kept previous content of a file.
@@ -44,7 +42,7 @@ type Version struct {
 }
 
 const (
-	maxVersionFile    = 16 << 20  // larger files are not kept
+	maxVersionFile    = 16 << 20  // a larger file is not overwritten, as no version of it can be kept
 	maxVersionsPer    = 20        // per path
 	maxVersionsTotal  = 256 << 20 // all objects together
 	versionsIndexName = "index.jsonl"
@@ -56,21 +54,26 @@ var hashName = regexp.MustCompile(`^[0-9a-f]{64}$`)
 func VersionsDir(root string) string { return filepath.Join(root, ".nodwyn", "versions") }
 
 // Keep saves abs's current content, if it has any and it is not covered by
-// another undo. A failure to keep a version fails the write: a workspace
-// that promises an undo must not lose one silently.
+// another undo. A link is followed, as the write that comes next follows it:
+// what is kept is the target's content, under the target's path. A failure to
+// keep a version fails the write, and so does a file too large to keep: a
+// workspace that promises an undo must not lose one silently.
 func (v *Versions) Keep(abs string) error {
 	if v == nil || (v.Skip != nil && v.Skip(abs)) {
 		return nil
 	}
-	info, err := os.Lstat(abs)
+	info, err := os.Stat(abs)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() || info.Size() > maxVersionFile {
+	if !info.Mode().IsRegular() {
 		return nil
+	}
+	if info.Size() > maxVersionFile {
+		return fmt.Errorf("%s is %s, more than the %s a kept version holds", abs, byteCount(int(info.Size())), byteCount(maxVersionFile))
 	}
 	content, err := os.ReadFile(abs)
 	if err != nil {
@@ -78,12 +81,18 @@ func (v *Versions) Keep(abs string) error {
 	}
 	sum := sha256.Sum256(content)
 	version := Version{Path: abs, Hash: hex.EncodeToString(sum[:]), Bytes: len(content), Time: time.Now().UTC()}
-	v.mu.Lock()
-	defer v.mu.Unlock()
 	objects := filepath.Join(v.Dir, "objects")
 	if err := os.MkdirAll(objects, 0o700); err != nil {
 		return err
 	}
+	// The sessions of one repository share this store, and a pruning one
+	// rewrites the index: a version another appended meanwhile would be lost,
+	// its object orphaned, and an object it had just found present removed.
+	unlock, err := lockStore(v.Dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	// Keep nodwyn's copies out of a repository's commits.
 	if ignore := filepath.Join(v.Dir, ".gitignore"); !exists(ignore) {
 		_ = os.WriteFile(ignore, []byte("# nodwyn's kept versions of files\n*\n"), 0o600)
@@ -109,8 +118,29 @@ func (v *Versions) Keep(abs string) error {
 	return v.prune()
 }
 
+// lockStore holds an advisory lock on the store at dir, against the other
+// sessions and daemons that use it. The lock is on the file description, so
+// it also excludes another Keep in this process.
+func lockStore(dir string) (func(), error) {
+	fd, err := syscall.Open(filepath.Join(dir, "lock"), syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("versions: lock: %w", err)
+	}
+	for {
+		if err = syscall.Flock(fd, syscall.LOCK_EX); !errors.Is(err, syscall.EINTR) {
+			break
+		}
+	}
+	if err != nil {
+		syscall.Close(fd)
+		return nil, fmt.Errorf("versions: lock: %w", err)
+	}
+	return func() { _ = syscall.Flock(fd, syscall.LOCK_UN); _ = syscall.Close(fd) }, nil
+}
+
 // prune keeps the newest maxVersionsPer versions of each path and at most
-// maxVersionsTotal bytes of objects, removing objects nothing refers to.
+// maxVersionsTotal bytes of objects, removing objects nothing refers to. The
+// store is locked.
 func (v *Versions) prune() error {
 	all, err := readIndex(v.Dir)
 	if err != nil {

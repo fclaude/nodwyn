@@ -572,3 +572,15 @@ device is refused, or the TUI's `:earlier`, and never in the folder, so a
 repository cannot turn it on. A save that does not name it keeps it. A session reads it at
 every call rather than at its start, so turning it on or off counts at
 once.
+
+## Amendment 2026-10-16: the version store loses nothing silently
+
+A write that replaces a file keeps a version first, and the cases that kept
+nothing without saying so now say so. A link is followed, as the write is:
+the target's content is kept under the target's path, where the link itself was
+skipped and the target overwritten with no version. A file over 16 MiB, too
+large to keep, refuses the write with that reason where it used to go ahead.
+The sessions of one repository share one store, so its index is changed under
+a file lock (`versions/lock`): a pruning session used to rewrite the index
+from what it had read and lose a version another had appended, leaving its
+object behind.

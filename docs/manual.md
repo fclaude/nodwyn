@@ -421,7 +421,9 @@ comparison from that kept version to today's file (removed lines are from the
 version; added lines are current). A missing current file shows deletions.
 Compare again to refresh; **Restore** is the separate action that writes.
 Open inspectors survive redraws. No prior version exists for a new file, and
-committed unchanged Git files rely on Git rather than this store.
+committed unchanged Git files rely on Git rather than this store. A write
+through a link keeps the target's version, and a file over 16 MiB, too large
+to keep, is not overwritten: the write is refused with that reason.
 
 ### Several tasks on one repository: worktrees
 
