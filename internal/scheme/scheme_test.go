@@ -310,10 +310,11 @@ func TestTailCalls(t *testing.T) {
 }
 
 // TestKernelFixed: loading Scheme that defines things and registers tools
-// grows the primitive table and the environment, and nothing else.
+// grows the primitive table and the environment, and no new form appears:
+// define-syntax stays a plain binding. (Evaluation semantics are held by
+// TestConformance, not by a version string.)
 func TestKernelFixed(t *testing.T) {
 	in := New()
-	before := in.Fingerprint()
 	nprims := len(in.Prims())
 	eval(t, in, `
 		(define (twice f x) (f (f x)))
@@ -323,9 +324,6 @@ func TestKernelFixed(t *testing.T) {
 		(register-tool "shout" (lambda (s . more) (string-upcase s))
 		  '((doc . "Upper-case") (params . (("s" "string" "text"))) (variadic . #t)))
 	`)
-	if in.Fingerprint() != before {
-		t.Fatalf("fingerprint changed: %s -> %s", before, in.Fingerprint())
-	}
 	if got := len(in.Prims()); got != nprims+2 {
 		t.Fatalf("prim table: want %d, got %d", nprims+2, got)
 	}
@@ -340,9 +338,6 @@ func TestKernelFixed(t *testing.T) {
 	}
 	if got := Write(eval(t, in, `(assoc-ref (primitive-info "double") 'origin)`)); got != `"scheme"` {
 		t.Fatalf("origin: %s", got)
-	}
-	if New().Fingerprint() != before {
-		t.Fatal("fingerprint differs between fresh interpreters")
 	}
 }
 
@@ -455,10 +450,6 @@ func TestOutputGoesToHostWriter(t *testing.T) {
 	eval(t, in, `(display "a") (write "b") (newline) (display '(1 "x"))`)
 	if got := buf.String(); got != "a\"b\"\n(1 x)" {
 		t.Fatalf("output: %q", got)
-	}
-	// Default output is discarded, not stdout (ADR 10).
-	if New().Output() != (New()).Output() {
-		t.Fatal("default output should be the shared discard writer")
 	}
 }
 

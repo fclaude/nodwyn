@@ -108,7 +108,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 
 ## Risks / explicitly-accepted limits
 
-1. **L2 is scoped, not a security boundary.** It stops the *model's* unintended leak; a user can write `(box v)` or `(wipe v)` to strip the tag. The real egress lines are **binding (E3) + fail-closed + ingress redaction (E2/E4)**.
+1. **L2 is scoped, not a security boundary.** It stops the *model's* unintended leak; a user can write `(wipe v)` to strip the tag. The real egress lines are **binding (E3) + fail-closed + ingress redaction (E2/E4)**.
 2. **The user-confirm loop can be uninformed consent.** When an unbound secret egresses, the harness names the *class*, never the value; if the class is also unknown, "confirm" may be a rubber-stamp. Mitigation: name class + destination in the prompt; consider requiring a binding rather than a bare confirm. (control-plane/data-plane row sits at 0.61 partly on this)
 3. **L3's value depends on training data.** With a public-corpus baseline it is strong for known-shaped secrets and weak for novel internal tokens — that is exactly the fail-closed residue binding catches.
 4. **The combined "egress surface is closed" claim is 0.30** until redaction is promoted to a substrate controller (E2/E4) and E4 (user paste) is covered. Once all four edges are explicitly guarded, the honest statement is: **no path exists for a secret *value* to egress unless bound or explicitly re-confirmed — but "closed" is the user's affirmation, not a property the harness can prove on its own.**

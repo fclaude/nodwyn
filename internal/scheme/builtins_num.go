@@ -17,44 +17,10 @@ func (in *Interp) registerNumbers() {
 		return foldNum(c, Int(1), func(a, b Value) (Value, error) { return arith(a, b, '*') })
 	})
 	in.mustRegister("-", "Subtract the rest from the first; (- n) negates.", n("n"), true, func(c *Call) (Value, error) {
-		first, err := c.Number(0)
-		if err != nil {
-			return Value{}, err
-		}
-		if len(c.Args) == 1 {
-			return arith(Int(0), first, '-')
-		}
-		acc := first
-		for i := 1; i < len(c.Args); i++ {
-			b, err := c.Number(i)
-			if err != nil {
-				return Value{}, err
-			}
-			if acc, err = arith(acc, b, '-'); err != nil {
-				return Value{}, err
-			}
-		}
-		return acc, nil
+		return foldDown(c, Int(0), '-')
 	})
 	in.mustRegister("/", "Divide the first by the rest; (/ n) inverts. Exact integer division stays an integer, otherwise a float.", n("n"), true, func(c *Call) (Value, error) {
-		first, err := c.Number(0)
-		if err != nil {
-			return Value{}, err
-		}
-		if len(c.Args) == 1 {
-			return arith(Int(1), first, '/')
-		}
-		acc := first
-		for i := 1; i < len(c.Args); i++ {
-			b, err := c.Number(i)
-			if err != nil {
-				return Value{}, err
-			}
-			if acc, err = arith(acc, b, '/'); err != nil {
-				return Value{}, err
-			}
-		}
-		return acc, nil
+		return foldDown(c, Int(1), '/')
 	})
 	cmp := func(name, doc string, ok func(a, b float64, ai, bi int64, ints bool) bool) {
 		in.mustRegisterOpaque(name, doc, nn, true, func(c *Call) (Value, error) {
@@ -370,4 +336,26 @@ func mulInt(a, b int64) (int64, bool) {
 		return 0, false
 	}
 	return p, true
+}
+
+// foldDown is - and /: the first argument less (or over) each of the rest in
+// turn, and unit op the only argument when there is just one.
+func foldDown(c *Call, unit Value, op byte) (Value, error) {
+	acc, err := c.Number(0)
+	if err != nil {
+		return Value{}, err
+	}
+	if len(c.Args) == 1 {
+		return arith(unit, acc, op)
+	}
+	for i := 1; i < len(c.Args); i++ {
+		b, err := c.Number(i)
+		if err != nil {
+			return Value{}, err
+		}
+		if acc, err = arith(acc, b, op); err != nil {
+			return Value{}, err
+		}
+	}
+	return acc, nil
 }

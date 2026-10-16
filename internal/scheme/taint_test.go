@@ -167,15 +167,15 @@ func TestWipeStripsAndIsUserOnlyAtTheGuard(t *testing.T) {
 	if v.S != "contents of x" {
 		t.Fatalf("wipe must not change the value: %q", v.S)
 	}
-	v, err = in.EvalString(WithOrigin(context.Background(), OriginUser), `(box (read-thing "x"))`)
-	if err != nil || !v.Taint.IsClean() {
-		t.Fatalf("box: %v %q", err, v.Taint)
-	}
-	// wipe and box are never offered to the model as tools.
+	// wipe is never offered to the model as a tool, and box, its old
+	// synonym, no longer exists.
 	for _, p := range in.Tools() {
-		if p.Name == "wipe" || p.Name == "box" {
+		if p.Name == "wipe" {
 			t.Fatalf("%s is exposed to the model", p.Name)
 		}
+	}
+	if _, ok := in.Lookup("box"); ok {
+		t.Fatal("box is still a primitive")
 	}
 }
 

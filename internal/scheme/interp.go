@@ -2,9 +2,7 @@ package scheme
 
 import (
 	"context"
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -18,13 +16,9 @@ import (
 //go:embed all:prelude
 var preludeFS embed.FS
 
-// kernelVersion changes only when eval/apply semantics change. It is part
-// of the fingerprint so a semantic change is visible as a new kernel.
-const kernelVersion = "b2"
-
 // specialForms is the fixed set of reserved names: every one is parsed as
 // a special form wherever it heads a list, whatever the environment binds.
-// There is no API to add to it; the fingerprint covers it.
+// There is no API to add to it.
 var specialForms = []string{
 	"define", "lambda", "if", "let", "let*", "letrec", "begin", "set!",
 	"quote", "quasiquote", "unquote", "unquote-splicing",
@@ -154,23 +148,6 @@ func (in *Interp) loadPrelude() error {
 
 // Global returns the global environment.
 func (in *Interp) Global() *Env { return in.global }
-
-// Output returns the interpreter's output writer.
-func (in *Interp) Output() io.Writer { return in.out }
-
-// Fingerprint identifies the kernel: its version and its special forms.
-// Loading Scheme code cannot change it; the test suite checks that.
-func (in *Interp) Fingerprint() string {
-	h := sha256.New()
-	h.Write([]byte("kernel=" + kernelVersion + "\n"))
-	names := make([]string, 0, len(in.isSF))
-	for s := range in.isSF {
-		names = append(names, s)
-	}
-	sort.Strings(names)
-	h.Write([]byte(strings.Join(names, ",")))
-	return hex.EncodeToString(h.Sum(nil))[:16]
-}
 
 // EvalString reads and evaluates every form in src in the global
 // environment and returns the last value (Void for empty input).
@@ -422,22 +399,16 @@ func (in *Interp) Eval(ctx context.Context, x Value, env *Env) (Value, error) {
 				buf := new(strings.Builder)
 				in.out, in.printed = buf, Taint{}
 				defer func() { in.printed = savedTaint }()
-				var v Value
 				var err error
-				for i := 0; i < len(form)-1; i++ {
-					if _, err = in.Eval(ctx, form[i], env); err != nil {
-						in.out = saved
-						return Value{}, err
+				for _, f := range form {
+					if _, err = in.Eval(ctx, f, env); err != nil {
+						break
 					}
-				}
-				if err == nil {
-					v, err = in.Eval(ctx, form[len(form)-1], env)
 				}
 				in.out = saved
 				if err != nil {
 					return Value{}, err
 				}
-				_ = v
 				return Value{Kind: KString, S: buf.String(), Taint: in.printed}, nil
 
 			case "cond":

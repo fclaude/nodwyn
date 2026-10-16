@@ -6,8 +6,8 @@ import (
 )
 
 // Error is a Scheme-level error: what (error ...) raises and what runtime
-// failures produce. In the bootstrap subset it cannot be caught in Scheme;
-// it unwinds to the host.
+// failures produce. guard catches it (a denial and a cancellation excepted,
+// which are Denied and the context's error); otherwise it unwinds to the host.
 type Error struct {
 	Message   string
 	Irritants []Value

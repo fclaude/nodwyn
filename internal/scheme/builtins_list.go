@@ -169,55 +169,15 @@ func (in *Interp) registerLists() {
 	ass("assoc", "First pair in al whose car is equal? to k, else #f.", Equal)
 
 	in.mustRegister("map", "Apply f elementwise across one or more lists; stops at the shortest.", []Param{{Name: "f", Type: "any"}, {Name: "l", Type: "list"}}, true, func(c *Call) (Value, error) {
-		f, err := c.Proc(0)
+		out, err := applyAcross(c, true)
 		if err != nil {
 			return Value{}, err
-		}
-		lists := make([][]Value, len(c.Args)-1)
-		n := -1
-		for i := range lists {
-			if lists[i], err = c.List(i + 1); err != nil {
-				return Value{}, err
-			}
-			if n < 0 || len(lists[i]) < n {
-				n = len(lists[i])
-			}
-		}
-		out := make([]Value, n)
-		for i := 0; i < n; i++ {
-			args := make([]Value, len(lists))
-			for j := range lists {
-				args[j] = lists[j][i]
-			}
-			if out[i], err = c.In.Apply(c.Ctx, f, args); err != nil {
-				return Value{}, err
-			}
 		}
 		return List(out...), nil
 	})
 	in.mustRegister("for-each", "Apply f elementwise for effect; yields void.", []Param{{Name: "f", Type: "any"}, {Name: "l", Type: "list"}}, true, func(c *Call) (Value, error) {
-		f, err := c.Proc(0)
-		if err != nil {
+		if _, err := applyAcross(c, false); err != nil {
 			return Value{}, err
-		}
-		lists := make([][]Value, len(c.Args)-1)
-		n := -1
-		for i := range lists {
-			if lists[i], err = c.List(i + 1); err != nil {
-				return Value{}, err
-			}
-			if n < 0 || len(lists[i]) < n {
-				n = len(lists[i])
-			}
-		}
-		for i := 0; i < n; i++ {
-			args := make([]Value, len(lists))
-			for j := range lists {
-				args[j] = lists[j][i]
-			}
-			if _, err := c.In.Apply(c.Ctx, f, args); err != nil {
-				return Value{}, err
-			}
 		}
 		return Void, nil
 	})
@@ -298,4 +258,42 @@ func (in *Interp) registerLists() {
 		args := append(append([]Value(nil), c.Args[1:len(c.Args)-1]...), last...)
 		return c.In.Apply(c.Ctx, f, args)
 	})
+}
+
+// applyAcross is map and for-each: it applies the procedure in argument 0
+// to the elements of the lists after it, stopping at the shortest, and
+// returns the results when keep is set.
+func applyAcross(c *Call, keep bool) ([]Value, error) {
+	f, err := c.Proc(0)
+	if err != nil {
+		return nil, err
+	}
+	lists := make([][]Value, len(c.Args)-1)
+	n := -1
+	for i := range lists {
+		if lists[i], err = c.List(i + 1); err != nil {
+			return nil, err
+		}
+		if n < 0 || len(lists[i]) < n {
+			n = len(lists[i])
+		}
+	}
+	var out []Value
+	if keep {
+		out = make([]Value, n)
+	}
+	for i := 0; i < n; i++ {
+		args := make([]Value, len(lists))
+		for j := range lists {
+			args[j] = lists[j][i]
+		}
+		v, err := c.In.Apply(c.Ctx, f, args)
+		if err != nil {
+			return nil, err
+		}
+		if keep {
+			out[i] = v
+		}
+	}
+	return out, nil
 }

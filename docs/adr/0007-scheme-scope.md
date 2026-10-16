@@ -22,8 +22,19 @@ Never in v0: hygienic macros, `call/cc`, `dynamic-wind`.
 
 ## Consequences
 - `eval` and `apply` are two fixed Go functions; loading `.scm` cannot add
-  special forms. A kernel-fingerprint test enforces this.
+  special forms. `TestKernelFixed` checks that loading Scheme grows the
+  primitive table and no new form appears (amended 2026-10-16).
 - Scope growth is a documented decision, not drift.
+
+## Amendment 2026-10-16: no kernel fingerprint
+
+The kernel fingerprint (a hash of a version string and the special-form
+names) was said to check that loading code cannot change evaluation. It could
+not: no Scheme code reaches either input, so the test passed by construction,
+and a change to how `define` or `guard` evaluates left it unchanged. It is
+removed. What `TestKernelFixed` really asserts stays (the primitive table grew
+by exactly the registered tools; `define-syntax` stays a plain binding), and
+evaluation semantics are held by the conformance suite.
 
 ## Amendment 2026-10-16: nesting is bounded
 

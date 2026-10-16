@@ -10,7 +10,7 @@ implements what is written here and nothing else; the conformance suite has a
 snippet for every form and builtin below, and a builtin that is not documented
 here fails the suite.
 
-Status: **v0 kernel (P1b)**. §10 lists what is deliberately absent.
+§10 lists what is deliberately absent.
 
 ---
 
@@ -254,7 +254,7 @@ identity.
 | `(string->symbol s)` `(symbol->string sym)` `(symbol? x)` | |
 | `(format fmt arg …)` | `~a` display, `~s` write, `~%` newline, `~~` tilde; too few or too many args is an error |
 
-There is no character type in v0; one-character strings serve that purpose.
+There is no character type; one-character strings serve that purpose.
 
 ### Output
 
@@ -383,7 +383,7 @@ its result.
 |---|---|
 | `(taint-of x)` | the tags as a list of strings, sorted; `()` for a clean value |
 | `(tainted? x)` | true if the value carries any tag |
-| `(wipe x)` `(box x)` | the same value with its tags removed. **User-originated Scheme only** — the guard denies either from model-originated code and from an agent-turn strategy (§9), which handles every tool result — and every use is logged |
+| `(wipe x)` | the same value with its tags removed. **User-originated Scheme only** — the guard denies either from model-originated code and from an agent-turn strategy (§9), which handles every tool result — and every use is logged |
 
 Propagation happens at the primitive dispatch. A list keeps each element's
 tags on the element, and a list built without a primitive (by `map`, by
@@ -453,8 +453,7 @@ Every primitive declares:
 
 Parameter **roles** (`path`, `source`, `dest`, `payload`, `credential`, and
 for commands and keyed requests `argv`, `method` and `position`) tell the
-guard what an argument *is*; they are declared by host primitives from B2
-on. A `path` is what the primitive acts on, and writes when it is
+guard what an argument *is*; they are declared by host primitives. A `path` is what the primitive acts on, and writes when it is
 irreversible; a `source` is a file it only reads, whatever else it does
 (`doc-export`'s document, the file `google-doc-upload` sends). Both are
 pinned and checked against the credential-file denylist, but a read-only
@@ -519,8 +518,9 @@ built-in Go checkers in the pipeline.
 
 Loading a `.scm` file can grow the primitive table and the global
 environment. It **cannot** add special forms or change evaluation: `eval`
-and `apply` are two fixed Go functions, and the kernel exposes a fingerprint
-that the test suite checks before and after loading arbitrary code.
+and `apply` are two fixed Go functions, and the test suite checks, after loading
+arbitrary code, that the primitive table grew by the registered tools alone
+and that `define-syntax` is still a plain binding.
 
 ## 8. Embedding API (Go)
 
@@ -529,8 +529,7 @@ in := scheme.New(scheme.WithOutput(w))       // prelude loaded
 v, err := in.EvalString(ctx, "(+ 1 2)")      // last value of the source
 v, err = in.Apply(ctx, proc, args)           // call a procedure
 err = in.Register(&scheme.Prim{...})         // add a host primitive
-in.SetGate(g)                                // install the guard (B2)
-fp := in.Fingerprint()                       // kernel fingerprint
+in.SetGate(g)                                // install the guard
 snap := in.Global().Snapshot()               // copy the global bindings
 in.Global().Restore(snap)                    // put them back, unbinding names bound since
 ```
@@ -1111,7 +1110,7 @@ default, and the reminder's table has only a default row.
 
 ## 10. Not in nodwyn Scheme
 
-Deliberately absent from v0.
+Deliberately absent.
 
 - characters and the full string-port API (only `with-output-to-string`)
 - source positions in runtime errors (reader errors carry positions)

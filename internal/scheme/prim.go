@@ -229,7 +229,7 @@ func (in *Interp) Prims() []*Prim {
 	return out
 }
 
-// SetGate installs the guard. nil allows everything (bootstrap tests only).
+// SetGate installs the guard. nil allows everything: an embedder with no guard, such as a test.
 func (in *Interp) SetGate(g Gate) { in.gate = g }
 
 // SetExpand installs a rewrite of path and command arguments (parameters

@@ -39,5 +39,4 @@ func (in *Interp) registerTaint() {
 		}
 	}
 	strip("wipe", "Return the value with its provenance tags removed. User-originated Scheme only; every use is logged.")
-	strip("box", "Synonym of wipe: return the value with its provenance tags removed. User-originated Scheme only; every use is logged.")
 }

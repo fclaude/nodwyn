@@ -731,8 +731,8 @@ to a destination no binding authorises, and it asks, as a security confirm
 that no standing approval waives, before running a command line built from
 tool output.
 
-\code{wipe}, and its synonym \code{box}, return the same value with its
-tags removed. They are for user-originated Scheme only: the guard refuses
+\code{wipe} returns the same value with its
+tags removed. It is for user-originated Scheme only: the guard refuses
 them to model-originated code and to the loop's strategy, which handles
 every tool result, and every use is logged. From a tool the model called,
 \code{wipe} fails with \code{wipe: denied: wipe is user-only:
@@ -1109,7 +1109,7 @@ Strings      string? string-length string-append substring string=? string<?
 Output       display write newline         (and the form with-output-to-string)
 Control      procedure? apply void error
 JSON         json-parse json-emit
-Provenance   taint-of tainted? wipe box    (wipe and box: user only)
+Provenance   taint-of tainted? wipe        (wipe: user only)
 Meta         primitives primitive-info register-tool register-check load handle?
 Prelude      assoc-ref identity compose string-empty?        (written in Scheme)
 \end{txt}

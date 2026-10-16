@@ -30,17 +30,16 @@ const (
 	TagFile  = "external:file"
 	TagShell = "external:shell"
 	TagHTTP  = "external:http"
-	TagEnv   = "external:env"
 	TagMCP   = "external:mcp"
 )
 
 // CredTag is the tag a credential handle of the given class carries.
 func CredTag(class string) string { return "cred:" + class }
 
-// ExternalPrefix and CredPrefix classify a tag.
+// externalPrefix and credPrefix classify a tag.
 const (
-	ExternalPrefix = "external:"
-	CredPrefix     = "cred:"
+	externalPrefix = "external:"
+	credPrefix     = "cred:"
 )
 
 // TaintOf returns the taint carrying exactly the named tags.
@@ -72,13 +71,13 @@ func (t Taint) Tags() []string { return slices.Clone(t.names) }
 func (t Taint) String() string { return strings.Join(t.Tags(), ",") }
 
 // Externals returns the external:* tags t carries.
-func (t Taint) Externals() []string { return t.filter(ExternalPrefix) }
+func (t Taint) Externals() []string { return t.filter(externalPrefix) }
 
 // Creds returns the credential classes t carries (without the prefix).
 func (t Taint) Creds() []string {
 	var out []string
-	for _, n := range t.filter(CredPrefix) {
-		out = append(out, strings.TrimPrefix(n, CredPrefix))
+	for _, n := range t.filter(credPrefix) {
+		out = append(out, strings.TrimPrefix(n, credPrefix))
 	}
 	return out
 }
