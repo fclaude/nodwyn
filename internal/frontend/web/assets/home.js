@@ -374,13 +374,15 @@ export function renderHome(root, ctx) {
         : {}),
     });
   };
-  let scheduling = null;
+  // startTask starts the task and sends its message, or, given a schedule,
+  // schedules it instead. The schedule is an argument, not page state: one
+  // whose start failed stayed set, and the next plain Send scheduled.
   let startTask;
   const form = h(
     "form",
     {
       class: "ask",
-      onsubmit: startTask = async (event) => {
+      onsubmit: startTask = async (event, scheduling = null) => {
         event.preventDefault();
         if (!ready()) return;
         starting = true;
@@ -412,7 +414,6 @@ export function renderHome(root, ctx) {
           sending = true;
           if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling, message: task.value });
           else await conn.call("session.send", { id: info.id, text: task.value });
-          scheduling = null;
           draft = "";
           pick(null, desk);
           pickJudge(null, desk);
@@ -453,7 +454,7 @@ export function renderHome(root, ctx) {
       helpersSlot,
       conn.has("schedule.set") ? h("button", { type: "button", class: "btn", "aria-label": "Schedule task", title: "Schedule task", onclick: () => {
         if (!ready()) return;
-        newSchedule(conn, async (d) => { scheduling = d; await startTask(new Event("submit", { cancelable: true })); });
+        newSchedule(conn, (d) => startTask(new Event("submit", { cancelable: true }), d));
       } }, "◷") : null,
       submit,
     ),
