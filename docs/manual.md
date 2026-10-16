@@ -2520,6 +2520,30 @@ or write the text `[REDACTED anthropic-key]` over one.
 5. `make accept` before committing; you commit — there is no commit tool.
 6. `make promote` when a phase's acceptance is green.
 
+### When a request to a model fails
+
+A model request that fails is sent again up to two more times, so a model
+server that drops one request under load, or that answers a sample it cannot
+parse, does not end the turn. The first retry waits two seconds and the second
+four. When the server says how long to wait (a `Retry-After` header, in
+seconds, in milliseconds or as a date), that wait is used instead if it is
+longer, up to one minute: a rate limit that asks for more than a minute ends
+the turn at once, saying so, since a turn that sits silent for longer looks
+hung. A turn that is waiting says `model request failed, retrying (1/2)` in the
+conversation and the log, so a stall of up to a minute on a 429 is the server's
+own wait, not a hang.
+
+Some failures are not retried, because sending the same request again fails
+the same way: a refusal with status 400, 401, 402, 403, 404 or 422 (a wrong
+key, a model the provider does not have, an account out of credit, a field the
+server does not take; the turn ends with what to change), a redirect, and a key
+that is not bound for the host or is locked. Everything else is (a timeout, a
+dropped connection, 429 and the 5xx statuses).
+
+Each attempt has its own `loop.request_timeout`, so a request that never
+answers takes up to three times it before the turn ends. The retries are not
+configurable.
+
 ### When something is wrong
 
 | Symptom | Look at |
