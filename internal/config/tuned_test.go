@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"reflect"
+	"slices"
+	"testing"
+)
 
 // A model's settings are its entry's: [control], which names the model as
 // the default, and a choice of it by server and id get them from there, and
@@ -56,6 +60,46 @@ cache_control = "1h"
 	}
 	if elsewhere := c.Tuned(Model{Provider: "openai", URL: "https://elsewhere.example/v1", Model: "gpt-5"}); elsewhere.NumCtx != 0 || elsewhere.PriceInput != nil {
 		t.Errorf("the same id at another address took them: %+v", elsewhere)
+	}
+}
+
+// A field added to Model has to say what it is (P2-072): the copies made of a
+// model (WithSettings, Choice) read the scope, so one that has none is
+// copied nowhere and the default model silently ignores it. Every setting is
+// carried by WithSettings, and nothing else is.
+func TestEveryModelFieldHasAScope(t *testing.T) {
+	typ := reflect.TypeFor[Model]()
+	full := reflect.New(typ).Elem()
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		scope := field.Tag.Get("scope")
+		if !slices.Contains([]string{"identity", "choice", "setting", "entry"}, scope) {
+			t.Errorf("Model.%s has scope %q: give it identity, choice, setting or entry", field.Name, scope)
+			continue
+		}
+		// A non-zero value of the field's type, whatever it is.
+		v := full.Field(i)
+		switch v.Kind() {
+		case reflect.String:
+			v.SetString("x")
+		case reflect.Int, reflect.Int64:
+			v.SetInt(1)
+		case reflect.Bool:
+			v.SetBool(true)
+		case reflect.Pointer:
+			v.Set(reflect.New(v.Type().Elem()))
+		case reflect.Slice:
+			v.Set(reflect.MakeSlice(v.Type(), 1, 1))
+		default:
+			t.Fatalf("Model.%s is a %s: teach this test to fill one", field.Name, v.Kind())
+		}
+	}
+	got := reflect.ValueOf(Model{}.WithSettings(full.Interface().(Model)))
+	for i := range typ.NumField() {
+		carried := !got.Field(i).IsZero()
+		if setting := typ.Field(i).Tag.Get("scope") == "setting"; carried != setting {
+			t.Errorf("WithSettings carries Model.%s = %v, but its scope is %q", typ.Field(i).Name, carried, typ.Field(i).Tag.Get("scope"))
+		}
 	}
 }
 

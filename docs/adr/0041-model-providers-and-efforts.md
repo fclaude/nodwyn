@@ -532,3 +532,19 @@ lock the sessions take when they save the same file.
 - **Every `config.toml` writer goes through one function** (`updateConfig`):
   the lock, the re-read, the chmod, and an error mapping that gives a lock or
   an I/O failure -32000, not -32602.
+
+A model's fields now say what they are. [control] can still restate a model
+that also has a [models.NAME] entry, and the copies made of it (`Tuned` and
+`WithSettings` take the entry's settings, `Choice` keeps which model it is,
+`Efforts` and `LabelsOf` look the entry up) each kept a list of fields by hand,
+so a new field missed in one of them was ignored by the default model until it
+was set twice. Each field of `config.Model` carries a `scope` tag (identity,
+choice, setting or entry), `WithSettings` and `Choice` read it, the first
+control write uses `WithSettings` for what it keeps, and
+`TestEveryModelFieldHasAScope` fails for a field without one.
+
+Not built: making `[control]` a pointer to a model (`default = "name"`) so that
+a model has one entry. Existing config.toml files restate the model in
+`[control]` and would need a migration of the file; the scopes remove the
+failure that motivated it (a field in one list and not another) without one.
+

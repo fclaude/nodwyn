@@ -182,35 +182,43 @@ const ControlModel = "control"
 // the machine. A keyed model also needs its key bound to the URL's host
 // (bindings.toml, POST at KeyPosition: a bearer header, or x-api-key for
 // Anthropic); that is checked on every request.
+//
+// Each field of Model has a scope, which what is derived from a model reads
+// instead of a list of fields kept by hand (TestEveryModelFieldHasAScope fails
+// for a new field until it has one): "identity" is which model it is and where
+// (Choice), "choice" the effort it starts at (Choice too), "setting" what
+// tunes it and is taken from its own entry when [control] leaves it unset
+// (WithSettings), and "entry" what only its own entry declares, found for
+// another through Efforts and LabelsOf.
 type Model struct {
 	// Server names the [servers.NAME] the model is on. Parse copies the
 	// server's provider, dialect, URL and credential into the model, so the
 	// rest of nodwyn reads a model alone; a model that names a server sets none of
 	// these itself.
-	Server     string          `toml:"server"`
-	Dialect    llm.ChatDialect `toml:"dialect" json:",omitempty"` // Chat Completions dialect; inherited from Server when named.
-	Provider   string          `toml:"provider"`                  // "ollama" (the default when unset), "openai" for any chat-completions server, or "anthropic" for Claude's Messages API
-	URL        string          `toml:"url"`                       // base URL; for openai including the version, e.g. https://api.openai.com/v1
-	Model      string          `toml:"model"`                     // model id as the provider names it
-	NumCtx     int             `toml:"num_ctx"`                   // context length; sent to ollama; for [control] it also sizes the window (Window.Sized)
-	KeepAlive  string          `toml:"keep_alive"`                // ollama only
-	Credential string          `toml:"credential"`                // keychain class of the API key; empty for none
+	Server     string          `toml:"server" scope:"identity"`
+	Dialect    llm.ChatDialect `toml:"dialect" json:",omitempty" scope:"identity"` // Chat Completions dialect; inherited from Server when named.
+	Provider   string          `toml:"provider" scope:"identity"`                  // "ollama" (the default when unset), "openai" for any chat-completions server, or "anthropic" for Claude's Messages API
+	URL        string          `toml:"url" scope:"identity"`                       // base URL; for openai including the version, e.g. https://api.openai.com/v1
+	Model      string          `toml:"model" scope:"identity"`                     // model id as the provider names it
+	NumCtx     int             `toml:"num_ctx" scope:"setting"`                    // context length; sent to ollama; for [control] it also sizes the window (Window.Sized)
+	KeepAlive  string          `toml:"keep_alive" scope:"setting"`                 // ollama only
+	Credential string          `toml:"credential" scope:"identity"`                // keychain class of the API key; empty for none
 	// MaxOutput caps this model's replies, thinking included, and is the
 	// room the window keeps for one: a remote reasoning model may need more
 	// than the default. It must be below NumCtx. 0 is Window.ReplyCap's
 	// default.
-	MaxOutput int `toml:"max_output"`
+	MaxOutput int `toml:"max_output" scope:"setting"`
 	// OutputField is the request field a chat-completions server reads the
 	// cap from: "max_completion_tokens" (the default; reasoning models
 	// refuse the older field) or "max_tokens", for servers that only know
 	// that one. openai only.
-	OutputField string `toml:"output_field"`
+	OutputField string `toml:"output_field" scope:"setting"`
 	// Temperature and Seed are sampling settings sent with every request to
 	// this model; unset leaves them to the server. Temperature 0 with a
 	// seed makes replies as repeatable as the server allows (ollama's
 	// options, a chat-completions server's fields).
-	Temperature *float64 `toml:"temperature"`
-	Seed        *int64   `toml:"seed"`
+	Temperature *float64 `toml:"temperature" scope:"setting"`
+	Seed        *int64   `toml:"seed" scope:"setting"`
 	// Vision says whether the model takes images, so an attached image may
 	// be sent to it (ADR 22 §3). openai and anthropic only: those servers do
 	// not say, while ollama reports it (/api/show). Unset, it is what the
@@ -219,7 +227,7 @@ type Model struct {
 	// refuses an image fails that request, which costs less than refusing an
 	// image a person has prepared a message around (ADR 22, amended
 	// 2026-10-05). true and false say so whatever is published.
-	Vision *bool `toml:"vision"`
+	Vision *bool `toml:"vision" scope:"setting"`
 	// CacheKey is how requests name their session to a chat-completions
 	// server, so one that routes by it keeps a session on the replica that
 	// holds its prompt cache (ADR 9): "session" (the default) sends a key
@@ -228,7 +236,7 @@ type Model struct {
 	// refuses fields it does not know, and "off" sends neither. A ChatGPT
 	// plan's requests carry it as Codex's session headers too, unless "off"
 	// (ADR 9, amended 2026-10-07). openai only.
-	CacheKey string `toml:"cache_key"`
+	CacheKey string `toml:"cache_key" scope:"setting"`
 	// CacheControl asks a chat-completions provider to cache the prompt:
 	// "ephemeral" for the provider's own lifetime (five minutes) or "1h". A
 	// Claude model caches a prompt only when it is asked to, unlike the models
@@ -238,7 +246,7 @@ type Model struct {
 	// routes Claude to read, and which a provider that does not know it may
 	// refuse. Anthropic's own API reads it the same way and caches nothing
 	// without it. openai and anthropic only.
-	CacheControl string `toml:"cache_control"`
+	CacheControl string `toml:"cache_control" scope:"setting"`
 	// KeepReasoning keeps each reply's reasoning, encrypted as a Responses
 	// server gives it, and gives it back with the reply and with earlier
 	// turns' where they were, so the model need not think again what it
@@ -249,15 +257,15 @@ type Model struct {
 	// servers with dialect = "responses" only. A chat-completions reply's
 	// reasoning_details (OpenRouter's) need no setting: they are kept whenever
 	// a reply carries them (ADR 9, amended 2026-10-15).
-	KeepReasoning bool `toml:"keep_reasoning"`
+	KeepReasoning bool `toml:"keep_reasoning" scope:"setting"`
 	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
 	// per million tokens, in USD, for estimating what a request cost when
 	// the provider does not report it (OpenRouter does). Unset is what the
 	// provider publishes (Rates), else unknown; cached input unset is then
 	// priced as input. Nothing is enforced with them.
-	PriceInput       *float64 `toml:"price_input"`
-	PriceCachedInput *float64 `toml:"price_cached_input"`
-	PriceOutput      *float64 `toml:"price_output"`
+	PriceInput       *float64 `toml:"price_input" scope:"setting"`
+	PriceCachedInput *float64 `toml:"price_cached_input" scope:"setting"`
+	PriceOutput      *float64 `toml:"price_output" scope:"setting"`
 	// Efforts are the reasoning efforts the model takes, in the words its
 	// server accepts: ["low", "medium", "high"], ["minimal", "low", "medium",
 	// "high"], or ["off", "on"] for an Ollama model that thinks or does not
@@ -265,19 +273,19 @@ type Model struct {
 	// address, so a model that declares none takes no effort setting and is
 	// sent none. Efforts may be left off a model that another entry in
 	// config.toml declares them for (Config.Efforts).
-	Efforts []string `toml:"efforts"`
+	Efforts []string `toml:"efforts" scope:"entry"`
 	// Effort is the effort a conversation on this model starts with when
 	// nobody chose one: one of Efforts. Unset sends none, which leaves the
 	// model to its provider's default. For [control] it is the effort of the
 	// default model, which a new task starts with.
-	Effort string `toml:"effort"`
+	Effort string `toml:"effort" scope:"choice"`
 	// Labels say what the model is for ("fast", "strong"), in words the
 	// person chooses. Like Efforts they may be left off a model that another
 	// entry for it declares them for (Config.LabelsOf), and only the user's
 	// config sets them: a strategy picks models by label, and a task's model
 	// chooses its helpers by them (agents.scm), but which models a task may
 	// hand work to is chosen for each task, never by a label.
-	Labels []string `toml:"labels"`
+	Labels []string `toml:"labels" scope:"entry"`
 }
 
 // TakesImages says whether an image may be sent to m, a chat-completions
@@ -1079,44 +1087,11 @@ func (c Config) Tuned(m Model) Model {
 
 // WithSettings is m with each setting it leaves unset taken from o.
 func (m Model) WithSettings(o Model) Model {
-	if m.NumCtx == 0 {
-		m.NumCtx = o.NumCtx
-	}
-	if m.KeepAlive == "" {
-		m.KeepAlive = o.KeepAlive
-	}
-	if m.MaxOutput == 0 {
-		m.MaxOutput = o.MaxOutput
-	}
-	if m.OutputField == "" {
-		m.OutputField = o.OutputField
-	}
-	if m.Temperature == nil {
-		m.Temperature = o.Temperature
-	}
-	if m.Seed == nil {
-		m.Seed = o.Seed
-	}
-	if m.Vision == nil {
-		m.Vision = o.Vision
-	}
-	if m.CacheKey == "" {
-		m.CacheKey = o.CacheKey
-	}
-	if m.CacheControl == "" {
-		m.CacheControl = o.CacheControl
-	}
-	if !m.KeepReasoning {
-		m.KeepReasoning = o.KeepReasoning
-	}
-	if m.PriceInput == nil {
-		m.PriceInput = o.PriceInput
-	}
-	if m.PriceCachedInput == nil {
-		m.PriceCachedInput = o.PriceCachedInput
-	}
-	if m.PriceOutput == nil {
-		m.PriceOutput = o.PriceOutput
+	mv, ov := reflect.ValueOf(&m).Elem(), reflect.ValueOf(o)
+	for i := range mv.NumField() {
+		if mv.Type().Field(i).Tag.Get("scope") == "setting" && mv.Field(i).IsZero() {
+			mv.Field(i).Set(ov.Field(i))
+		}
 	}
 	return m
 }
@@ -1155,7 +1130,14 @@ func (c Config) ModelChoices() []NamedModel {
 // LabelsOf): a copy in [control] would go stale when the entry changes, and
 // win over it.
 func (m Model) Choice() Model {
-	return Model{Server: m.Server, Provider: m.Provider, Dialect: m.Dialect, URL: m.URL, Credential: m.Credential, Model: m.Model, Effort: m.Effort}
+	var c Model
+	mv, cv := reflect.ValueOf(m), reflect.ValueOf(&c).Elem()
+	for i := range mv.NumField() {
+		if scope := mv.Type().Field(i).Tag.Get("scope"); scope == "identity" || scope == "choice" {
+			cv.Field(i).Set(mv.Field(i))
+		}
+	}
+	return c
 }
 
 // LabelsOf are the labels m goes by: its own, else those of the first entry in
