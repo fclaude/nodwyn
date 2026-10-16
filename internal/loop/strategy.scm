@@ -231,11 +231,9 @@
 
 (define (edit-call? call) (member (assoc-ref call 'name) '("fs-write" "fs-edit")))
 
-;; Whether a test command ran successfully: exit status 0.
-(define (ran-ok? result)
-  (and (assoc-ref result 'ok #f)
-       (let ((v (guard (e (else #f)) (json-parse (format "~a" (assoc-ref result 'value ""))))))
-         (and (pair? v) (equal? (assoc-ref v "status" 1) 0)))))
+;; (ran-ok? result), whether a test command ran, is defined by shell.scm,
+;; which owns it: it reads the shell habit's plain-text results and counts a
+;; run with failures as a run. The evidence loop below calls it by name.
 
 ;; How a model's call may spell a path in the scratch directory: $TMPDIR,
 ;; as the prompts name it, or the directory itself.
