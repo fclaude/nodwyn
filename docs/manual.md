@@ -602,6 +602,14 @@ none ran, or delete it. And when an edit removes or rewrites an expectation of
 a test the repository already had, the model is asked once for that file, as
 it edits, which sentence of your request requires the new expectation; the
 edit itself is never refused. It answers the guard's questions; it does not
+
+named to the model: a check that cannot fail for a part does not test it,
+and that review is made at most twice in a run. A test that failed on the
+unchanged code too (in a run on a copy of the last commit, or in the turn's
+first full run before it edited anything) is said so when it fails again, and
+is not told to the model as its change's failure. Files that `make validate`
+leaves untracked are named in its result, and deleting them does not call for
+another run. It answers the guard's questions; it does not
 overrule its refusals. Still denied, exactly as with a human at the prompt:
 
 - anything outside the repository, and symlinks that leave it;

@@ -1696,3 +1696,119 @@ could name.
 Not measured yet: the next run on these tasks is what shows whether the
 re-reads fall and whether the 12000 characters pay for themselves; the folds
 broke even at best on this review (6e18b7ba). The caps are a first step.
+
+## Amendment 2026-10-16: the closing rounds stop making work
+
+The Muse review of 2026-10-16 (transcripts of nodwyn dsl20r and dsl16r on
+eight commit-bench tasks, with Pi) found that the gates and reminders at the end of a
+run cost 9-38% of a run's tokens and bought no correctness. Each change below
+is one such round:
+
+- **6e18b7ba.** validate regenerated the untracked `docs/expert/expert.pdf`
+  (the snapshots the benchmark runs against still built the books), the model
+  deleted it, the repository's reminder ("validate has not run since your last
+  change") counted the deletion as a change since validate and asked for
+  validate again, which made the file again: R96-R104, about 100k tokens, 7%,
+  in two builds. In a third the last validate run left the 1 MB file in the
+  patch (1,053,931 bytes). On dc679e46 the same happened with
+  `docs/book/nodwyn.pdf`, twice.
+- **7513f7eb.** About 14 calls (dsl20r) and 30 (dsl16r) went on proving that
+  an existing test fails on a pristine copy too, each time after "your last
+  test run after your last edit failed"; the model had compared the two sets
+  already, on a run the loop did not recognise as the comparison.
+- **3422faf1.** A 21-call tail, 22% of the run: the plan named
+  `TestExfilScenario019` for a scenario file, the gate wanted that test in the
+  file, and the run refactored a test file, regenerated the catalogue and ran
+  validate again. dsl16r's `go run ./scripts/validate` through `shell-exec`
+  was not counted as validate.
+- **The closing check-without rounds** took 9% of a run (dsl20r, high
+  effort) and 37-38% in two others (dsl16r, dsl20r at low effort).
+
+So:
+
+- **A deletion of what a validate run left is no change.** The loop keeps the
+  untracked files the round's validate runs and `tool-commands` tools made
+  (`files-made`: new in `git-status` since the round began, and not written
+  by the file tools) and the repository as validate left it (`repo-print`).
+  When the only thing that moved since is that some of those files are gone,
+  `validate-settle` sets `validated-state` again, so `.nodwyn/init.scm`'s
+  reminder is not said; any other difference ends the tracking and the
+  reminder stands. The loop cannot change what validate does in a snapshot
+  (and `scripts/validate` no longer builds the books, 1fd4c3e, so here it
+  leaves nothing), so the validate result carries one line naming what it
+  left (`validate-left-note`: delete them unless they are part of the change,
+  which needs no new run), where the model can act on it at once, rather than
+  the loop deleting a file the model did not choose to delete; and the finish
+  review still names a file that stays, saying its deletion needs no new run.
+  `TestDeletingWhatValidateLeftIsNoChange`,
+  `TestDeletingWhatTheValidateToolLeftIsNoChange`,
+  `TestDeletingWhatABackgroundValidateLeftIsNoChange`,
+  `TestWhatValidateLeftIsNamedInTheReview`; and
+  `TestAnEditAfterValidateIsStillAChange` for the change that is one.
+- **`go run ./scripts/validate` is validate.** `validate-commands` lists it
+  with `make validate`; a run of either through the shell is a test run
+  (`test-command-words`), the whole check (`whole-check-words`), no check
+  for check-without to take apart (a shell `make validate` was eligible,
+  though the tool's run is not), and sets `validated-state`.
+  `TestAShellGoRunValidateCountsAsValidated`,
+  `TestAShellValidateMeetsThePlansCheckStep`,
+  `TestAValidateRunInTheShellIsNotTakenApart`.
+- **A failure the unchanged code has is said once, not proved again.**
+  `failure-names` reads the failing tests and packages from a run's output
+  (Go, pytest, unittest). The loop keeps those of the runs on the unchanged
+  code: any run on `$TMPDIR/base`, and a full test run (no `-run`, `-k` or
+  node id) before the turn's first edit, in a turn that began with no tracked
+  change. They stay known through later edits, so the comparison is done
+  once. A run after the last edit that fails only known tests is not told as
+  a failing run; its result says they failed on the unchanged code
+  (`failure-known-hint`). When some are known the reminder names them and the
+  others (`finish-failing-known-message`: say so in your answer, do not fix
+  them). A test is not the unchanged code's to answer for when the request or
+  the plan names it, or a file the turn wrote mentions it: the model's own
+  test fails on the copy of the last commit as it should, and the test a
+  task asks to fix failing again is not done. A package that fails with no
+  known test (a build failure, a panic) is not excused either. Not used:
+  validate's own "fail on the unchanged code" lines, which are the change's
+  tests failing there by design. `TestAFailureTheUnchangedCodeHadIsNotTold`,
+  `TestANewFailureIsToldWithTheSharedOnes`,
+  `TestAComparisonOnTheCopyIsRememberedAcrossEdits`,
+  `TestAFailingTestTheRequestNamesIsStillTold`,
+  `TestAFailingTestTheTurnWroteIsStillTold`,
+  `TestAFailingValidateAfterAKnownFailureIsStillTold`,
+  `TestAFailureBeforeTheFirstEditIsNotTheLastCommitsIfTheTurnBeganDirty`,
+  `TestFailureNamesReadWhatTheOutputSays`.
+- **A scenario file meets a test step.** A test step whose path runs through
+  a `scenarios`, `testdata` or `fixtures` folder is met by that file (the
+  repository's, or one the turn wrote whose name starts with the step's path)
+  and by a passing `go test` of the folder above; the new file is no stray
+  when a step's path starts it (`plan-path-starts?`; only a scenario path, so
+  the backup of a planned file is still named). A test the existing runner's
+  cases hold under no name of their own is not asked for by name.
+  `TestAScenarioFileMeetsItsTestStep`, `TestABackupOfAPlannedFileIsStillNamed`.
+- **Nothing is asked again for a run that stands.** The plan's evidence that
+  a command passed is cleared only by an edit through the file tools to a
+  file that is not a document or in the scratch directory (as before), so a
+  deletion made through the shell never cleared it; what asked again with
+  nothing changed was `validated-state`, the repository's own reminder, and
+  the three points above are the ways it was: a deletion of validate's
+  output, a validate run the loop did not count, and a failure already
+  compared.
+- **The finish review is made at most twice in a run nobody reads.**
+  `finish-review-limit` (2), counted in `finish-reviews` over the session's
+  turns; a turn after the second ends on its report. A turn that edited
+  nothing has no review, so a later review needs new edits as the first did.
+  A chat's turn, which a person reads, is not held to it.
+  `TestTheFinishReviewIsMadeAtMostTwiceInARun`.
+
+What is kept: every check still runs; check-without still names the parts of
+the change a passing check does not test, once a turn; a model that wants
+to compare with the unchanged code still can, and the comparison is now kept.
+What is not built: the single-turn benchmark runs of dsl20r already had one
+review each (the cap above has nothing to do there; its cost is the work the
+review's points ask for, which the points that disappear above reduce and the
+check-without point, which stays, does not); a plan's check step that failed
+only on known failures (7513f7eb, `make accept`) is still asked for; the
+chase of a flaky browser check inside validate (c80b38ac, R61-R84) was the
+model's, not a reminder's, and nothing here touches it; the plain chat loop
+does not run `evidence-loop`, so none of this applies to a chat that is
+neither unattended nor planned. None of this was replayed on the benchmark.

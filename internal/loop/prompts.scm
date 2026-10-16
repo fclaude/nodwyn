@@ -367,6 +367,36 @@
 ;; cancelled (ADR 32, amended 2026-10-10).
 (define finish-failing-message
   "Your last test run after your last edit failed. If those failures come from your change, fix the change and run the tests again; do not edit an existing test's expectations to make it pass unless the request asks for the behaviour it checks to change. If the same tests fail on the unchanged code too (compare on a copy of the last commit, as the rules ask), say so in your report and finish.")
+
+;; The tests (strategy.scm, failure-names) at most eight at a time.
+(define (failure-list names)
+  (let take ((ns names) (n 0) (out '()))
+    (cond ((null? ns) (string-join (reverse out) ", "))
+          ((>= n 8) (string-append (string-join (reverse out) ", ") ", …"))
+          (else (take (cdr ns) (+ n 1) (cons (car ns) out))))))
+
+;; The failing-run reminder when some of the failures are the unchanged
+;; code's: seen before the first edit or on the copy of the last commit
+;; (strategy.scm, failures-known?). On commit-bench (dsl20r, 7513f7eb) the
+;; model had shown that an existing test failed on a pristine copy, and the
+;; reminder sent it back to prove it again: about 14 calls in dsl20r and 30
+;; in dsl16r (ADR 32, amended 2026-10-16).
+(define (finish-failing-known-message known fresh)
+  (string-append
+   "Your last test run after your last edit failed. These also fail on the unchanged code (say so in your answer, do not fix them): "
+   (failure-list known)
+   (if (null? fresh)
+       ". The run failed in other ways too, such as a package that does not build: if that comes from your change, fix it and run the tests again."
+       (string-append ". These do not: " (failure-list fresh)
+                      ". If they come from your change, fix the change and run the tests again; do not edit an existing test's expectations to make it pass unless the request asks for the behaviour it checks to change."))))
+
+;; Said in a failing run's own result when every failure in it is one the
+;; unchanged code showed earlier in the turn, so the model need not compare
+;; again and the reminder above is not due.
+(define (failure-known-hint known)
+  (string-append "\n[hint: these also failed on the unchanged code earlier in this turn: " (failure-list known)
+                 ". Say so in your answer; do not fix them.]"))
+
 (define (finish-unrunnable-message attempts)
   (string-append
    "Your last " (number->string attempts)
@@ -522,10 +552,26 @@
 
 ;; In a git work tree, files new since the turn began that git does not
 ;; track, said once: whatever is left in the repository is in the change.
-(define (finish-new-files-message files)
-  (string-append
-   "These files are new in the repository and git does not track them: " (string-join files ", ")
-   ". Remove the ones that are not part of the change (a script, notes, output, a backup, what a run left behind; throwaway files belong in $TMPDIR), keep the ones the change needs, then finish."))
+;; made, optional, is the files the turn's validate runs and tools left
+;; (strategy.scm, validate-settle): said in the validate result already, and
+;; if they are still there named here as ones whose deletion needs no new run
+;; (ADR 32, amended 2026-10-16).
+(define (finish-new-files-message files . made)
+  (let ((left (if (pair? made) (filter (lambda (f) (member f (car made))) files) '())))
+    (string-append
+     "These files are new in the repository and git does not track them: " (string-join files ", ")
+     ". Remove the ones that are not part of the change (a script, notes, output, a backup, what a run left behind; throwaway files belong in $TMPDIR), keep the ones the change needs, then finish."
+     (if (pair? left)
+         (string-append " Deleting what a validate run left (" (string-join left ", ") ") needs no new run of validate.")
+         ""))))
+
+;; What a validate run left untracked, said in its result (strategy.scm,
+;; evidence-loop): the model can delete it at once, and the deletion is no
+;; change since validate. The last validate run of 6e18b7ba on commit-bench
+;; (dsl20r, effort low) left the 1 MB expert.pdf in the patch.
+(define (validate-left-note files)
+  (string-append "\n[validate left these files, which git does not track: " (string-join files ", ")
+                 ". Delete them unless they are part of your change; that needs no new run of validate.]"))
 
 ;; What the default loop says after rounds that only read and searched
 ;; (strategy.scm, reading-reminder-after): the thinking behind them is

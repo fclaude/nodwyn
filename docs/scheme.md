@@ -555,7 +555,18 @@ change and no test run after it, gets `finish-no-change-message` or
 `finish-untested-message`, at most `finish-reminders` (2) times; one whose
 last test or check run after the last edit exited non-zero gets
 `finish-failing-message` once until the next edit, and may answer that the
-tests fail on the unchanged code too and end. An exit that says no test ran
+tests fail on the unchanged code too and end. The loop reads the tests a run
+reports failing (`failure-names`: Go's `--- FAIL:` and `FAIL<tab>package`,
+pytest's `FAILED`, unittest's `FAIL:` and `ERROR:`) and keeps those of the
+runs it knows are on the unchanged code through the edits after: any run on
+`$TMPDIR/base`, and a full test run (not `-run`, `-k` or a node id) before the
+turn's first edit, in a turn that began on the last commit. A run that fails
+only such tests, none of which the request, the plan or a file the turn wrote
+names (`failures-known?`), is not told: its result says they failed on the
+unchanged code (`failure-known-hint`) and the reminder is not due. When only
+some are such, the reminder names them (`finish-failing-known-message`: say
+so in your answer, do not fix them) and the others (ADR 32, amended
+2026-10-16). An exit that says no test ran
 is no failure: `not-run-statuses` (126 and 127, a program not found or not
 executable) and, for a pytest command, `pytest-not-run-statuses` (4 and 5, a
 path it could not find, no tests collected). A run on the copy of the last
@@ -570,10 +581,18 @@ message, `(finish-review-message points)`: one point as it is, several
 numbered, closed by `finish-review-close` (asked once; run the check again
 after any change; the next reply without tool calls ends the turn). It is
 made once a turn, and the turn is accepted after it: an answer ends it, and
-the reminders above are not asked again (ADR 32, amended 2026-10-15). Its
+the reminders above are not asked again (ADR 32, amended 2026-10-15). In a run
+nobody reads as it goes it is made at most `finish-review-limit` (2) times in
+all, counted in `finish-reviews` over the session's turns; a turn after the
+second ends on its report. A turn whose answer a person reads
+(`(reviewed?)`) is not held to it (ADR 32, amended 2026-10-16). Its
 points: files new since the turn began that git does not track
 (`(finish-new-files-message files)`, below); a plan's steps without their
-evidence (§9.5, `plan-language-unmet-message`); the parts of the change the
+evidence (§9.5, `plan-language-unmet-message`; a test step may name a
+scenario or fixture file, a path through a `scenarios`, `testdata` or
+`fixtures` folder, which is met by that file, one the repository has or one
+the turn wrote whose name starts with the step's path, and by a `go test` run
+of the folder above it: `plan-language-test-present?`); the parts of the change the
 latest check or test run that exited 0 since the last edit does not test,
 run again with each part taken out in turn (`check-without`) and naming the
 parts it still passes without, printing the same
@@ -647,12 +666,26 @@ already; files a run leaves behind are no change. Files new
 since the turn began that git does not track are a point of the finish
 review, `(finish-new-files-message files)`: whatever is left in the
 repository is in the change. Files the turn's plan names, by path or by name
-(`plan-names?`), are left out of it: the plan asked for them.
-A shell run of `make validate` that ran to an exit counts, for a repository
+(`plan-names?`), or whose name starts with a plan step's path (a scenario
+file: `test/exfil/scenarios/019` for `019-key-before-private-key.scm`), are
+left out of it: the plan asked for them.
+A shell run of `make validate` or `go run ./scripts/validate`
+(`validate-commands`) that ran to an exit counts, for a repository
 whose `.nodwyn/init.scm` defines `validation-state` and `validated-state`
 (nodwyn's does, to remind a turn that has not validated since its last
 change), as its validate tool's run: `validated-run` sets `validated-state`
-as the tool does.
+as the tool does, and either is a test run, the whole check, and no check
+for check-without to take apart. The untracked files a validate run, or a
+tool of `tool-commands`, leaves (`files-made`: new in `git-status` since the
+round began, not written by the file tools) are the run's output, not the
+change. The validate result names them (`validate-left-note`: delete them
+unless they are part of the change; that needs no new run), and the loop
+keeps the repository as validate left it: when the only thing that moved
+since is that some of those files are gone, validate still stands and
+`validate-settle` sets `validated-state` again, so the repository's reminder
+is not said for a deletion. A file still there when the finish review is made
+is named in it as one whose deletion needs no new run (ADR 32, amended
+2026-10-16).
 
 The loop also asks about an expectation of an existing test as the edit is
 made, not only at the finish. After a round whose calls wrote a test file

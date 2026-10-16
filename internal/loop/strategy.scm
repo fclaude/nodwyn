@@ -244,13 +244,31 @@
 (define finish-reminders 2)
 (define unrunnable-after 6) ; failed test commands in a row before the way out is offered
 
+;; The finish review (finish-review-points) is made once a turn, and at most
+;; finish-review-limit times in a run nobody reads as it goes: each is the
+;; passing check run again with each part of the change taken out, and what
+;; it asks for. Past the limit a turn that changed something ends on its
+;; report. A turn that edited nothing has no review, so the second needs
+;; new edits as the first does. A run whose answers a person reads
+;; ((reviewed?)) has none of the limit; the count is the session's, and a
+;; resumed run starts it again (ADR 32, amended 2026-10-16: commit-bench
+;; spent 9-38% of its runs' tokens in the closing rounds).
+(define finish-review-limit 2)
+(define finish-reviews 0)
+
+(define (finish-review-due?)
+  (or (reviewed?) (< finish-reviews finish-review-limit)))
+
+(define (finish-review-counted!)
+  (unless (reviewed?) (set! finish-reviews (+ finish-reviews 1))))
+
 ;; Words that mark a command as running tests, across ecosystems; a project
 ;; may redefine the list.
 (define test-command-words
   '("pytest" "unittest" "runtests" "tox" "nox" "bin/test" "go test" "cargo test"
     "npm test" "npm run test" "yarn test" "pnpm test" "jest" "vitest" "mocha"
     "mvn test" "gradle test" "gradlew test" "ctest" "make test" "make check"
-    "make validate" "make verify" "make ci"
+    "make validate" "go run ./scripts/validate" "make verify" "make ci"
     "rspec" "rake test" "phpunit" "dotnet test" "mix test" "swift test"))
 
 ;; The tools a repository registers to run a command for the model, as the
@@ -536,6 +554,102 @@
         'compared
         last)))
 
+;; The failures a test run's output reports: Go's "--- FAIL: TestX (0.00s)"
+;; (a sub-test as TestX/case) and "FAIL<tab>package<tab>0.3s" (a package, as
+;; "package <path>"), pytest's "FAILED path::test - why" and unittest's
+;; "FAIL: test (module.Class)" and "ERROR: ...", each once, in the order the
+;; output gives them. They are what the loop compares across runs: the tests
+;; the unchanged code fails are not the change's (failures-known?). Other
+;; output gives none, and the comparison is not made.
+(define (failure-line-name l)
+  (let ((first-word (lambda (text)
+                      (let ((words (string-split text " ")))
+                        (and (pair? words) (not (string-empty? (car words))) (car words))))))
+    (cond ((string-prefix? "--- FAIL: " l) (first-word (substring l 10 (string-length l))))
+          ((string-prefix? "FAIL\t" l)
+           (let* ((fields (string-split l "\t"))
+                  (word (and (pair? (cdr fields)) (first-word (cadr fields)))))
+             (and word (string-append "package " word))))
+          ((string-prefix? "FAILED " l) (first-word (substring l 7 (string-length l))))
+          ((string-prefix? "FAIL: " l)
+           (let ((rest (string-trim (substring l 6 (string-length l))))) (and (not (string-empty? rest)) rest)))
+          ((string-prefix? "ERROR: " l)
+           (let ((rest (string-trim (substring l 7 (string-length l))))) (and (not (string-empty? rest)) rest)))
+          (else #f))))
+
+(define (failure-names output)
+  (let walk ((lines (string-split output "\n")) (out '()))
+    (if (null? lines)
+        (reverse out)
+        (let ((name (failure-line-name (string-trim (car lines)))))
+          (walk (cdr lines) (if (and name (not (member name out))) (cons name out) out))))))
+
+(define (package-name? name) (string-prefix? "package " name))
+
+;; The names in more that names lacks, in front of names.
+(define (names-union more names)
+  (append (filter (lambda (n) (not (member n names))) more) names))
+
+;; Whether a run is narrowed to some tests (go test -run, pytest -k or a
+;; node id): its failures are the ones asked for, not the suite's.
+(define (narrowed-run? call)
+  (let ((line (command-line call)))
+    (or (string-contains? line " -run") (string-contains? line " -k ") (string-contains? line "::")
+        (string-contains? line " -m "))))
+
+;; The words a failing test goes by in a text: its name, the test in a
+;; pytest node id, the test a Go sub-test belongs to, the first word of a
+;; unittest line. Short ones are no mark of a test.
+(define (test-name-words name)
+  (filter (lambda (w) (>= (string-length w) 4))
+          (list name
+                (car (reverse (string-split name "::")))
+                (car (string-split name "/"))
+                (car (string-split name " ")))))
+
+;; The failing tests of names (failure-names of a run), split into the ones
+;; also failing on the unchanged code (base: those of the runs there and
+;; before any edit) and the others: (known . fresh), packages left out. A
+;; test is the unchanged code's to answer for only if nothing makes it the
+;; turn's: the request names it, the plan does, or a file the turn wrote
+;; (written) mentions it. A test that failed on the copy of the last commit
+;; with the model's own test laid over it, or that the task asks to fix,
+;; failing again says the change is not done.
+(define (failure-split names base request written)
+  (let* ((texts (cons request
+                      (cons (guard (e (else "")) (string-join (plan-steps) "\n"))
+                            (map (lambda (p) (guard (e (else "")) (format "~a" (fs-read p)))) written))))
+         (own? (lambda (name)
+                 (let any ((ws (test-name-words name)))
+                   (and (pair? ws)
+                        (or (let in ((ts texts)) (and (pair? ts) (or (string-contains? (car ts) (car ws)) (in (cdr ts)))))
+                            (any (cdr ws)))))))
+         (tests (filter (lambda (n) (not (package-name? n))) names)))
+    (let split ((ts tests) (known '()) (fresh '()))
+      (cond ((null? ts) (cons (reverse known) (reverse fresh)))
+            ((and (member (car ts) base) (not (own? (car ts)))) (split (cdr ts) (cons (car ts) known) fresh))
+            (else (split (cdr ts) known (cons (car ts) fresh)))))))
+
+;; Whether every failure of a run is the unchanged code's: it failed at least
+;; one test, each is known (failure-split), and each package it failed
+;; failed there too (a package that fails to build, or panics, names no test).
+(define (failures-known? names base request written)
+  (and (pair? names) (pair? base)
+       (let ((split (failure-split names base request written)))
+         (and (pair? (car split)) (null? (cdr split))
+              (let all ((ns names))
+                (or (null? ns)
+                    (and (or (not (package-name? (car ns))) (member (car ns) base))
+                         (all (cdr ns)))))))))
+
+;; The failing-run reminder for a run's failures: the one it always was, or,
+;; when some of the failures are the unchanged code's, the same naming them.
+(define (failing-reminder names base request written)
+  (let ((split (if (pair? base) (failure-split names base request written) (cons '() '()))))
+    (if (null? (car split))
+        finish-failing-message
+        (finish-failing-known-message (car split) (cdr split)))))
+
 ;; Whether the turn has changed the repository: the file tools wrote to it,
 ;; or git sees a tracked file differ from how the turn found it.
 (define (turn-changed? before edited)
@@ -612,7 +726,7 @@
 ;; the whole check has passed since the last edit (a passing call, or one of
 ;; the runs that passed, run-entry's), a report that cites one of them stands
 ;; on that run.
-(define whole-check-words '("make validate" "make check" "make test" "make ci" "make verify"))
+(define whole-check-words '("make validate" "go run ./scripts/validate" "make check" "make test" "make ci" "make verify"))
 
 (define (whole-check? call)
   (let ((line (command-line call)))
@@ -739,7 +853,19 @@
          (p (if (string-suffix? "/" path) (substring path 0 (- (string-length path) 1)) path))
          (name (car (reverse (string-split p "/")))))
     (and (not (string-empty? name))
-         (or (string-contains? text p) (string-contains? text name)))))
+         (or (string-contains? text p) (string-contains? text name) (plan-path-starts? path)))))
+
+;; Whether a plan step's file starts path: a test step for a scenario names
+;; the front of its file (test/exfil/scenarios/019), the rest being the
+;; words the file is called by (ADR 32, amended 2026-10-16). Only a path
+;; through a scenario folder (planspec.scm): the front of any file's name
+;; would make its backup (calc.py.orig) the plan's.
+(define (plan-path-starts? path)
+  (let any ((ss (if (list? plan-spec) plan-spec '())))
+    (and (pair? ss)
+         (let ((front (assoc-ref (car ss) 'path "")))
+           (or (and (string? front) (plan-language-scenario-dir front) (string-prefix? front path))
+               (any (cdr ss)))))))
 
 ;; Whether a repository path is a test file by its name or its folder:
 ;; x_test.go, test_x.py, x.test.js, x.spec.ts, or a file under a test, tests
@@ -869,7 +995,7 @@
 ;; test executed (uncovered-lines-due?): the loop knows which commands passed
 ;; and none of them says which lines ran. On commit-bench 3422faf1 (dsl20r r3)
 ;; a dead branch got through every check and the diff review.
-(define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits touched)
+(define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits made touched)
   (let* ((plan (if (and plan-language (pair? plan-spec))
                    (let ((check (plan-language-check passed)))
                      (plan-language-mark (cadr check))
@@ -896,7 +1022,7 @@
                                      '()))
                        (change-claims request shown hand-edits generated-files))
                      '())))
-    (append (if (pair? new) (list (finish-new-files-message new)) '())
+    (append (if (pair? new) (list (finish-new-files-message new made)) '())
             (if (pair? plan) (list (plan-language-unmet-message plan)) '())
             (if (pair? parts) (list (finish-untested-parts-message (command-line passing) parts)) '())
             (if (pair? stale) (list (finish-stale-citations-message stale)) '())
@@ -923,14 +1049,99 @@
 ;; change, so the harness sets validated-state as the tool does, after any
 ;; run of make validate that ran to an exit, in a repository that defines
 ;; both; elsewhere this does nothing.
+;;
+;; make validate is go run ./scripts/validate, and a model runs either: the
+;; gate did not count the second, and asked for validate again (commit-bench,
+;; dsl16r, 3422faf1; ADR 32, amended 2026-10-16). Both are validate-commands,
+;; and a run of either has every effect the tool's has: it is a test run
+;; (test-command-words), the whole check (whole-check-words), no check to take
+;; apart (evidence-loop) and the repository's validate (validated-run).
+(define validate-commands '("make validate" "go run ./scripts/validate"))
+
+(define (validate-command? cmd)
+  (let any ((vs validate-commands))
+    (and (pair? vs)
+         (or (equal? cmd (car vs)) (string-prefix? (string-append (car vs) " ") cmd) (any (cdr vs))))))
+
+;; Whether a call runs a validate command: the validate tool (tool-call), or
+;; a shell-exec or shell-start line with one among its commands.
+(define (validate-call? call)
+  (let any ((cs (call-commands (tool-call call))))
+    (and (pair? cs) (or (validate-command? (car cs)) (any (cdr cs))))))
+
+;; A validate run that ran to an exit.
+(define (validate-exit? call result)
+  (and (run-status result) (validate-call? call)))
+
+;; Whether a round's calls may leave files behind that are not the model's:
+;; a validate run, or a tool the repository registers to run a command
+;; (tool-commands).
+(define (tool-round? calls)
+  (let any ((cs calls))
+    (and (pair? cs)
+         (or (assoc (format "~a" (assoc-ref (car cs) 'name "")) tool-commands)
+             (and (member (assoc-ref (car cs) 'name) '("shell-exec" "shell-start")) (validate-call? (car cs)))
+             (any (cdr cs))))))
+
 (define (validated-run call result)
-  (when (and (run-status result)
-             (let any ((cs (call-commands call)))
-               (and (pair? cs)
-                    (or (equal? (car cs) "make validate") (string-prefix? "make validate " (car cs))
-                        (any (cdr cs))))))
+  (when (validate-exit? call result)
     (guard (e (else #f))
       (set! validated-state (validation-state)))))
+
+;; Files a validate run, or a tool of the repository, leaves untracked are
+;; its output, not the model's change. validate regenerated the untracked
+;; docs/expert/expert.pdf on commit-bench (dsl20r, 6e18b7ba); the model
+;; deleted it, the repository's reminder counted the deletion as a change
+;; since validate and asked for validate again, which made the file again:
+;; about 100k tokens in two builds, and in a third the last validate left the
+;; 1 MB file in the patch (ADR 32, amended 2026-10-16). So the loop keeps what
+;; the runs made (validate-made, in evidence-loop) and the repository as
+;; validate left it (validate-print), says what a validate run left in its
+;; own result, and sets validated-state again (validate-settle) when the
+;; only thing that moved is that some of those files are gone.
+;;
+;; The untracked paths in a (git-state).
+(define (untracked-paths state)
+  (map git-state-path (filter (lambda (l) (string-prefix? "?? " l)) state)))
+
+;; The files untracked in now that were not in before, the model's own writes
+;; (written: the paths the file tools wrote) left out: what the runs between
+;; made. before is #f when no run could have started, now where there is no
+;; git.
+(define (files-made before now written)
+  (if (and before now)
+      (let ((was (untracked-paths before)))
+        (filter (lambda (p) (and (not (member p was)) (not (git-shows? written (list (string-append "?? " p))))))
+                (untracked-paths now)))
+      '()))
+
+;; The repository as validate saw it: git's status lines and the diff of the
+;; tracked files; #f where there is no git.
+(define (repo-print)
+  (let ((state (git-state)))
+    (and state (list state (guard (e (else #f)) (format "~a" (git-diff ".")))))))
+
+;; The status lines but for the untracked files in made.
+(define (state-without state made)
+  (filter (lambda (l) (not (and (string-prefix? "?? " l) (member (git-state-path l) made)))) state))
+
+;; print, the repository as the latest validate run left it, kept in step
+;; with the repository: when the only difference is untracked files in made
+;; (one gone, or another made since), validate still stands for the
+;; repository, so validated-state is set to what the repository is now.
+;; Any other difference is a change since validate, and print is #f from then
+;; on. Nothing is done while made is empty or the status is as print has it.
+(define (validate-settle made print)
+  (let ((now (and print (pair? made) (git-state))))
+    (cond ((not now) print)
+          ((equal? now (car print)) print)
+          ((not (equal? (state-without now made) (state-without (car print) made))) #f)
+          (else
+           (let ((diff (guard (e (else #f)) (format "~a" (git-diff ".")))))
+             (if (and diff (equal? diff (cadr print)))
+                 (begin (guard (e (else #f)) (set! validated-state (validation-state)))
+                        (list now diff))
+                 #f))))))
 
 ;; The generated files a repository declares, as rows (path command): a
 ;; trusted .nodwyn/init.scm may list those whose head does not say so (Code
@@ -996,8 +1207,19 @@
   ;; turn edited by hand and the commands run since (hand-edits-add).
   ;; tests-edited: the test files the latest round's calls wrote; tests-told:
   ;; the test files asked about once already (test-edit-nudge).
+  ;; validate-made: the untracked files the turn's validate runs and tools
+  ;; left (validate-settle), validate-print the repository as the latest
+  ;; validate run left it, tool-before the status before the latest round
+  ;; that started such a run, and exited the validate run a round saw exit.
+  ;; base-fails: the failing tests of the unchanged code the turn has seen
+  ;; (failure-names of its runs before any edit and on the copy of the last
+  ;; commit), last-fails the failing tests of the latest run since the last
+  ;; edit, hinted the failures the model was last told were the unchanged
+  ;; code's.
   (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
-        (passed '()) (review-made #f) (shown '()) (hand-edits '()) (tests-edited '()) (tests-told '()))
+        (passed '()) (review-made #f) (shown '()) (hand-edits '()) (tests-edited '()) (tests-told '())
+        (validate-made '()) (validate-print #f) (tool-before #f) (exited #f)
+        (base-fails '()) (last-fails '()) (hinted '()))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
@@ -1014,7 +1236,10 @@
                (told #f) (unchanged-told #f))
       (let ((calls (assoc-ref reply 'tool-calls '())))
         (if (pair? calls)
-            (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs)
+            (let walk ((cs calls)
+                       (rs (begin (when (tool-round? calls) (set! tool-before (git-state)))
+                                  (run-calls calls)))
+                       (edited edited) (tested tested) (failed failed-runs)
                        (scripts scripts) (written written) (outcome outcome) (told told))
               (cond ((pair? cs)
                      (let* ((c0 (car cs)) (r0 (car rs))
@@ -1049,11 +1274,46 @@
                        ;; check's (whole-check-passed?).
                        (when (and (not (base-run? c)) (or (check-run? c scripts) (test-call? c))
                                   (equal? (run-status r) 0)
-                                  (not (and (assoc name0 tool-commands) (whole-check? c))))
+                                  (not (and (assoc name0 tool-commands) (whole-check? c)))
+                                  (not (validate-call? c)))
                          (set! passing c))
                        (let ((entry (run-entry c r)))
                          (when entry (set! passed (cons entry passed))))
                        (validated-run c r)
+                       (when (validate-exit? c r) (set! exited (cons c0 r0)))
+                       ;; The failures a test or check run reports. On the copy
+                       ;; of the last commit, or in a full test run before any
+                       ;; edit in a turn that began on the last commit, they
+                       ;; are the unchanged code's, and stay known through the
+                       ;; edits that follow; any other run's are the latest
+                       ;; run's, for the failing-run reminder (failures-known?).
+                       ;; A validate run is the latest run too, but its
+                       ;; summary names no test: it clears last-fails, and
+                       ;; teaches the loop nothing about the unchanged code.
+                       (when (and (not (edit-call? c)) (or (test-call? c) (check-run? c scripts)))
+                         (let* ((validating (validate-call? c))
+                                (names (if validating '() (failure-names (run-output r)))))
+                           (cond ((base-run? c)
+                                  (set! base-fails (names-union names base-fails)))
+                                 (else
+                                  (let ((baseline (and (pair? names) (test-call? c) (not (check-run? c scripts)) (not (narrowed-run? c))
+                                                       (not edited) (or (not before) (null? (git-tracked before)))
+                                                       (not (turn-changed? before edited))))
+                                        (now-outcome (run-outcome c r 'none)))
+                                    (when baseline
+                                      (set! base-fails (names-union names base-fails)))
+                                    (cond ((equal? now-outcome 'failed)
+                                           (set! last-fails names)
+                                           ;; The baseline run is the unchanged code's own: it
+                                           ;; is not told that it failed there before.
+                                           (when (and (not baseline) (failures-known? names base-fails request written))
+                                             (let ((known (car (failure-split names base-fails request written))))
+                                               (unless (equal? known hinted)
+                                                 (set! hinted known)
+                                                 (fold-result (assoc-ref c0 'id)
+                                                              (string-append (format "~a" (assoc-ref r0 'value ""))
+                                                                             (failure-known-hint known)))))))
+                                          ((equal? now-outcome 'passed) (set! last-fails '()))))))))
                        (let ((entry (shown-entry c0 c r0 r)))
                          (set! shown (shown-add shown entry))
                          (when entry (set! hand-edits (hand-edits-ran hand-edits (car entry)))))
@@ -1095,6 +1355,18 @@
                               (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written (run-outcome c r outcome) told))
                              (else (walk (cdr cs) (cdr rs) edited tested failed scripts written outcome told)))))
                     (else
+                     ;; What the round's validate runs and tools left untracked
+                     ;; is said in the validate result, and kept for
+                     ;; validate-settle.
+                     (let ((made (if (or exited (tool-round? calls)) (files-made tool-before (git-state) written) '())))
+                       (set! validate-made (names-union made validate-made))
+                       (when exited
+                         (when (pair? made)
+                           (fold-result (assoc-ref (car exited) 'id)
+                                        (string-append (format "~a" (assoc-ref (cdr exited) 'value "")) (validate-left-note made))))
+                         (set! validate-print (repo-print))
+                         (set! exited #f))
+                       (set! validate-print (validate-settle validate-made validate-print)))
                      (maybe-compact request reply)
                      (let ((stuck (and (not offered) (>= failed unrunnable-after)))
                            (reading (reading-rounds calls reading))
@@ -1105,6 +1377,11 @@
                        (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written excused
                              reading outcome told unchanged-told)))))
             (let* ((now (and before (git-state)))
+                   (outcome (if (and (equal? outcome 'failed) (failures-known? last-fails base-fails request written))
+                                'compared
+                                outcome))
+                   (failing-msg (and (equal? outcome 'failed) (not offered) (not told)
+                                     (failing-reminder last-fails base-fails request written)))
                    (new-lines (if now (filter (lambda (l) (not (member l before))) now) '()))
                    ;; With git: a tracked file changed, the file tools wrote
                    ;; a file git did not show before, or one it already
@@ -1119,7 +1396,7 @@
                               ((and (not changed) (not excused) (not (and unchanged-told tested)))
                                (if (reviewed?) finish-no-change-reviewed-message finish-no-change-message))
                               ((and changed (not tested) (not offered)) finish-untested-message)
-                              ((and changed (equal? outcome 'failed) (not offered) (not told)) finish-failing-message)
+                              ((and changed failing-msg) failing-msg)
                               (else #f))))
               (cond ((and gap (< reminders finish-reminders))
                      (add-message gap)
@@ -1128,7 +1405,7 @@
                      ;; unchanged code too, and end.
                      (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written
                            (or excused (and (not changed) (reviewed?))) 0 outcome
-                           (or told (equal? gap finish-failing-message))
+                           (or told (and failing-msg (equal? gap failing-msg)))
                            (or unchanged-told (not changed))))
                     ;; The finish review, once a turn: what lacks evidence or
                     ;; may be wrong, said in one message. An answer after it
@@ -1137,7 +1414,7 @@
                     ;; a script that re-armed the next: after the first report,
                     ;; 0.41-0.85M tokens over five tasks, in segments 17 of 21
                     ;; of which edited nothing (ADR 32, amended 2026-10-15).
-                    ((and changed (not turn-stopping) (not review-made))
+                    ((and changed (not turn-stopping) (not review-made) (finish-review-due?))
                      (set! review-made #t)
                      (let ((points (finish-review-points
                                     request reply
@@ -1148,10 +1425,11 @@
                                     (memq outcome '(passed kept))
                                     (append ran base-ran) ran-all
                                     (or (and passing (whole-check? passing)) (whole-check-passed? passed))
-                                    passed shown hand-edits
+                                    passed shown hand-edits validate-made
                                     (append written (map git-state-path new-lines)))))
                        (and (pair? points)
                             (begin (add-message (finish-review-message points))
+                                   (finish-review-counted!)
                                    (loop (ask-model) edited tested failed-runs offered reminders scripts written excused 0
                                          outcome told unchanged-told)))))
                     (else #f))))))))

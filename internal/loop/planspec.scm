@@ -86,6 +86,41 @@
        (let ((parts (string-split (if (string-prefix? "./" path) (substring path 2 (string-length path)) path) "/")))
          (string-join (reverse (cdr (reverse parts))) "/"))))
 
+;; A test step may name a scenario or fixture file instead of a test: a path
+;; through a scenarios, testdata or fixtures folder (test/exfil/scenarios/019).
+;; The test that runs it is an existing one, so its name is in no file; the
+;; step is met by the file, one the repository has or one the turn wrote whose
+;; name starts with the step's path, and by a run of the tests of the folder
+;; above. On commit-bench (dsl20r, 3422faf1) the plan named
+;; TestExfilScenario019 for a scenario file; the gate wanted that test in the
+;; file, and the run refactored a test file, regenerated the catalogue and ran
+;; validate again: 21 calls, 22% of the run (ADR 32, amended 2026-10-16).
+(define plan-language-scenario-folders '("scenarios" "scenario" "testdata" "fixtures" "golden" "cases"))
+
+;; The folder above a scenario folder in path ("test/exfil" for
+;; test/exfil/scenarios/019, "" at the root), or #f for another path.
+(define (plan-language-scenario-dir path)
+  (let walk ((parts (string-split path "/")) (above '()))
+    (cond ((null? parts) #f)
+          ((member (car parts) plan-language-scenario-folders) (string-join (reverse above) "/"))
+          (else (walk (cdr parts) (cons (car parts) above))))))
+
+(define (plan-language-file? path)
+  (and (not (string-empty? path))
+       (guard (e (else #f)) (fs-read path) #t)))
+
+;; Whether a test step's test is where the step says: its name in its file,
+;; or, for a scenario file, the file.
+(define (plan-language-test-present? st)
+  (let ((path (assoc-ref st 'path "")) (name (assoc-ref st 'name "")))
+    (or (string-contains? (guard (e (else "")) (format "~a" (fs-read path))) name)
+        (and (plan-language-scenario-dir path)
+             (or (plan-language-file? path)
+                 (let any ((ps plan-language-edited))
+                   (and (pair? ps)
+                        (or (and (string-prefix? path (car ps)) (plan-language-file? (car ps)))
+                            (any (cdr ps))))))))))
+
 ;; Whether shown, the passing lines of a run (run-entry), says the package in
 ;; dir passed: go test's "ok  <tab>module/dir<tab>...", unless it ran no test
 ;; ("[no tests to run]", a -run that named none).
@@ -105,7 +140,8 @@
 ;; 2026-10-14; ADR 32, amended 2026-10-14).
 (define (plan-language-test-passed? st passed)
   (let* ((name (assoc-ref st 'name "")) (run (assoc-ref st 'run ""))
-         (dir (plan-language-go-test-dir (assoc-ref st 'path ""))))
+         (dir (plan-language-go-test-dir (assoc-ref st 'path "")))
+         (scenarios (plan-language-scenario-dir (assoc-ref st 'path ""))))
     (let any ((ps passed))
       (and (pair? ps)
            (let ((line (car (car ps))) (shown (cdr (car ps))))
@@ -116,6 +152,10 @@
                           (plan-language-package-ok? shown dir)))
                  (and dir (string-contains? line "go test") (not (string-contains? line "-run"))
                       (plan-language-package-ok? shown dir))
+                 ;; A scenario step: the tests of the folder above its folder
+                 ;; passing run it.
+                 (and scenarios (string-contains? line "go test") (not (string-contains? line "-run"))
+                      (plan-language-package-ok? shown scenarios))
                  (any (cdr ps))))))))
 
 ;; Marks as the work happens: after each round of the main context's calls,
@@ -628,8 +668,7 @@
                         ((member kind '("Change" "Docs"))
                          (and (member path unchanged) (string-append label ": the file is unchanged")))
                         ((equal? kind "Test")
-                         (cond ((let ((text (guard (e (else "")) (format "~a" (fs-read path)))))
-                                  (not (string-contains? text name)))
+                         (cond ((not (plan-language-test-present? st))
                                 (string-append label ": the test is not in that file"))
                                ((not (or (plan-language-test-passed? st passed) whole))
                                 (string-append label ": it has not passed since your last edit"))

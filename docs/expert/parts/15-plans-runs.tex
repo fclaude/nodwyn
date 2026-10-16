@@ -236,6 +236,13 @@ evidence:
     unchanged code too, and end. An exit that says no test ran (126, 127,
     and pytest's 4 and 5) is no failure, and a run on the copy of the last
     commit (\code{\$TMPDIR/base}) that fails too is the comparison done.
+    The loop also reads the tests a run reports failing
+    (\code{failure-names}) and remembers those of the runs on the unchanged
+    code, the copy's and the turn's first full run before any edit: a run
+    that fails only those, none named by the request, the plan or a file
+    the turn wrote, is not told, its result saying they failed there
+    before, and a run that fails some of them gets a reminder that names
+    which.
   \item At most \code{finish-reminders} (2) such reminders per turn.
   \item When a turn with a change first ends and none of those reminders is
     due, the \textbf{finish review} says what the change lacks, in one
@@ -268,6 +275,13 @@ evidence:
     (\code{edited-expectations-message}). The edit is never refused, a test
     the turn added is not asked about, and each file is asked about once in
     a turn.
+
+    not asked again. In a run nobody reads as it goes it is made at most
+    twice over the run's turns (\code{finish-review-limit}). A test step
+    may name a scenario file, a path through a \code{scenarios},
+    \code{testdata} or \code{fixtures} folder, which a file the turn wrote
+    or the repository has meets, with a \code{go test} run of the folder
+    above it.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),
     the no-change reminder is \code{finish-no-change-reviewed-message}: make
@@ -300,9 +314,12 @@ its failing runs never count against \code{unrunnable-after}. In a git work
 tree git decides what changed, so an edit made through the shell counts and
 a write that changes nothing does not. Files new since the turn began that
 git does not track are named in the finish review, with
-\code{(finish-new-files-message files)}. A \code{make validate} run in the
-shell counts as your \code{init.scm}'s validate tool's run when it keeps
-\code{validated-state} as nodwyn's does.
+\code{(finish-new-files-message files)}. A \code{make validate} or
+\code{go run ./scripts/validate} run in the shell counts as your
+\code{init.scm}'s validate tool's run when it keeps
+\code{validated-state} as nodwyn's does. The untracked files such a run
+leaves are its output: its result names them, and deleting them does not
+make \code{validated-state} stale (\code{validate-settle}).
 
 \begin{tip}
 If your project runs its tests some other way, teach the loop:
