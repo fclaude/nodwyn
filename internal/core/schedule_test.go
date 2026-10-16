@@ -2,6 +2,8 @@ package core
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -167,5 +169,52 @@ func TestScheduledRunDiscardsDontAskAndRequiresApproval(t *testing.T) {
 	all, _ := s.ApproveAll()
 	if all {
 		t.Fatal("scheduled run retained Don't ask")
+	}
+}
+
+// A scheduled run starts from where its base is now (ADR 49 §3). Close
+// removes a worktree that holds nothing, but one a run left ignored files
+// in stays, and every later run worked on the first run's base. A worktree
+// with no work in it is brought up to its base, its ignored files kept.
+func TestScheduledRunStartsFromTodaysBase(t *testing.T) {
+	repo, git := gitRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("__pycache__/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(repo, "add", ".gitignore")
+	git(repo, "commit", "-q", "-m", "ignore caches")
+	o := worktreeOptions(t, repo, fake.Turn{Content: "run answer"})
+	o.NoConfirm = false
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	w := s.Worktree()
+	if err := os.MkdirAll(filepath.Join(w.Path, "__pycache__"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cache := filepath.Join(w.Path, "__pycache__", "x.pyc")
+	if err := os.WriteFile(cache, []byte("cache"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "today.txt"), []byte("today\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(repo, "add", "today.txt")
+	git(repo, "commit", "-q", "-m", "today")
+	def := log.SessionSchedule{Definition: schedule.Definition{Message: "run the tests", Repeat: "daily", At: "2026-10-16T09:00"}}
+	if _, err = s.Record(log.KindSessionSchedule, def); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SendScheduled(def.Message, log.ScheduleRun{Manual: true}); err != nil {
+		t.Fatal(err)
+	}
+	followBudget(t, s, func(event.Checkpoint) { t.Fatal("checkpoint") })
+	if got, want := git(w.Path, "rev-parse", "HEAD"), git(repo, "rev-parse", "main"); got != want {
+		t.Fatalf("the run started at %s, not at main's %s", got, want)
+	}
+	if _, err := os.Stat(cache); err != nil {
+		t.Fatalf("the ignored file went: %v", err)
 	}
 }

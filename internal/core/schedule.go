@@ -121,6 +121,16 @@ func (s *Session) SendScheduled(text string, run log.ScheduleRun) error {
 		return err
 	}
 	return s.startScheduledTurn(func(ctx context.Context) error {
+		if s.worktree != nil {
+			moved, err := catchUp(*s.worktree)
+			if err != nil {
+				_, _ = s.Record(log.KindNote, log.Note{Text: "The worktree could not be brought up to " + s.worktree.Base + ", so this run starts where the last one left it: " + err.Error()})
+			} else if moved != "" {
+				if _, err := s.Record(log.KindNote, log.Note{Text: "The worktree held no work, so it was brought up to " + s.worktree.Base + " at " + moved[:min(7, len(moved))] + ": this run starts from there."}); err != nil {
+					return err
+				}
+			}
+		}
 		if note := s.handover.Load(); note != nil && note.Text != "" {
 			if _, err := s.Record(log.KindContextNarrow, log.ContextNarrow{System: s.loop.WindowContext().System, Agent: "scheduled handover", Lasting: true}); err != nil {
 				return err

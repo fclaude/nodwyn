@@ -2141,12 +2141,17 @@ next scheduled or manual run. Statistics keeps whole-task totals and shows
 **This run** separately for the loaded scheduled run. Unknown prices remain outside the limit.
 A scheduled task closes after 15 idle minutes with no pending answer, freeing
 its interpreter, MCP services and any clean worktree. It resumes when next due.
+A worktree a run left only ignored files in (`__pycache__`, `node_modules`)
+stays, and the next run brings it up to its base branch's head by
+fast-forward, its ignored files kept, so each run starts from today's base; a
+worktree with changes or commits of its own starts where it was left.
 
 When a turn has added over a quarter of its context window since the last
 handover, it prepares a note for the next scheduled run while its context is
 warm. This uses the same run budget. The note is recorded without replacing
-the current conversation: human follow-ups keep that conversation. The next
-scheduled message starts from the note. A pending answer prevents preparation.
+the current conversation: human follow-ups keep that conversation, without
+the ask for the note or the note. The next scheduled message starts from the
+note. A pending answer prevents preparation.
 Creating, editing, resuming or removing schedules stays on this computer;
 paired devices can pause and run now. There is no scheduling Scheme primitive.
 Automatic daemon startup at login is not built.

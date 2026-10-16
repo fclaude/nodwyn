@@ -257,6 +257,45 @@ func removeLanded(w log.Worktree) (bool, error) {
 	return true, nil
 }
 
+// catchUp brings a worktree that holds no work up to its base branch's head
+// by fast-forward, and returns the commit it now starts from, "" when it did
+// not move it. A scheduled run starts from where the base is now (ADR 49):
+// close removes a worktree that holds nothing, but one a run left ignored
+// files in (__pycache__, node_modules) stays, and every later run worked on
+// its first run's base. Nothing changed or untracked, and no commit its base
+// lacks; its ignored files are left where they are.
+func catchUp(w log.Worktree) (string, error) {
+	if !ours(w) || w.Base == "" || !branchExists(w.Repository, w.Base) {
+		return "", nil
+	}
+	if _, err := os.Stat(w.Path); err != nil {
+		return "", nil
+	}
+	if branch, err := gitLine(w.Path, "rev-parse", "--abbrev-ref", "HEAD"); err != nil || branch != w.Branch {
+		return "", err
+	}
+	status, err := gitIn(w.Path, "-c", "core.fsmonitor=false", "status", "--porcelain", "--untracked-files=normal")
+	if err != nil || strings.TrimSpace(status) != "" {
+		return "", err
+	}
+	tip := "refs/heads/" + w.Base
+	if ahead, err := gitLine(w.Path, "rev-list", "--count", "HEAD", "--not", tip); err != nil || ahead != "0" {
+		return "", err
+	}
+	head, err := gitLine(w.Path, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	base, err := gitLine(w.Path, "rev-parse", tip)
+	if err != nil || base == head {
+		return "", err
+	}
+	if _, err := gitIn(w.Path, "-c", "core.fsmonitor=false", "merge", "--ff-only", "-q", tip); err != nil {
+		return "", err
+	}
+	return base, nil
+}
+
 // restoreWorktree makes a resumed session's worktree again when it is
 // missing (close removed it, or a person did): on its branch if that still
 // exists, else on a new one of the same name from its base's head. It

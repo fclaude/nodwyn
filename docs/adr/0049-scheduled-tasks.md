@@ -389,3 +389,17 @@ windows, `request-context` and the last answer. The next run still starts
 from the note. The console still shows the note as it is written, after the
 run's answer; that is not changed here. The regression is in
 `TestScheduledHandoverWaitsForNextRun`.
+
+## Amendment 2026-10-16: a run starts from today's base even when ignored files stayed
+
+§3 promises that a run that left nothing to keep has its worktree removed,
+so the next run starts from the base branch's current head. Close keeps a
+worktree that holds any ignored file, as ADR 34 requires, and almost every
+real run leaves some (`__pycache__`, `.pytest_cache`, `node_modules`, an
+attachment), so the worktree stayed and every later run worked on its first
+run's base. A scheduled run now starts by bringing its worktree up to the
+local base branch's head by fast-forward when it has nothing changed or
+untracked and no commit the base lacks; its ignored files stay where they
+are, and the log says it moved. A worktree with work of its own starts
+where it was left. The base branch is the local one: the scheduler fetches
+nothing. The regression is `TestScheduledRunStartsFromTodaysBase`.
