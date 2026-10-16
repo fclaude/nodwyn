@@ -603,3 +603,29 @@ func TestSwitchSizesTheWindowForTheModel(t *testing.T) {
 		t.Fatalf("replayed %d requests", n)
 	}
 }
+
+// The compaction threshold follows the window: a conversation moved to a
+// model with a smaller context compacts under that model's high water. It
+// was computed once, from the first model's, so after a switch to a smaller
+// one compaction never came before the window trimmed.
+func TestCompactionThresholdFollowsTheModel(t *testing.T) {
+	t.Parallel()
+	home := fake.NewT(t)
+	defer home.Close()
+	away := fake.NewT(t)
+	defer away.Close()
+	s, err := New(switchOptions(t, home, away, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	r := &rig{t: t, s: s}
+	before := r.evalInt("(compact-limit)")
+	if _, err := s.SetModel(ModelChoice{Name: "coder"}); err != nil {
+		t.Fatal(err)
+	}
+	high := r.evalInt("(assoc-ref (window-limits) 'high-water)")
+	if after := r.evalInt("(compact-limit)"); after == before || after != high-high/25 {
+		t.Fatalf("threshold %d before, %d after the switch; the new high water is %d", before, after, high)
+	}
+}

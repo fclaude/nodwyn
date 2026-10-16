@@ -221,7 +221,7 @@ func TestCompactionDefaultsUnderTheHighWater(t *testing.T) {
 	if len(r.srv.Requests) != 3 || r.narrowings() != 0 {
 		t.Fatalf("%d requests and %d narrowings in a short turn", len(r.srv.Requests), r.narrowings())
 	}
-	if got := r.eval("compact-threshold"); got != "58983" {
+	if got := r.eval("(compact-limit)"); got != "58983" {
 		t.Fatalf("compact-threshold defaults to %s, want 61440 less a twenty-fifth", got)
 	}
 }
@@ -339,7 +339,7 @@ func TestCompactionComesBeforeTheWindowTrims(t *testing.T) {
 	if n := r.narrowings(); n != 1 {
 		t.Fatalf("%d narrowings, want 1", n)
 	}
-	threshold := r.evalInt("compact-threshold")
+	threshold := r.evalInt("(compact-limit)")
 	reqs, reported := r.requests()
 	note := -1
 	for i, q := range reqs {
@@ -719,5 +719,27 @@ func TestCompactionKeepsTheTurnsPlan(t *testing.T) {
 	last := string(r.srv.Requests[len(r.srv.Requests)-1].Raw)
 	if !strings.Contains(last, "TestGreeting") || !strings.Contains(last, "edited main.go") {
 		t.Fatalf("the request after the compaction lost the plan or its mark:\n%.2000s", last)
+	}
+}
+
+// A compaction that works clears an earlier one's failure: the failure
+// raised the threshold by a quarter until the context grew past it, and
+// nothing lowered it again, so with the default window auto-compaction
+// never came again in the session.
+func TestACompactionClearsAnEarlierFailure(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, "", 10,
+		fake.Turn{Content: "main.go declares package main."},
+		fake.Turn{Content: "NOTE: main.go only declares package main."},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	r.eval("(set! compact-gave-up-at 60000)")
+	if err := r.turn("/compact"); err != "" {
+		t.Fatal(err)
+	}
+	if got := r.eval("compact-gave-up-at"); got != "0" {
+		t.Fatalf("after a compaction that worked: %s", got)
 	}
 }

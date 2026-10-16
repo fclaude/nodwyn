@@ -32,11 +32,19 @@
 ;; and a strategy asks for it at the next round with (compact-next-round).
 
 ;; Context tokens past which the context is compacted; #f never compacts.
-;; The default leaves a twenty-fifth of the high water: 58983 at the
-;; default 61440, and the note still fits in the reply reserve.
-(define compact-threshold
-  (let ((high (assoc-ref (window-limits) 'high-water 0)))
-    (and (> high 0) (- high (quotient high 25)))))
+;; The default, 'high-water, leaves a twenty-fifth of the window's high water
+;; as it is now (58983 at the default 61440), so the note still fits in the
+;; reply reserve and a switch to a model with another window moves it too:
+;; computed once, it kept the first model's after a switch.
+(define compact-threshold 'high-water)
+
+;; The threshold in tokens, or #f.
+(define (compact-limit)
+  (cond ((number? compact-threshold) compact-threshold)
+        ((eq? compact-threshold 'high-water)
+         (let ((high (assoc-ref (window-limits) 'high-water 0)))
+           (and (> high 0) (- high (quotient high 25)))))
+        (else #f)))
 
 ;; Replies to the note request that may be tool calls before compaction
 ;; gives up for now.
@@ -99,10 +107,13 @@
          (record (lambda (compacted)
                    (record-compaction
                     (list (cons 'trigger trigger) (cons 'compacted compacted) (cons 'before before)
-                          (cons 'threshold (and (equal? trigger "auto") compact-threshold))
+                          (cons 'threshold (and (equal? trigger "auto") (compact-limit)))
                           (cons 'focus focus))))))
     (if note
         (let ((plan (turn-plan)))
+          ;; A compaction that worked clears an earlier one's failure, which
+          ;; otherwise raised the threshold for the rest of the session.
+          (set! compact-gave-up-at 0)
           (narrow-context (session-system-prompt) "compaction" '((lasting . #t)))
           (add-message (compact-handover-prompt request note))
           ;; The window shows a plan recorded in the context it sends, and
@@ -155,10 +166,11 @@
     (if focus
         (begin (set! compact-requested #f)
                (compact-context request focus "requested"))
-        (let ((size (context-tokens)))
-          (and compact-threshold
-               (> size compact-threshold)
-               (> size (+ compact-gave-up-at (quotient compact-threshold 4)))
+        (let* ((size (context-tokens))
+               (limit (compact-limit)))
+          (and limit
+               (> size limit)
+               (> size (+ compact-gave-up-at (quotient limit 4)))
                (cond ((and compact-stop-unchanged compact-writes-at (= compact-writes compact-writes-at))
                       (log-note "the context filled again with no file written since it was last compacted: the turn stops with a report instead of compacting again")
                       (add-message compact-stop-message)
