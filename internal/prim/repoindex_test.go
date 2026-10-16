@@ -280,3 +280,25 @@ func mustRead(t *testing.T, path string) []byte {
 	}
 	return raw
 }
+
+// A file nobody can read (a root-owned build artefact, a mode-000 lock) is
+// skipped, as a binary one is: it used to fail every index-search,
+// index-update and index-grep of the repository.
+func TestAnUnreadableFileIsSkipped(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file of any mode")
+	}
+	root := indexRepo(t)
+	locked := filepath.Join(root, "build.lock")
+	if err := os.WriteFile(locked, []byte("locked\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	h := newIndexHarness(t, root, t.TempDir())
+	if got := h.eval(t, `(index-search "deploying binary" "repo")`); !strings.Contains(got, "docs/deploy.md") {
+		t.Fatalf("index-search with an unreadable file: %q", got)
+	}
+	v, err := h.in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginModel), `(index-grep "." "untrackedHelper")`)
+	if err != nil || !strings.Contains(scheme.Write(v), "helper.go") {
+		t.Fatalf("index-grep with an unreadable file: %s %v", scheme.Write(v), err)
+	}
+}

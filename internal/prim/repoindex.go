@@ -137,6 +137,15 @@ func (x *repoIndex) refresh(c *scheme.Call, bound time.Duration, add string) (nl
 				drop(rel)
 				continue
 			}
+			// A file that cannot be read (its mode, its owner, gone since
+			// it was listed) is skipped like a binary one: it used to fail
+			// every search of the repository, and the model could not
+			// leave it out.
+			if err != nil && scheme.Catchable(ctx, err) {
+				sum.Skipped++
+				drop(rel)
+				continue
+			}
 			if err != nil {
 				return nil, err
 			}

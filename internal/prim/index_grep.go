@@ -109,8 +109,13 @@ func indexGrep(o Options, pin guard.RepoPin) *scheme.Prim {
 					continue
 				}
 				// Nested reads take the same single guarded application path as direct
-				// model calls, including user-defined checkers. Denials are never swallowed.
+				// model calls, including user-defined checkers. Denials are never
+				// swallowed; a file that cannot be read is skipped.
 				value, err := c.In.Apply(ctx, scheme.Value{Kind: scheme.KPrim, Prim: read}, []scheme.Value{scheme.Str(file)})
+				if err != nil && scheme.Catchable(ctx, err) {
+					result.Skipped++
+					continue
+				}
 				if err != nil {
 					return scheme.Value{}, err
 				}
