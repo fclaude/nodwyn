@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,5 +94,29 @@ func TestCLIBudgetCheckpoint(t *testing.T) {
 	}
 	if len(srv.Requests) != 2 {
 		t.Fatal("checkpoint failed to resume the turn")
+	}
+}
+
+// Line mode starts with a control model of any provider: only Ollama
+// answers /api/version, which it asked of every provider but openai, so an
+// anthropic one ("404 page not found") never started.
+func TestCLIStartsWithAnAnthropicControlModel(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "config", "nodwyn"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	conf := "[control]\nprovider = \"anthropic\"\nurl = \"" + server.URL + "\"\nmodel = \"claude-test\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "config", "nodwyn", "config.toml"), []byte(conf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--no-keychain", "--no-confirm", "--repo", t.TempDir())
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+	cmd.Stdin = strings.NewReader(":q\n")
+	out, _ := cmd.CombinedOutput()
+	if strings.Contains(string(out), "unreachable") || !strings.Contains(string(out), "control model: "+server.URL+" claude-test (anthropic)") {
+		t.Fatalf("line mode with an anthropic control model:\n%s", out)
 	}
 }

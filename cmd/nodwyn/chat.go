@@ -97,16 +97,17 @@ func (c *cli) session(cfg config.Config, repo string) error {
 	if ctl.URL == "" || ctl.Model == "" {
 		return config.MissingControl(c.paths.ConfigFile)
 	}
-	if ctl.Provider == "openai" {
-		// Its key is opened with the keychain below; the first request
-		// reports a server that cannot be reached.
-		fmt.Fprintf(os.Stderr, "control model: %s %s (openai-compatible)\n", ctl.URL, ctl.Model)
-	} else {
+	if ctl.Provider == "" || ctl.Provider == "ollama" {
 		version, err := llm.NewOllama(ctl.URL).Ping(context.Background())
 		if err != nil {
 			return fmt.Errorf("control model %s unreachable: %w", ctl.URL, err)
 		}
 		fmt.Fprintf(os.Stderr, "control model: %s %s (ollama %s)\n", ctl.URL, ctl.Model, version)
+	} else {
+		// Only Ollama answers /api/version. Any other provider's key is
+		// opened with the keychain below, and the first request reports a
+		// server that cannot be reached.
+		fmt.Fprintf(os.Stderr, "control model: %s %s (%s)\n", ctl.URL, ctl.Model, ctl.Provider)
 	}
 
 	var kc *keychain.Store
