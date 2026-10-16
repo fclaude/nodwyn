@@ -169,57 +169,6 @@ func TestThePromptsDecideWhichSideOfAFailingTestIsWrong(t *testing.T) {
 	}
 }
 
-// The finish review asks for the changed lines no test executed when the
-// change adds a branch and nothing in the turn measured coverage: the check
-// passed, which says nothing of which lines it ran. check-without takes out
-// whole hunks, and a dead branch lives inside one the check needs (3422faf1,
-// dsl20r r3). A change that adds no branch, and a turn that measured coverage
-// after its last edit, have nothing more to be asked, and end at their answer.
-func TestTheReviewAsksForTheChangedLinesNoTestRan(t *testing.T) {
-	t.Parallel()
-	const straight = "package calc\n\nfunc evalOr(p string) string { return p }\n\nfunc Root(p string) string { return evalOr(p) + \"x\" }\n"
-	const branch = "package calc\n\nfunc evalOr(p string) string { return p }\n\nfunc Root(p string) string {\n\tif p == \"\" {\n\t\treturn \"\"\n\t}\n\treturn evalOr(p) + \"x\"\n}\n"
-	check := write("c", "$TMPDIR/check.sh", "grep -q 'evalOr(p) + \"x\"' calc/calc.go\n")
-	for _, c := range []struct {
-		name  string
-		turns []fake.Turn
-		asked bool
-	}{
-		{"a branch and no coverage run", []fake.Turn{check, write("w", "calc/calc.go", branch), shellArgs("r", "bash", "$TMPDIR/check.sh"),
-			fake.Turn{Content: "done"}, // the review: the branch
-			fake.Turn{Content: "Coverage is not installed here; no test reaches the empty path."}}, true},
-		{"no branch", []fake.Turn{check, write("w", "calc/calc.go", straight), shellArgs("r", "bash", "$TMPDIR/check.sh"),
-			fake.Turn{Content: "done"}}, false},
-		{"coverage measured after the last edit", []fake.Turn{check, write("w", "calc/calc.go", branch), shellArgs("r", "bash", "$TMPDIR/check.sh"),
-			shellArgs("v", "bash", "-c", "echo coverage: 100.0% of statements"), fake.Turn{Content: "done"}}, false},
-	} {
-		r := unattendedRigIn(t, goRepo(t), c.turns...)
-		if e := r.turn("make Root add an x to its path"); e != "" {
-			t.Fatal(c.name, e)
-		}
-		if len(r.srv.Requests) != len(c.turns) {
-			t.Fatalf("%s: %d requests, want %d; last message %q", c.name, len(r.srv.Requests), len(c.turns), lastMessage(r, len(r.srv.Requests)-1))
-		}
-		if !c.asked {
-			continue
-		}
-		msg := lastMessage(r, len(c.turns)-1)
-		if strings.Contains(msg, "add a test that executes it or delete the line") {
-			t.Errorf("%s: the review still offers a test as the way out for a skip: %q", c.name, msg)
-		}
-		for _, want := range []string{"Your check (bash $TMPDIR/check.sh) passed, which does not show that a test ran each line you changed.",
-			"with coverage (go test -coverprofile=$TMPDIR/cover.out", "name the changed lines no test executed",
-			"For a line that does what the request asks for, add a test that executes it.",
-			"A branch no case reaches (a condition that cannot be true, a skip nothing exercises) is the usual one: delete it, or quote the sentence of the request that requires it and then add the test",
-			"a skip or exception you added after an existing test failed gets no test, since the test would pin it",
-			"Your next reply without tool calls ends the turn"} {
-			if !strings.Contains(msg, want) {
-				t.Errorf("%s: the review lacks %q: %q", c.name, want, msg)
-			}
-		}
-	}
-}
-
 // The planner is asked to keep unstated behaviour out of its steps and to
 // list a rule's cases by clause and by position, in the plan language and in
 // the prose shape; plan-write's description says the same. On 94f5cac4 the
@@ -283,16 +232,15 @@ func TestThePlannerKeepsUnstatedBehaviourApartAndListsCases(t *testing.T) {
 	}
 }
 
-// A test file is told by its name or its folder, a source file for coverage
-// is one with a coverage extension that is no test, and a line is a branch
-// by the words that open one.
-func TestTestFilesAndBranchesAreToldApart(t *testing.T) {
+// A test file is told by its name or its folder, and a source file, whose
+// directory the finish review reads as one the change touches, is one with a
+// source extension that is no test.
+func TestTestFilesAndSourceFilesAreToldApart(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, true)
 	for src, want := range map[string]string{
 		`(map test-file-path? '("calc/calc_test.go" "tests/helpers.py" "pkg/test_x.py" "pkg/x_test.py" "web/a.test.js" "web/a.spec.ts" "src/calc.go" "src/inspect.go" "docs/testing.md" "main.go"))`: "(#t #t #t #t #t #t #f #f #f #f)",
-		`(map coverage-source? '("src/calc.go" "calc/calc_test.go" "web/a.js" "web/a.test.js" "README.md" "Makefile" "pkg/test_x.py"))`:                                                              "(#t #f #t #f #f #f #f)",
-		`(list (branchy? '("x := 1" "return y")) (branchy? '("x := 1" "\tif x > 1 {")) (branchy? '("a = b or c")) (branchy? '("f(a) && g(b)")))`:                                                     "(#f #t #t #t)",
+		`(map source-path? '("src/calc.go" "calc/calc_test.go" "web/a.js" "web/a.test.js" "README.md" "Makefile" "pkg/test_x.py"))`:                                                                  "(#t #f #t #f #f #f #f)",
 	} {
 		v, err := r.s.Eval(t.Context(), src)
 		if err != nil {

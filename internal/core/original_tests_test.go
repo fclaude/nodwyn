@@ -198,7 +198,7 @@ func TestAnEditedWantStringOfAnExistingTestIsAskedAbout(t *testing.T) {
 	}
 }
 
-// The check check-without takes apart, and the coverage point names, is the
+// The check check-without takes apart is the
 // passing command that runs the most of what the turn changed, not the last
 // passing one. On 855e90e7 the last was the exfiltration suite alone: check-
 // without named four hunks no test of it ran, and the run spent 53 calls on
@@ -241,25 +241,6 @@ func TestTheLastOfEqualPassingChecksIsTheOneTakenApart(t *testing.T) {
 	}
 	if msg := lastMessage(r, len(r.srv.Requests)-1); !strings.Contains(msg, "Your check (bash -c true # go test ./test/exfil/) still passes with each of these parts") {
 		t.Fatalf("the last of equal checks is not the one taken apart: %q", msg)
-	}
-}
-
-// The coverage point names the same command.
-func TestTheCoveragePointNamesTheBroadestPassingCheck(t *testing.T) {
-	t.Parallel()
-	const branch = "package calc\n\nfunc evalOr(p string) string { return p }\n\nfunc Root(p string) string {\n\tif p == \"\" {\n\t\treturn \"\"\n\t}\n\treturn evalOr(p) + \"x\"\n}\n"
-	r := unattendedRigIn(t, goRepo(t),
-		write("w", "calc/calc.go", branch),
-		shellArgs("a", "bash", "-c", "grep -q 'evalOr(p) + \"x\"' calc/calc.go # go test ./calc/"),
-		shellArgs("b", "bash", "-c", "true # go test ./test/exfil/"),
-		fake.Turn{Content: "done"}, // the review: the branch
-		fake.Turn{Content: "No test reaches the empty path; deleted."},
-	)
-	if e := r.turn("make Root add an x to its path"); e != "" {
-		t.Fatal(e)
-	}
-	if msg := lastMessage(r, len(r.srv.Requests)-1); !strings.Contains(msg, "Your check (bash -c grep -q 'evalOr(p) + \"x\"' calc/calc.go # go test ./calc/) passed, which does not show") {
-		t.Fatalf("the coverage point does not name the broadest check: %q", msg)
 	}
 }
 
@@ -361,8 +342,8 @@ func TestTheUntestedPartsPointDoesNotTestASkipIntoPlace(t *testing.T) {
 		t.Fatal(e)
 	}
 	msg := lastMessage(r, len(r.srv.Requests)-1)
-	for _, want := range []string{"or remove the part.",
-		"A part the request does not ask for, such as a skip or an exception added to make an existing test pass, is removed, or defended by the sentence of the request that requires it; it is not given a test."} {
+	for _, want := range []string{"A part the request does not ask for (a flag, a rename, a refactor, a skip or an exception added to make an existing test pass) gets no test: remove it, or defend it in your report with the sentence of the request that requires it.",
+		"do not test anything else because of this message"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the point lacks %q: %q", want, msg)
 		}

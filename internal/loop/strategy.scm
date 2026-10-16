@@ -908,61 +908,15 @@
                      (filter (lambda (p) (pair? (filter (lambda (l) (equal? (assoc-ref l "path" "") p)) lines)))
                              fresh)))))))
 
-;; Source files whose lines a coverage tool reports, by extension; a project
-;; may redefine the list.
-(define coverage-extensions
+;; Source files, by extension, as the finish review reads which directories a
+;; change touches (changed-dirs); a project may redefine the list.
+(define source-extensions
   '(".go" ".py" ".js" ".jsx" ".ts" ".tsx" ".rs" ".java" ".kt" ".rb" ".php" ".c" ".cc" ".cpp" ".h" ".cs"))
 
-(define (coverage-source? path)
+(define (source-path? path)
   (and (not (test-file-path? path))
-       (let any ((exts coverage-extensions))
+       (let any ((exts source-extensions))
          (and (pair? exts) (or (string-suffix? (car exts) path) (any (cdr exts)))))))
-
-;; The lines the change adds to source files (coverage-source?): those the
-;; diff git shows, and the whole of a touched source file the diff does not
-;; show (a new, untracked one).
-(define (added-source-lines touched)
-  (let walk ((ls (string-split (guard (e (else "")) (format "~a" (git-diff "."))) "\n")) (source? #f) (seen '()) (out '()))
-    (cond ((null? ls)
-           (append (reverse out)
-                   (apply append
-                          (map (lambda (p) (string-split (guard (e (else "")) (format "~a" (fs-read p))) "\n"))
-                               (filter (lambda (p) (and (coverage-source? p) (not (member p seen)))) touched)))))
-          ((string-prefix? "+++ " (car ls))
-           (let* ((raw (substring (car ls) 4 (string-length (car ls))))
-                  (path (if (string-prefix? "b/" raw) (substring raw 2 (string-length raw)) raw)))
-             (walk (cdr ls) (coverage-source? path) (cons path seen) out)))
-          ((and source? (string-prefix? "+" (car ls)))
-           (walk (cdr ls) source? seen (cons (substring (car ls) 1 (string-length (car ls))) out)))
-          (else (walk (cdr ls) source? seen out)))))
-
-;; Words that make an added line a branch or a condition, in the languages of
-;; coverage-extensions. A match in a comment or a name only asks once more.
-(define branch-words
-  '("if " "if(" "else" "elif" "&&" "||" "switch" "case " "? " " and " " or " "except" "unless "))
-
-(define (branchy? lines)
-  (let any ((ls lines))
-    (and (pair? ls)
-         (or (let word ((ws branch-words))
-               (and (pair? ws) (or (string-contains? (car ls) (car ws)) (word (cdr ws)))))
-             (any (cdr ls))))))
-
-;; Whether a command line measured coverage: go test -cover, pytest --cov, nyc,
-;; c8.
-(define (coverage-run? line)
-  (or (string-contains? line "cover") (string-contains? line "--cov") (string-contains? line "nyc") (string-contains? line "c8 ")))
-
-;; Whether the finish review asks for the changed lines no test ran: the
-;; turn changed a source file (touched: the repository paths it changed, by
-;; the file tools or as git shows them), the lines it added hold a branch or a
-;; condition, and no command run since its last edit (ran) measured coverage,
-;; so nothing in the turn says which lines a test executed. check-without
-;; takes out whole hunks; a dead branch lives inside one the check needs.
-(define (uncovered-lines-due? touched ran)
-  (and (pair? (filter coverage-source? touched))
-       (not (let any ((cs ran)) (and (pair? cs) (or (coverage-run? (car cs)) (any (cdr cs))))))
-       (branchy? (added-source-lines touched))))
 
 ;; The directory of a repository path: "" for a file at the root.
 (define (path-dir path)
@@ -975,7 +929,7 @@
 (define (changed-dirs touched)
   (let walk ((ps touched) (out '()))
     (cond ((null? ps) (reverse out))
-          ((and (coverage-source? (car ps)) (not (member (path-dir (car ps)) out)))
+          ((and (source-path? (car ps)) (not (member (path-dir (car ps)) out)))
            (walk (cdr ps) (cons (path-dir (car ps)) out)))
           (else (walk (cdr ps) out)))))
 
@@ -993,8 +947,8 @@
        (if (narrowed-run? call) 0 1))))
 
 ;; The passing call that runs the most of what the turn changed, the newest
-;; of those that tie: the check check-without takes apart and the coverage
-;; point names. The last passing call was the exfiltration suite alone on
+;; of those that tie: the check check-without takes apart. The last passing
+;; call was the exfiltration suite alone on
 ;; commit-bench 855e90e7, which ran none of the changed packages' tests, so
 ;; check-without named four hunks no test covered and the run spent 53 calls
 ;; on revert experiments (ADR 32, amended 2026-10-16, the original tests).
@@ -1032,6 +986,36 @@
                (log-note (string-append "original-tests: did not run in " (string-join (assoc-ref result "unrun" '()) ", "))))
              (assoc-ref result "failures" '()))))))
 
+;; The finish review asks for a test only a few times: at most
+;; finish-ask-limit items of a kind are named, and an item named in one
+;; review of a run is not named in a later one (finish-asked: their keys,
+;; the run's, like finish-reviews). The items past the limit are not named
+;; and not asked later either: the model answered the review once.
+(define finish-ask-limit 3)
+(define finish-asked '())
+
+;; (finish-ask key-of items): the items not asked about yet, as (shown .
+;; omitted): the first finish-ask-limit of them, in order, and how many more
+;; there were. All of them count as asked from now on.
+(define (finish-ask key-of items)
+  (let* ((fresh (filter (lambda (i) (not (member (key-of i) finish-asked))) items))
+         (shown (let take ((is fresh) (n finish-ask-limit) (out '()))
+                  (if (or (null? is) (<= n 0)) (reverse out) (take (cdr is) (- n 1) (cons (car is) out))))))
+    (set! finish-asked (append (map key-of fresh) finish-asked))
+    (cons shown (- (length fresh) (length shown)))))
+
+;; A part of the change check-without found, by where it is and how big,
+;; and its size.
+(define (part-key p)
+  (format "part ~a ~a +~a -~a" (assoc-ref p "path" "") (assoc-ref p "kind" "") (assoc-ref p "added" 0) (assoc-ref p "removed" 0)))
+
+(define (part-size p)
+  (+ (assoc-ref p "added" 0) (assoc-ref p "removed" 0)))
+
+;; A dropped condition, by the function and the operand.
+(define (dropped-key d)
+  (format "dropped ~a ~a ~a" (assoc-ref d "path" "") (assoc-ref d "function" "") (assoc-ref d "operand" "")))
+
 ;; The finish review: what an unattended turn's change lacks, gathered when
 ;; the turn first ends with a change and no reminder of its evidence is due,
 ;; and said in one message (finish-review-message), once a turn: the new
@@ -1061,20 +1045,25 @@
 ;; And it names the existing tests the turn edited that fail when their files
 ;; are as the last commit had them (original-test-failures, in Go): what a
 ;; grader runs, and what a rewritten want string hides (5040f9fe).
-;; With them, when the latest run since the last edit passed and nothing in
-;; the turn measured coverage, it asks for the lines of the change that no
-;; test executed (uncovered-lines-due?): the loop knows which commands passed
-;; and none of them says which lines ran. On commit-bench 3422faf1 (dsl20r r3)
-;; a dead branch got through every check and the diff review.
+;; The tests it asks for are bounded: the parts the check passed without, the
+;; plan's test steps and the dropped conditions are each named at most
+;; finish-ask-limit at a time, and an item asked about once in a run is not
+;; asked about again (finish-ask). It asked, until 2026-10-17, for the lines
+;; of the change no test executed too; on commit-bench 6e18b7ba (dsl22) that
+;; point, with a coverage run its message asked for, took 62 of the run's 167
+;; calls and 1.12M of its 2.38M cost-eq, in tests for branches of the change
+;; and the model's own defensive code (ADR 32, amended 2026-10-17).
 (define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits made touched)
   (let* ((plan (if (and plan-language (pair? plan-spec))
                    (let ((check (plan-language-check passed)))
                      (plan-language-mark (cadr check))
                      (car check))
                    '()))
-         (parts (if (and passing (check-without?))
+         (found (if (and passing (check-without?))
                     (filter (lambda (p) (not (member (assoc-ref p "path" "") new))) (untested-parts passing))
                     '()))
+         (asked (finish-ask part-key (sort found (lambda (a b) (> (part-size a) (part-size b))))))
+         (parts (car asked))
          (stale (stale-citations (format "~a" (assoc-ref reply 'content "")) ran ran-all checked))
          (removed (if (and quiet (host-primitive? "change-removals"))
                       (guard (e (else (log-note (string-append "change-removals failed: " (format "~a" (assoc-ref e 'message ""))))
@@ -1084,11 +1073,12 @@
          (defs (assoc-ref removed "definitions" '()))
          (lines (assoc-ref removed "expectations" '()))
          (original (original-test-failures touched))
-         (dropped (if (and quiet (host-primitive? "change-dropped-conditions"))
-                      (guard (e (else (log-note (string-append "change-dropped-conditions failed: " (format "~a" (assoc-ref e 'message ""))))
-                                      '()))
-                        (change-dropped-conditions request))
-                      '()))
+         (dropped (car (finish-ask dropped-key
+                                   (if (and quiet (host-primitive? "change-dropped-conditions"))
+                                       (guard (e (else (log-note (string-append "change-dropped-conditions failed: " (format "~a" (assoc-ref e 'message ""))))
+                                                       '()))
+                                         (change-dropped-conditions request))
+                                       '()))))
          (claims (if (host-primitive? "change-claims")
                      (guard (e (else (log-note (string-append "change-claims failed: " (format "~a" (assoc-ref e 'message ""))))
                                      '()))
@@ -1096,16 +1086,13 @@
                      '())))
     (append (if (pair? new) (list (finish-new-files-message new made)) '())
             (if (pair? plan) (list (plan-language-unmet-message plan)) '())
-            (if (pair? parts) (list (finish-untested-parts-message (command-line passing) parts)) '())
+            (if (pair? parts) (list (finish-untested-parts-message (command-line passing) parts (cdr asked))) '())
             (if (pair? stale) (list (finish-stale-citations-message stale)) '())
             (if (pair? defs) (list (finish-removed-definitions-message defs)) '())
             (if (pair? lines) (list (finish-removed-expectations-message lines)) '())
             (if (pair? original) (list (finish-original-tests-message original)) '())
             (if (pair? dropped) (list (finish-dropped-conditions-message dropped)) '())
-            (if (pair? claims) (list (finish-unshown-claims-message claims)) '())
-            (if (and quiet (uncovered-lines-due? touched ran))
-                (list (finish-uncovered-lines-message (if passing (command-line passing) "")))
-                '()))))
+            (if (pair? claims) (list (finish-unshown-claims-message claims)) '()))))
 
 ;; Whether the host offers a primitive hidden from the model, as the analyses
 ;; of a git work tree are.

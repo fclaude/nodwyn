@@ -410,7 +410,15 @@
 ;; change with something that passed whether or not the change was right, and
 ;; in the person's sessions Go tests stayed green while the page the change
 ;; was for went blank (ADR 32, amended 2026-10-11).
-(define (finish-untested-parts-message check parts)
+;; The message names at most finish-ask-limit parts, once in a run, and asks
+;; for a case only for a part that implements what the request asks for.
+;; On commit-bench 6e18b7ba (dsl22) it named six small hunks, four of one
+;; line, next to the plan's three tests (two that passed on the unchanged
+;; code, one not written), and the model spent 33 calls (0.52M cost-eq of
+;; 2.38M) on a concurrency test and a wrapper that fakes git for hunks no
+;; sentence of the request asks for (ADR 32, amended 2026-10-17). omitted:
+;; how many more parts it found than it names.
+(define (finish-untested-parts-message check parts omitted)
   (string-append
    "Your check (" (if (> (string-length check) 160) (string-append (substring check 0 160) "…") check)
    ") still passes with each of these parts of your change taken out in turn, so it does not test them: "
@@ -423,7 +431,8 @@
                             " -" (format "~a" (assoc-ref p "removed" 0)) " lines)")))
          parts)
     "; ")
-   ". Either a part is not needed, or the check cannot tell whether it works: extend the check so it fails without each part (an input, a case or a step that needs it) and run it again, or remove the part. A part the request does not ask for, such as a skip or an exception added to make an existing test pass, is removed, or defended by the sentence of the request that requires it; it is not given a test."))
+   (if (> omitted 0) (string-append "; " (number->string omitted) " more of the same kind are not named") "")
+   ". Only these parts are asked about. For a part that implements what the request asks for, add the input, case or step that needs it to your check so that it fails without the part, and run it again; do not test anything else because of this message. A part the request does not ask for (a flag, a rename, a refactor, a skip or an exception added to make an existing test pass) gets no test: remove it, or defend it in your report with the sentence of the request that requires it."))
 
 ;; Commands the report cites that have not run since the last edit
 ;; (strategy.scm, stale-citations).
@@ -516,20 +525,6 @@
    "You changed these expectations of existing tests (the line numbers are the last commit's):"
    (expectation-lines lines)
    "\nWhich sentence of the request requires the new expectation, for that input or case? A rule the request states in general words does not cover an input it does not name. If none does, restore the line and change the code to meet it (to add to what a test pins, append to the phrase it checks; do not reword it); if one does, say which in your answer. Answer in a line beside your next call. This is asked once for each test file."))
-
-;; What the finish review asks of the lines of a change that no test ran
-;; (strategy.scm, finish-review-points). The loop knows which commands passed
-;; and none of them says which lines ran. On commit-bench 3422faf1 (dsl20r
-;; r3) shipped a branch whose condition tested the wrong variable, so it could
-;; never be true, with a plan that gave no position cases and tests that never
-;; reached the edge; the same hidden test had failed three earlier builds
-;; (ADR 32, amended 2026-10-16).
-(define (finish-uncovered-lines-message check)
-  (string-append
-   (if (string-empty? check)
-       "Your last test run"
-       (string-append "Your check (" (if (> (string-length check) 160) (string-append (substring check 0 160) "…") check) ")"))
-   " passed, which does not show that a test ran each line you changed. Run the tests of the files you changed once with coverage (go test -coverprofile=$TMPDIR/cover.out and go tool cover -func, pytest --cov, ...) and name the changed lines no test executed. For a line that does what the request asks for, add a test that executes it. A branch no case reaches (a condition that cannot be true, a skip nothing exercises) is the usual one: delete it, or quote the sentence of the request that requires it and then add the test; a skip or exception you added after an existing test failed gets no test, since the test would pin it: delete it and fix that test's setup or your code instead. If coverage cannot run here, read the change line by line against your tests and name those lines instead."))
 
 ;; The parts of a condition the change no longer checks (strategy.scm,
 ;; change-dropped-conditions), a point of the finish review. On commit-bench
