@@ -61,8 +61,14 @@ import (
 
 const (
 	maxExportSource = 16 << 20 // the largest document doc-export reads
-	maxExportOutput = 64 << 20 // the most either pandoc run may write
-	maxPandocNotes  = 2 << 10  // pandoc's warnings, as the result shows them
+	maxExportOutput = 64 << 20 // the most the second pandoc run may write
+	// maxExportTree is the most the first run may write: pandoc's JSON tree,
+	// which vetTree decodes into maps and slices, about 40 times its size.
+	// 8 MiB takes some 300 MB for the moment it is held, and is a document of
+	// several hundred KB; the 64 MiB the first run was allowed took gigabytes
+	// from the daemon that hosts every session.
+	maxExportTree  = 8 << 20
+	maxPandocNotes = 2 << 10 // pandoc's warnings, as the result shows them
 )
 
 // docFormat is a pandoc reader or writer. A writer that embeds images
@@ -159,7 +165,7 @@ func docExport(o Options, pin guard.RepoPin) *scheme.Prim {
 			}
 			ctx, cancel := context.WithTimeout(c.Ctx, o.ShellTimeout)
 			defer cancel()
-			tree, notes1, err := runPandoc(ctx, c.Ctx, o, prog, content, "--sandbox", "--from="+from.pandoc, "--to=json")
+			tree, notes1, err := runPandoc(ctx, c.Ctx, o, prog, content, maxExportTree, "--sandbox", "--from="+from.pandoc, "--to=json")
 			if err != nil {
 				return scheme.Value{}, err
 			}
@@ -171,7 +177,7 @@ func docExport(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			doc, notes2, err := runPandoc(ctx, c.Ctx, o, prog, tree, "--from=json", "--to="+to.pandoc, "--standalone", "--output=-")
+			doc, notes2, err := runPandoc(ctx, c.Ctx, o, prog, tree, maxExportOutput, "--from=json", "--to="+to.pandoc, "--standalone", "--output=-")
 			if err != nil {
 				return scheme.Value{}, err
 			}
@@ -256,9 +262,10 @@ func readDocument(abs, name string, limit int64) ([]byte, error) {
 }
 
 // runPandoc runs prog with args, input on stdin, and returns what it
-// wrote and its warnings. ctx carries the timeout; turn is the call's own
-// context, which says whether the turn was aborted.
-func runPandoc(ctx, turn context.Context, o Options, prog string, input []byte, args ...string) ([]byte, string, error) {
+// wrote, at most limit bytes of it, and its warnings. ctx carries the
+// timeout; turn is the call's own context, which says whether the turn was
+// aborted.
+func runPandoc(ctx, turn context.Context, o Options, prog string, input []byte, limit int, args ...string) ([]byte, string, error) {
 	cmd := exec.CommandContext(ctx, prog, args...)
 	cmd.Dir = o.Root
 	cmd.Env = childEnv(o)
@@ -266,7 +273,7 @@ func runPandoc(ctx, turn context.Context, o Options, prog string, input []byte, 
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 5 * time.Second
-	stdout := &bounded{n: maxExportOutput}
+	stdout := &bounded{n: limit}
 	var stderr bytes.Buffer
 	cmd.Stdout = stdout
 	cmd.Stderr = &capped{buf: &stderr, n: 64 << 10}
@@ -290,7 +297,7 @@ func runPandoc(ctx, turn context.Context, o Options, prog string, input []byte, 
 		return nil, "", runErr
 	}
 	if stdout.over {
-		return nil, "", fmt.Errorf("pandoc wrote more than %s", byteCount(maxExportOutput))
+		return nil, "", fmt.Errorf("pandoc wrote more than %s: the document is too large to convert here", byteCount(limit))
 	}
 	if notes != "" {
 		notes += "\n"

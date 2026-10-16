@@ -356,3 +356,23 @@ func TestDocExportKeepsRawContentAsText(t *testing.T) {
 		}
 	}
 }
+
+// vetTree decodes pandoc's tree into maps, some 40 times its size, so the
+// first run may write 8 MiB and not the 64 MiB the second may: a Markdown file
+// of a few MiB of emphasis printed a tree near the cap, and the daemon, which
+// hosts every session, was one hostile file from running out of memory.
+func TestDocExportRefusesATreeTooLargeToHold(t *testing.T) {
+	pandoc := newFakePandoc(t, "")
+	h := exportHarness(t, pandoc.path)
+	os.WriteFile(filepath.Join(h.root, "big.md"), []byte("*a*\n"), 0o644)
+	node := `{"t":"Emph","c":[{"t":"Str","c":"a"}]},`
+	tree := `{"pandoc-api-version":[1,23,1,1],"meta":{},"blocks":[{"t":"Para","c":[` + strings.Repeat(node, (maxExportTree/len(node))+1) + `{"t":"Space"}]}]}`
+	os.WriteFile(filepath.Join(pandoc.dir, "tree.json"), []byte(tree), 0o644)
+	_, err := h.eval(t, `(doc-export "big.md" "big.docx")`)
+	if err == nil || !strings.Contains(err.Error(), "pandoc wrote more than 8 MiB") {
+		t.Fatalf("a tree past the cap: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.root, "big.docx")); err == nil {
+		t.Fatal("a document was written")
+	}
+}
