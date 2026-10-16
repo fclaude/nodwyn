@@ -46,7 +46,7 @@ read.
 \toprule
 \code{(model-turn [name [options]])} & ask a model once; returns its reply \\
 \code{(run-tools calls)} & run calls in order, each through the guard; one result per call \\
-\code{(skip-tools calls reason)} & answer calls without running them: the model reads \code{Not executed: reason} \\
+\code{(skip-tools calls reason [refused])} & answer calls without running them: the model reads \code{Not executed: reason}; with \code{\#t} the calls count as failed ones, to the call budget and the progress guard \\
 \code{(answer-call call text)} & answer one call with your own text, as a success \\
 \code{(add-message text)} & say something to the model, as a user message \\
 \code{(log-note text)} & write a note into the log; the model never sees it \\

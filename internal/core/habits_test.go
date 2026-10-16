@@ -54,6 +54,25 @@ func TestShellCommandLineIsRedirected(t *testing.T) {
 	}
 }
 
+// A model that keeps sending a command line, which shell.scm refuses, meets
+// the progress guard as it would with calls that ran (P2-058): the refusals
+// used to reach neither it nor the call budget, and twelve of them ended with
+// no stop at all.
+func TestRefusedCommandLinesReachTheProgressGuard(t *testing.T) {
+	t.Parallel()
+	var turns []fake.Turn
+	for i := range 12 {
+		turns = append(turns, fake.Turn{ToolCalls: []fake.ToolCall{{ID: fmt.Sprintf("p%d", i), Name: "shell-exec", Args: map[string]any{"cmd": "ls", "args": []any{"-la", "|", "head"}}}}})
+	}
+	r := strategyRig(t, "", 5, append(turns, fake.Turn{Content: "done"})...)
+	if err := r.turn("list the files"); !strings.Contains(err, "the same tool and arguments ran four times in a row") {
+		t.Fatalf("the turn ended with %q", err)
+	}
+	if n := len(r.srv.Requests); n != 4 {
+		t.Fatalf("%d model requests, want 4", n)
+	}
+}
+
 // read-definition returns a definition by name with its line range
 // (readdef.scm).
 func TestReadDefinitionByName(t *testing.T) {

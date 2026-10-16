@@ -116,7 +116,10 @@
       (cond ((null? cs) (reverse out))
             ((car ls)
              (let ((reason (shell-reason (car ls))))
-               (skip-tools (list (car cs)) reason)
+               ;; #t: a refusal counts as a failed call, so a model that sends
+               ;; the same command line again and again meets the progress
+               ;; guard and the call budget as it would with real calls.
+               (skip-tools (list (car cs)) reason #t)
                (merge (cdr cs) (cdr ls) rs
                       (cons (list (cons 'id (assoc-ref (car cs) 'id)) (cons 'name (assoc-ref (car cs) 'name))
                                   (cons 'ok #f) (cons 'value (string-append "Not executed: " reason)))

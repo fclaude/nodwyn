@@ -45,10 +45,11 @@ func (l *Loop) install() error {
 		{
 			Name: "skip-tools",
 			Meta: scheme.Meta{
-				Doc:    "Answer tool calls without running them; the model reads \"Not executed: reason\".",
-				Params: []scheme.Param{calls, {Name: "reason", Type: "string", Doc: "why the calls did not run"}},
-				Hidden: true,
-				Origin: "builtin",
+				Doc:      "Answer tool calls without running them; the model reads \"Not executed: reason\". A third argument, #t, says the calls were refused as a mistake of the model's: they then count as failed calls, to the turn's tool-call budget and to the progress guard, as a run call that failed does, so a model that keeps sending what is refused is stopped.",
+				Params:   []scheme.Param{calls, {Name: "reason", Type: "string", Doc: "why the calls did not run"}},
+				Variadic: true, // (skip-tools calls reason) or (skip-tools calls reason refused)
+				Hidden:   true,
+				Origin:   "builtin",
 			},
 			Handler: l.skipToolsPrim,
 		},
@@ -421,7 +422,33 @@ func (l *Loop) skipToolsPrim(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
-	return scheme.Void, l.skipTools(calls, reason)
+	if len(c.Args) > 3 {
+		return scheme.Void, errors.New("expected the calls, the reason and optionally #t for refused calls")
+	}
+	if len(c.Args) < 3 || !c.Args[2].IsTrue() {
+		return scheme.Void, l.skipTools(calls, reason)
+	}
+	// Refused calls are failed ones to the progress guard and calls to the
+	// budget, as run ones are: a model that keeps sending a command line the
+	// strategy refuses would otherwise be neither counted nor stopped. The
+	// strategy's own bookkeeping skips (a sub-agent's repeats, calls with
+	// tools off) stay out, since the sub-agent ends itself before the guard.
+	for i, tc := range calls {
+		if err := l.reserveCall(c.Ctx, t); err != nil {
+			return scheme.Void, l.stop(err, calls[i:])
+		}
+		if err := l.skipTools(calls[i:i+1], reason); err != nil {
+			return scheme.Void, err
+		}
+		if why := t.progress.observe(tc, toolOutcome{failed: true}); why != "" {
+			stuck := &ProgressStop{Reason: why}
+			if err := l.record(log.KindNote, log.Note{Text: stuck.Error()}); err != nil {
+				return scheme.Void, err
+			}
+			return scheme.Void, l.stop(stuck, calls[i+1:])
+		}
+	}
+	return scheme.Void, nil
 }
 
 // addMessage is (add-message text): the strategy speaking to the model,
