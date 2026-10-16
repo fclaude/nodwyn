@@ -3,6 +3,8 @@ package mcp
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	fake "github.com/fclaude/nodwyn/test/fakes/mcp"
@@ -65,5 +67,30 @@ func TestAuthorizeRefusalSendsNothing(t *testing.T) {
 	}
 	if _, err := New("file:///etc/passwd", nil); err == nil {
 		t.Fatal("accepted a file URL")
+	}
+}
+
+// A key bound at a query position is in the address, and a failed send's
+// error names the address: the key must not come back in the error.
+func TestFailedSendKeepsTheQueryKeyOut(t *testing.T) {
+	const key = "sk-test-mcp-query-31415"
+	closed := httptest.NewServer(http.NotFoundHandler())
+	endpoint := closed.URL + "/mcp"
+	closed.Close()
+	c, err := New(endpoint, func(r *http.Request) error {
+		q := r.URL.Query()
+		q.Set("key", key)
+		r.URL.RawQuery = q.Encode()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Initialize(context.Background())
+	if err == nil {
+		t.Fatal("a send to a closed port succeeded")
+	}
+	if strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), endpoint) {
+		t.Fatalf("the error should name %s without the key: %v", endpoint, err)
 	}
 }

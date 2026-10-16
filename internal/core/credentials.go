@@ -166,11 +166,12 @@ func (s *Session) credentialScopes(class, id string) []string {
 // carries the turn's context; the client adds a bound on a silent server.
 // A redirect is an error, not followed: the binding was checked for the
 // host the request went to, and the key and body would go along to the
-// next one (llm.NoRedirect).
+// next one (llm.NoRedirect). A failed send names the address without its
+// query, where InjectQuery may have put a key (keychain.SendError).
 func (s *Session) Do(req *http.Request) (*http.Response, error) {
 	resp, err := egressClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, keychain.SendError(err)
 	}
 	if err := llm.Redirected(resp, "keyed requests"); err != nil {
 		resp.Body.Close()

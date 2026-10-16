@@ -92,6 +92,11 @@ The file-tool denylist does not mediate those processes' file access.
 ## Credentials and HTTP
 
 Credential injection into a header, query or body requires HTTPS by default.
+A key injected into a query is part of the request's address, and a send that
+fails (a refused connection, a timeout) is reported with the address stripped
+of its query, so the key never comes back in the call's error, the log or the
+model's context. A server that repeats the query in its reply is not covered:
+prefer a header position when the service offers one.
 HTTP is accepted for `localhost` and literal loopback addresses. For a deliberately
 insecure remote service, set this in the **user's** config.toml:
 

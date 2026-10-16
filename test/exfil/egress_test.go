@@ -381,3 +381,73 @@ func TestEgressRedirectNotFollowed(t *testing.T) {
 		}
 	}
 }
+
+// TestQueryKeyNeverInSendError: a key bound at a query position is part of
+// the request's address, and net/http names the whole address when a send
+// fails. The failure goes back to the model as the call's error, so the
+// address it names must have lost its query.
+func TestQueryKeyNeverInSendError(t *testing.T) {
+	closed := httptest.NewServer(http.NotFoundHandler())
+	dest := closed.URL
+	closed.Close() // nothing listens there now: the send fails
+
+	repo := t.TempDir() + "/repo"
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kc, err := keychain.Create(t.TempDir()+"/kc", keychain.FastKDF, []byte("test-pass"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kc.Add("svc-key", []byte(credSecret)); err != nil {
+		t.Fatal(err)
+	}
+	tbl := binding.Table{Bind: []binding.Binding{{Class: "svc-key", Dest: "127.0.0.1",
+		Positions: []string{"query:key"}, Methods: []string{"GET"}}}}
+	var sessLog, logBuf, outBuf strings.Builder
+	sess, err := core.New(core.Options{Config: config.Default(), Repo: repo, NoConfirm: true, LogWriter: &sessLog, Keychain: kc, Bindings: tbl})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	in := scheme.New(scheme.WithOutput(&outBuf))
+	o := prim.DefaultOptions(repo)
+	o.Credentials = sess
+	if err := prim.Register(in, o); err != nil {
+		t.Fatal(err)
+	}
+	rec := recorder{nlog.New(&logBuf, "egress-test")}
+	in.SetGate(guard.New(guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { return false, nil }), rec,
+		guard.MetaPolicy{},
+		guard.RepoPin{Root: repo},
+		guard.DefaultArgvTrigger(repo),
+		guard.Egress{Table: tbl, Policy: "deny", Recorder: rec},
+	))
+	userCtx := scheme.WithOrigin(context.Background(), scheme.OriginUser)
+	if _, err := in.EvalString(userCtx, `(define cred (credential "svc-key"))`); err != nil {
+		t.Fatalf("credential: %v", err)
+	}
+	src := `(http-request cred "` + dest + `/v1/items?page=2" "GET" "query:key" '() "")`
+	_, err = in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginModel), src)
+	if err == nil {
+		t.Fatal("a send to a closed port succeeded")
+	}
+	var d *scheme.Denied
+	if errors.As(err, &d) {
+		t.Fatalf("the bound request was refused instead of sent: %v", err)
+	}
+	if !strings.Contains(err.Error(), dest+"/v1/items") {
+		t.Errorf("the error should still say where the request went: %v", err)
+	}
+	for what, text := range map[string]string{
+		"error":       err.Error(),
+		"log":         logBuf.String(),
+		"session log": sessLog.String(),
+		"output":      outBuf.String(),
+	} {
+		if strings.Contains(text, credSecret) {
+			t.Errorf("the key leaked into the %s: %s", what, text)
+		}
+	}
+}

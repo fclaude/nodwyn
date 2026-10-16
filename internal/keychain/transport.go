@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -14,6 +15,24 @@ type insecureHTTPKey struct{}
 // Only the host sets it, from user-owned configuration; Scheme cannot set it.
 func WithInsecureHTTP(ctx context.Context, allow bool) context.Context {
 	return context.WithValue(ctx, insecureHTTPKey{}, allow)
+}
+
+// SendError is the error to report when a keyed request could not be sent.
+// net/http names the whole address in a *url.Error ("Post \"https://h/p?key=…\":
+// dial tcp: connection refused"), so a key InjectQuery put in the query would
+// go along into a tool's result, the log and the model's context. The address
+// keeps its scheme, host and path, which say where the request went.
+func SendError(err error) error {
+	var ue *url.Error
+	if err == nil || !errors.As(err, &ue) {
+		return err
+	}
+	u, perr := url.Parse(ue.URL)
+	if perr != nil {
+		return &url.Error{Op: ue.Op, URL: "(address withheld)", Err: ue.Err}
+	}
+	u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment, u.User = "", false, "", "", nil
+	return &url.Error{Op: ue.Op, URL: u.String(), Err: ue.Err}
 }
 
 // CheckTransport refuses to put a credential on an unencrypted remote link

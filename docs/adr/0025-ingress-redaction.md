@@ -111,3 +111,15 @@ payload, contained or not, and of text that `Outgoing` is asked about: all of
 them must be bound for the destination, and the first that is not is the one
 the refusal names. The command-line check and the in-repository write confirm
 act on any known finding and are unchanged.
+
+## Amendment 2026-10-16: a failed keyed send names no query
+
+Redaction recognises a secret by its shape, and a key bound at a `query:`
+position need not have one. When such a request failed to send, Go's
+`*url.Error` named the whole address, `?key=` and the key included, and that
+error became `http-request`'s error, logged and shown to the model; an MCP
+server bound at a query position did the same. `keychain.SendError` now
+reduces the address in a send error to its scheme, host and path, and both
+keyed senders (`Session.Do` and the MCP HTTP transport) return their errors
+through it. A reply body that repeats the query is outside this: the binding
+chose a server that sees the key.

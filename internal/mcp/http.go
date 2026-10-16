@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclaude/nodwyn/internal/keychain"
 )
 
 // httpTransport is MCP's streamable HTTP transport: each message is a POST
@@ -149,5 +151,8 @@ func (t *httpTransport) post(ctx context.Context, body []byte) (*http.Response, 
 			return nil, err
 		}
 	}
-	return t.http.Do(req)
+	// authorize may have put a key in the query, and a failed send's error
+	// names the whole address.
+	resp, err := t.http.Do(req)
+	return resp, keychain.SendError(err)
 }
