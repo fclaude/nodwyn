@@ -252,3 +252,48 @@ typeset, is now found when a release is built, which fails before it
 publishes anything. The catalogue at this amendment's parent was stale (456
 Go files counted, 457 tracked), which validate did not check and that build
 would have refused; it is regenerated here.
+
+## Amendment 2026-10-16: validate runs what the checks run, and says what a change removes
+
+A review of the tooling found six ways a change reached PASS without the
+check that would have failed it. Each is closed here; validate's own tests
+(`go test ./scripts/validate`) cover each.
+
+- **The browser checks run for the code they exercise.** They ran only for
+  `internal/frontend/web/`, the rpc package and `test/browser/`, but the
+  checks `schedule`, `retrieval`, `conversation-search`, `tasks`, `models`,
+  `credentials` and `mcp` start the real daemon and read `internal/core`,
+  `internal/schedule`, `internal/retrieval`, `internal/event`, `internal/config`
+  and the fakes. They now run for any change under `internal/`, `cmd/`,
+  `test/fakes/` or `test/browser/` that is not a Go test file, and for
+  `go.mod` and `go.sum`; the whole suite takes about 30 s, so a map of which
+  check reads what would buy little and go stale.
+- **The book catalogue is checked.** `generate.py --check` takes under a
+  second; a Go or Scheme change (a Go test file too, since the counts include
+  them) runs it, and a failure says to `git add -N` new files first. The books
+  themselves are still built only by the release flow, as amended on
+  2026-10-07; this check only keeps the catalogue the release flow
+  checks from being found stale on release day.
+- **The release publisher's tests run** when `scripts/release.py` or
+  `test/release/` changes; only the Gitea workflow ran them.
+- **A console change asks for a browser check.** The "tests" warning was
+  silenced by any test change anywhere; a change under
+  `internal/frontend/web/assets` with no change under `test/browser/checks`
+  now warns separately, as AGENTS.md asks for the check's extension.
+- **Removing a check is a warning.** A deleted or removed Go test, exfil
+  scenario or browser check, and an edit to an existing file under
+  `internal/guard`, `internal/binding`, `internal/keychain`,
+  `internal/egress`, `internal/redact` or `test/exfil`, now warns, so the
+  answer must say why. Before, `make accept` simply ran the smaller suite
+  and was green. A test moved to another changed file is not removed. Taking
+  `test/exfil/` out of the standing writes in `.nodwyn/allow.toml` was
+  considered and not done: a change to the guard must add its exfil test, and
+  a prompt for each would not make the removal easier to see than the warning.
+- **A pushed branch is still measured from the main line.** The upstream was
+  used whatever it was; after `git push -u origin feature` it is HEAD, so
+  validate said "nothing to run" for the whole branch. The upstream is the
+  base only when it is a main line (`origin/main`, `main`); otherwise the
+  base is where the branch left the main line, and only a repository with no
+  main line measures from its own upstream.
+
+The tool's description no longer says validate builds the books.

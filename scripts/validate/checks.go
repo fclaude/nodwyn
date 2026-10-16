@@ -19,17 +19,19 @@ type check struct {
 
 // plan chooses the checks the changed files need. Documentation no test
 // reads needs none; anything else needs make accept, which is what
-// promotion runs; the console, its contract and its checks need the
-// browser checks, since Go's tests do not run the console.
+// promotion runs; the console, its checks and the code and fakes the checks
+// run need the browser checks, since Go's tests do not run the console.
 //
-// The books are not built here: the release flow checks their catalogue and
-// builds them (ADR 42), and nothing else keeps the PDFs. The catalogue's
-// counts change with almost every Go change, and building the book for them
-// cost about 80 s a run (ADR 37, amended 2026-10-07).
+// The books are not built here: the release flow builds them (ADR 42), and
+// building the book for the catalogue's counts cost about 80 s a run (ADR
+// 37, amended 2026-10-07). Checking that the catalogue lists every tracked
+// file takes under a second, so a Go or Scheme change runs that, and a
+// change to the release publisher runs its tests, which only CI ran
+// (ADR 37, amended 2026-10-16).
 func plan(base string, changed []string) []check {
 	var checks []check
 	var goFiles, jsFiles []string
-	accept, browser := false, false
+	accept, browser, catalogue, release := false, false, false, false
 	for _, p := range changed {
 		exists := fileExists(p)
 		switch {
@@ -41,9 +43,14 @@ func plan(base string, changed []string) []check {
 		if !docOnly(p) && !browserOnly(p) {
 			accept = true
 		}
-		if strings.HasPrefix(p, "internal/frontend/web/") || strings.HasPrefix(p, "test/browser/") ||
-			(strings.HasPrefix(p, "internal/frontend/rpc/") && strings.HasSuffix(p, ".go") && !strings.HasSuffix(p, "_test.go")) {
+		if browserNeeds(p) {
 			browser = true
+		}
+		if strings.HasSuffix(p, ".go") || strings.HasSuffix(p, ".scm") || p == "docs/book/source/generate.py" {
+			catalogue = true
+		}
+		if p == "scripts/release.py" || strings.HasPrefix(p, "test/release/") {
+			release = true
 		}
 	}
 	if len(goFiles) > 0 {
@@ -51,6 +58,14 @@ func plan(base string, changed []string) []check {
 	}
 	if len(jsFiles) > 0 {
 		checks = append(checks, check{"node --check", func(string) result { return nodeCheck(jsFiles) }})
+	}
+	if catalogue {
+		checks = append(checks, check{"book catalogue", catalogueCheck})
+	}
+	if release {
+		checks = append(checks, check{"release tests", func(logs string) result {
+			return step("release tests", "python3 -m unittest discover -s test/release", logs, 5*time.Minute, "python3", "-B", "-m", "unittest", "discover", "-s", "test/release")
+		}})
 	}
 	if accept {
 		checks = append(checks, check{"make accept", func(logs string) result {
@@ -61,6 +76,38 @@ func plan(base string, changed []string) []check {
 		checks = append(checks, check{"browser checks", func(logs string) result { return browserChecks(base, logs) }})
 	}
 	return checks
+}
+
+// browserNeeds is whether a change to p can change what a browser check
+// sees: the console and its checks, and the host code, event shapes and
+// fakes the checks' demo runs. Most checks start the real daemon, so a path
+// map of which check reads what would be wrong the day a check starts
+// reading one more package; the whole suite takes about 30 s. A Go test
+// file is no part of what a check runs.
+func browserNeeds(p string) bool {
+	switch {
+	case strings.HasPrefix(p, "test/browser/"):
+		return true
+	case strings.HasSuffix(p, "_test.go"):
+		return false
+	}
+	for _, dir := range []string{"internal/", "cmd/", "test/fakes/"} {
+		if strings.HasPrefix(p, dir) {
+			return true
+		}
+	}
+	return p == "go.mod" || p == "go.sum"
+}
+
+// catalogueCheck runs the book catalogue's own check, which AGENTS.md asks
+// for after a change to tracked Go or Scheme files. It lists what git
+// tracks, so a new file is missing from it until git knows of it.
+func catalogueCheck(logs string) result {
+	r := step("book catalogue", "docs/book/source/generate.py --check", logs, time.Minute, "python3", "docs/book/source/generate.py", "--check")
+	if r.status == "FAIL" {
+		r.detail += "; run python3 docs/book/source/generate.py, after git add -N on each new Go file, which the catalogue lists only once git tracks it"
+	}
+	return r
 }
 
 // docOnly is documentation no test reads: docs/scheme.md and the protocol
@@ -131,8 +178,10 @@ func docRules(base string, changed []string) []result {
 		out = append(out, result{status: "WARN", name: "protocol", detail: "the wire schema changed and docs/protocol.md did not: new methods and fields are described there"})
 	}
 	out = append(out, primitiveTables(base, changed)...)
-	code, tests := false, false
+	code, tests, console, consoleCheck := false, false, false, false
 	for _, p := range changed {
+		console = console || (strings.HasPrefix(p, "internal/frontend/web/assets/") && fileExists(p))
+		consoleCheck = consoleCheck || strings.HasPrefix(p, "test/browser/checks/")
 		switch {
 		case strings.HasSuffix(p, "_test.go") || strings.HasPrefix(p, "test/browser/checks/") || strings.HasPrefix(p, "test/exfil/"):
 			tests = true
@@ -143,7 +192,10 @@ func docRules(base string, changed []string) []result {
 	if code && !tests {
 		out = append(out, result{status: "WARN", name: "tests", detail: "code changed and no test did: say in your answer what checked the change"})
 	}
-	return out
+	if console && !consoleCheck {
+		out = append(out, result{status: "WARN", name: "browser check", detail: "the console changed and no check in test/browser/checks did: the check performs each new action and checks its effect (AGENTS.md), and a Go test did not run the console"})
+	}
+	return append(out, weakened(base, changed)...)
 }
 
 // primitiveTables fails when a primitive the change adds is missing from

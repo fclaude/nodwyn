@@ -9,27 +9,37 @@ import (
 )
 
 // baseCommit is what the change is measured against: where the branch left
-// its upstream, so work committed but not yet pushed counts too; else, for a
-// branch with no upstream, where it left the repository's main line, as a
-// session's worktree branch left main; else HEAD. A worktree's branch has
-// no upstream, so once its work was committed validate said "nothing
-// changed since HEAD", and models re-ran make accept and the browser checks
-// by hand (20261004T080135Z-aef239e9 seq 1769, 20261004T144303Z-219d1111
-// seq 4385, 20261004T160126Z-dfc828d6 seq 2528; ADR 37, amended
-// 2026-10-05).
+// its upstream when that is a main line, so work committed but not yet
+// pushed counts too; else where it left the repository's main line, as a
+// session's worktree branch left main; else where it left its own upstream;
+// else HEAD. A worktree's branch has no upstream, so once its work was
+// committed validate said "nothing changed since HEAD", and models re-ran
+// make accept and the browser checks by hand (20261004T080135Z-aef239e9 seq
+// 1769, 20261004T144303Z-219d1111 seq 4385, 20261004T160126Z-dfc828d6 seq
+// 2528; ADR 37, amended 2026-10-05). A branch pushed with `git push -u`
+// tracks its own copy, which is HEAD once pushed, so measuring from it said
+// "nothing to run" for a whole branch nobody had checked (ADR 37, amended
+// 2026-10-16).
 func baseCommit() (commit, against string, err error) {
-	if up, err := git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); err == nil && up != "" {
-		if mb, err := git("merge-base", "HEAD", up); err == nil {
-			return mb, up, nil
-		}
-	}
 	head, err := git("rev-parse", "HEAD")
 	if err != nil {
 		return head, "HEAD", err
 	}
-	for _, line := range mainLines() {
+	up, upErr := git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	lines := mainLines()
+	if upErr == nil && up != "" && (slices.Contains(lines, "refs/remotes/"+up) || slices.Contains(lines, "refs/heads/"+up)) {
+		if mb, err := git("merge-base", "HEAD", up); err == nil {
+			return mb, up, nil
+		}
+	}
+	for _, line := range lines {
 		if mb, err := git("merge-base", "HEAD", line); err == nil && mb != head {
 			return mb, strings.TrimPrefix(strings.TrimPrefix(line, "refs/heads/"), "refs/remotes/"), nil
+		}
+	}
+	if upErr == nil && up != "" {
+		if mb, err := git("merge-base", "HEAD", up); err == nil {
+			return mb, up, nil
 		}
 	}
 	return head, "HEAD", nil

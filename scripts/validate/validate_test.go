@@ -31,9 +31,11 @@ func TestMain(m *testing.M) {
 }
 
 // The checks follow the files: documentation no test reads needs none, the
-// console needs the browser checks as well as make accept, and the browser
-// checks' own scripts need only those. The books are documentation here:
-// the release flow builds them.
+// console and the host code and fakes it runs need the browser checks as
+// well as make accept, and the browser checks' own scripts need only those.
+// The books are documentation here (the release flow builds them), but their
+// catalogue is checked when Go or Scheme files change, and the release
+// publisher's tests run when it changes.
 func TestPlanFollowsTheChangedFiles(t *testing.T) {
 	t.Chdir("../..")
 	for _, c := range []struct {
@@ -42,13 +44,22 @@ func TestPlanFollowsTheChangedFiles(t *testing.T) {
 	}{
 		{[]string{"AGENTS.md", "docs/adr/0001-scheme-on-go.md", "docs/manual.md"}, nil},
 		{[]string{"docs/scheme.md"}, []string{"make accept"}},
-		{[]string{"internal/core/session.go"}, []string{"gofmt", "make accept"}},
+		{[]string{"internal/core/session.go"}, []string{"gofmt", "book catalogue", "make accept", "browser checks"}},
+		{[]string{"internal/core/conversation_search.go"}, []string{"gofmt", "book catalogue", "make accept", "browser checks"}},
+		{[]string{"internal/schedule/schedule.go"}, []string{"gofmt", "book catalogue", "make accept", "browser checks"}},
+		{[]string{"test/fakes/chat/chat.go"}, []string{"gofmt", "book catalogue", "make accept", "browser checks"}},
+		{[]string{"internal/loop/prompts.scm"}, []string{"book catalogue", "make accept", "browser checks"}},
+		{[]string{"internal/core/session_test.go"}, []string{"gofmt", "book catalogue", "make accept"}},
+		{[]string{"test/exfil/exfil_test.go"}, []string{"gofmt", "book catalogue", "make accept"}},
 		{[]string{"internal/frontend/web/assets/home.js"}, []string{"node --check", "make accept", "browser checks"}},
 		{[]string{"test/browser/checks/screens.js"}, []string{"node --check", "browser checks"}},
-		{[]string{"internal/frontend/rpc/sessions.go"}, []string{"gofmt", "make accept", "browser checks"}},
-		{[]string{"internal/frontend/rpc/server_test.go"}, []string{"gofmt", "make accept"}},
+		{[]string{"internal/frontend/rpc/sessions.go"}, []string{"gofmt", "book catalogue", "make accept", "browser checks"}},
+		{[]string{"internal/frontend/rpc/server_test.go"}, []string{"gofmt", "book catalogue", "make accept"}},
 		{[]string{"docs/book/parts/scheme.tex", "docs/expert/parts/09-primitives.tex", "docs/book/source/catalogue.tex"}, nil},
-		{[]string{"internal/core/deleted.go"}, []string{"make accept"}},
+		{[]string{"docs/book/source/generate.py"}, []string{"book catalogue"}},
+		{[]string{"internal/core/deleted.go"}, []string{"book catalogue", "make accept", "browser checks"}},
+		{[]string{"scripts/release.py"}, []string{"release tests", "make accept"}},
+		{[]string{"test/release/test_release.py"}, []string{"release tests", "make accept"}},
 	} {
 		var got []string
 		for _, ch := range plan("", c.changed) {
@@ -324,6 +335,16 @@ func TestDocRulesSayWhatIsMissing(t *testing.T) {
 	if !slices.Equal(names, []string{"prompts", "protocol", "tests"}) {
 		t.Fatalf("rules = %v", names)
 	}
+	// A console change is not covered by an unrelated Go test: it asks for a
+	// browser check, which AGENTS.md asks for and a Go test does not run.
+	t.Chdir("../..")
+	got = docRules("", []string{"internal/frontend/web/assets/home.js", "internal/core/session_test.go"})
+	if len(got) != 1 || got[0].name != "browser check" || got[0].status != "WARN" {
+		t.Fatalf("console change with a Go test only: %+v", got)
+	}
+	if got := docRules("", []string{"internal/frontend/web/assets/home.js", "test/browser/checks/screens.js"}); len(got) != 0 {
+		t.Fatalf("console change with its browser check: %+v", got)
+	}
 	if got := docRules("", []string{"internal/loop/prompts.scm", "docs/adr/0032-working-habits.md", "docs/protocol.schema.json", "docs/protocol.md", "internal/core/strategy_test.go"}); len(got) != 0 {
 		t.Fatalf("a complete change: %+v", got)
 	}
@@ -405,5 +426,141 @@ FAILED AssertionError: the pairing code
 	// None of them the change's: a warning to answer, not a failure.
 	if r := browserVerdict([]string{"models", "remote"}, []string{"remote"}, []string{"remote"}, ""); r.status != "WARN" || !strings.Contains(r.detail, "Say so in your answer") {
 		t.Fatalf("verdict: %+v", r)
+	}
+}
+
+// A branch pushed with -u tracks its own copy, which is HEAD once pushed.
+// Measured from that, validate said "nothing to run" for a whole unchecked
+// branch; the main line is what such a branch is measured from, and an
+// upstream that is a main line (origin/main) still is the base.
+func TestAPushedBranchIsStillMeasuredFromTheMainLine(t *testing.T) {
+	repo := fixture(t, map[string]string{"a.txt": "a\n"})
+	gitIn(t, repo, "checkout", "-q", "-b", "feature")
+	writeAll(t, repo, map[string]string{"b.txt": "b\n"})
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-q", "-m", "the work")
+	// A remote and its copy of the branch, equal to HEAD, as after a push.
+	gitIn(t, repo, "config", "remote.origin.url", ".")
+	gitIn(t, repo, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+	gitIn(t, repo, "update-ref", "refs/remotes/origin/feature", "HEAD")
+	gitIn(t, repo, "branch", "-q", "--set-upstream-to=origin/feature")
+	t.Chdir(repo)
+	main, _ := git("rev-parse", "main")
+	base, against, err := baseCommit()
+	if err != nil || base != main || against != "main" {
+		t.Fatalf("pushed branch measured from %s (%s), %v; want main's %s", base, against, err, main)
+	}
+	if changed, err := changedFiles(base); err != nil || !slices.Equal(changed, []string{"b.txt"}) {
+		t.Fatalf("changed %v, %v", changed, err)
+	}
+	// An upstream that is the main line is still the base: work committed
+	// and not pushed to it counts, work already in it does not.
+	gitIn(t, repo, "update-ref", "refs/remotes/origin/main", "main")
+	gitIn(t, repo, "branch", "-q", "--set-upstream-to=origin/main")
+	if base, against, err := baseCommit(); err != nil || base != main || against != "origin/main" {
+		t.Fatalf("tracking origin/main: %s (%s), %v", base, against, err)
+	}
+	// With no main line at all the upstream is the best base there is.
+	gitIn(t, repo, "branch", "-q", "-m", "main", "trunk")
+	gitIn(t, repo, "update-ref", "-d", "refs/remotes/origin/main")
+	gitIn(t, repo, "branch", "-q", "--set-upstream-to=origin/feature")
+	head, _ := git("rev-parse", "HEAD")
+	if base, against, err := baseCommit(); err != nil || base != head || against != "origin/feature" {
+		t.Fatalf("no main line: %s (%s), %v", base, against, err)
+	}
+}
+
+// A change that removes a test, an exfil scenario or a browser check, or
+// edits the guard, the scenarios or the exfil tests, is said, since each
+// makes make accept smaller or different without failing it. New files and
+// changes elsewhere are not said, and a test that moved to another file is
+// not removed.
+func TestWeakeningTheChecksIsSaid(t *testing.T) {
+	repo := fixture(t, map[string]string{
+		"internal/guard/guard.go":         "package guard\n",
+		"internal/core/a_test.go":         "package core\n\nimport \"testing\"\n\nfunc TestKept(t *testing.T) {}\n\nfunc TestGone(t *testing.T) {}\n\nfunc TestMoved(t *testing.T) {}\n",
+		"internal/core/b_test.go":         "package core\n\nimport \"testing\"\n\nfunc TestOther(t *testing.T) {}\n",
+		"test/exfil/scenarios/012-x.scm":  ";; expect: confirm\n",
+		"test/exfil/scenarios/013-y.scm":  ";; expect: confirm\n",
+		"test/browser/checks/screens.js":  "// check\n",
+		"internal/prim/unrelated.go":      "package prim\n",
+		"internal/prim/unrelated_test.go": "package prim\n\nimport \"testing\"\n\nfunc TestUnrelated(t *testing.T) {}\n",
+	})
+	writeAll(t, repo, map[string]string{
+		"internal/guard/guard.go":          "package guard\n\nvar loosened = true\n",
+		"internal/core/a_test.go":          "package core\n\nimport \"testing\"\n\nfunc TestKept(t *testing.T) {}\n",
+		"internal/core/b_test.go":          "package core\n\nimport \"testing\"\n\nfunc TestOther(t *testing.T) {}\n\nfunc TestMoved(t *testing.T) {}\n",
+		"test/exfil/scenarios/013-y.scm":   ";; expect: allow\n",
+		"test/exfil/scenarios/020-new.scm": ";; expect: deny\n",
+		"internal/prim/unrelated.go":       "package prim\n\nvar x = 1\n",
+	})
+	for _, p := range []string{"test/exfil/scenarios/012-x.scm", "test/browser/checks/screens.js"} {
+		if err := os.Remove(filepath.Join(repo, p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(repo)
+	base, _, err := baseCommit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed, err := changedFiles(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := weakened(base, changed)
+	if len(got) != 2 || got[0].name != "removed checks" || got[1].name != "guarded code" {
+		t.Fatalf("weakened = %+v", got)
+	}
+	for _, want := range []string{"test internal/core.TestGone", "test/exfil/scenarios/012-x.scm", "test/browser/checks/screens.js"} {
+		if !strings.Contains(got[0].detail, want) {
+			t.Errorf("removed checks lack %q: %s", want, got[0].detail)
+		}
+	}
+	for _, not := range []string{"TestMoved", "TestKept", "020-new", "unrelated"} {
+		if strings.Contains(got[0].detail+got[1].detail, not) {
+			t.Errorf("%q is said though nothing was lost there: %+v", not, got)
+		}
+	}
+	for _, want := range []string{"internal/guard/guard.go", "test/exfil/scenarios/013-y.scm"} {
+		if !strings.Contains(got[1].detail, want) {
+			t.Errorf("guarded code lacks %q: %s", want, got[1].detail)
+		}
+	}
+	if got[0].status != "WARN" || got[1].status != "WARN" {
+		t.Errorf("weakening is a warning to answer: %+v", got)
+	}
+	// docRules reports them with the rest.
+	var names []string
+	for _, r := range docRules(base, changed) {
+		names = append(names, r.name)
+	}
+	if !slices.Contains(names, "removed checks") || !slices.Contains(names, "guarded code") {
+		t.Errorf("docRules = %v", names)
+	}
+}
+
+// The validate tool's description is what a model reads to decide what a
+// PASS means; it said validate builds the books, which the release flow
+// does (ADR 37, amended 2026-10-07).
+func TestTheToolDescriptionDoesNotClaimTheBooksAreBuilt(t *testing.T) {
+	raw, err := os.ReadFile("../../.nodwyn/init.scm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(raw)
+	i := strings.Index(doc, `(register-tool "validate"`)
+	if i < 0 {
+		t.Fatal("init.scm registers no validate tool")
+	}
+	doc = doc[i:]
+	doc = doc[:strings.Index(doc, "(params")]
+	for _, banned := range []string{"book and expert guide for their sources", "builds the book"} {
+		if strings.Contains(doc, banned) {
+			t.Errorf("the tool's description says %q", banned)
+		}
+	}
+	if !strings.Contains(doc, "does not build the book") {
+		t.Errorf("the description should say the books are not built: %s", doc)
 	}
 }
