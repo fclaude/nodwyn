@@ -212,6 +212,11 @@ func TestErrors(t *testing.T) {
 		{`(register-tool "cons" car '((doc . "x") (params . ())))`, "already registered"},
 		{`(register-tool "t" car '((params . ())))`, "doc and params are required"},
 		{`(register-tool "t" car '((doc . "d") (params . (("a" "blob" "x")))))`, "unknown param type"},
+		{`(register-tool "my tool!" (lambda (a) a) '((doc . "d") (params . (("a" "string" "x")))))`, "must be 1 to 64 letters"},
+		{`(register-tool "t" (lambda (a b) a) '((doc . "d") (params . (("a" "string" "x") ("a" "string" "y")))))`, `"a" is listed twice`},
+		{`(register-tool "t" (lambda (a) a) '((doc . "d") (params . (("a" "string" "x") ("b" "string" "y")))))`, "does not fit the 2 parameters"},
+		{`(register-tool "t" (lambda (a b) a) '((doc . "d") (params . (("a" "string" "x")))))`, "does not fit the 1 parameters"},
+		{`(register-tool "t" (lambda (a) a) '((doc . "d") (variadic . #t) (params . (("a" "string" "x")))))`, "variadic: true"},
 		{`(primitive-info "nope")`, "no primitive named"},
 		{`(load "/definitely/not/here.scm")`, "load:"},
 	}
@@ -338,6 +343,29 @@ func TestKernelFixed(t *testing.T) {
 	}
 	if New().Fingerprint() != before {
 		t.Fatal("fingerprint differs between fresh interpreters")
+	}
+}
+
+// TestFreezeEndsRegistration: ADR 9 fixes the tool list once init.scm has run.
+// A tool body that registers a helper afterwards is refused, so no primitive
+// the model can call exists that was never offered.
+func TestFreezeEndsRegistration(t *testing.T) {
+	in := New()
+	eval(t, in, `
+		(register-tool "lazy" (lambda ()
+		    (register-tool "helper" (lambda () 1) '((doc . "h") (params . ())))
+		    "done")
+		  '((doc . "d") (params . ())))`)
+	in.Freeze()
+	_, err := in.EvalString(context.Background(), `(lazy)`)
+	if err == nil || !strings.Contains(err.Error(), "the tool list is fixed for the session") {
+		t.Fatalf("a registration after Freeze: %v", err)
+	}
+	if _, ok := in.Lookup("helper"); ok {
+		t.Fatal("helper was registered after Freeze")
+	}
+	if err := in.Register(&Prim{Name: "late", Meta: Meta{Doc: "d"}, Handler: func(*Call) (Value, error) { return Void, nil }}); err == nil {
+		t.Fatal("Register succeeded after Freeze")
 	}
 }
 

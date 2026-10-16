@@ -185,6 +185,9 @@ func (in *Interp) Register(p *Prim) error {
 	if p.Name == "" || p.Handler == nil {
 		return fmt.Errorf("scheme: primitive needs a name and a handler")
 	}
+	if in.frozen {
+		return fmt.Errorf("scheme: primitive %q cannot be registered now: the tool list is fixed for the session (ADR 9)", p.Name)
+	}
 	if p.Meta.Doc == "" {
 		return fmt.Errorf("scheme: primitive %q has no doc", p.Name)
 	}

@@ -318,8 +318,9 @@ func promptText(name string, v scheme.Value) (string, error) {
 
 // Freeze fixes the tool list offered to the model. It runs once, after
 // .nodwyn/init.scm has registered its tools; the list must not change
-// mid-session (ADR 9).
+// mid-session (ADR 9), so the interpreter takes no further registrations.
 func (l *Loop) Freeze() error {
+	l.interp.Freeze()
 	l.tools = nil
 	for _, p := range l.interp.Tools() {
 		l.tools = append(l.tools, llm.Tool{Name: p.Name, Description: p.Meta.Doc, Parameters: p.Schema()})

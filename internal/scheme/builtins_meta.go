@@ -1,6 +1,10 @@
 package scheme
 
-import "reflect"
+import (
+	"fmt"
+	"reflect"
+	"regexp"
+)
 
 func (in *Interp) registerMeta() {
 	in.mustRegister("primitives", "Sorted list of primitive names.", nil, false, func(c *Call) (Value, error) {
@@ -45,6 +49,11 @@ func (in *Interp) registerMeta() {
 		}
 		meta, err := parseToolMeta(c, c.Args[2])
 		if err != nil {
+			return Value{}, err
+		}
+		// Everything a provider or the first call would reject is refused
+		// here, so init.scm fails at the line that is wrong.
+		if err := checkToolShape(c, name, proc, meta); err != nil {
 			return Value{}, err
 		}
 		p := &Prim{
@@ -148,6 +157,38 @@ user-originated Scheme.`,
 	if err := in.Register(p); err != nil {
 		panic(err)
 	}
+}
+
+// toolNameOK is the name a provider accepts for a tool.
+var toolNameOK = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// checkToolShape refuses a tool whose name a provider would reject, whose
+// parameters share a name (ArgsFromJSON would then fail every call), or
+// whose procedure cannot take the arguments its parameters promise.
+func checkToolShape(c *Call, name string, proc Value, meta Meta) error {
+	if !toolNameOK.MatchString(name) {
+		return errorf(c.Name, "tool name %q must be 1 to 64 letters, digits, - or _", name)
+	}
+	names := map[string]bool{}
+	for _, pa := range meta.Params {
+		if names[pa.Name] {
+			return errorf(c.Name, "parameter %q is listed twice", pa.Name)
+		}
+		names[pa.Name] = true
+	}
+	// A primitive checks its own arity at the call; a closure is checked
+	// here against what a call can pass: all params, or more when variadic.
+	if cl := proc.Proc; cl != nil {
+		n := len(meta.Params)
+		if len(cl.Params) > n || (len(cl.Params) < n && cl.Rest == "") || (meta.Variadic && cl.Rest == "") {
+			takes := fmt.Sprintf("%d arguments", len(cl.Params))
+			if cl.Rest != "" {
+				takes = fmt.Sprintf("%d or more arguments", len(cl.Params))
+			}
+			return errorf(c.Name, "the procedure takes %s, which does not fit the %d parameters listed (variadic: %t)", takes, n, meta.Variadic)
+		}
+	}
+	return nil
 }
 
 // parseToolMeta reads the register-tool meta alist.

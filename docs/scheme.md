@@ -485,8 +485,12 @@ text it replaces, as they see a single edit's `new`.
 
 Rules: the name must be new (builtins cannot be shadowed, and a tool cannot
 be re-registered — the tool list must be stable for the whole session,
-ADR 9); `doc` and `params` are required; `egress`, `irreversible` and
-`variadic` default to `#f`. A registered tool is indistinguishable from a
+ADR 9); once the session has fixed its tool list, `register-tool` is an error
+wherever it is called from. `doc` and `params` are required; `egress`,
+`irreversible` and `variadic` default to `#f`. What a provider or the first call
+would reject is refused where the tool is registered: a name outside 1 to 64
+letters, digits, `-` and `_`, a parameter listed twice, and a procedure whose
+arguments do not fit `params` (a variadic tool needs a rest parameter). A registered tool is indistinguishable from a
 builtin at the dispatch site, and its own primitive calls are guarded in
 turn.
 

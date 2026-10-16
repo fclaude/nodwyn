@@ -48,6 +48,9 @@ type Interp struct {
 	// reloadNotes instead of applied (ADR 9).
 	reloading   bool
 	reloadNotes []string
+	// frozen is set by Freeze, once the tools a session offers have been
+	// registered: after it no primitive can be added (ADR 9).
+	frozen bool
 
 	// depth counts the Evals in progress, nested ones included. Tail calls
 	// loop inside one Eval and do not add to it; MaxDepth bounds it, so a
@@ -86,6 +89,12 @@ func (in *Interp) EndReload() []string {
 func (in *Interp) noteReload(format string, args ...any) {
 	in.reloadNotes = append(in.reloadNotes, fmt.Sprintf(format, args...))
 }
+
+// Freeze ends registration: Register, and so register-tool, fail from here
+// on. The loop calls it when it fixes the tool list, so a tool body that
+// registers a helper later cannot add a model-callable primitive that was
+// never offered.
+func (in *Interp) Freeze() { in.frozen = true }
 
 // Option configures New.
 type Option func(*Interp)
