@@ -11,6 +11,9 @@ import (
 // sessions lists what is on disk. --ids prints only identifiers, which is
 // what scripts and the selfcheck consume.
 func (c *cli) sessions() error {
+	if err := c.only("sessions"); err != nil {
+		return err
+	}
 	ids := c.fs.Arg(1) == "--ids"
 	if c.fs.NArg() > 2 || (c.fs.NArg() == 2 && !ids) {
 		return fmt.Errorf("sessions: expected --ids or no arguments")

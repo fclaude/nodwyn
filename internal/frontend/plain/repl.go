@@ -1,7 +1,7 @@
 // Package plain is the line-mode front-end: a plain reader/writer pair over
 // the core, with no terminal control. It is what CI, selfcheck and
-// `nodwyn --plain` use. The agent loop front-end arrives in B2; this file is
-// the Scheme REPL used to try the language directly.
+// `nodwyn chat` (the default command) use. This file is the Scheme REPL used
+// to try the language directly.
 package plain
 
 import (

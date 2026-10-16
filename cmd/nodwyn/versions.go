@@ -65,6 +65,9 @@ func (c *cli) undo() error {
 // versionTarget reads PATH (relative to the working directory) and the
 // workspace root (--repo, default the working directory).
 func (c *cli) versionTarget(name string) (root, abs string, err error) {
+	if err := c.only(name, "repo"); err != nil {
+		return "", "", err
+	}
 	args := c.rest()
 	if len(args) != 1 {
 		return "", "", fmt.Errorf("%s: expected one file path", name)

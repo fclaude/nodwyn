@@ -20,6 +20,13 @@ import (
 
 // chat is the default command: one session in the line-mode front-end.
 func (c *cli) chat() error {
+	// chat reads the shared flags, which go before it, and nothing else.
+	if c.fs.NArg() > 1 {
+		if err := c.afterCommand("chat"); err != nil {
+			return err
+		}
+		return fmt.Errorf("chat: unexpected argument %q", c.rest()[0])
+	}
 	cfg, err := config.Load(c.paths.ConfigFile)
 	if err != nil {
 		return err

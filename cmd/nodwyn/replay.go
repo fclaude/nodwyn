@@ -18,6 +18,9 @@ import (
 // truncated tail still replays: its valid prefix is shown and the damage is
 // reported afterwards.
 func (c *cli) replay() error {
+	if err := c.only("replay", "show-thinking"); err != nil {
+		return err
+	}
 	if c.fs.NArg() < 2 {
 		return fmt.Errorf("replay: session id or path required")
 	}

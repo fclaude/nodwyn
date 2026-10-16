@@ -1,7 +1,8 @@
 # Terminal client (P9)
 
-The TUI is opt-in. Plain chat and `--plain` remain the default and the path
-used by scripts and promotion selfchecks.
+The TUI is opt-in. Line mode (`nodwyn`, or `nodwyn chat`) remains the default
+and the path used by scripts and promotion selfchecks. The old `--plain` flag
+is accepted and ignored.
 
 ```sh
 nodwyn tui --repo /path/to/project
@@ -12,7 +13,7 @@ nodwyn tui --socket /absolute/private/directory/sock --repo /path/to/project
 
 Without `--socket`, the TUI uses core directly and owns the selected session.
 It loads the same configuration, bindings, initialization and shared keychain
-as plain chat. Keychain unlock happens before entering the full-screen view
+as line mode. Keychain unlock happens before entering the full-screen view
 (a keychain without a passphrase opens without asking);
 `--no-keychain` skips it. Quitting aborts local work, drains events and closes
 the session log.
@@ -26,11 +27,12 @@ local session.
 
 `--show-thinking` starts with the model's thinking shown, as `:thinking`
 would. Flags belong after `tui`. Both standard input and output must be terminals;
-use plain mode for pipes. No daemon is started automatically.
+use line mode (`nodwyn chat`) for pipes. No daemon is started automatically.
 
 ## Everyday use
 
-The initial list offers a new session in `--repo`, followed by stored sessions.
+The initial list offers a new task in `--repo`, followed by stored tasks (a
+task's log is its session; `--resume` and `nodwyn sessions` name it by that id).
 Use arrow keys and Enter to open one; PgUp/PgDn move a page, Home and End
 the first and last row. Typing narrows the stored sessions to those whose
 first message, folder or worktree branch contains the text (Backspace edits
@@ -42,7 +44,7 @@ an attach error rather than opening a second writer, and when `--resume` or
 error.
 
 When `--repo` is a git repository's top folder (it has its own `.git`), the
-first row, selected at start, is "New session in a new worktree of" it, as
+first row, selected at start, is "New task in a new worktree of" it, as
 the console starts a task in a git workspace by default (ADR 34). The session
 then works in `<repo>/.nodwyn/worktrees/<id>` on a branch `nodwyn/<id>` from
 the repository's `HEAD`; the conversation says so, with the number of
@@ -166,7 +168,7 @@ Unsent drafts also survive daemon reconnects, but are not saved across exits;
 a first Ctrl+C clears one rather than quitting. The footer says what stops a
 running turn (Ctrl+C) and, after a disconnect, which keys leave.
 Submitted operations are never retried automatically. Existing CLI commands
-and plain mode remain available.
+and line mode remain available.
 
 ## Tool-call groups
 
@@ -341,7 +343,7 @@ injection position reported by the guard. Unavailable facts are labeled
 “not specified by primitive.” Eligible unbound calls offer `b`: persist the
 displayed class/host/method/position and approve this call. `y` approves once;
 `n` denies. Missing or redacted scope and security prompts cannot create a
-binding. Applied/failed outcomes appear in the transcript and replay. Plain
+binding. Applied/failed outcomes appear in the transcript and replay. Line
 mode offers the same choices. Older daemon prompts omit the binding action.
 
 The initial client, multiline composer, tool discovery, read-only inspectors,
@@ -358,7 +360,7 @@ other clients of the same daemon, which also drives runs ([runs](runs.md)).
 ## P9 acceptance coverage
 
 The TUI covers the line frontend's user flows over both direct core ownership
-and the Unix daemon protocol. Plain mode remains the default; this milestone
+and the Unix daemon protocol. Line mode remains the default; this milestone
 adds no desktop client or supervisor.
 
 | Flow | Regression evidence in `internal/frontend/tui` |

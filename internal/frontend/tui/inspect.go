@@ -59,7 +59,7 @@ func (m *model) inspect(command string) tea.Cmd {
 		return nil
 	}
 	if kind == ":friction" && m.busy {
-		m.status = "The friction read needs an idle session; Ctrl+C aborts busy work."
+		m.status = "The friction read needs an idle task; Ctrl+C aborts busy work."
 		return nil
 	}
 	m.inspectionToken++

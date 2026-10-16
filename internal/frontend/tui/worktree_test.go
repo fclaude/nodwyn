@@ -72,7 +72,7 @@ func TestChooserOpensAWorktreeThroughBothBackends(t *testing.T) {
 			m.Update(m.Init()())
 			_, rows, _ := strings.Cut(m.View().Content, "\n")
 			first, _, _ := strings.Cut(rows, "\n")
-			if !strings.Contains(first, "›") || !strings.Contains(first, "New session in a new worktree of") {
+			if !strings.Contains(first, "›") || !strings.Contains(first, "New task in a new worktree of") {
 				t.Fatalf("the worktree row is not first and selected: %q", first)
 			}
 			press(m, tea.KeyPressMsg{Code: tea.KeyEnter})

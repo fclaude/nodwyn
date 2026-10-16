@@ -233,7 +233,7 @@ func (m *model) sessionsListed(msg listResult) {
 	m.loading = false
 	m.sessions = msg.items
 	if msg.err != nil {
-		m.status = "Cannot list sessions: " + safe(msg.err.Error())
+		m.status = "Cannot list tasks: " + safe(msg.err.Error())
 	}
 }
 
@@ -434,9 +434,9 @@ func (m *model) startReconnect() tea.Cmd {
 func (m *model) newRows() []string {
 	folder := safe(m.repo)
 	if m.gitRepo {
-		return []string{"New session in a new worktree of " + folder, "New session in " + folder}
+		return []string{"New task in a new worktree of " + folder, "New task in " + folder}
 	}
-	return []string{"New session in " + folder}
+	return []string{"New task in " + folder}
 }
 
 // listed is the stored sessions the filter leaves, in the daemon's order.
@@ -575,7 +575,7 @@ func (m *model) submit() tea.Cmd {
 		return nil
 	}
 	if m.busy {
-		m.status = "Session is busy. Ctrl+C aborts; your draft is kept."
+		m.status = "This task is busy. Ctrl+C aborts; your draft is kept."
 		return nil
 	}
 	if m.attaching {
@@ -680,7 +680,7 @@ func (m *model) attachFile(arg string) tea.Cmd {
 		m.status = err.Error()
 		return nil
 	case m.busy:
-		m.status = "Attach when the session is idle. Ctrl+C aborts busy work."
+		m.status = "Attach when the task is idle. Ctrl+C aborts busy work."
 		return nil
 	case m.attaching:
 		m.status = "A file is already being attached."
@@ -754,7 +754,7 @@ func (m *model) View() tea.View {
 	}
 	var body string
 	if !m.active {
-		title = "nodwyn · choose a session"
+		title = "nodwyn · choose a task"
 		// A list row is two columns: what the session is about on the left,
 		// which project and how long ago on the right. The right column is
 		// reserved first, so a long first message is clipped instead of
@@ -800,7 +800,7 @@ func (m *model) View() tea.View {
 		if m.filter != "" {
 			hint = "filter: " + safe(m.filter) + " · Backspace edits · Esc clears · Enter open"
 			if len(m.listed()) == 0 {
-				hint = "No session matches. " + hint
+				hint = "No task matches. " + hint
 			}
 		}
 		body = strings.Join(lines, "\n") + "\n\n" + hint

@@ -53,7 +53,7 @@ it can see the thing but not change it.
 | Send a message, abort a turn | yes | yes; Ctrl+C aborts, and clears an unsent draft before it quits | yes | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |
 | Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` | `nodwyn eval`, `nodwyn repl` |
-| Thinking | inline, folded | `:thinking` toggles it | `--show-thinking` | `replay --show-thinking` |
+| Thinking | inline, folded | `:thinking` toggles it | `--show-thinking` | `--show-thinking replay` |
 | Tool calls | grouped into one Activity row per stretch between replies | one line per call; `:details` expands them | a card per call | — |
 | Retrieval calls said in words (`index-search` and where it searched, `recall` and its seq, `index-update`; ADR 50) | yes, folded as looks (`searched 3 times · recalled 1 event · updated the index`) | yes | yes | `replay` |
 | An index build or refresh (`index.update`) | a line under the call that made it | a line under the call | a line | `replay` |

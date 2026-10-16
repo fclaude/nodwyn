@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"strings"
 
 	"github.com/fclaude/nodwyn/internal/config"
 )
@@ -32,11 +33,11 @@ type cli struct {
 	maxCalls      int
 }
 
-// commands maps the first argument to its handler. Two kinds live here:
-// those that read the shared flags above, and those that parse their own
-// from the remaining arguments — the latter start with rejectGlobals, so a
-// shared flag written before the command is an error rather than a setting
-// the command never sees.
+// commands maps the first argument to its handler. One rule governs flags:
+// the shared flags above go before the command, and a command that parses
+// flags of its own takes those after it. A command refuses every shared flag
+// it does not read (only, or rejectGlobals for one that parses its own), so
+// a flag in the wrong place is an error rather than a setting nothing sees.
 var commands = map[string]func(*cli) error{
 	"":           (*cli).chat,
 	"chat":       (*cli).chat,
@@ -64,7 +65,7 @@ var commands = map[string]func(*cli) error{
 func newCLI(args []string) *cli {
 	c := &cli{fs: flag.NewFlagSet("nodwyn", flag.ExitOnError)}
 	c.fs.BoolVar(&c.showVersion, "version", false, "print version and exit")
-	c.fs.StringVar(&c.resume, "resume", "", "resume a session by id")
+	c.fs.StringVar(&c.resume, "resume", "", "resume a task by its session id")
 	c.fs.StringVar(&c.repo, "repo", ".", "repository root; every path the model touches is pinned under it")
 	c.fs.StringVar(&c.model, "model", "", "override control.model")
 	c.fs.StringVar(&c.url, "url", "", "override control.url")
@@ -78,7 +79,7 @@ func newCLI(args []string) *cli {
 	c.fs.Int64Var(&c.budgetActions, "budget-actions", 0, "hard irreversible host-action limit per turn")
 	c.fs.Float64Var(&c.budgetCost, "budget-cost", 0, "spend limit for the session in US dollars, as far as costs are known (replaces budget.cost_hard)")
 	c.fs.IntVar(&c.maxCalls, "max-tool-calls", 0, "tool calls allowed per turn before the hard stop (overrides budget.tool_calls_hard)")
-	c.fs.Bool("plain", true, "use the line-mode front-end")
+	c.fs.Bool("plain", true, "deprecated and ignored: line mode is the default, as nodwyn chat")
 	c.fs.Usage = func() { fmt.Fprint(c.fs.Output(), usage); c.fs.PrintDefaults() }
 	_ = c.fs.Parse(args)
 	return c
@@ -102,10 +103,11 @@ func (c *cli) set(name string) bool {
 
 // rejectGlobals refuses shared flags placed before a command that owns its
 // own flags. format takes the offending flag's name; allowed names pass.
+// The deprecated --plain does nothing anywhere, so it is never refused.
 func (c *cli) rejectGlobals(format string, allowed ...string) error {
 	var bad error
 	c.fs.Visit(func(f *flag.Flag) {
-		for _, ok := range allowed {
+		for _, ok := range append(allowed, "plain") {
 			if f.Name == ok {
 				return
 			}
@@ -115,6 +117,28 @@ func (c *cli) rejectGlobals(format string, allowed ...string) error {
 		}
 	})
 	return bad
+}
+
+// only is the check of a command that reads some of the shared flags
+// (allowed) and no flags of its own: the others are refused, and so is one
+// written after the command, which the flag set stopped reading at the
+// command word and would otherwise take for an argument.
+func (c *cli) only(command string, allowed ...string) error {
+	if err := c.rejectGlobals(command+": --%s is not an option of "+command, allowed...); err != nil {
+		return err
+	}
+	return c.afterCommand(command)
+}
+
+// afterCommand refuses a shared flag written after its command.
+func (c *cli) afterCommand(command string) error {
+	for _, arg := range c.rest() {
+		name, _, _ := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if strings.HasPrefix(arg, "-") && c.fs.Lookup(name) != nil {
+			return fmt.Errorf("%s: put --%s before %s", command, name, command)
+		}
+	}
+	return nil
 }
 
 // run dispatches. version and licenses answer before configuration is
@@ -171,11 +195,24 @@ func (c *cli) daemon() error {
 	return runDaemon(c.paths, c.rest(), c.noKeychain)
 }
 
-func (c *cli) summary() error { return summaryCommand(c.paths, c.rest()) }
+func (c *cli) summary() error {
+	if err := c.only("summary"); err != nil {
+		return err
+	}
+	return summaryCommand(c.paths, c.rest())
+}
 
-func (c *cli) memory() error { return memoryCommand(c.paths, c.repo, c.rest()) }
+func (c *cli) memory() error {
+	if err := c.only("memory", "repo"); err != nil {
+		return err
+	}
+	return memoryCommand(c.paths, c.repo, c.rest())
+}
 
 func (c *cli) showPaths() error {
+	if err := c.only("paths"); err != nil {
+		return err
+	}
 	fmt.Printf("config:   %s\nbindings: %s\nkeychain: %s\nsessions: %s\n",
 		c.paths.ConfigFile, c.paths.Bindings, c.paths.Keychain, c.paths.SessionsDir)
 	return nil

@@ -276,15 +276,18 @@ Commands at the `you>` prompt:
 | `:thinking` | toggle showing the model's redacted thinking |
 | Ctrl-C | abort the running turn; at the prompt, exit |
 
-Two messages run a command instead of a turn, in every client (the
-terminal, the TUI, the console and a paired phone):
+Two messages run a command instead of a turn, in every client (line mode,
+the TUI, the console and a paired phone):
 
 | | |
 |---|---|
 | `/compact [what to keep]` | compact the conversation now, whatever its size: the model writes a handover note for your latest request, and your next message goes on from the note instead of the whole conversation. Words after it are what the note must keep (`/compact the failing test names`). The log keeps everything |
 | `/optimize [n \| ids] [focus]` | learn from this repository's past sessions and improve `.nodwyn/init.scm` ("Changing the loop" below) |
 
-Flags: `--repo DIR`, `--resume ID` (go on with a session; it keeps its
+Flags go before the command (`nodwyn --show-thinking replay ID`); a command
+refuses the ones it does not read, and a command with flags of its own, such
+as `tui` or `run`, takes them after its name. `--plain` is an old flag that
+does nothing. The flags are `--repo DIR`, `--resume ID` (go on with a session; it keeps its
 repository unless `--repo` is given), `--model`, `--url`, `--show-thinking`, `--no-confirm`
 (every confirm is a no — for scripts and CI), `--yolo` (every ordinary
 confirm is a yes — for work nobody is watching), `--no-keychain`,
@@ -429,7 +432,7 @@ in a git worktree of its own (ADR 34):
 `<repo>/.nodwyn/worktrees/<id>` on a new branch `nodwyn/<id>`, from the
 repository's `HEAD`. Uncheck it to start in the folder itself; this choice
 is kept per git workspace in this tab. In the TUI, the chooser's first row in
-a repository's top folder is "New session in a new worktree of" it, and
+a repository's top folder is "New task in a new worktree of" it, and
 `nodwyn tui --worktree` opens one directly; the title shows the branch
 ([the TUI](tui.md)). The task's tools, commands and
 `.nodwyn/` settings are the worktree's, exactly as if you had checked the

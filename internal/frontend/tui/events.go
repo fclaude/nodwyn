@@ -350,7 +350,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 		m.endToolInterval()
 		m.disconnected = true
 		m.busy = false
-		m.status = "Session closed. Reconnect to resume its history."
+		m.status = "Task closed. Reconnect to resume its history."
 		if m.prompt != nil {
 			m.clearPrompt(m.prompt.id)
 		}

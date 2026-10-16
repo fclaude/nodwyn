@@ -22,14 +22,18 @@ var version = "dev"
 
 const usage = `usage: nodwyn [flags] [command]
 
+The flags below go before the command, and apply to the commands that read
+them (chat all of them; replay --show-thinking; memory, versions and undo
+--repo). A command with flags of its own takes them after its name.
+
 commands:
-  (none) | chat        start a session in the plain front-end
+  (none) | chat        start a task in line mode
   replay SESSION       print a session log as a transcript (id or path)
   replay SESSION --window SEQ  reconstruct and verify a recorded model request
   summary [flags] SESSION  inspect, add or revoke a conversation summary
   memory search [--task SESSION] [-n N] WORDS  search what this repository's tasks did, by turn
   memory recall SESSION SEQ [START [COUNT]]   one event; a turn's first message with what the turn did
-  sessions             list sessions
+  sessions [--ids]     list stored tasks (--ids: just their session ids)
   versions FILE        list a file's kept previous versions (--repo sets the workspace)
   undo FILE            put back a file's newest kept version
   run [flags]          carry a task to its end with no conversation, for scripts and
