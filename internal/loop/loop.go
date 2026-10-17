@@ -152,7 +152,7 @@ var defaultOptimizer string
 //go:embed plan.scm
 var defaultPlanGate string
 
-// planspec.scm: the plan as data (ADR 32, amended 2026-10-13), over plan.scm.
+// planspec.scm: the plan as data (ADR 32, amended 2026-10-16), over plan.scm.
 //
 //go:embed planspec.scm
 var defaultPlanLanguage string

@@ -682,7 +682,7 @@ func TestAReportCitingAnOldRunIsAsked(t *testing.T) {
 // apart when it prints something else without it: only the parts it prints
 // the same without are named. Here it counts one()'s return, so two()'s
 // change alone is named, as for a check that fails (ADR 32, amended
-// 2026-10-12).
+// 2026-10-16).
 func TestAMaskedCheckTellsPartsApartByWhatItPrints(t *testing.T) {
 	t.Parallel()
 	repo := codeRepo(t)
@@ -708,7 +708,7 @@ func TestAMaskedCheckTellsPartsApartByWhatItPrints(t *testing.T) {
 // Output a report quotes, the lines of a here-document and the words of a
 // grep pattern are no command the turn ran, and a command it never ran is no
 // citation of an old run: none of them is asked about (ADR 32, amended
-// 2026-10-12).
+// 2026-10-16).
 func TestAReportQuotingOutputIsNotAsked(t *testing.T) {
 	t.Parallel()
 	r := unattendedRig(t,
@@ -727,7 +727,7 @@ func TestAReportQuotingOutputIsNotAsked(t *testing.T) {
 
 // A check that the repository's whole check runs again is not asked about
 // once the whole check has passed since the last edit: make validate runs go
-// test -race ./... itself (ADR 32, amended 2026-10-12).
+// test -race ./... itself (ADR 32, amended 2026-10-16).
 func TestACitationTheWholeCheckRanAgainIsNotAsked(t *testing.T) {
 	t.Parallel()
 	r := unattendedRig(t,
@@ -747,7 +747,7 @@ func TestACitationTheWholeCheckRanAgainIsNotAsked(t *testing.T) {
 
 // A test run in the background that exits after the last edit is a test run
 // as shell-exec's is: the turn is not told it changed files after its last
-// one (ADR 32, amended 2026-10-12).
+// one (ADR 32, amended 2026-10-16).
 func TestABackgroundTestRunIsATestRun(t *testing.T) {
 	t.Parallel()
 	r := unattendedRig(t,
@@ -769,7 +769,7 @@ func TestABackgroundTestRunIsATestRun(t *testing.T) {
 // model's own words: one rebuilt from the shell's output carries its taint,
 // and the guard refused it as a command built from tool output, which ended
 // a finished turn in an error (commit-bench, nodwyn c768750, 556d6d12; ADR
-// 32, amended 2026-10-12).
+// 32, amended 2026-10-16).
 func TestABackgroundCheckIsTakenApartLikeAnyOther(t *testing.T) {
 	t.Parallel()
 	repo := codeRepo(t)

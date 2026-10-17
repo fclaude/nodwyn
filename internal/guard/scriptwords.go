@@ -414,7 +414,7 @@ func access(words []string) int {
 // body and a redirection's target are no command, and the commands inside a
 // substitution are left out. argv that is no -c line is one command. The
 // evidence loop matches the commands a report cites against these (ADR 32,
-// amended 2026-10-12): read by its plain words, every line of a heredoc and
+// amended 2026-10-16): read by its plain words, every line of a heredoc and
 // every word after a | inside a grep pattern had counted as a program run.
 // A line scriptWords cannot split gives nil.
 func ShellCommands(argv []string) []string {

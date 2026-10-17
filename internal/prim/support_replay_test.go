@@ -12,7 +12,7 @@ import (
 )
 
 // The replay of the support check over commit-bench (ADR 32, amended
-// 2026-10-17): every patch of the benchmark's runs is read for the
+// 2026-10-16): every patch of the benchmark's runs is read for the
 // expectations of existing tests it removes or rewrites (change-removals'
 // rows, paired with the lines that replace them), and each row is set against
 // the request of its task twice. "Any sentence" is the most the request can

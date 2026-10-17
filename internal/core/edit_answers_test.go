@@ -8,7 +8,7 @@ import (
 )
 
 // What the loop does with the answer to the question asked as an existing
-// test is edited (ADR 32, amended 2026-10-17). On commit-bench 94f5cac4
+// test is edited (ADR 32, amended 2026-10-16). On commit-bench 94f5cac4
 // (dsl22) the question fired three times in 16 seconds and the model went
 // on: it answered with the request's rule for a skipped argument and kept the
 // rewritten row `(fs-read "big.txt" 1 0)` "count must be at least 1", which

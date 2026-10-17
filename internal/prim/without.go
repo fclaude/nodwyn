@@ -50,7 +50,7 @@ import (
 // before it runs out is not reported.
 //
 // A part counts as tested when the check fails without it or prints
-// something else (amended 2026-10-12). On commit-bench most of the alarms
+// something else (amended 2026-10-16). On commit-bench most of the alarms
 // came from checks whose exit status could not fail: `... | tail -n 5; echo
 // EXIT=${PIPESTATUS[0]}`, `bash check.sh; echo CHECK-EXIT=$?`. Such a check
 // "passed" without every part, the model believed it, and two attempts ran

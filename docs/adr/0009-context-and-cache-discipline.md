@@ -662,3 +662,16 @@ assumes they may be. A refused request names the field. Whether the details
 help is measured against the build before this one (`d880bb3`) on the same
 tasks, as `keep_reasoning` was: replies, calls, reasoning tokens a reply and
 time.
+
+## Amendment 2026-10-16: an fs-read is shown up to twice the result cap
+
+Window recipe `window-v19` (`Policy.WideReads`, 1fbbac4 on `claude/dsl23`,
+2026-10-12) shows an fs-read's result up to twice `MaxResultTokens`
+(`Policy.ReadCap`), and a ranged fs-read gets the same budget; every other
+result, a recall's included, keeps the cut. On commit-bench (nodwyn 0a9f700,
+nine tasks) 60 of the 150 whole-file reads lost their middle at the
+3,072-token cap, a file over about 9 KB, and 31 of them were followed by 40
+reads of the lines left out, each a request that sends the whole context
+again, where the lines cost a fraction of that. Older recipes cut every
+result at `MaxResultTokens`. The code cited an amendment of 2026-10-12 that
+was never written; it cites this one.

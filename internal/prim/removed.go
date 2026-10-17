@@ -124,7 +124,7 @@ type removedLine struct {
 	// lines a change block adds, the one that shares most of its words with
 	// this one, if it shares half of them (a row rewritten, a map
 	// rewrapped), each used once. edit-support reads what a rewrite adds
-	// and cuts from it (ADR 32, amended 2026-10-17).
+	// and cuts from it (ADR 32, amended 2026-10-16).
 	repl string
 }
 

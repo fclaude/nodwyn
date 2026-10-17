@@ -14,7 +14,7 @@ import (
 )
 
 // The support check reads the answer to the question asked as an existing
-// test is edited (ADR 32, amended 2026-10-17). Its fixtures are the request
+// test is edited (ADR 32, amended 2026-10-16). Its fixtures are the request
 // of three commit-bench tasks, the test files of the patches some attempts
 // made, and the replies dsl21 and dsl22 gave to the question on 94f5cac4,
 // all in testdata/support.

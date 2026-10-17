@@ -34,7 +34,7 @@ func TestModelMarksPlanSteps(t *testing.T) {
 	}
 	// The main request shows the plan under a header that says the harness
 	// marks a step when it sees its evidence, so the model marks one only
-	// to skip it (ADR 32, amended 2026-10-13); a model's own mark still
+	// to skip it (ADR 32, amended 2026-10-16); a model's own mark still
 	// records.
 	if main := string(r.srv.Requests[1].Raw); !strings.Contains(main, "the harness marks a step done when it sees its evidence") ||
 		!strings.Contains(main, "mark one with plan-step only to skip it") {

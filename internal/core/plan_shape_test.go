@@ -226,7 +226,7 @@ func TestPlannerAndJudgeAskForTheShape(t *testing.T) {
 		msgs := requestMessages(t, r.srv.Requests[i])
 		asked := msgs[len(msgs)-1].Content
 		// The plan is asked for as data (planspec.scm, ADR 32, amended
-		// 2026-10-13): the same kinds, as forms.
+		// 2026-10-16): the same kinds, as forms.
 		for _, want := range []string{"Scheme data: one form per step", "(change \"path\"", "(test \"path\" \"TestName\"", "fails-today", "(docs \"path\"", "(check \"", "the last step"} {
 			if !strings.Contains(asked, want) {
 				t.Errorf("the planner's %s request lacks %q:\n%s", what, want, asked)
@@ -288,7 +288,7 @@ func TestThePlannerIsAskedForBehaviourNotCode(t *testing.T) {
 // name, with a test of the request's spelling, and the main loop to show
 // such a belief with a run. On commit-bench a planner read the request's
 // session-id header as the X-Session-Id the code sent, planned the other two
-// headers, and the change failed (ADR 32, amended 2026-10-12).
+// headers, and the change failed (ADR 32, amended 2026-10-16).
 func TestTheRequestsNamesAreKeptAsSpelled(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, true,

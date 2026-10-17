@@ -9,7 +9,7 @@ import (
 )
 
 // What the finish review may ask a model to write (ADR 32, amended
-// 2026-10-17). On commit-bench 6e18b7ba (dsl22) one review asked for the
+// 2026-10-16). On commit-bench 6e18b7ba (dsl22) one review asked for the
 // plan's tests that passed on the unchanged code, for tests of six one-line
 // hunks the check passed without, and for the lines of the change no test
 // executed, and the model spent 95 of the run's 167 calls (1.64M of 2.38M

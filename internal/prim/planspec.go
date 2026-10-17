@@ -21,7 +21,7 @@ import (
 // instead of words in a sentence. These primitives are its host side: read
 // the data without running it, take the names a request gives, and set a
 // plan's names and files against the change as git shows it (ADR 32,
-// amended 2026-10-13).
+// amended 2026-10-16).
 
 // readData builds (read-data text): every datum in text, unevaluated.
 func readData() *scheme.Prim {
@@ -55,7 +55,7 @@ var (
 	// change produces. brandRE is a capitalised word with a capital inside
 	// and no separator (ChatGPT, OpenAI): a product's name more often than the
 	// code's. On commit-bench both made the planner write its plan again
-	// for names that did not matter (ADR 32, amended 2026-10-13).
+	// for names that did not matter (ADR 32, amended 2026-10-16).
 	markerRE  = regexp.MustCompile(`^[A-Z][A-Z0-9_]*(\.[A-Za-z0-9]+)?$`)
 	brandRE   = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
 	versionRE = regexp.MustCompile(`^v?\d+([._-]\d+)*$`)

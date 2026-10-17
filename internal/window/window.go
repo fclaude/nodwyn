@@ -87,7 +87,7 @@ type Policy struct {
 	// reads in nodwyn 0a9f700's commit-bench sessions lost their middle (a
 	// file over about 9 KB), and 31 of them were followed by 40 reads of the
 	// lines left out, each a request that sends the whole context again,
-	// where the lines cost a fraction of that (ADR 9, amended 2026-10-12).
+	// where the lines cost a fraction of that (ADR 9, amended 2026-10-16).
 	// Older recipes cut every result at MaxResultTokens.
 	WideReads bool
 }

@@ -249,7 +249,7 @@ func resolveOptions(o Options) (Options, error) {
 // one tool result (window.Estimate is bytes/3), with room for its header, as
 // the window is sized now once the loop has it (ADR 9, amended 2026-10-05).
 // A ranged fs-read has twice it where the window shows an fs-read up to
-// twice the cut (primitiveOptions, ADR 9, amended 2026-10-12).
+// twice the cut (primitiveOptions, ADR 9, amended 2026-10-16).
 func (s *Session) rangeBytes() int {
 	if s.loop == nil {
 		return s.opts.Config.Window.MaxResultTokens*3 - 256
@@ -280,7 +280,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	// A ranged fs-read stays under the window's cut for one fs-read result
 	// (window.Estimate is bytes/3, Policy.ReadCap twice the cut on other
 	// results), with room for its header: the cut as the window is sized
-	// now, once the loop has it (ADR 9, amended 2026-10-05 and 2026-10-12).
+	// now, once the loop has it (ADR 9, amended 2026-10-05 and 2026-10-16).
 	// A recall is cut as other results are (rangeBytes).
 	po.MaxRangeBytes = 2*o.Config.Window.MaxResultTokens*3 - 256
 	po.RangeBytes = func() int {

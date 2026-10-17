@@ -773,7 +773,7 @@
 ;; quoted (`--- PASS: TestX`, `ok in 0.4s`), whose first word a heredoc line
 ;; or a grep pattern had made a program, for commands never run, and for
 ;; make accept and go test -race ./... after a later make validate that runs
-;; both (ADR 32, amended 2026-10-12).
+;; both (ADR 32, amended 2026-10-16).
 (define (stale-citations text ran ran-all checked)
   (let walk ((spans (code-spans text)) (out '()))
     (if (null? spans)
@@ -840,7 +840,7 @@
 ;; exit. Read with waits of 60 seconds, the repository's whole check often
 ;; ran this way, and the loop, which counted shell-exec runs only, then asked
 ;; for the tests to be run after the last edit when they had been (5 of the 6
-;; such reminders on commit-bench; ADR 32, amended 2026-10-12).
+;; such reminders on commit-bench; ADR 32, amended 2026-10-16).
 (define (background-call call start)
   (list (cons 'name "shell-exec") (cons 'id (assoc-ref call 'id ""))
         (cons 'args (assoc-ref start 'args "{}"))))
@@ -925,7 +925,7 @@
 ;; the model went on: it answered with the request's rule for a skipped
 ;; argument, which says nothing of a count of 0, and kept the rewritten row
 ;; `(fs-read "big.txt" 1 0)` "count must be at least 1" (ADR 32, amended
-;; 2026-10-17). Nothing is reverted or refused. asked is the rows the
+;; 2026-10-16). Nothing is reverted or refused. asked is the rows the
 ;; question named, each (state . line) with the state asked, firm (the
 ;; firmer message was said) or ok (answered, or restored). A reply that
 ;; quotes the request and answers no row gets one firmer message for it
@@ -1115,11 +1115,11 @@
 ;; The tests it asks for are bounded: the parts the check passed without, the
 ;; plan's test steps and the dropped conditions are each named at most
 ;; finish-ask-limit at a time, and an item asked about once in a run is not
-;; asked about again (finish-ask). It asked, until 2026-10-17, for the lines
+;; asked about again (finish-ask). It asked, until 2026-10-16, for the lines
 ;; of the change no test executed too; on commit-bench 6e18b7ba (dsl22) that
 ;; point, with a coverage run its message asked for, took 62 of the run's 167
 ;; calls and 1.12M of its 2.38M cost-eq, in tests for branches of the change
-;; and the model's own defensive code (ADR 32, amended 2026-10-17).
+;; and the model's own defensive code (ADR 32, amended 2026-10-16).
 (define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits made touched asked-edits)
   (let* ((plan (if (and plan-language (pair? plan-spec))
                    (let ((check (plan-language-check passed)))

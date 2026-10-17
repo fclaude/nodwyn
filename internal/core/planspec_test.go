@@ -14,7 +14,7 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
-// A plan written as data (planspec.scm, ADR 32, amended 2026-10-13): the
+// A plan written as data (planspec.scm, ADR 32, amended 2026-10-16): the
 // planner is asked for forms, asked again when its plan leaves out a name
 // the request gives, and the plan the model reads is the forms written out
 // as numbered steps, with the names after them.

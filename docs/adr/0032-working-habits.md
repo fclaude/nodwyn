@@ -2063,7 +2063,7 @@ experiment by what the model says; refusing or reverting any edit. Not
 measured: whether the new points change what a model does is for the next
 benchmark.
 
-## Amendment 2026-10-17: the review stops asking for the lines no test ran, bounds the tests it asks for, and the question on an edited test is answered in a form and read
+## Amendment 2026-10-16: the review stops asking for the lines no test ran, bounds the tests it asks for, and the question on an edited test is answered in a form and read
 
 dsl22 (a000653, Muse, effort low, 32 runs; `muse-review-2026-10-16.md` and its
 digests) resolved 31 of 32, as dsl20r did, for about 17% more cost, and still
@@ -2271,3 +2271,111 @@ branches. The merge keeps both, with these choices:
   (removed expectations, the change without each part, the documents'
   added lines), and leave out a change too large to diff, as they leave
   out a file too long.
+
+## Amendment 2026-10-16: what the evidence loop was given on 2026-10-12, recorded
+
+The commits of `claude/dsl23` made on 2026-10-12 cited an amendment of
+that date that was never written. This records what they decided, from
+their messages, and the code and documents that cited it now cite this one.
+
+- **A check is compared by what it prints** (33b6b87). `check-without`
+  runs the check once with the whole change, and counts a part untested
+  only when the check exits 0 and prints the same without it: a check
+  ending in `; echo EXIT=$?` passed without every part on commit-bench.
+- **The commands a report cites are read as the shell reads them**
+  (33b6b87). They are matched against the commands the turn ran, read by
+  `guard.ShellCommands` (`shell-commands`), so heredoc lines and grep
+  patterns are no programs; runs on `$TMPDIR/base` never go stale, and a
+  passing whole check (make validate, make test, ...) covers the check
+  commands a report cites.
+- **A background test run counts** (33b6b87, c768750, 11e0c51). A
+  background run that exits after the last edit is a test run, and only
+  its own calls are read for its exit. `check-without` runs it again as the
+  shell-start call the model made, never as one rebuilt from the shell's
+  output, which carried that output's taint and was refused by the guard
+  as a command built from tool output (commit-bench, 556d6d12).
+- **Slow checks go to shell-exec, and a check's exit status is not
+  masked** (33b6b87): the system prompt says both, and shell-read may wait
+  600 seconds.
+- **A plan step is marked with the next step's first call** (1fbbac4). On
+  commit-bench (nodwyn 0a9f700, nine tasks) 69 of the 103 replies that
+  marked a step held nothing else, each a request that sends the whole
+  context again: plan-step, the plan header and a run's turn prompt ask for
+  the mark in the same reply as the next step's first call, with a
+  one-line note.
+- **A name the request lists is taken as spelled** (c75286f). On
+  commit-bench (556d6d12) the request named three headers; the planner read
+  session-id as the X-Session-Id the code already sent and planned the
+  other two, and the main loop shared the belief without testing it, so
+  the change failed the maintainers' test. plan-shape asks that every name
+  the request lists appear in a step as spelled, with a Test: step of the
+  request's spelling when the planner thinks it is already there, and the
+  working rules ask the main loop to show such a belief with a run.
+
+## Amendment 2026-10-16: the plan as data of 2026-10-13, recorded
+
+The commits of `claude/dsl23` made on 2026-10-13 built the plan language
+(planspec.scm) and cited an amendment of that date that was never written.
+This records what was built and what stayed, from their messages, and the
+code and documents that cited it now cite this one.
+
+- **The planner writes its plan as Scheme forms** (e73155c): change, test
+  (with how it fails today and the command that runs it), docs, check,
+  none, names and context, read with `read-data` and written out as the
+  numbered steps the window and the console show. A reply whose `(run ...)`
+  sits inside `(fails-today ...)`, a parenthesis short, is read form by
+  form with the parentheses added (75503e3). A plan the model writes again
+  in prose replaces the forms (78a353a), and each form is kept under the
+  new plan's step of its kind that names its file, test or command; a form
+  the rewrite dropped is dropped (e592a64).
+- **Every name the request gives is in the plan**, as something the change
+  produces or only uses, or the plan is asked for again (e73155c).
+  `request-names` takes the names that read as code and leaves out words in
+  capitals and capitalised names without a separator: the planner had been
+  asked again for AGENTS.md, ChatGPT and NODWYN_RUN_COMPLETE (75503e3). A
+  phrase is a quote, and a name HEAD already holds whole (`head-has-name`)
+  is no name the change must produce: on 5040f9fe the model, told the
+  change lacked such names, wrote them into its ADR (6ff12b7). A name the
+  plan leaves out and HEAD has goes into the plan's context without asking
+  the planner again (7595b15).
+- **Before an unattended turn ends, each step is set against what
+  happened** (e73155c, `plan-evidence`): an unchanged file, a test not in
+  its file or not run since the last edit, a check not passed since, a name
+  the change does not contain, said once. A step that names a directory is
+  met by an edit in it (78a353a), and an edit to a .md, .tex, .rst or .adoc
+  file leaves the runs before it standing (75503e3).
+- **The harness marks the steps as the work happens** (5f0739e): after each
+  round of the main context's calls, a change or docs step whose file a
+  call wrote, a test step whose file was written and whose test a passing
+  command named, and a check step whose command passed.
+- **A planned test that says it fails today is run once on the unchanged
+  code** (5f0739e, 7f0ed56, `test-before`): on a copy of HEAD with the test
+  file and the change's other test files and test support put in; one that
+  passes there does not show the change, and is said so. With the test file
+  alone, two tests that drive the change through a fake it rewrote passed
+  on the copy (dsl13, 107251d0).
+- **A background run is read to its end** (3391516): shell-read waits up to
+  a second after new output for the rest or the exit, since make validate's
+  PASS came with "running", the model read no further, and the loop never
+  saw the run end (dsl6, 556d6d12).
+- **The documents that describe what the change alters are named when it
+  edited none** (43d920d, 28c9ed4, `docs-mentioning`): those that hold a
+  function the plan changes, and the ADRs named for a package the change
+  alters. On 3422faf1 the planner wrote `(none docs ...)` and the reference
+  amended ADR 25, which describes the Scanner.Scan and TextSecret the
+  change altered.
+- **New files are marked for the next commit as the model writes them**
+  (7d48641, 96a304d, `git-intend`): every new file of a planned turn, so a
+  generator that lists the tracked files counts it. The book's catalogue,
+  regenerated last, had missed a new test file (dsl8, 107251d0) and a new
+  exfil scenario (3422faf1). Files untracked before the turn are left
+  alone.
+- **Dropped the same day** (550e3b9): the harness running the plan's tests
+  after each edit (961f0e3) and its check before the end (3391516),
+  check-before on a clone of HEAD (b7befea) and the missing-program hint
+  (817b637). dsl6, which had them, scored 75.5 in blind review against
+  dsl3's 77.5 on the same three tasks, for 18% more tokens; check-before
+  never fired, since make validate passes on the unchanged code. qwen's
+  explorer went to 8 rounds (3e91d63) and back to 16 (be6a8f2) when a blind
+  review scored the 8-round builds lower; the amendment of 2026-10-15 ("a
+  shorter explorer for qwen") made it 8 again.

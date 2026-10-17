@@ -109,7 +109,7 @@ func TestCheckWithoutLeavesDeletionsAlone(t *testing.T) {
 // A check whose exit status cannot fail (`...; echo EXIT=$?`, `|| true`)
 // still tells a part apart when it prints something else without it: the
 // part counts as tested, and only the parts it prints the same without are
-// the check's blind spots (amended 2026-10-12).
+// the check's blind spots (amended 2026-10-16).
 func TestCheckWithoutComparesWhatTheCheckPrints(t *testing.T) {
 	root, k, git := keepRepo(t)
 	write(t, root, "calc.py", "def one():\n    return 1\n\n\ndef two():\n    return 2\n", 0o644)

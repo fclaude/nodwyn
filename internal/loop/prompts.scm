@@ -185,7 +185,7 @@
    ;; one shell-exec call however slow it is. The same runs ended checks in
    ;; ; echo EXIT=$?, which exits 0 whatever the check did: the loop reads
    ;; the status (run-outcome, check-without), so such a check passed for it
-   ;; with the change broken (ADR 32, amended 2026-10-12).
+   ;; with the change broken (ADR 32, amended 2026-10-16).
    "\n- shell-exec waits for its command to end, however long a test suite or a build takes, and stops one that runs past the shell timeout. A program that keeps running (a server, a watcher) goes to shell-start instead: read its output with shell-read, which can wait for it, and end it with shell-stop."
    "\n- shell-exec and shell-read report a command's exit status, and a bash -c line runs with pipefail. Let a check's status be its result: do not end it with ; echo $?, || true or anything else that exits 0 when the check fails."
    ;; The example used to list /opt/*/envs, a path outside the repository,
@@ -199,7 +199,7 @@
    "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; conda env list; ls -d .venv venv 2>/dev/null), then run that environment's interpreter by the full path it shows, or with conda run -n NAME. Listing folders outside the repository asks for approval; running an environment's interpreter does not."
    "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
    ;; The main loop shared the planner's belief on 556d6d12 (session-id read
-   ;; as X-Session-Id) and never tested it (ADR 32, amended 2026-10-12).
+   ;; as X-Session-Id) and never tested it (ADR 32, amended 2026-10-16).
    "\n- Take each name the request gives (a header, a flag, a field, a file) as meant literally. If you conclude it is a different name the code already has, show that with a run before you rely on it."
    ;; index-search comes from ADR 50 (ADR 32, amended 2026-10-15): 57% of
    ;; the regular-expression searches in the 78 local logs were
@@ -427,7 +427,7 @@
 ;; line, next to the plan's three tests (two that passed on the unchanged
 ;; code, one not written), and the model spent 33 calls (0.52M cost-eq of
 ;; 2.38M) on a concurrency test and a wrapper that fakes git for hunks no
-;; sentence of the request asks for (ADR 32, amended 2026-10-17). omitted:
+;; sentence of the request asks for (ADR 32, amended 2026-10-16). omitted:
 ;; how many more parts it found than it names.
 (define (finish-untested-parts-message check parts omitted)
   (string-append
@@ -538,7 +538,7 @@
 ;; firmer message (edited-expectations-firm-message) and, at the finish, the
 ;; review's first point (finish-unsupported-edits-message). Nothing is
 ;; refused: the model may keep the edit, against the evidence (ADR 32,
-;; amended 2026-10-17).
+;; amended 2026-10-16).
 (define (edited-expectations-message lines)
   (string-append
    "You changed these expectations of existing tests (the line numbers are the last commit's):"

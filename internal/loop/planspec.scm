@@ -1,4 +1,4 @@
-;; A plan as data (ADR 32, amended 2026-10-13). The planner writes its plan
+;; A plan as data (ADR 32, amended 2026-10-16). The planner writes its plan
 ;; as Scheme forms, one per step, instead of sentences:
 ;;
 ;;   (change "src/flags.go" "parseFlags" "accept --verbose and set Verbose")
