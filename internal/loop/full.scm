@@ -15,8 +15,9 @@
 (define lean-prompt #f)
 
 ;; A run's plan goes through the explorer, the planner and the judge, not the
-;; one-line plan plan-minimal-text.
+;; one-line plan plan-minimal-text, and the model is shown the plan it has.
 (define plan-minimal #f)
+(define lean-plan-hidden #f)
 
 ;; The harness speaks to the model while it works and as it ends: the finish
 ;; review, the reminders, the question on an edited test, the hint on

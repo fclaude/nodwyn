@@ -520,7 +520,9 @@ carries the run's plan, and so does a chat's turn after one that did not
 finish (its `turn.end` `outcome` other than `completed`): its `gate.plan`
 has `noul` `carried`, the same `plan`, and `marks`, the `plan.step` marks of
 the earlier turns, the latest per step in step order; the turn's own marks come after it, as
-`plan.step`, and a front-end shows both ([runs](runs.md)).
+`plan.step`, and a front-end shows both ([runs](runs.md)). A `gate.plan` with `hidden`
+true was recorded and not shown to the model: the lean profile's one-line plan
+(ADR 32, amended 2026-10-17); a front-end shows it to the person as any other.
 
 `Prompt.Egress` names an OAuth2 credential's granted `Scopes` with its class
 and destination, and a proposed `Prompt.Binding` row pins them. A

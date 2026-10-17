@@ -276,7 +276,11 @@ type EgressCheck struct {
 // A run's later turn, and the turn after one that did not finish, carry
 // the plan instead of drafting one ("carried"), with Marks, the steps the
 // earlier turns marked, the latest mark per step in step order. The model
-// may write its own plan ("model", with plan-write).
+// may write its own plan ("model", with plan-write). A Hidden plan is
+// recorded and shown to the person, not to the model: the lean profile's
+// one-line plan, which the core needs before anything irreversible and the
+// model was shown with a header naming tools it is not offered (ADR 32,
+// amended 2026-10-17).
 type GatePlan struct {
 	Origin    string     `json:"origin"`
 	Noul      string     `json:"noul"` // "plan" | "proceed" | "degraded" | "required" (a run's turn, no judge) | "carried" (a run's later turn, or the one after a turn that did not finish) | "model" (plan-write)
@@ -285,6 +289,7 @@ type GatePlan struct {
 	Revisions int        `json:"revisions,omitempty"`
 	Reason    string     `json:"reason,omitempty"`
 	Marks     []PlanStep `json:"marks,omitempty"`
+	Hidden    bool       `json:"hidden,omitempty"`
 }
 
 // planMarker is what starts a step's line: "1." "2)" "-" "*" "•".
