@@ -203,7 +203,10 @@ func testRunCommand(root, rel string) string {
 	exists := func(p string) bool { _, err := os.Stat(filepath.Join(root, p)); return err == nil }
 	switch ext := strings.ToLower(filepath.Ext(rel)); {
 	case ext == ".go":
-		return "go test ./" + filepath.ToSlash(filepath.Dir(rel)) + "/"
+		if d := filepath.ToSlash(filepath.Dir(rel)); d != "." {
+			return "go test ./" + d + "/"
+		}
+		return "go test ."
 	case ext == ".py" && exists("tests/runtests.py") && strings.HasPrefix(rel, "tests/"):
 		label := strings.ReplaceAll(strings.TrimSuffix(strings.TrimPrefix(rel, "tests/"), ".py"), "/", ".")
 		return "python tests/runtests.py " + label + "   (from the repository root; use the project's interpreter)"
