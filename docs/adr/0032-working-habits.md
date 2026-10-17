@@ -2508,7 +2508,11 @@ your calls", which is false in a session a person answers, and everything
 above was measured on runs nobody watched; the interactive loop is neither
 shorter for its person nor better for it, as far as anyone has measured.
 The profile is resolved when the session starts and fixed with its prompt and
-tools (ADR 9); a resumed session resolves it again.
+tools (ADR 9); a resumed session resolves it again. The person chooses it, in
+`config.toml` or the environment: a repository cannot, since nothing in the
+repository is read for it. Its `init.scm`, which loads only after the person
+trusted that revision (ADR 45), may redefine the switches below as it may
+redefine any prompt, and has no more authority for it than for that.
 
 The Scheme files keep the lean values, since lean is what the binary does by
 default, and `internal/loop/full.scm` is evaluated after them and before
