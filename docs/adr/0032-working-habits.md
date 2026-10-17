@@ -2446,3 +2446,115 @@ be the loop's). The bridge drops new test files from the submitted patch for
 both harnesses (django-16877: a new file at the path the hidden test creates
 makes the evaluation's `git apply` fail), in `swebench_nibb_bridge.py`, not
 here.
+
+## Amendment 2026-10-17: the default loop has a lean profile and a full one
+
+The working habits above were measured on a benchmark, and the same benchmark
+now says most of what the loop adds around the model does not pay. On
+SWE-bench Verified's 121 clean tasks (Muse, effort low, replicates of each
+arm), the loop of dsl23, with these habits, the explorer and the planner,
+resolved 98 and 98; Pi, which has none of them and four tools, resolved 104,
+106 and 103. The lean ladder took the loop apart one rung at a time, each
+rung a switch in the Scheme files, and measured what each cost:
+
+- **`plan-minimal`**: a run records the one line `plan-minimal-text` and neither
+  explores nor plans. The explorer and the planner were 31% of a task's cost
+  (1,081 requests in 121 tasks for the first, 245 for the second).
+- **`lean-quiet`**: nothing the harness says while the model works or as it
+  ends: no finish review, no reminders, no question on an edited test, no hint
+  on failures the unchanged code has. Of dsl23's 4,385 requests in 121 tasks,
+  707 came after the finish review began, 17% of its cost. A turn that changed
+  nothing is still told so once (`lean-empty-reminders`): shell2 on
+  matplotlib-25960 ended its turn with no edit and no patch.
+- **`lean-prompt`, `lean-tools`**: a system prompt of about 250 tokens where
+  dsl23's is 12,240 characters, and the tools the control model is
+  offered named in a list. Pi's first request is 2.2k tokens against nodwyn's
+  15.7k. Last, `lean-tools` went from six tools to two: on the 121 tasks with
+  two replicates each, `shell-exec` and `fs-edit` alone resolved 103 and 102
+  where `fs-read`, `fs-list`, `index-grep`, `fs-edit`, `fs-write` and
+  `shell-exec` resolved 102 and 101 (Pi 104, 106, 103), at about 20% lower
+  cost per task: the model reads with `sed` ranges, and its tool results total
+  32,600 characters a session against 51,500. `fs-write` added to the pair was
+  called 5 times in 242 sessions, and the code index (`outline`, `tests-for`
+  and the commands of the binary, `lean-cli`) in about 13%, neither with an
+  effect on the score.
+- **Tools that say what to do** (from six readers' pass over 136 transcripts):
+  an `fs-edit` error echoes a valid call, names every line an ambiguous `old`
+  occurs on and says where a longer one stops matching; its answer counts the
+  lines added and removed (a swapped line was "no change"); `fs-write` says how
+  many lines it wrote and warns when most of a file went (one run's rewrite
+  dropped 117 of 426 lines and the ImportError showed three calls later);
+  `index-grep` searches a large tree's source files instead of refusing it (33
+  of 748 calls in the transcripts); `shell-exec` notes exit 141 (matplotlib-25960:
+  `grep ... | head` ended 141 and was not noticed) and a read that printed
+  nothing (django-14534: a `sed -n` range past the end of the file cost four
+  calls of 20); the denial of a `/tmp` path gives the scratch directory's own
+  path. The reading nudge counts a `shell-exec` call that only reads
+  (`lean-shell-look`): shell2 made 21 read-only calls on matplotlib-25960, was
+  never nudged, and ended with no edit.
+- **Experiments, offered to no one by default**: the `scheme` tool, a program
+  that calls the other tools as procedures through the guard; `outline` and
+  `tests-for`, with `fs-read`'s `symbol`; and `lean-cli`, the same index as
+  commands of the binary run through `shell-exec`.
+
+**Decision.** The lean loop becomes the default of an unattended session, and
+the loop before it stays, as the default of one a person is in. `[loop]
+profile` in `config.toml` is `"auto"` (the default), `"lean"` or `"full"`;
+`NODWYN_PROFILE`, when it is not empty, overrides it, for a test or one run.
+`auto` is lean when nobody approves the session's calls (`(unattended?)`:
+`--yolo`, a run's `auto_approve`, judge or unattended) and full when a person
+does. The lean prompt says "You work unattended: nobody approves or watches
+your calls", which is false in a session a person answers, and everything
+above was measured on runs nobody watched; the interactive loop is neither
+shorter for its person nor better for it, as far as anyone has measured.
+The profile is resolved when the session starts and fixed with its prompt and
+tools (ADR 9); a resumed session resolves it again.
+
+The Scheme files keep the lean values, since lean is what the binary does by
+default, and `internal/loop/full.scm` is evaluated after them and before
+`.nodwyn/init.scm` when the profile is full, so a project's `init.scm` has the
+last word under either and can mix the two switch by switch:
+
+```scheme
+(define lean-prompt #f)
+(define plan-minimal #f)
+(define lean-quiet #f)
+(define finish-reminders 2)
+(define finish-review-limit 2)
+(define lean-empty-reminders 0)
+(define lean-shell-look #f)
+```
+
+The three numbers are computed from `lean-quiet` when `strategy.scm` loads, so
+setting `lean-quiet` alone does not bring them back. In the Go host
+`prim.Options.Lean` carries the tool surface the same way: only a lean session
+registers `scheme`, `outline` and `tests-for`, gives `fs-read` its `symbol`
+parameter, counts the lines an edit added and removed, has `fs-write` say what
+it wrote and lets `index-grep` search source files alone in a tree of more
+than 3000. A full session's catalogue, tool schemas and answers are the ones
+it had. `TestFullProfileTurnsOffEverySwitchTheDefaultsTurnOn` fails when a
+switch named `lean-...` is added to the defaults and not to `full.scm`, and the
+tests of `internal/core`, `internal/frontend/...` and the rest that were
+written against the previous loop run it (`test/fakes/home` sets
+`NODWYN_PROFILE=full` for them); origin/main's own test files pass unchanged
+against it.
+
+**Kept in both profiles**, because each is an improvement that origin/main's
+tests do not contradict: the finish review that runs the original tests in
+any language and reads a run's output in every ecosystem (the amendment of
+2026-10-16), the plan language's matching of a run by what it runs, the
+request-name filters, the expectation question's wider reading of test files,
+`repo-relative?`, the guard's scratch-directory path, `fs-edit`'s and
+`shell-exec`'s clearer errors and notes, and the working rule on the request's
+title. The one test of origin/main they supersede is
+`TestOriginalTestsAreRunForGoOnly`, whose Go-only behaviour that amendment
+removed.
+
+**Not built.** The lean tool list hides what a project adds: its own tools
+(`register-tool` in `init.scm`, such as this repository's `validate`), MCP
+tools and the delegate tool are not among `lean-tools`, and a project adds
+them with `(define lean-tools (append lean-tools '("validate")))`; the
+measurement had none. The profile is not a setting of the console. Lean was
+measured on Python repositories, on one benchmark and one model family;
+`auto` keeps it away from sessions a person is in until a measurement says it
+does no harm there, and `profile = "lean"` is the way to try it.
