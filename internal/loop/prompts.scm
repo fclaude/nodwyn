@@ -14,12 +14,20 @@
 ;; where dsl23's is about 3,000 (12,240 characters), and six tools where it
 ;; offers nineteen. Pi's is 2,811 characters and four tools, and its first
 ;; request is 2.2k tokens against nodwyn's 15.7k.
+;; The tools are shell-exec and fs-edit alone (2026-10-17). On the 121 clean
+;; SWE-bench Verified tasks, two replicates each, that set resolved 103 and 102
+;; where the six tools fs-read fs-list index-grep fs-edit fs-write shell-exec
+;; resolved 102 and 101 (Pi 104, 106, 103) at about 20% lower cost per task:
+;; the model reads with sed ranges, and its tool results total 32,600
+;; characters a session against 51,500. fs-write added to the pair was called
+;; 5 times in 242 sessions, and the code index (outline, tests-for, the
+;; commands below) in about 13%, neither with an effect on the score.
 (define lean-prompt #t)
-(define lean-tools '("fs-read" "fs-list" "index-grep" "fs-edit" "fs-write" "shell-exec"))
+(define lean-tools '("shell-exec" "fs-edit"))
 ;; The leanest way to offer the code index (lean7): commands of the binary, run
 ;; through shell-exec, so the tool list and every request's schemas stay as
 ;; they were and the prompt gains one sentence.
-(define lean-cli #t)
+(define lean-cli #f)
 (define lean-cli-name "nibb")
 (define (lean-tool-words)
   (let* ((has (lambda (t) (and (member t lean-tools) #t)))
