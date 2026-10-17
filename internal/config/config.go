@@ -499,6 +499,49 @@ type Loop struct {
 	MaxToolCalls   int    `toml:"max_tool_calls"`  // legacy hard override; zero when absent, --max-tool-calls overrides
 	RequestTimeout string `toml:"request_timeout"` // per model request, e.g. "30m"
 	ShellTimeout   string `toml:"shell_timeout"`   // per shell-exec, e.g. "10m"
+	// Profile is which of the default loop's two configurations a session
+	// runs: "lean", "full", or "auto" (the default), lean when nobody
+	// approves the session's calls and full when a person does. ADR 32,
+	// amended 2026-10-17.
+	Profile string `toml:"profile"`
+}
+
+// The profiles of the default loop (ADR 32, amended 2026-10-17). Lean is the
+// loop measured on the SWE-bench runs: a short system prompt, two tools, no
+// explorer or planner, nothing said to the model while it works or as it
+// ends. Full is the loop before it: the long prompt and the whole catalogue
+// of tools, an explorer and a planner for a run, a finish review. Auto picks
+// by who is there.
+const (
+	ProfileAuto = "auto"
+	ProfileLean = "lean"
+	ProfileFull = "full"
+	// ProfileEnv, when set and not empty, overrides [loop] profile for the
+	// sessions created in that environment: for a test, or one run.
+	ProfileEnv = "NODWYN_PROFILE"
+)
+
+// ResolveProfile is the profile a session runs, ProfileLean or ProfileFull:
+// the environment's override (env, the value of ProfileEnv) over [loop]
+// profile, and for auto lean when nobody approves the session's calls
+// (unattended: --yolo, a run's auto_approve, judge or unattended) and full
+// when a person does, since the lean prompt says nobody is watching and the
+// lean loop was measured only on runs that nobody watched.
+func (l Loop) ResolveProfile(env string, unattended bool) (string, error) {
+	name, source := l.Profile, "loop.profile"
+	if env != "" {
+		name, source = env, ProfileEnv
+	}
+	switch name {
+	case ProfileLean, ProfileFull:
+		return name, nil
+	case "", ProfileAuto:
+		if unattended {
+			return ProfileLean, nil
+		}
+		return ProfileFull, nil
+	}
+	return "", fmt.Errorf("%s must be %q, %q or %q, got %q", source, ProfileAuto, ProfileLean, ProfileFull, name)
 }
 
 // Window is the context policy (ADR 9, amended): hysteresis instead of a
@@ -631,7 +674,7 @@ func Default() Config {
 	return Config{
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 16 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
-		Loop:   Loop{MaxToolCalls: 0, RequestTimeout: "30m", ShellTimeout: "10m"},
+		Loop:   Loop{MaxToolCalls: 0, RequestTimeout: "30m", ShellTimeout: "10m", Profile: ProfileAuto},
 		// The soft limits are the hard ones: no checkpoint interrupts a turn
 		// unless the person asks for one (ADR 35).
 		Budget: Budget{ToolCallsSoft: 500, ToolCallsHard: 500, TokensSoft: 10_000_000, TokensHard: 10_000_000, ActionsSoft: 200, ActionsHard: 200, WallSoft: "4h", WallHard: "4h"},
@@ -796,6 +839,9 @@ func (c Config) Validate() error {
 		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
 			return fmt.Errorf("%s must be a positive duration, got %q", name, v)
 		}
+	}
+	if _, err := c.Loop.ResolveProfile("", false); err != nil {
+		return err
 	}
 	if err := c.validateJudge(); err != nil {
 		return err
