@@ -417,6 +417,18 @@ the request, set up a check that runs, make the whole change, validate by
 running it, report honestly). Both include \code{working-rules}
 (Chapter~\ref{ch:habits}).
 
+That is the full profile. In the lean profile (\code{lean-prompt} true,
+which \code{[loop] profile = "auto"} gives a session nobody approves) the
+system prompt is \code{(lean-system-prompt repo)}, about 250 tokens, which says
+the session is unattended and names only the tools in \code{lean-tools}
+(\code{shell-exec} and \code{fs-edit}): \code{ask-model} offers the control
+model those and no others. \code{NODWYN\_PROFILE} overrides the configuration.
+The full profile evaluates \file{full.scm} after the default files and before
+\file{.nodwyn/init.scm}: \code{lean-prompt}, \code{plan-minimal}
+and \code{lean-quiet} false, \code{finish-reminders} and
+\code{finish-review-limit} 2, \code{lean-empty-reminders} 0 and
+\code{lean-shell-look} false (ADR 32, amended 2026-10-17).
+
 \section{Runs: the batch tool}
 
 \begin{sh}

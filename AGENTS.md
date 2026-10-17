@@ -73,7 +73,11 @@ are faster.
 - **Prompts and the default loop** (`internal/loop/*.scm`): the
   `internal/core` tests. The working rules were measured on a benchmark
   (ADR 32): a rule you add says, in a comment and an ADR 32 amendment, the
-  failure it comes from.
+  failure it comes from. The loop has a lean profile (the defaults of the
+  files) and a full one (`internal/loop/full.scm`, evaluated over them), and
+  a session nobody approves runs the first (`docs/scheme.md` §9.8): a switch
+  you add that is on by default is turned off in `full.scm` too, and a test
+  of the loop says which profile it runs.
 - **Guard, denylist, bindings, keychain, egress, redaction:** `make exfil`
   (its scenarios run in a real session, `test/exfil/scenarios/README.md`).
   Never loosen a check to make a test pass.
@@ -151,8 +155,10 @@ TMPDIR is then the session's scratch directory, a private directory in the
 system's temporary directory (until 2026-10-16 it was inside nodwyn's protected
 data directory, where every test repository was refused), and commits may find
 no signing agent. Packages whose tests build a guard or commit isolate HOME
-with `test/fakes/home`; a new such package does the same in its `TestMain`. A
-test that starts a session and kills it, or never closes it, leaves its scratch
-directory in the temporary directory: give it a `TMPDIR` of its own
-(`TestResumeAfterProcessKilled` does). A test that fails on the unchanged code
-too is not yours: say so rather than fix around it.
+with `test/fakes/home`; a new such package does the same in its `TestMain`.
+That also sets `NODWYN_PROFILE=full`, the loop their tests were written
+against; a test of the lean profile sets it itself (`t.Setenv`), so it is not
+parallel. A test that starts a session and kills it, or never closes it,
+leaves its scratch directory in the temporary directory: give it a `TMPDIR` of
+its own (`TestResumeAfterProcessKilled` does). A test that fails on the
+unchanged code too is not yours: say so rather than fix around it.

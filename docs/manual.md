@@ -705,9 +705,29 @@ does not offer declines.
 
 ### Unattended runs
 
+What nodwyn does with nobody watching depends on the loop's profile.
+`[loop] profile` in `config.toml` is `"auto"` unless you set it: the **lean**
+loop when nobody approves the session's calls (`--yolo`, `--judge`,
+`--unattended`, a run's `auto_approve`), the **full** loop when you do. `"lean"`
+or `"full"` chooses either way for every session, and the environment variable
+`NODWYN_PROFILE`, when it is not empty, overrides the file for the sessions
+started in it (`NODWYN_PROFILE=full nodwyn run ...` for one run). Settings does
+not offer it. The lean loop is the one measured on the 121 clean SWE-bench
+Verified tasks: a system prompt of about 250 tokens that says nobody approves
+or watches the calls, the model offered `shell-exec` and `fs-edit` alone (the
+repository's own tools, MCP tools and the other built-ins are not offered
+unless the project adds them to `lean-tools`), a run's plan one line, with no
+explorer or planner, and nothing said to the model while it works or as it
+ends: no finish review, no reminders to test, no hints. On those tasks it
+resolved as many as the same loop with six tools and as Pi, for about a fifth
+less cost per task (ADR 32, amended 2026-10-17). A chat in a session nobody
+approves is still reviewed when it ends, since a person reads its answer. The
+rest of this section describes the full loop. A project's `.nodwyn/init.scm`
+can mix the two, switch by switch ([docs/scheme.md](scheme.md) §9.8).
+
 `--yolo` answers ordinary confirms with yes, so a benchmark harness or a
-test rig never stops to ask. With nobody watching, nodwyn's defaults also
-change (docs/scheme.md §9): the system prompt is how to work rather than
+test rig never stops to ask. In the full loop, with nobody watching, nodwyn's
+defaults also change (docs/scheme.md §9): the system prompt is how to work rather than
 what to tell an approver, and a turn ends on evidence — a change, and a test
 run after it that did not fail — with an honest way out when the tests cannot
 run at all, and another when the code already does what was asked: a check
@@ -1199,7 +1219,9 @@ say when the model stops with work left. It can reach a keyed judge or model
 API with `(credential class)` and `http-request`. It cannot run a call the
 model did not make, loosen the guard, or keep a turn going past a budget or a
 progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
-(§9.1), and so is the plan gate with its thresholds (§9.5).
+(§9.1), and so is the plan gate with its thresholds (§9.5). The default loop's
+lean and full profiles are a handful of definitions that `init.scm` loads
+after ("Unattended runs" above, §9.8).
 
 Long work is compacted on its own just under the window's high water: the
 model writes a handover note and goes on from it, in that turn and the next

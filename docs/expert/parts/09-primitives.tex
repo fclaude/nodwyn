@@ -58,12 +58,15 @@ These exist only inside a session (not in \code{nodwyn repl}):
 % descriptions a sliver.
 \begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.42\linewidth}>{\raggedright\arraybackslash}p{0.54\linewidth}@{}}
 \toprule
-\code{(fs-read path [start [count]])} & a file, or a range of lines with a \code{[lines A-B of N]} header \\
+\code{(fs-read path [start [count]])} & a file, or a range of lines with a \code{[lines A-B of N]} header; in the lean profile also \code{symbol}, one definition \\
 \code{(fs-write path content)} & create or replace a file (irreversible, shows a diff) \\
 \code{(fs-edit path old new [all])} & replace exactly one occurrence, or all (irreversible, shows a diff); a credential in the file is matched as the \code{[REDACTED \textit{class}]} placeholder the model reads, and the placeholder in \code{new} keeps it (\adr{43}) \\
 \code{(fs-edit path "" "" \#f edits)} & several replacements in one file, in order, all or none; \code{edits} is a list of alists with \code{"old"}, \code{"new"} and \code{"replace\_all"} (one diff) \\
 \code{(fs-list path)} & a directory's names; directories end with \code{/} \\
 \code{(fs-find path glob)} & file names matching a glob, at most 500 \\
+\code{(outline path)} & the shape of a source file without its text: classes, functions, methods and variables, nested, each with its lines, signature and first documentation line; Go by \code{go/parser}, Python by its own \code{ast}, others by ctags or line patterns (lean profile only; ADR 32) \\
+\code{(tests-for path)} & the test files that exercise a source file, ranked by the rarest names they share, each with the command that runs it (lean profile only; ADR 32) \\
+\code{(scheme code)} & a small Scheme program that calls the other tools as procedures; it runs with the model's origin in a frame of the offered tools and the language's pure builtins, and every call it makes is guarded as a call of its own (lean profile only; ADR 32) \\
 \code{(index-grep path regex [glob [context]])} & search contents with a regular expression \\
 \code{(index-search query scope [limit [path]])} & search by words, best match first: the repository's files (\code{scope} \code{"repo"}) from an index nodwyn keeps, the conversation (\code{"conversation"}), elided and folded results included, or, when the person allows it, the project's earlier tasks (\code{"earlier"}) (ADR 50); events under the turns that hold them, each turn in a line from its card (ADR 51) \\
 \code{(index-update [path])} & bring the repository's index up to date, or add a directory git ignores (ADR 50) \\

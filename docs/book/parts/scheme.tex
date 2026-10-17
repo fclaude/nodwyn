@@ -585,12 +585,15 @@ These exist only in a session.
 Primitive & What it does \\
 \midrule
 \endhead
-\code{(fs-read path [start [count]])} & a whole file (at most 1\,MiB), or \code{count} lines (default 200) from line \code{start} under a \code{[lines A-B of N]} header \\
+\code{(fs-read path [start [count]])} & a whole file (at most 1\,MiB), or \code{count} lines (default 200) from line \code{start} under a \code{[lines A-B of N]} header; in the lean profile a fourth argument, \code{symbol}, reads one definition \\
 \code{(fs-write path content)} & create or replace a file; irreversible, its diff logged and shown at any confirm \\
 \code{(fs-edit path old new [replace\_all])} & replace exactly one occurrence of \code{old}, or with \code{\#t} every one; irreversible; a credential in the file is matched as the \code{[REDACTED \textit{class}]} placeholder the model reads, and the placeholder in \code{new} keeps it (\adr{43}) \\
 \code{(fs-edit path "" "" \#f edits)} & several such changes to one file, in order, from a list of objects with \code{old}, \code{new} and \code{replace\_all}; nothing is written unless all apply (\adr{38}) \\
 \code{(fs-list path)} & a directory's names, sorted; directories end in \code{/} \\
 \code{(fs-find path glob)} & file names under a directory matching a glob, at most 500 \\
+\code{(outline path)} & the shape of a source file without its text: its classes, functions, methods and variables, nested, each with the lines it spans, its signature and the first line of its documentation (lean profile only; \adr{32}) \\
+\code{(tests-for path)} & the test files that exercise a source file, the rarest names it shares counting most, and the command that runs each (lean profile only; \adr{32}) \\
+\code{(scheme code)} & run a small Scheme program that calls the other tools as procedures, to do several reads, searches, edits or commands in one call; every tool it calls goes through the guard as a call of its own does (lean profile only; \adr{32}) \\
 \code{(index-grep path pattern [glob [context]])} & search contents with an RE2 regular expression, walked and matched in Go \\
 \code{(index-search query scope [limit [path]])} & search by words, best match first: \code{scope} \code{"repo"} ranks chunks of the files git lists from an index kept in nodwyn's data directory, read again through \code{fs-read}; \code{"conversation"} the session's messages, replies, calls and results, those the window elided or folded included, read from the log; \code{"earlier"} the project's other tasks, when the person allows it (\adr{50}); events are shown under the turns that hold them, each turn in a line from its card (\adr{51}) \\
 \code{(index-update [path])} & bring the repository's index up to date, or add a directory git ignores, and say what it holds (\adr{50}) \\
