@@ -576,12 +576,15 @@ group.
 
 These exist only in a session.
 
-\begin{center}
+% A longtable, so the rows past a page go on to the next one: as a tabular
+% the table ran off the bottom of its page and the rows past it were lost.
+\begingroup
 \small
-\begin{tabular}{@{}>{\raggedright\arraybackslash}p{6.4cm}>{\raggedright\arraybackslash}p{8.4cm}@{}}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{6.4cm}>{\raggedright\arraybackslash}p{8.4cm}@{}}
 \toprule
 Primitive & What it does \\
 \midrule
+\endhead
 \code{(fs-read path [start [count]])} & a whole file (at most 1\,MiB), or \code{count} lines (default 200) from line \code{start} under a \code{[lines A-B of N]} header \\
 \code{(fs-write path content)} & create or replace a file; irreversible, its diff logged and shown at any confirm \\
 \code{(fs-edit path old new [replace\_all])} & replace exactly one occurrence of \code{old}, or with \code{\#t} every one; irreversible; a credential in the file is matched as the \code{[REDACTED \textit{class}]} placeholder the model reads, and the placeholder in \code{new} keeps it (\adr{43}) \\
@@ -600,6 +603,14 @@ Primitive & What it does \\
 \code{(original-tests paths)} & run the Go tests of the test files the change edited as the last commit had them, against the change, and name the ones that fail \\
 \code{(change-claims request runs edits declared)} & the lines the change adds to documents and comments that state what nothing in the turn showed: a run's result or figures, an amendment date, a paragraph pasted twice, entries added by hand to a generated file \\
 \code{(change-dropped-conditions request)} & the operands of an old \code{\&\&} or \code{||}, and the guards, that a rewritten Go function no longer checks \\
+\code{(read-data text)} & every datum in \code{text} as data, unevaluated: the forms, strings, symbols and numbers it holds; an error names where \code{text} stops being readable. A plan written as forms is read with it \\
+\code{(request-names text)} & the names a request gives, in order, each once: spans in backquotes without a space, and words that read as names (\code{session-id}, \code{cache\_key}, \code{readResponses}); not links, issue numbers, versions, words in capitals or capitalised words with no separator \\
+\code{(plan-evidence names paths)} & a plan set against the uncommitted change as git shows it: \code{missing}, the names the change does not add, found whole and in any case (\code{session-id} is not in \code{X-Session-Id}), leaving out phrases and names HEAD already has; and \code{unchanged}, the paths it does not change, a directory met by a change to a file in it \\
+\code{(test-before path cmd args)} & run a test on the code as it was before the change: a copy of HEAD in the scratch directory with the working tree's \code{path} and the change's other test files and test support put in, the command run there within 3 minutes and judged by the guard as any command; its exit status \\
+\code{(head-has-name name)} & whether a file of HEAD holds \code{name} whole and in any case: a name the code already has, which a plan uses rather than produces \\
+\code{(docs-mentioning names [packages])} & the documents of HEAD (Markdown, LaTeX, reStructuredText, AsciiDoc) that hold one of \code{names} whole, and the ADRs whose file name has a word starting with one of \code{packages}, most names first, at most 4; a name in more than 8 documents, or shorter than 4 characters, is left out \\
+\code{(git-intend paths)} & mark the new files of \code{paths} (untracked, inside the repository, not ignored) for the next commit with \code{git add -N}, so what lists the tracked files sees them; nothing is staged \\
+\code{(shell-commands cmd args)} & the simple commands a command line runs, each as its words from the program on: a shell's \code{-c} line read as the shell reads it (a here-document's body, a quoted pattern and a redirection's target are no command; a substitution's commands are left out), any other line as one command; \code{()} for a line that does not parse \\
 \code{(shell-exec cmd args)} & run a program and wait for it; irreversible \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background; irreversible \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
@@ -620,8 +631,8 @@ Primitive & What it does \\
 \code{(judge-available?)} & whether the task has a judge now whose key is stored, which the plan gate asks \\
 \code{(policy-read name)}, \code{(policy-write name revision content)} & read or replace the bindings or approvals file; user only \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{longtable}
+\endgroup
 
 The model is offered the file, git, process and document primitives, the
 \code{judge} tools when the session has them, the tools the default loop

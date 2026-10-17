@@ -52,8 +52,11 @@ replacement and none of the text replaced.
 
 These exist only inside a session (not in \code{nodwyn repl}):
 
-\begin{center}
-\begin{tabularx}{\linewidth}{lX}
+% A longtable, so the rows past a page go on to the next one: as a tabularx
+% in a centre the table ran off the bottom of its page and the rows past it
+% were lost, and its first column, as wide as its widest entry, left the
+% descriptions a sliver.
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.42\linewidth}>{\raggedright\arraybackslash}p{0.54\linewidth}@{}}
 \toprule
 \code{(fs-read path [start [count]])} & a file, or a range of lines with a \code{[lines A-B of N]} header \\
 \code{(fs-write path content)} & create or replace a file (irreversible, shows a diff) \\
@@ -73,6 +76,14 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(original-tests paths)} & run the Go tests of the test files the change edited as the last commit had them, against the change (hidden; \code{go test -overlay}, nothing on disk changes): the tests that fail, and the directories that did not build or finish \\
 \code{(change-claims request runs edits declared)} & the lines the change adds to documents and comments that state what nothing in the turn showed (hidden): a run's result or figures, an amendment date, a paragraph pasted twice, entries added by hand to a generated file \\
 \code{(change-dropped-conditions request)} & the operands of an old \code{\&\&} or \code{||}, and the guards, that a rewritten Go function no longer checks (hidden) \\
+\code{(read-data text)} & every datum in \code{text} as data, unevaluated (hidden; pure): the forms, strings, symbols and numbers it holds; an error names where \code{text} stops being readable. A plan written as forms is read with it (ADR 32, amended 2026-10-13) \\
+\code{(request-names text)} & the names a request gives, in order, each once (hidden; pure): spans in backquotes without a space, and words that read as names (\code{session-id}, \code{cache\_key}, \code{readResponses}); not links, issue numbers, versions, words in capitals or capitalised words with no separator \\
+\code{(plan-evidence names paths)} & a plan set against the uncommitted change as git shows it (hidden): \code{missing}, the names the change does not add, found whole and in any case (\code{session-id} is not in \code{X-Session-Id}), leaving out phrases and names HEAD already has; and \code{unchanged}, the paths it does not change, a directory met by a change to a file in it \\
+\code{(test-before path cmd args)} & run a test on the code as it was before the change (hidden): a copy of HEAD in the scratch directory (\code{plan-base}) with the working tree's \code{path} and the change's other test files and test support put in, the command run there within 3 minutes and judged by the guard as any command; its exit status \\
+\code{(head-has-name name)} & whether a file of HEAD holds \code{name} whole and in any case (hidden): a name the code already has, which a plan uses rather than produces \\
+\code{(docs-mentioning names [packages])} & the documents of HEAD (Markdown, LaTeX, reStructuredText, AsciiDoc) that hold one of \code{names} whole, and the ADRs whose file name has a word starting with one of \code{packages} (hidden): most names first, at most 4, as \code{(path . "the names it holds")}; a name in more than 8 documents, or shorter than 4 characters, is left out \\
+\code{(git-intend paths)} & mark the new files of \code{paths} (untracked, inside the repository, not ignored) for the next commit with \code{git add -N} (hidden), so what lists the tracked files, the book's catalogue generator among them, sees them; nothing is staged \\
+\code{(shell-commands cmd args)} & the simple commands a command line runs, each as its words from the program on (hidden; pure): a shell's \code{-c} line read as the shell reads it (a here-document's body, a quoted pattern and a redirection's target are no command; a substitution's commands are left out), any other line as one command; \code{()} for a line that does not parse \\
 \code{(shell-exec cmd args)} & run a program with a list of arguments, no shell, in the folder (irreversible) \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background (irreversible) \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
@@ -96,8 +107,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(http-request cred url method position headers body)} & a keyed request, checked against bindings and the user's transport policy \\
 \code{(credential class)} & the handle of a stored key, or \code{\#f} \\
 \bottomrule
-\end{tabularx}
-\end{center}
+\end{longtable}
 
 A few more are for you only and never shown to the model:
 \code{credential-register} (masked input into the keychain), the judge's
