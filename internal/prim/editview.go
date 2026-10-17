@@ -150,38 +150,37 @@ func placeholderList(classes []string) string {
 // text the model reads, and each match is a span of the file. found is false
 // when old does not occur there, and the caller looks for it in the file
 // itself, as before: a text the model typed that is what the file holds still
-// matches, which tells it nothing it could not try anyway.
-func (v view) apply(old, repl string, all bool) (next string, found bool, err error) {
-	var starts []int
-	for at := 0; ; {
-		i := strings.Index(v.text[at:], old)
-		if i < 0 {
-			break
-		}
-		starts = append(starts, at+i)
-		at += i + len(old)
-	}
+// matches, which tells it nothing it could not try anyway. line chooses one
+// of several matches, as for any file (nearestOccurrence), by the lines of
+// the text the model reads. The splices are of the file's own text.
+func (v view) apply(old, repl string, all bool, line int) (next string, sp []splice, found bool, err error) {
+	starts := occurrences(v.text, old)
 	switch {
 	case len(starts) == 0:
-		return "", false, nil
+		return "", nil, false, nil
 	case len(starts) > 1 && !all:
-		return "", true, fmt.Errorf("old text occurs %d times; include more context so it is unique, or pass replace_all to replace every one", len(starts))
+		i := nearestOccurrence(v.text, old, starts, line)
+		if i < 0 {
+			return "", nil, true, ambiguous(v.text, starts)
+		}
+		starts = starts[i : i+1]
 	}
 	var b strings.Builder
 	last := 0
 	for _, vs := range starts {
 		cs, ce, err := v.span(vs, vs+len(old))
 		if err != nil {
-			return "", true, err
+			return "", nil, true, err
 		}
 		with, err := replacement(v.heldIn(vs, vs+len(old)), repl)
 		if err != nil {
-			return "", true, err
+			return "", nil, true, err
 		}
 		b.WriteString(v.file[last:cs])
 		b.WriteString(with)
+		sp = append(sp, splice{at: cs, del: ce - cs, ins: len(with)})
 		last = ce
 	}
 	b.WriteString(v.file[last:])
-	return b.String(), true, nil
+	return b.String(), sp, true, nil
 }

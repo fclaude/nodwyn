@@ -107,7 +107,7 @@ func editedRegionsCounting(path, before, after string, counting bool) string {
 	budget := editShownLines
 	for i, s := range shown {
 		if budget <= 0 {
-			fmt.Fprintf(&sb, "… %d more changed places, from line %d: read them with fs-read\n", len(shown)-i, s[0]+1)
+			fmt.Fprintf(&sb, "… %d more changed places, from line %d: view them\n", len(shown)-i, s[0]+1)
 			break
 		}
 		lines := b[s[0]:s[1]]

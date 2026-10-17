@@ -344,54 +344,121 @@ func previewWrite(pin guard.RepoPin, args []scheme.Value) string {
 // model reads it, with each credential a placeholder (ADR 43); old that is
 // not there is looked for in the file's own text, as before.
 func applyEdit(content, old, replacement string, all bool) (string, error) {
-	if old == "" {
-		return "", errors.New("old text must not be empty")
+	next, _, err := applyEditAt(content, edit{old: old, new: replacement, all: all})
+	return next, err
+}
+
+// splice is one replacement made in a text: del bytes at offset at became
+// ins bytes. The offsets are those of the text before the replacement.
+type splice struct{ at, del, ins int }
+
+// applyEditAt is applyEdit for one edit, and says what it replaced, so the
+// caller knows where the new text lies. When old occurs more than once, the
+// edit's line chooses one (nearestOccurrence); without a line the edit is
+// refused as ambiguous, and with all every occurrence is replaced.
+func applyEditAt(content string, e edit) (string, []splice, error) {
+	if e.old == "" {
+		return "", nil, errors.New("old text must not be empty")
 	}
 	v := newView(content)
 	if len(v.subs) > 0 {
-		if next, found, err := v.apply(old, replacement, all); found {
-			return next, err
+		if next, sp, found, err := v.apply(e.old, e.new, e.all, e.line); found {
+			return next, sp, err
 		}
 	}
-	switch n := strings.Count(content, old); {
+	starts := occurrences(content, e.old)
+	switch n := len(starts); {
 	case n == 0:
-		return "", notFound(v.text, old)
-	case all:
-		return strings.ReplaceAll(content, old, replacement), nil
+		return "", nil, notFound(v.text, e.old)
+	case e.all:
+		var b strings.Builder
+		var sp []splice
+		last := 0
+		for _, at := range starts {
+			b.WriteString(content[last:at])
+			b.WriteString(e.new)
+			sp = append(sp, splice{at: at, del: len(e.old), ins: len(e.new)})
+			last = at + len(e.old)
+		}
+		b.WriteString(content[last:])
+		return b.String(), sp, nil
 	case n == 1:
-		return strings.Replace(content, old, replacement, 1), nil
-	default:
-		return "", ambiguous(content, old, n)
+		return content[:starts[0]] + e.new + content[starts[0]+len(e.old):], []splice{{at: starts[0], del: len(e.old), ins: len(e.new)}}, nil
 	}
+	i := nearestOccurrence(content, e.old, starts, e.line)
+	if i < 0 {
+		return "", nil, ambiguous(content, starts)
+	}
+	at := starts[i]
+	return content[:at] + e.new + content[at+len(e.old):], []splice{{at: at, del: len(e.old), ins: len(e.new)}}, nil
 }
 
-// ambiguous is the error for an old text that occurs n times: where, with
-// the line each begins on, so the next try copies the lines around the one
-// it means (or passes replace_all) instead of reading the file again.
-func ambiguous(content, old string, n int) error {
-	const shown = 6
-	var where []string
-	from := 0
-	for len(where) < shown {
-		i := strings.Index(content[from:], old)
+// occurrences are the offsets at which old occurs in text, without
+// overlapping, as strings.Count counts them and ReplaceAll replaces them.
+func occurrences(text, old string) []int {
+	var out []int
+	for from := 0; from <= len(text); {
+		i := strings.Index(text[from:], old)
 		if i < 0 {
 			break
 		}
-		at := from + i
-		line := 1 + strings.Count(content[:at], "\n")
-		start := strings.LastIndex(content[:at], "\n") + 1
-		text := strings.TrimSpace(content[start:min(len(content), start+160)])
-		if nl := strings.IndexByte(text, '\n'); nl >= 0 {
-			text = text[:nl]
+		out = append(out, from+i)
+		from += i + max(1, len(old))
+	}
+	return out
+}
+
+// nearestOccurrence is which of the occurrences at starts the line means: the
+// one that holds that line, or else the one nearest it, the earlier on a tie;
+// -1 when no line was given. The models know a line from grep -n, and 23 of
+// the 73 failed edits of the two-tool benchmark arms were an old that
+// occurred 33 or 40 times with no way to say which (ADR 32, amended
+// 2026-10-17).
+func nearestOccurrence(text, old string, starts []int, line int) int {
+	if line <= 0 {
+		return -1
+	}
+	span := strings.Count(strings.TrimSuffix(old, "\n"), "\n")
+	best, bestDist := -1, 0
+	at, n := 0, 1 // n is the line text[at] is on
+	for i, s := range starts {
+		n += strings.Count(text[at:s], "\n")
+		at = s
+		dist := 0
+		switch {
+		case line < n:
+			dist = n - line
+		case line > n+span:
+			dist = line - (n + span)
 		}
-		where = append(where, fmt.Sprintf("line %d: %s", line, text))
-		from = at + max(1, len(old))
+		if best < 0 || dist < bestDist {
+			best, bestDist = i, dist
+		}
+	}
+	return best
+}
+
+// ambiguous is the error for an old text that occurs at the offsets in
+// starts: where, with the line each begins on, so the next try copies the
+// lines around the one it means, or names it by its line, or passes
+// replace_all, instead of looking at the file again.
+func ambiguous(text string, starts []int) error {
+	const shown = 6
+	var where []string
+	for _, at := range starts[:min(shown, len(starts))] {
+		line := 1 + strings.Count(text[:at], "\n")
+		start := strings.LastIndex(text[:at], "\n") + 1
+		first := strings.TrimSpace(text[start:min(len(text), start+160)])
+		if nl := strings.IndexByte(first, '\n'); nl >= 0 {
+			first = first[:nl]
+		}
+		where = append(where, fmt.Sprintf("line %d: %s", line, first))
 	}
 	more := ""
-	if n > len(where) {
-		more = fmt.Sprintf("; and %d more", n-len(where))
+	if len(starts) > len(where) {
+		more = fmt.Sprintf("; and %d more", len(starts)-len(where))
 	}
-	return fmt.Errorf("old text occurs %d times (%s%s); include more context so it is unique (a line before or after the one you mean), or pass replace_all to replace every one", n, strings.Join(where, "; "), more)
+	return fmt.Errorf("old text occurs %d times (%s%s); include more context so it is unique (a line before or after the one you mean), or pass line to choose one, or replace_all to replace every one", len(starts), strings.Join(where, "; "), more)
 }
 
 // editHintBytes bounds the file text a not-found error quotes.
@@ -452,11 +519,11 @@ func notFound(content, old string) error {
 			}
 			return fmt.Errorf("%s; the first %d lines of old match lines %d-%d (ignoring whitespace), then old line %d is `%s` where the file has `%s` (line %d)", base, best, bestAt+1, bestAt+best, best+1, cut(want[best]), cut(lines[bestAt+best]), bestAt+best+1)
 		}
-		return errors.New(base + "; read the region again with fs-read (start, count) and copy it")
+		return errors.New(base + "; " + closestRegion(lines, want))
 	case 1:
 		region := strings.Join(lines[at[0]:at[0]+len(want)], "")
 		if len(region) > editHintBytes {
-			return fmt.Errorf("%s; ignoring whitespace it matches lines %d-%d, which differ from old in spacing: read them with fs-read and copy them exactly", base, at[0]+1, at[0]+len(want))
+			return fmt.Errorf("%s; ignoring whitespace it matches lines %d-%d, which differ from old in spacing: look at them again and copy them exactly", base, at[0]+1, at[0]+len(want))
 		}
 		return fmt.Errorf("%s; ignoring whitespace it matches lines %d-%d, which differ from old in spacing. Those lines are exactly:\n%s", base, at[0]+1, at[0]+len(want), region)
 	default:
@@ -498,19 +565,26 @@ func normalizeLine(l string) string {
 	return strings.Join(strings.Fields(l), " ")
 }
 
-// edit is one replacement in an fs-edit call.
+// edit is one replacement in an fs-edit call. line, when above 0, is the
+// 1-based line of the occurrence of old that is meant, for an old that occurs
+// more than once (nearestOccurrence).
 type edit struct {
 	old, new string
 	all      bool
+	line     int
 }
 
-// editsOf reads an fs-edit call's arguments. (path old new [replace_all])
-// is one edit; (path "" "" #f edits) is a list of them, applied in order,
-// which is what a call naming only path and edits becomes (ArgsFromJSON
-// gives skipped options their empty values). list reports the second
-// form. Exactly one form must be given.
+// editsOf reads an fs-edit call's arguments. (path old new [replace_all]
+// [edits line]) is one edit; (path "" "" #f edits) is a list of them,
+// applied in order, which is what a call naming only path and edits becomes
+// (ArgsFromJSON gives skipped options their empty values). list reports the
+// second form. Exactly one form must be given. line is the last parameter,
+// after edits, so a call that gave edits positionally keeps its meaning;
+// an edit in a list carries its own.
 func editsOf(args []scheme.Value) (edits []edit, list bool, err error) {
-	if len(args) < 5 {
+	// edits skipped before a line that is given reads as the empty list.
+	skipped := len(args) > 5 && args[4].Kind == scheme.KNil
+	if len(args) < 5 || skipped {
 		switch {
 		case len(args) < 2:
 			return nil, false, errors.New("give old and new, or edits (a non-empty list of {old, new}): neither was given. For example {\"path\": \"a.py\", \"old\": \"x = 1\", \"new\": \"x = 2\"} or {\"path\": \"a.py\", \"edits\": [{\"old\": \"x = 1\", \"new\": \"x = 2\"}]}")
@@ -520,10 +594,21 @@ func editsOf(args []scheme.Value) (edits []edit, list bool, err error) {
 			return nil, false, fmt.Errorf("old and new must be strings, got %s and %s", scheme.Write(args[1]), scheme.Write(args[2]))
 		}
 		all := len(args) > 3 && scheme.Equal(args[3], scheme.True)
-		return []edit{{old: args[1].S, new: args[2].S, all: all}}, false, nil
+		line := 0
+		if len(args) > 5 {
+			if line, err = lineOf(args[5]); err != nil {
+				return nil, false, err
+			}
+		}
+		return []edit{{old: args[1].S, new: args[2].S, all: all, line: line}}, false, nil
 	}
 	if !scheme.Equal(args[1], scheme.Str("")) || !scheme.Equal(args[2], scheme.Str("")) || scheme.Equal(args[3], scheme.True) {
 		return nil, true, errors.New("give either old and new (with replace_all) or edits, not both; replace_all goes inside each edit")
+	}
+	if len(args) > 5 {
+		if line, err := lineOf(args[5]); err != nil || line != 0 {
+			return nil, true, errors.New("give line inside each edit of edits, not beside them")
+		}
 	}
 	items, ok := args[4].Slice()
 	switch {
@@ -540,6 +625,14 @@ func editsOf(args []scheme.Value) (edits []edit, list bool, err error) {
 		edits = append(edits, e)
 	}
 	return edits, true, nil
+}
+
+// lineOf reads a line argument: a whole number from 1, or 0 for none.
+func lineOf(v scheme.Value) (int, error) {
+	if v.Kind != scheme.KInt || v.I < 0 {
+		return 0, fmt.Errorf("line must be a line number from 1, got %s", scheme.Write(v))
+	}
+	return int(v.I), nil
 }
 
 // editOf reads one element of edits: an alist with string keys, as
@@ -580,8 +673,16 @@ func editOf(v scheme.Value) (edit, error) {
 			default:
 				return edit{}, fmt.Errorf("replace_all must be true or false, got %s", scheme.Write(val))
 			}
+		case "line":
+			if !scheme.Equal(val, scheme.Sym("null")) {
+				line, err := lineOf(val)
+				if err != nil {
+					return edit{}, err
+				}
+				e.line = line
+			}
 		default:
-			return edit{}, fmt.Errorf("unknown field %q: an edit has old, new and replace_all", key)
+			return edit{}, fmt.Errorf("unknown field %q: an edit has old, new, replace_all and line", key)
 		}
 	}
 	if !seen["old"] || !seen["new"] {
@@ -594,20 +695,70 @@ func editOf(v scheme.Value) (edit, error) {
 // before left, so the file is written once or not at all. In the list form
 // a failure names the edit.
 func applyEdits(content string, edits []edit, list bool) (string, error) {
+	next, _, err := applyEditsAt(content, edits, list)
+	return next, err
+}
+
+// applyEditsAt is applyEdits that also says where the new text of each edit
+// lies in the result, in the order of edits: nil for one with replace_all,
+// which leaves no single place to compare with.
+func applyEditsAt(content string, edits []edit, list bool) (string, [][]span, error) {
+	sites := make([][]span, len(edits))
 	for i, e := range edits {
-		next, err := applyEdit(content, e.old, e.new, e.all)
+		next, sp, err := applyEditAt(content, e)
 		switch {
 		case err == nil:
+			for j := 0; j < i; j++ {
+				sites[j] = shiftSpans(sites[j], sp)
+			}
+			if !e.all {
+				sites[i] = []span{{sp[0].at, sp[0].at + sp[0].ins}}
+			}
 			content = next
 		case !list:
-			return "", err
+			return "", nil, err
 		case i == 0:
-			return "", fmt.Errorf("edit 1 of %d failed, so nothing was written: %w", len(edits), err)
+			return "", nil, fmt.Errorf("edit 1 of %d failed, so nothing was written: %w", len(edits), err)
 		default:
-			return "", fmt.Errorf("edit %d of %d failed, so nothing was written (it is matched against the text the edits before it leave): %w", i+1, len(edits), err)
+			return "", nil, fmt.Errorf("edit %d of %d failed, so nothing was written (it is matched against the text the edits before it leave): %w", i+1, len(edits), err)
 		}
 	}
-	return content, nil
+	return content, sites, nil
+}
+
+// span is a stretch of a text, from offset from up to to.
+type span struct{ from, to int }
+
+// shiftSpans says where spans, of the text before the replacements in sp,
+// lie after them: moved by what the replacements before them added or took
+// away, and a span a replacement cuts into now ends where its new text does.
+func shiftSpans(spans []span, sp []splice) []span {
+	out := make([]span, 0, len(spans))
+	for _, s := range spans {
+		out = append(out, span{movedBy(sp, s.from, false), movedBy(sp, s.to, true)})
+	}
+	return out
+}
+
+// movedBy is where offset pos of a text lies once the replacements in sp,
+// ascending and apart, are made; inside replaced text, at the start of its
+// new text, or at its end for the end of a span.
+func movedBy(sp []splice, pos int, end bool) int {
+	shift := 0
+	for _, r := range sp {
+		switch {
+		case pos >= r.at+r.del:
+			shift += r.ins - r.del
+		case pos > r.at:
+			if end {
+				return r.at + shift + r.ins
+			}
+			return r.at + shift
+		default:
+			return pos + shift
+		}
+	}
+	return pos + shift
 }
 
 func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
@@ -636,17 +787,19 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-edit",
 		Meta: scheme.Meta{
-			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate. Several changes to one file: one call with edits, a list of {old, new, replace_all} given instead of old and new; they apply in order, each to the text the one before left, and nothing is written unless every one applies. If old is not found but matches when whitespace is ignored, the error quotes the file's exact text. A credential-shaped text in a file reads to you as [REDACTED <class>]: write that placeholder in old to match whatever the file holds there, and in new, in the same order, to keep it (leave it out of new to drop it). It answers with the changed lines as the file now reads them, numbered, with two lines around each, so the next edit near them needs no new read. Prefer this over fs-write for changes to existing files.",
+			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate, or, when old occurs more than once, pass line: the 1-based number of a line of the occurrence you mean (a search that prints line numbers gives it), and the occurrence holding that line, or else the nearest, is the one edited; line is ignored when old occurs once. Several changes to one file: one call with edits, a list of {old, new, replace_all, line} given instead of old and new; they apply in order, each to the text the one before left (a line counts the file as the edits before it leave it), and nothing is written unless every one applies. If old is not found, the error shows the lines of the file closest to it, numbered, or says that nothing resembles it; if old matches when whitespace is ignored, the error quotes the file's exact text. A credential-shaped text in a file reads to you as [REDACTED <class>]: write that placeholder in old to match whatever the file holds there, and in new, in the same order, to keep it (leave it out of new to drop it). It answers with the changed lines as the file now reads them, numbered, with two lines around each, so the next edit near them needs no new read. When the replaced text (two lines or more, or 40 characters) also occurs elsewhere in the repository's source, in another file or in this one, the answer ends with where, as path:line: the same text is not always the same fault, but a change that belongs in one place often belongs in the others. Prefer this over fs-write for changes to existing files.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
-				{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all); not with edits", Optional: true},
+				{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all or line); not with edits", Optional: true},
 				{Name: "new", Type: "string", Doc: "the replacement text; not with edits", Role: "payload", Optional: true},
 				{Name: "replace_all", Type: "boolean", Doc: "replace every occurrence of old instead of exactly one (default false)", Optional: true},
 				{Name: "edits", Type: "list", Doc: "several changes to this file, in order, instead of old and new", Optional: true, Items: []scheme.Param{
-					{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all)"},
+					{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all or line)"},
 					{Name: "new", Type: "string", Doc: "the replacement text", Role: "payload"},
 					{Name: "replace_all", Type: "boolean", Doc: "replace every occurrence of old instead of exactly one (default false)", Optional: true},
+					{Name: "line", Type: "integer", Doc: "when old occurs more than once: the 1-based line of the occurrence to edit (the one holding it, or the nearest); ignored when old occurs once", Optional: true},
 				}},
+				{Name: "line", Type: "integer", Doc: "when old occurs more than once: the 1-based line of the occurrence to edit (the one holding it, or the nearest); ignored when old occurs once; not with edits", Optional: true},
 			},
 			Host:         true,
 			Irreversible: true,
@@ -665,7 +818,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			next, err := applyEdits(string(cur), edits, list)
+			next, sites, err := applyEditsAt(string(cur), edits, list)
 			if err != nil {
 				return scheme.Value{}, err
 			}
@@ -682,7 +835,11 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			}
 			// The lines as the model reads them: a credential in them is its
 			// placeholder, as in any read and in a failed edit's quote.
-			return scheme.Str(editedRegionsCounting(c.Args[0].S, redact.Redact(string(cur), nil).Text, redact.Redact(next, nil).Text, o.Lean)), nil
+			answer := editedRegionsCounting(c.Args[0].S, redact.Redact(string(cur), nil).Text, redact.Redact(next, nil).Text, o.Lean)
+			if also := alsoOccurs(c, o, pin, abs, c.Args[0].S, next, edits, list, sites); also != "" {
+				answer += "\n" + also
+			}
+			return scheme.Str(answer), nil
 		},
 	}
 }
