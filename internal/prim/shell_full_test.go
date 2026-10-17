@@ -30,7 +30,7 @@ func TestShellExecIsUnchangedInAFullSession(t *testing.T) {
 	}
 	lean := newViewRig(t)
 	pl, _ := lean.h.in.Lookup("shell-exec")
-	if !strings.Contains(pl.Meta.Doc, "$TMPDIR/out") || strings.Contains(pl.Meta.Doc, "output past the cap keeps its first and last halves") {
+	if !strings.Contains(pl.Meta.Doc, "whose path the marker gives") || strings.Contains(pl.Meta.Doc, "output past the cap keeps its first and last halves") || strings.Contains(pl.Meta.Doc, "python -c") || strings.Contains(pl.Meta.Doc, "tail") {
 		t.Errorf("a lean session's description: %s", pl.Meta.Doc)
 	}
 }
