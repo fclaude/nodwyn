@@ -72,6 +72,11 @@ type Options struct {
 	// the count of lines an edit added and removed. The full profile's tools
 	// are the ones they were before.
 	Lean bool
+	// Temp is the system's /tmp (guard.TempDir), which a lean session nobody
+	// approves may use as it uses Scratch, and where a path outside both is
+	// refused outright (ADR 32, amended 2026-10-17); "" for none. The core
+	// sets it.
+	Temp string
 
 	// P3 egress (all optional; nil disables the egress primitives — bootstrap
 	// has none). The guard's E3 checker enforces the binding table before any
@@ -125,7 +130,7 @@ func Register(in *scheme.Interp, o Options) error {
 	if o.Root == "" {
 		return os.ErrInvalid
 	}
-	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts}
+	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts, Temp: o.Temp}
 	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o), docExport(o, pin)}
 	if o.Lean {
 		// The lean profile's additions to the tools (ADR 32, amended
@@ -186,10 +191,10 @@ func Register(in *scheme.Interp, o Options) error {
 // after the core ones.
 func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, extra ...guard.Checker) []guard.Checker {
 	argv := guard.DefaultArgvTrigger(o.Root)
-	argv.Scratch = o.Scratch
+	argv.Scratch, argv.Temp = o.Scratch, o.Temp
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
-		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts},
+		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts, Temp: o.Temp},
 		denylist(o),
 		argv,
 		guard.ProtectedPaths{Root: o.Root, Mounts: o.Mounts},

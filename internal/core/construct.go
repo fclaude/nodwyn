@@ -271,6 +271,11 @@ func (s *Session) primitiveOptions() prim.Options {
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
 	po.Lean = s.profile == config.ProfileLean
+	if po.Lean && o.unattended() {
+		// A lean session nobody approves may use /tmp as its scratch
+		// directory (ADR 32, amended 2026-10-17).
+		po.Temp = guard.TempDir()
+	}
 	po.Scratch = s.scratch
 	po.Private = []string{o.Paths.ConfigDir, o.Paths.DataDir}
 	po.Procs = s.procs

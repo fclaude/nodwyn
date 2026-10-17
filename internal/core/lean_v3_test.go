@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,6 +102,38 @@ func TestTheLeanHarnessSaysLittle(t *testing.T) {
 		}
 		if !lean && (strings.Contains(said, generic) || !strings.Contains(said, "No file has changed yet.")) {
 			t.Errorf("switches off: the no-change reminder in its new words, or none")
+		}
+	}
+}
+
+// A lean session nobody approves writes and reads /tmp as its scratch
+// directory, and a path outside the repository, $TMPDIR and /tmp is refused
+// with a message that says nothing ran; a full session nobody approves is
+// refused /tmp as before (ADR 32, amended 2026-10-17).
+func TestALeanUnattendedSessionUsesTmp(t *testing.T) {
+	name := "nodwyn-lean-tmp-" + filepath.Base(t.TempDir())
+	t.Cleanup(func() { os.Remove(filepath.Join("/tmp", name)) })
+	for _, profile := range []string{config.ProfileLean, config.ProfileFull} {
+		useProfile(t, profile)
+		os.Remove(filepath.Join("/tmp", name))
+		r := profileRig(t, unattendedOptions, "",
+			shell("tmp", "echo kept > /tmp/"+name+" && cat /tmp/"+name),
+			shell("etc", "cat /etc/hosts"),
+			fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+		)
+		_ = r.turn("try it")
+		tmp, etc := lastMessage(r, 1), lastMessage(r, 2)
+		if profile == config.ProfileLean {
+			if !strings.Contains(tmp, "kept") {
+				t.Errorf("lean: the /tmp file was not written and read: %q", tmp)
+			}
+			if !strings.Contains(etc, "outside the repository, $TMPDIR and /tmp, so it was refused and nothing of it ran") {
+				t.Errorf("lean: the refusal of /etc/hosts: %q", etc)
+			}
+			continue
+		}
+		if strings.Contains(tmp, "kept") || !strings.Contains(tmp, "outside the repository") {
+			t.Errorf("full: /tmp was usable: %q", tmp)
 		}
 	}
 }
