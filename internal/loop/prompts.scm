@@ -15,7 +15,12 @@
 ;; offers nineteen. Pi's is 2,811 characters and four tools, and its first
 ;; request is 2.2k tokens against nodwyn's 15.7k.
 (define lean-prompt #t)
-(define lean-tools '("fs-read" "fs-list" "index-grep" "fs-edit" "fs-write" "shell-exec" "outline" "tests-for"))
+(define lean-tools '("fs-read" "fs-list" "index-grep" "fs-edit" "fs-write" "shell-exec"))
+;; The leanest way to offer the code index (lean7): commands of the binary, run
+;; through shell-exec, so the tool list and every request's schemas stay as
+;; they were and the prompt gains one sentence.
+(define lean-cli #t)
+(define lean-cli-name "nibb")
 (define (lean-tool-words)
   (let* ((has (lambda (t) (and (member t lean-tools) #t)))
          (verbs (append (if (has "fs-read") '("read files") '())
@@ -43,6 +48,7 @@
      (if (has "shell-exec") " shell-exec runs one program with its arguments; for pipes, redirects, cd or chained commands, run bash with args [\"-c\", \"<command line>\"]." "")
      "\n"
      "You work unattended: nobody approves or watches your calls, so act rather than announce. Understand the request, read the code involved, make the change it calls for (the root cause, not only the example given, and nothing unrelated), and check it with the project's own tests. If you could not run something, say so.\n"
+     (if (and lean-cli (has "shell-exec")) (string-append "Three commands of " lean-cli-name " show a repository's structure; run them with shell-exec: `" lean-cli-name " outline FILE` lists a file's classes and functions with their line ranges, `" lean-cli-name " symbol FILE Class.method` prints one definition with line numbers, `" lean-cli-name " tests-for FILE` lists the test files that exercise a source file and how to run them. Use them instead of reading a large file whole.\n") "")
      (if (has "outline") "outline lists a file's classes and functions with their line ranges and fs-read with symbol reads one of them (Class.method), so a large file need not be read whole; tests-for names the test files that exercise a source file and how to run them.\n" "")
      (if (has "scheme") "The scheme tool runs a small Scheme program that calls the other tools as procedures: use it to read, search or run several things in one call and keep only what matters of the results.\n" "")
      "Throwaway files (scripts, notes) go in $TMPDIR, not in the repository.\n"

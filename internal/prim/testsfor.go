@@ -93,7 +93,7 @@ func testsFor(ctx context.Context, o Options, pin guard.RepoPin, abs, shown stri
 	// the module's own name, as an import line spells it
 	base := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
 	if len(names) == 0 && len(base) < 4 {
-		return "", fmt.Errorf("%s defines nothing this can search for", shown)
+		return "", fmt.Errorf("%s defines no name of four letters or more to search the tests for: search them with index-grep for the behaviour you changed", shown)
 	}
 	files, err := searchFilesWith(ctx, o.Root, o.Root, "", testsForMaxFiles, func(name string) bool {
 		r, e := filepath.Rel(o.Root, name)
