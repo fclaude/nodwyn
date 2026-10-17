@@ -6,7 +6,23 @@
 ;; person is there to answer what asks, unattended-system-prompt when nobody
 ;; is ((unattended?): --yolo, and a run's auto_approve, judge or unattended).
 (define (system-prompt repo)
-  (if (unattended?) (unattended-system-prompt repo) (interactive-system-prompt repo)))
+  (cond (lean-prompt (lean-system-prompt repo))
+        ((unattended?) (unattended-system-prompt repo))
+        (else (interactive-system-prompt repo))))
+
+;; The lean ladder, rung 3 (2026-10-16): a system prompt of about 250 tokens
+;; where dsl23's is about 3,000 (12,240 characters), and six tools where it
+;; offers nineteen. Pi's is 2,811 characters and four tools, and its first
+;; request is 2.2k tokens against nodwyn's 15.7k.
+(define lean-prompt #t)
+(define lean-tools '("fs-read" "fs-list" "index-grep" "fs-edit" "fs-write" "shell-exec"))
+(define (lean-system-prompt repo)
+  (string-append
+   "You are a coding agent working inside the repository at " repo ".\n"
+   "Your tools read and search files, list directories, edit and write files, and run programs. Paths are relative to the repository root and must stay inside it. shell-exec runs one program with its arguments; for pipes, redirects, cd or chained commands, run bash with args [\"-c\", \"<command line>\"].\n"
+   "You work unattended: nobody approves or watches your calls, so act rather than announce. Understand the request, read the code involved, make the change it calls for (the root cause, not only the example given, and nothing unrelated), and check it with the project's own tests. If you could not run something, say so.\n"
+   "Throwaway files (scripts, notes) go in $TMPDIR, not in the repository.\n"
+   "Finish with a short report: what you changed and how you checked it.\n"))
 
 ;; Two of its rules come from the jev-key console change (ADR 32, amended
 ;; 2026-10-02): its replies called the work done on a syntax check of a page

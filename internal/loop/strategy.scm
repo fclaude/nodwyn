@@ -103,13 +103,18 @@
               (ask-stopping)
               (cons (cons 'tool-calls kept) reply))))))
 
+(define (lean-args args)
+  (if (and lean-prompt (null? args))
+      (list "control" (list (cons 'tools lean-tools)))
+      args))
+
 (define (ask-model-with args)
-  (let again ((reply (apply model-turn args)) (left output-cut-retries))
+  (let again ((reply (apply model-turn (lean-args args))) (left output-cut-retries))
     (if (and (equal? (assoc-ref reply 'done "") "length")
              (null? (assoc-ref reply 'tool-calls '()))
              (> left 0))
         (begin (add-message output-cut-message)
-               (again (apply model-turn args) (- left 1)))
+               (again (apply model-turn (lean-args args)) (- left 1)))
         (begin (set! last-reasoning (assoc-ref reply 'reasoning-tokens 0))
                reply))))
 
