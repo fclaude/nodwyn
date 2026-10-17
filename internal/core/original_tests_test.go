@@ -554,3 +554,31 @@ func TestTheReviewNamesWhatTheChangeBrokeAfterAFailedRun(t *testing.T) {
 		}
 	}
 }
+
+// A program of the scheme tool is no way round the guard: the same command
+// line, written to the same path outside the repository, is refused as the
+// model's own call is, and so is a write there; the file is never made.
+func TestTheSchemeToolDoesNotGoRoundTheGuard(t *testing.T) {
+	t.Parallel()
+	outside := filepath.Join(os.TempDir(), "nodwyn-guard-probe-"+filepath.Base(t.TempDir()))
+	defer os.Remove(outside)
+	scheme := func(id, code string) fake.Turn {
+		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "scheme", Args: map[string]any{"code": code}}}}
+	}
+	r := unattendedRigIn(t, goRepo(t),
+		shellArgs("direct", "bash", "-c", "echo x > "+outside),
+		scheme("nested", `(shell-exec "bash" (list "-c" "echo x > `+outside+`"))`),
+		scheme("write", `(fs-write "`+outside+`" "x")`),
+		fake.Turn{Content: "I cannot write outside the repository."},
+	)
+	_ = r.turn("write a file")
+	if _, err := os.Stat(outside); err == nil {
+		t.Fatalf("%s was made", outside)
+	}
+	res := r.results()
+	for _, id := range []string{"direct", "nested", "write"} {
+		if !strings.Contains(res[id], "outside") {
+			t.Errorf("%s was not refused for naming a path outside the repository: %q", id, res[id])
+		}
+	}
+}
