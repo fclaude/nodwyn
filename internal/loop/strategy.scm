@@ -256,7 +256,7 @@
 ;; unchanged code has. It keeps what keeps a run safe (the guard, the budget,
 ;; the progress guard, the context window). Of dsl23's 4,385 requests in 121
 ;; tasks, 707 came after the finish review began, and 17% of its cost.
-(define lean-quiet #f)
+(define lean-quiet #t)
 (define finish-reminders (if lean-quiet 0 2))
 (define unrunnable-after 6) ; failed test commands in a row before the way out is offered
 
