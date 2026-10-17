@@ -2663,3 +2663,116 @@ lines and a handle without reading the command, and a test of a Django-style
 run (the verdict, then twenty "Destroying test database" lines) finds its
 verdict among the last 50 lines. `recall` still renders a shell result
 without its note.
+
+## Amendment 2026-10-17: the lean profile says only what it must
+
+The owner's aim for the lean profile is to be as generic as possible, to lean
+on the model as much as possible and to give it useful tools and nothing else:
+every sentence the harness adds must have earned its place in the
+measurements, and none of the behavioural nudges has (FINDINGS-0a9f700.md,
+"Full 121-task passes"; tool-review-2-2026-10-17.md; the readers of the
+afternoon of 2026-10-17). What the evidence says:
+
+- Two tools, `shell-exec` and `fs-edit`, resolve as many tasks as six, at
+  about 20% lower cost. The old shell2 build, which never sent the model a
+  harness message, resolved 103 and 102; the builds with the read-streak
+  reminder, the no-change reminder and the profile resolved 99 and 99 (A) and
+  101 and 99 (B). The readers put every single loss down to variance, but the
+  arms with nudges sit about three tasks lower over two replicates each.
+- The read-streak reminder: of 47 firings read, about 8 weakly helped, 20 were
+  neutral, 15 false alarms, and up to 4 possibly hurt; it tells the model to
+  use `plan-write`, which the lean profile does not offer.
+- Every lean request carried the plan block, "Plan for the current task (work
+  through it, and the harness marks a step done ... mark one with plan-step ...
+  write the plan again)", over a one-line plan; `plan-step` and `plan-write`
+  are not offered.
+- The environment hint was added in 99% of sessions and plausibly mattered in
+  2 or 3 of 20, about half a call per task; Pi has none.
+- Of the prompt's instructions, "act rather than announce" led to a
+  placeholder edit before any reading, "nothing unrelated" was never cited,
+  "finish with a short report: how you checked it" was followed but invites
+  overclaiming, and "check with the project's own tests" is a useful detector.
+  Prompt sentences change behaviour strongly (`git log -S` from 3% of sessions
+  to 61%) and the score not at all, at 13% more cost.
+- `fs-edit`: the recurring miss is a literal backslash-n in `old` (5 sessions,
+  3 or 4 calls each, `fs-edit` given up for a Python script); errors named
+  `fs-read`; the note of other copies was right once in 8; the closest text
+  showed the right lines 3 times of 4; `line` was used 4 times in 242 sessions.
+- A write to `/tmp/x` was refused in 10 to 22% of sessions, 2.2 calls each;
+  the model checked `$TMPDIR` on its next call 15 times of 19 whatever the
+  refusal said, and read it as a sandbox's wall.
+- `shell-exec`: 80% of test runs are piped through `tail` or `head`; the view
+  with a saved file fires rarely and is never read back, but costs nothing.
+
+**Decision**, for the lean profile alone; `full.scm` turns every new switch
+off, so a full session is origin/main's, as origin/main's own test files show
+when laid over the branch and run with `NODWYN_PROFILE=full`:
+
+1. *The system prompt* (`lean-system-prompt`) is about 90 tokens: who and
+   where, that nobody approves or answers the calls, one phrase per tool of
+   `lean-tools` (so a project that adds `fs-read` is told of it), paths and
+   throwaway files (`$TMPDIR` or `/tmp`), "Do what the request asks, then
+   check it by running something that exercises the change", and "When you
+   are done, say what you changed, what you ran and what it showed, and
+   anything you could not check". The sentences on `outline`, `tests-for`,
+   `scheme` and the code-index commands stay, said only when those are
+   offered.
+2. *No plan is shown* (`lean-plan-hidden`). `gate.plan` gains `hidden`: the
+   one-line plan is recorded, so the core still finds a plan before anything
+   irreversible and the person sees it, and the window shows the model none,
+   where it is recorded, carried to a run's later turn and brought back after
+   a compaction. The run's turn prompt says nothing of the plan's steps.
+3. *Harness messages*: no reading reminder (`lean-no-read-reminder`), no
+   environment hint (`lean-no-envhint`); the no-change reminder is kept, once,
+   in general words: "No file has changed. If the request needs a change, make
+   it; if it does not, say what you ran that shows the code already does what
+   is asked." (`finish-no-change-lean-message`, under `lean-quiet`). The
+   empty-reply message is unchanged.
+4. *`shell-exec`* describes itself in a few generic sentences: the program and
+   its arguments, `bash -c` for shell syntax, status, stdout and stderr, a long
+   stream shown as its first and last lines with the whole in a file whose path
+   the marker gives, the time limit. The python -c advice and the sentence on
+   `tail` and `head` go; the view, the saved files and the visible notes stay.
+5. *`/tmp`* is a scratch directory too for a lean session nobody approves. The
+   core gives such a session `prim.Options.Temp`, `/tmp` with its links
+   resolved (`guard.TempDir`, `/private/tmp` on macOS), and the repository pin
+   and the argv trigger allow a path in it as they allow the scratch
+   directory: written, read and run. The change is narrow. It is made only for
+   the lean profile and only when nobody approves the calls (a person still
+   decides about `/tmp` in any other session); a path is judged with its links
+   resolved and without a parent component, so a link out of `/tmp` or
+   `/tmp/../etc` is outside; another session's scratch directory under `/tmp`
+   (`nodwyn-scratch-*`) is outside; a file with a credential's name (the
+   denylist's globs) is outside; nothing else outside the repository is
+   allowed, and the repository's protected paths are judged as before, by
+   checkers this does not touch. Where `Temp` is set nobody could approve a
+   path outside, so the argv trigger refuses one outright instead of asking,
+   and the refusal names it and says nothing ran ("the command line names
+   /etc/hosts, outside the repository, $TMPDIR and /tmp, so it was refused and
+   nothing of it ran"); the pin's says the call was refused and nothing was
+   done. The files never reach the repository's diff. The guard's tests cover
+   the allowed and the refused cases, and the exfiltration suite passes.
+6. *`fs-edit`*: its schema is path, old, new, replace_all and edits again, in
+   both profiles (`line` goes, with its code); no error names a tool; an `old`
+   that matches nowhere as written but holds `\n`, `\t` or `\"` sequences, and
+   matches exactly once with one level of escaping undone, is applied so, with
+   `new` unescaped the same way, and the answer says "old held literal \n
+   sequences; they were matched as real newlines"; the closest text is shown
+   only at a resemblance of 0.5 or more (the cases the tests show score 0.57
+   and up; a line that shares two of old's words among four others, 0.44, is
+   not), otherwise the error says there is no close match; the note of other
+   copies is given only for an `old` of two lines or 40 non-space characters
+   that is not all import lines or decorators, looks only in the files git
+   tracks, outside `build`, `dist`, `vendor` and `node_modules`, and says
+   nothing when it finds more than three other places, runs out of files or
+   time, or the repository is no git work tree.
+
+**Not built here**: the run that measures it. The plan is SWE-bench Verified's
+121 tasks, Muse at low effort, through the same bridge: the revamp four
+replicates, and the old shell2 build two more so that both have four (the
+difference's noise is about 1.2 tasks); measured are the tasks resolved, cost
+and calls per task, and the mechanisms (scratch refusals, `fs-edit` misses and
+their recovery, escape repairs, notes of other copies, test runs piped through
+`tail`, no-change reminders, empty patches); then Qwen on the nine
+commit-bench tasks after the shell2 build's nine. `recall` still renders a
+shell result without its note.

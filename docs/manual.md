@@ -198,13 +198,14 @@ out, as the `fs-read` that brings them back. The cap follows the window:
 with a large context (16,128 at a 1M one, at most 16,384), unless you set
 it. An `fs-edit` answers with the lines it changed, numbered as the file
 now reads them. In a lean session ([unattended runs](#unattended-runs)) it
-also says, when the text it replaced (two lines or 40 characters or more)
-occurs elsewhere in the repository's source, where, as `path:line`: the same
-text is not always the same fault, but a change that belongs in one place
-often belongs in the others. In a lean session, too, an edit whose text
-matches nowhere is answered with the lines of the file closest to it, and one
-that matches several places takes a `line` (the number a search printed) to
-say which.
+also says, when the text it replaced (two lines or 40 characters or more, and
+not only import lines or decorators) occurs in one to three other places of
+the source git tracks, where, as `path:line`: the same text is not always the
+same fault, but a change that belongs in one place often belongs in the
+others. In a lean session, too, an edit whose text matches nowhere is answered
+with the lines of the file closest to it when some are close, and one written
+with literal `\n` sequences where newlines were meant is made as meant, and
+says so.
 
 ### Where each phase lives
 
@@ -368,7 +369,10 @@ to 256 KiB, so is a person's own command, and so is a program's of the
 `scheme` tool, which computes with the whole of it; a full session's output
 is cut at 256 KiB alone. A lean session's model also reads the result's note
 (exit 141 after a `head`; a read that printed nothing) after the output, as
-`[note] …`. For a server, a watcher or a
+`[note] …`. A lean session nobody approves may also write to and read
+from `/tmp` (the files never reach the repository's diff); a command that
+names a path outside the repository, `$TMPDIR` and `/tmp` is refused, and the
+model is told nothing of it ran. For a server, a watcher or a
 program to talk to, the model has `shell-start` (asks, like `shell-exec`),
 `shell-read` to see new output (optionally waiting up to 60 s),
 `shell-send` to type into it (asks every time: typing into a shell is running
@@ -733,13 +737,16 @@ or `"full"` chooses either way for every session, and the environment variable
 `NODWYN_PROFILE`, when it is not empty, overrides the file for the sessions
 started in it (`NODWYN_PROFILE=full nodwyn run ...` for one run). Settings does
 not offer it. The lean loop is the one measured on the 121 clean SWE-bench
-Verified tasks: a system prompt of about 250 tokens that says nobody approves
-or watches the calls, the model offered `shell-exec` and `fs-edit` alone (the
-repository's own tools, MCP tools and the other built-ins are not offered
-unless the project adds them to `lean-tools`), a run's plan one line, with no
-explorer or planner, and nothing said to the model while it works or as it
-ends: no finish review, no reminders to test, no hints. On those tasks it
-resolved as many as the same loop with six tools and as Pi, for about a fifth
+Verified tasks, and since 2026-10-17 it says even less: a system prompt of
+about 90 tokens (who and where, that nobody approves or answers the calls, the
+tools, where throwaway files go, one sentence on the work and one on the
+answer), the model offered `shell-exec` and `fs-edit` alone (the repository's
+own tools, MCP tools and the other built-ins are not offered unless the
+project adds them to `lean-tools`), a run's plan one line, with no explorer or
+planner, recorded for you and not shown to the model, and nothing said to the
+model while it works or as it ends: no finish review, no reminders to test or
+to stop reading, no hints, and a turn that changed nothing told so once. On
+those tasks the loop before that change resolved as many as the same loop with six tools and as Pi, for about a fifth
 less cost per task (ADR 32, amended 2026-10-17). A chat in a session nobody
 approves is still reviewed when it ends, since a person reads its answer. The
 rest of this section describes the full loop. A project's `.nodwyn/init.scm`
