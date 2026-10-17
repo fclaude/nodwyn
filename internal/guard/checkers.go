@@ -105,7 +105,7 @@ func (r RepoPin) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) D
 			// 17, amended 2026-10-10). The refusal says where the file goes,
 			// as the prompts write it.
 			if r.Scratch != "" && filepath.IsAbs(raw) {
-				where += "; a throwaway file goes in the scratch directory, written as $TMPDIR/" + filepath.Base(raw)
+				where += "; a throwaway file goes in the scratch directory, written as $TMPDIR/" + filepath.Base(raw) + ", which is " + filepath.Join(r.Scratch, filepath.Base(raw))
 			}
 			return Decision{Verdict: Deny, Reason: "path " + raw + " is outside " + where}
 		}
@@ -410,7 +410,7 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 	// they go, as the prompts write it.
 	for _, p := range flagged {
 		if a.Scratch != "" && (p == "/tmp" || strings.HasPrefix(p, "/tmp/")) {
-			reasons = append(reasons, "a throwaway file goes in the scratch directory, written as $TMPDIR/"+filepath.Base(p))
+			reasons = append(reasons, "a throwaway file goes in the scratch directory, written as $TMPDIR/"+filepath.Base(p)+", which is "+filepath.Join(a.Scratch, filepath.Base(p)))
 			break
 		}
 	}

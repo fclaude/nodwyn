@@ -193,13 +193,14 @@ func fsWrite(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 				return scheme.Value{}, err
 			}
+			before, _ := os.ReadFile(abs) // absent for a new file
 			if err := o.Versions.Keep(abs); err != nil {
 				return scheme.Value{}, fmt.Errorf("keeping the previous version failed, so nothing was written: %w", err)
 			}
 			if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
 				return scheme.Value{}, err
 			}
-			return scheme.Void, nil
+			return scheme.Str(writeAnswer(c.Args[0].S, string(before), content, len(before) > 0)), nil
 		},
 	}
 }
@@ -322,8 +323,37 @@ func applyEdit(content, old, replacement string, all bool) (string, error) {
 	case n == 1:
 		return strings.Replace(content, old, replacement, 1), nil
 	default:
-		return "", fmt.Errorf("old text occurs %d times; include more context so it is unique, or pass replace_all to replace every one", n)
+		return "", ambiguous(content, old, n)
 	}
+}
+
+// ambiguous is the error for an old text that occurs n times: where, with
+// the line each begins on, so the next try copies the lines around the one
+// it means (or passes replace_all) instead of reading the file again.
+func ambiguous(content, old string, n int) error {
+	const shown = 6
+	var where []string
+	from := 0
+	for len(where) < shown {
+		i := strings.Index(content[from:], old)
+		if i < 0 {
+			break
+		}
+		at := from + i
+		line := 1 + strings.Count(content[:at], "\n")
+		start := strings.LastIndex(content[:at], "\n") + 1
+		text := strings.TrimSpace(content[start:min(len(content), start+160)])
+		if nl := strings.IndexByte(text, '\n'); nl >= 0 {
+			text = text[:nl]
+		}
+		where = append(where, fmt.Sprintf("line %d: %s", line, text))
+		from = at + max(1, len(old))
+	}
+	more := ""
+	if n > len(where) {
+		more = fmt.Sprintf("; and %d more", n-len(where))
+	}
+	return fmt.Errorf("old text occurs %d times (%s%s); include more context so it is unique (a line before or after the one you mean), or pass replace_all to replace every one", n, strings.Join(where, "; "), more)
 }
 
 // editHintBytes bounds the file text a not-found error quotes.
@@ -360,6 +390,30 @@ func notFound(content, old string) error {
 	}
 	switch len(at) {
 	case 0:
+		// A longer old that matches for its first lines and then differs: say
+		// where it stops matching, with the file's line and old's side by
+		// side, since the next try is the one line that was wrong (a dropped
+		// blank line, a changed word) and not a new read of the region.
+		best, bestAt := 0, -1
+		for i := range lines {
+			k := 0
+			for k < len(want) && i+k < len(lines) && normalizeLine(lines[i+k]) == want[k] {
+				k++
+			}
+			if k > best {
+				best, bestAt = k, i
+			}
+		}
+		if len(want) > 1 && best >= 1 && best < len(want) && bestAt+best < len(lines) {
+			cut := func(x string) string {
+				x = strings.TrimSpace(x)
+				if len(x) > 140 {
+					x = x[:140] + "…"
+				}
+				return x
+			}
+			return fmt.Errorf("%s; the first %d lines of old match lines %d-%d (ignoring whitespace), then old line %d is `%s` where the file has `%s` (line %d)", base, best, bestAt+1, bestAt+best, best+1, cut(want[best]), cut(lines[bestAt+best]), bestAt+best+1)
+		}
 		return errors.New(base + "; read the region again with fs-read (start, count) and copy it")
 	case 1:
 		region := strings.Join(lines[at[0]:at[0]+len(want)], "")
@@ -421,7 +475,7 @@ func editsOf(args []scheme.Value) (edits []edit, list bool, err error) {
 	if len(args) < 5 {
 		switch {
 		case len(args) < 2:
-			return nil, false, errors.New("give old and new, or edits (a list of {old, new}): neither was given")
+			return nil, false, errors.New("give old and new, or edits (a non-empty list of {old, new}): neither was given. For example {\"path\": \"a.py\", \"old\": \"x = 1\", \"new\": \"x = 2\"} or {\"path\": \"a.py\", \"edits\": [{\"old\": \"x = 1\", \"new\": \"x = 2\"}]}")
 		case len(args) < 3:
 			return nil, false, errors.New("new is missing: give old and new, or edits (a list of {old, new})")
 		case args[1].Kind != scheme.KString || args[2].Kind != scheme.KString:
@@ -593,4 +647,22 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			return scheme.Str(editedRegions(c.Args[0].S, redact.Redact(string(cur), nil).Text, redact.Redact(next, nil).Text)), nil
 		},
 	}
+}
+
+// writeAnswer is what fs-write answers: how many lines it wrote and how many
+// the file had, with a warning when most of an existing file is gone. It
+// answered "ok" until 2026-10-17; in one benchmark run a whole-file rewrite
+// dropped 117 of 426 lines, and the ImportError it caused showed three calls
+// later (ADR 32, amended 2026-10-17).
+func writeAnswer(path, before, after string, existed bool) string {
+	n := len(splitLines(after))
+	if !existed {
+		return fmt.Sprintf("wrote %s: a new file of %d lines", path, n)
+	}
+	m := len(splitLines(before))
+	out := fmt.Sprintf("wrote %s: %d lines (it had %d)", path, n, m)
+	if m >= 30 && n*10 < m*7 {
+		out += fmt.Sprintf("; the file lost %d of its %d lines: fs-write replaces the whole file, so if you meant to change part of it, fs-edit does that", m-n, m)
+	}
+	return out
 }

@@ -582,3 +582,36 @@ func TestTheSchemeToolDoesNotGoRoundTheGuard(t *testing.T) {
 		}
 	}
 }
+
+// A shell command that only reads, searches or lists counts as looking for the
+// reading nudge, and one that writes, runs or changes does not: the shell2
+// arm read 21 times through the shell on matplotlib-25960, was never nudged,
+// and ended its turn with no edit (ADR 32, amended 2026-10-17).
+func TestShellCommandsThatOnlyLookCountAsLooking(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true)
+	const call = `(define (c line) (list (cons 'name "shell-exec") (cons 'id "x") (cons 'args (json-emit (list (cons "cmd" "bash") (cons "args" (list "-c" line)))))))`
+	if _, err := r.s.Eval(t.Context(), call); err != nil {
+		t.Fatal(err)
+	}
+	for line, want := range map[string]string{
+		`grep -n foo a.py | head -n 20`:  `#t`,
+		`sed -n '10,40p' a.py`:           `#t`,
+		`git log --oneline -5`:           `#t`,
+		`ls django/forms; wc -l a.py`:    `#t`,
+		`cat a.py > b.py`:                `#f`,
+		`sed -i s/a/b/ a.py`:             `#f`,
+		`python -m pytest tests/ -k foo`: `#f`,
+		`python -c 'print(1)'`:           `#f`,
+		`git checkout -- a.py`:           `#f`,
+		`make test`:                      `#f`,
+	} {
+		v, err := r.s.Eval(t.Context(), `(and (shell-look? (c "`+line+`")) #t)`)
+		if err != nil {
+			t.Fatal(line, err)
+		}
+		if got := v.String(); got != want {
+			t.Errorf("%q: looks = %s, want %s", line, got, want)
+		}
+	}
+}

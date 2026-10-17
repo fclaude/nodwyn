@@ -34,6 +34,7 @@ func editedRegions(path, before, after string) string {
 		suf++
 	}
 	var runs [][2]int // changed lines of b, 0-based, end exclusive; empty at a deletion
+	added, removed := -1, -1
 	midA, midB := a[pre:len(a)-suf], b[pre:len(b)-suf]
 	switch {
 	case len(midA) == 0 && len(midB) == 0:
@@ -45,6 +46,15 @@ func editedRegions(path, before, after string) string {
 		if !ok {
 			runs = append(runs, [2]int{pre, len(b) - suf})
 			break
+		}
+		added, removed = 0, 0
+		for _, o := range ops {
+			switch o.kind {
+			case '+':
+				added++
+			case '-':
+				removed++
+			}
 		}
 		// Walk the edit script with the line of b it has reached: a
 		// deletion is a change at that line, an insertion the line itself.
@@ -78,8 +88,11 @@ func editedRegions(path, before, after string) string {
 	}
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "edited %s, now %d lines", path, len(b))
-	if d := len(b) - len(a); d != 0 {
-		fmt.Fprintf(&sb, " (%+d)", d)
+	switch {
+	case added >= 0:
+		fmt.Fprintf(&sb, " (+%d -%d)", added, removed)
+	case len(b) != len(a):
+		fmt.Fprintf(&sb, " (%+d)", len(b)-len(a))
 	}
 	sb.WriteString("; the changed lines now read:\n")
 	budget := editShownLines

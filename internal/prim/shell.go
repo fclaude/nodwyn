@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -21,7 +22,7 @@ func shellExec(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "shell-exec",
 		Meta: scheme.Meta{
-			Doc: "Run a program with arguments in the repository root (no shell: pass arguments as a list). Returns an alist with status, stdout and stderr; output past the cap keeps its first and last halves, and a command that runs past the time limit is stopped and returns what it printed, with a status that says it timed out. A bash -c command line runs with pipefail, so a pipeline's status is that of its last command that failed. Whatever the program leaves running in the background is stopped when it ends; a program that keeps running goes to shell-start.",
+			Doc: "Run a program with arguments in the repository root (no shell: pass arguments as a list). Returns an alist with status, stdout and stderr; output past the cap keeps its first and last halves, and a command that runs past the time limit is stopped and returns what it printed, with a status that says it timed out. A bash -c command line runs with pipefail, so a pipeline's status is that of its last command that failed. Whatever the program leaves running in the background is stopped when it ends; a program that keeps running goes to shell-start. A python -c program takes newlines, not ;, before a compound statement (class, def, if, for): write several lines, or python - with a heredoc in bash -c. A result carries a note when the command exited 141 (output cut by a downstream command such as head) or read a file and printed nothing (a range past the end of the file).",
 			Params: []scheme.Param{
 				{Name: "cmd", Type: "string", Doc: "one program name or path, without its arguments", Role: "argv"},
 				{Name: "args", Type: "list", Doc: "list of argument strings", Role: "argv"},
@@ -83,11 +84,15 @@ func shellExec(o Options) *scheme.Prim {
 			default:
 				return scheme.Value{}, runErr
 			}
-			return scheme.List(
+			fields := []scheme.Value{
 				scheme.Cons(scheme.Str("status"), status),
 				scheme.Cons(scheme.Str("stdout"), scheme.Str(stdout.String())),
 				scheme.Cons(scheme.Str("stderr"), scheme.Str(stderr.String())),
-			), nil
+			}
+			if note := shellNote(cmdName, args, status, stdout.Len()+stderr.Len()); note != "" {
+				fields = append(fields, scheme.Cons(scheme.Str("note"), scheme.Str(note)))
+			}
+			return scheme.List(fields...), nil
 		},
 	}
 }
@@ -319,4 +324,26 @@ func byteCount(n int) string {
 		return fmt.Sprintf("%d KiB", n>>10)
 	}
 	return fmt.Sprintf("%d B", n)
+}
+
+var readLikeRE = regexp.MustCompile(`(^|[\s;&|(])(cat|head|tail|nl|sed\s+-n)\b`)
+
+// shellNote says what a result's bare numbers do not. Exit 141 is SIGPIPE: a
+// downstream command (head) stopped reading, so there may be more output; on
+// the benchmark's matplotlib-25960 `grep ... | head -n 100` ended 141 and the
+// model never noticed. A command that reads a file, exits 0 and prints nothing
+// has read past its end: django-14534's `sed -n '600,700p'` of a 284-line
+// file was taken for a fault of the tool, and four calls of 20 went on
+// finding out (ADR 32, amended 2026-10-17).
+func shellNote(cmd string, args []string, status scheme.Value, printed int) string {
+	if status.Kind == scheme.KInt && status.I == 141 {
+		return "exit 141: the output was cut because a command later in the pipe (such as head) stopped reading; there may be more"
+	}
+	if printed == 0 && status.Kind == scheme.KInt && status.I == 0 {
+		line := cmd + " " + strings.Join(args, " ")
+		if readLikeRE.MatchString(line) && !strings.Contains(line, ">") {
+			return "exit 0 with no output: a command that reads a file printed nothing, so its range may lie past the end of the file (wc -l FILE counts the lines) or the file is empty"
+		}
+	}
+	return ""
 }

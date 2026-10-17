@@ -202,7 +202,23 @@
   '("fs-read" "fs-list" "fs-find" "index-grep" "read-definition" "git-status" "git-diff"
     "index-search" "recall"))
 
-(define (look-call? call) (member (assoc-ref call 'name) look-tools))
+;; A shell-exec call that only looks too: it reads, searches or lists, and
+;; writes, runs and changes nothing. On the benchmark's matplotlib-25960 the
+;; shell2 arm (shell-exec and fs-edit only) made 21 read-only calls and ended
+;; its turn with no edit: the nudge above counted rounds of the dedicated
+;; read tools only, so grep, sed -n and cat through the shell never added up
+;; (ADR 32, amended 2026-10-17).
+(define shell-look-words '("grep " "rg " "find " "ls " "ls\n" "cat " "head " "tail " "sed -n" "wc " "nl " "which " "git log" "git show" "git diff" "git status" "git blame" "git grep" "tree "))
+(define shell-act-words '(">" "sed -i" "tee " "python" "pytest" "make " "pip " "conda " "npm " "git checkout" "git stash" "git apply" "git reset" "git commit" "rm " "mv " "cp " "mkdir " "chmod " "patch " "perl "))
+
+(define (shell-look? call)
+  (and (equal? (assoc-ref call 'name) "shell-exec")
+       (let ((line (command-line call)))
+         (and (not (string-empty? line))
+              (let any ((ws shell-look-words)) (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws)))))
+              (not (let any ((ws shell-act-words)) (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws))))))))))
+
+(define (look-call? call) (or (member (assoc-ref call 'name) look-tools) (shell-look? call)))
 
 ;; Rounds in a row that only look, after which the model is told to write
 ;; down what it found and answer or plan (reading-reminder-message). A chat
@@ -263,6 +279,9 @@
 ;; tasks, 707 came after the finish review began, and 17% of its cost.
 (define lean-quiet #t)
 (define finish-reminders (if lean-quiet 0 2))
+;; Even then a turn that changed nothing is told so once: shell2 on
+;; matplotlib-25960 ended its turn with no edit and no patch.
+(define lean-empty-reminders (if lean-quiet 1 0))
 (define unrunnable-after 6) ; failed test commands in a row before the way out is offered
 
 ;; The finish review (finish-review-points) is made once a turn, and at most
@@ -1744,7 +1763,9 @@
                               ((and changed (not tested) (not offered)) finish-untested-message)
                               ((and changed failing-msg) failing-msg)
                               (else #f))))
-              (cond ((and gap (< reminders finish-reminders))
+              (cond ((and gap (< reminders (if (or (equal? gap finish-no-change-message) (equal? gap finish-no-change-reviewed-message))
+                                                 (max finish-reminders lean-empty-reminders)
+                                                 finish-reminders)))
                      (add-message gap)
                      ;; A run the model was told failed is not told again
                      ;; until an edit: it may answer that the tests fail on the
