@@ -300,6 +300,45 @@ func TestTheEnvironmentOverridesTheProfileOfTheConfig(t *testing.T) {
 	}
 }
 
+// A task resumed resolves its profile again, from the configuration and the
+// environment of the session that resumes it and from how that one is run: the
+// log keeps no profile, as it keeps no prompt that a project's init.scm could
+// have changed.
+func TestAResumedSessionResolvesItsProfileAgain(t *testing.T) {
+	useProfile(t, "")
+	srv := fake.NewT(t, fake.Turn{Content: "one"}, fake.Turn{Content: "two"})
+	defer srv.Close()
+	o := diskOptions(t)
+	o.NoConfirm, o.AutoApprove = false, true
+	o.Provider = llm.NewOllama(srv.URL)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.profile != config.ProfileLean {
+		t.Fatalf("profile %q, want lean", s.profile)
+	}
+	if err := s.Send("hello"); err != nil {
+		t.Fatal(err)
+	}
+	(&rig{t: t, s: s}).drain("n")
+	id := s.ID()
+	s.Close()
+
+	o.Repo, o.AutoApprove, o.NoConfirm = "", false, true
+	resumed, err := Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumed.Close()
+	if resumed.profile != config.ProfileFull {
+		t.Fatalf("resumed by a person: profile %q, want full", resumed.profile)
+	}
+	if sys := resumed.loop.WindowContext().System; !strings.HasPrefix(sys, fullPromptStart) {
+		t.Fatalf("resumed by a person, the prompt is:\n%s", sys)
+	}
+}
+
 // A profile that is not one is refused when the session is made, whether the
 // environment or the configuration names it.
 func TestAnUnknownProfileIsRefused(t *testing.T) {
