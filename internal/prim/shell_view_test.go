@@ -47,6 +47,7 @@ func newViewRig(t *testing.T, mod ...func(*Options)) *viewRig {
 	h.in = scheme.New()
 	o := DefaultOptions(root)
 	o.Scratch = scratch
+	o.Lean = true // the view is the lean profile's (ADR 32, amended 2026-10-17)
 	for _, m := range mod {
 		m(&o)
 	}
@@ -373,6 +374,7 @@ func TestShellExecSavedOutputsAreNumberedUnderConcurrency(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		o := DefaultOptions(root)
 		o.Scratch = scratch
+		o.Lean = true
 		in := scheme.New()
 		if err := Register(in, o); err != nil {
 			t.Fatal(err)
