@@ -17,6 +17,7 @@ import (
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/scheme"
 	"github.com/fclaude/nodwyn/internal/window"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 // A long output is shown as a view with a file behind it (shellview.go): the
@@ -261,7 +262,7 @@ func TestShellExecThresholds(t *testing.T) {
 	// By bytes alone: 70 lines of 125 bytes are over 8 KiB, and a view of them
 	// would be over 6 KiB with 20 + 50 lines, so it shows fewer.
 	r := newViewRig(t)
-	os.WriteFile(filepath.Join(r.h.root, "data.txt"), []byte(strings.Repeat(line(125), 70)), 0o644)
+	must.WriteFile(t, filepath.Join(r.h.root, "data.txt"), []byte(strings.Repeat(line(125), 70)), 0o644)
 	if got := r.run(t, "awk 1 data.txt"); !strings.Contains(got.Stdout, " of 70 not shown;") || len(got.Stdout) > 6<<10 {
 		t.Errorf("70 lines over 8 KiB: %d bytes\n%.400s", len(got.Stdout), got.Stdout)
 	}
@@ -301,7 +302,7 @@ func TestShellExecReadLikeCommandsAreNotCut(t *testing.T) {
 	}
 	// Past the old cap a read keeps its first and last halves, as it did.
 	big := strings.Repeat(lineN(1)+"\n", 7000) // 322 KB
-	os.WriteFile(filepath.Join(r.h.root, "big.txt"), []byte(big), 0o644)
+	must.WriteFile(t, filepath.Join(r.h.root, "big.txt"), []byte(big), 0o644)
 	got = r.run(t, "cat big.txt")
 	if !strings.Contains(got.Stdout, "omitted: only the first") || len(got.Stdout) > 256<<10+200 {
 		t.Errorf("cat of 322 KB: %d bytes", len(got.Stdout))
@@ -635,7 +636,7 @@ func TestShellExecViewIsNotCutAgainByTheWindow(t *testing.T) {
 		}
 	}
 	// The control: the same lines read with cat are not a view and are cut.
-	os.WriteFile(filepath.Join(r.h.root, "data.txt"), []byte(joinLines(1, 400)), 0o644)
+	must.WriteFile(t, filepath.Join(r.h.root, "data.txt"), []byte(joinLines(1, 400)), 0o644)
 	whole := r.run(t, "cat data.txt")
 	if got := showsInWindow(t, "exit 0\n"+whole.Stdout); !strings.Contains(got, "of this result left out here") {
 		t.Fatal("the control was not cut by the window")
