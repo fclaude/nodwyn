@@ -279,7 +279,7 @@ func (s *alsoScan) search(path, shown string, data []byte, own bool) {
 			// read is the one the model's own would be (index-grep's), and
 			// asked once, and only for a file that matches.
 			if !checked {
-				checked, allowed = true, s.mayRead(path)
+				checked, allowed = true, own || s.mayRead(path)
 			}
 			if !allowed {
 				return
@@ -320,7 +320,8 @@ func (q *alsoQuery) hits(raw []string, i int) bool {
 
 // mayRead is whether the model may read the file at path: inside the
 // repository, not on the denylist, and read through the guard as a read of its
-// own would be. The edited file is the model's already.
+// own would be. (The edited file is not asked about: the model has just edited
+// it.)
 func (s *alsoScan) mayRead(path string) bool {
 	if len(s.queries) == 0 || s.read == nil {
 		return false
