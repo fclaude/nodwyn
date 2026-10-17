@@ -107,7 +107,13 @@ func editedRegionsCounting(path, before, after string, counting bool) string {
 	budget := editShownLines
 	for i, s := range shown {
 		if budget <= 0 {
-			fmt.Fprintf(&sb, "… %d more changed places, from line %d: view them\n", len(shown)-i, s[0]+1)
+			// A lean session may have no tool to read with (ADR 32, amended
+			// 2026-10-17).
+			how := "read them with fs-read"
+			if counting {
+				how = "view them"
+			}
+			fmt.Fprintf(&sb, "… %d more changed places, from line %d: %s\n", len(shown)-i, s[0]+1, how)
 			break
 		}
 		lines := b[s[0]:s[1]]

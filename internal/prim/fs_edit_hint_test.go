@@ -34,7 +34,7 @@ func TestFsEditReplaceAllAndWhitespaceHints(t *testing.T) {
 	if _, err := h.eval(t, `(fs-edit "code.py" "a =  1" "a = 3")`); err == nil || !strings.Contains(err.Error(), "matches 2 places (first at line 1)") {
 		t.Fatalf("two whitespace matches: %v", err)
 	}
-	if _, err := h.eval(t, `(fs-edit "code.py" "nothing like it" "x")`); err == nil || !strings.Contains(err.Error(), "no line of the file resembles the first line of old") || strings.Contains(err.Error(), "fs-read") {
+	if _, err := h.eval(t, `(fs-edit "code.py" "nothing like it" "x")`); err == nil || !strings.Contains(err.Error(), "read the region again with fs-read") {
 		t.Fatalf("no match at all: %v", err)
 	}
 	if b, _ := os.ReadFile(file); string(b) != "a = 1\nb = 2\na = 1\n" {
@@ -71,7 +71,7 @@ func TestFsEditCredentialHints(t *testing.T) {
 	}
 	// A placeholder the model made up, in a file with no credential: a miss like any other.
 	os.WriteFile(file, []byte("name := \"credential\"\n"), 0o644)
-	if _, err := h.eval(t, `(fs-edit "fixture.go" "body := \"[REDACTED anthropic-key]\"" "x")`); err == nil || strings.Contains(err.Error(), "credential-shaped") || !strings.Contains(err.Error(), "no line of the file resembles") {
+	if _, err := h.eval(t, `(fs-edit "fixture.go" "body := \"[REDACTED anthropic-key]\"" "x")`); err == nil || strings.Contains(err.Error(), "credential-shaped") || !strings.Contains(err.Error(), "read the region again") {
 		t.Fatalf("a placeholder with no credential behind it: %v", err)
 	}
 	if b, _ := os.ReadFile(file); string(b) != "name := \"credential\"\n" {

@@ -344,7 +344,7 @@ func previewWrite(pin guard.RepoPin, args []scheme.Value) string {
 // model reads it, with each credential a placeholder (ADR 43); old that is
 // not there is looked for in the file's own text, as before.
 func applyEdit(content, old, replacement string, all bool) (string, error) {
-	next, _, err := applyEditAt(content, edit{old: old, new: replacement, all: all})
+	next, _, err := applyEditAt(content, edit{old: old, new: replacement, all: all}, false)
 	return next, err
 }
 
@@ -355,21 +355,23 @@ type splice struct{ at, del, ins int }
 // applyEditAt is applyEdit for one edit, and says what it replaced, so the
 // caller knows where the new text lies. When old occurs more than once, the
 // edit's line chooses one (nearestOccurrence); without a line the edit is
-// refused as ambiguous, and with all every occurrence is replaced.
-func applyEditAt(content string, e edit) (string, []splice, error) {
+// refused as ambiguous, and with all every occurrence is replaced. lean says
+// the session is a lean one, whose errors speak of line and name no tool
+// (ADR 32, amended 2026-10-17); a full session's are the ones it had.
+func applyEditAt(content string, e edit, lean bool) (string, []splice, error) {
 	if e.old == "" {
 		return "", nil, errors.New("old text must not be empty")
 	}
 	v := newView(content)
 	if len(v.subs) > 0 {
-		if next, sp, found, err := v.apply(e.old, e.new, e.all, e.line); found {
+		if next, sp, found, err := v.apply(e.old, e.new, e.all, e.line, lean); found {
 			return next, sp, err
 		}
 	}
 	starts := occurrences(content, e.old)
 	switch n := len(starts); {
 	case n == 0:
-		return "", nil, notFound(v.text, e.old)
+		return "", nil, notFound(v.text, e.old, lean)
 	case e.all:
 		var b strings.Builder
 		var sp []splice
@@ -387,7 +389,7 @@ func applyEditAt(content string, e edit) (string, []splice, error) {
 	}
 	i := nearestOccurrence(content, e.old, starts, e.line)
 	if i < 0 {
-		return "", nil, ambiguous(content, starts)
+		return "", nil, ambiguous(content, starts, lean)
 	}
 	at := starts[i]
 	return content[:at] + e.new + content[at+len(e.old):], []splice{{at: at, del: len(e.old), ins: len(e.new)}}, nil
@@ -441,8 +443,9 @@ func nearestOccurrence(text, old string, starts []int, line int) int {
 // ambiguous is the error for an old text that occurs at the offsets in
 // starts: where, with the line each begins on, so the next try copies the
 // lines around the one it means, or names it by its line, or passes
-// replace_all, instead of looking at the file again.
-func ambiguous(text string, starts []int) error {
+// replace_all, instead of looking at the file again. A full session's error
+// does not mention line, which it has no parameter for.
+func ambiguous(text string, starts []int, lean bool) error {
 	const shown = 6
 	var where []string
 	for _, at := range starts[:min(shown, len(starts))] {
@@ -458,7 +461,11 @@ func ambiguous(text string, starts []int) error {
 	if len(starts) > len(where) {
 		more = fmt.Sprintf("; and %d more", len(starts)-len(where))
 	}
-	return fmt.Errorf("old text occurs %d times (%s%s); include more context so it is unique (a line before or after the one you mean), or pass line to choose one, or replace_all to replace every one", len(starts), strings.Join(where, "; "), more)
+	choose := "or pass replace_all to replace every one"
+	if lean {
+		choose = "or pass line to choose one, or replace_all to replace every one"
+	}
+	return fmt.Errorf("old text occurs %d times (%s%s); include more context so it is unique (a line before or after the one you mean), %s", len(starts), strings.Join(where, "; "), more, choose)
 }
 
 // editHintBytes bounds the file text a not-found error quotes.
@@ -470,7 +477,11 @@ const editHintBytes = 2000
 // once whitespace is ignored (trailing spaces, tabs against spaces,
 // indentation, CRLF), the error names those lines and quotes them exactly,
 // so the next try copies the file's own text instead of guessing again.
-func notFound(content, old string) error {
+//
+// In a lean session (ADR 32, amended 2026-10-17) a miss shows the closest
+// text instead of advising a tool the session may not have; a full session's
+// advice is the one it had.
+func notFound(content, old string, lean bool) error {
 	const base = "old text not found; it must match exactly, including whitespace"
 	if hint := credentialHint(old); hint != "" {
 		return errors.New(base + ". " + hint)
@@ -519,11 +530,17 @@ func notFound(content, old string) error {
 			}
 			return fmt.Errorf("%s; the first %d lines of old match lines %d-%d (ignoring whitespace), then old line %d is `%s` where the file has `%s` (line %d)", base, best, bestAt+1, bestAt+best, best+1, cut(want[best]), cut(lines[bestAt+best]), bestAt+best+1)
 		}
-		return errors.New(base + "; " + closestRegion(lines, want))
+		if lean {
+			return errors.New(base + "; " + closestRegion(lines, want))
+		}
+		return errors.New(base + "; read the region again with fs-read (start, count) and copy it")
 	case 1:
 		region := strings.Join(lines[at[0]:at[0]+len(want)], "")
 		if len(region) > editHintBytes {
-			return fmt.Errorf("%s; ignoring whitespace it matches lines %d-%d, which differ from old in spacing: look at them again and copy them exactly", base, at[0]+1, at[0]+len(want))
+			if lean {
+				return fmt.Errorf("%s; ignoring whitespace it matches lines %d-%d, which differ from old in spacing: look at them again and copy them exactly", base, at[0]+1, at[0]+len(want))
+			}
+			return fmt.Errorf("%s; ignoring whitespace it matches lines %d-%d, which differ from old in spacing: read them with fs-read and copy them exactly", base, at[0]+1, at[0]+len(want))
 		}
 		return fmt.Errorf("%s; ignoring whitespace it matches lines %d-%d, which differ from old in spacing. Those lines are exactly:\n%s", base, at[0]+1, at[0]+len(want), region)
 	default:
@@ -580,8 +597,15 @@ type edit struct {
 // (ArgsFromJSON gives skipped options their empty values). list reports the
 // second form. Exactly one form must be given. line is the last parameter,
 // after edits, so a call that gave edits positionally keeps its meaning;
-// an edit in a list carries its own.
+// an edit in a list carries its own. Only a lean session has the parameter:
+// a full session's tool is given five, and an edit with a line is an edit
+// with a field it does not have.
 func editsOf(args []scheme.Value) (edits []edit, list bool, err error) {
+	return editsOfWith(args, false)
+}
+
+// editsOfWith is editsOf for a session that is lean or not.
+func editsOfWith(args []scheme.Value, lean bool) (edits []edit, list bool, err error) {
 	// edits skipped before a line that is given reads as the empty list.
 	skipped := len(args) > 5 && args[4].Kind == scheme.KNil
 	if len(args) < 5 || skipped {
@@ -618,7 +642,7 @@ func editsOf(args []scheme.Value) (edits []edit, list bool, err error) {
 		return nil, true, errors.New("edits is empty: give at least one {old, new}")
 	}
 	for i, it := range items {
-		e, err := editOf(it)
+		e, err := editOf(it, lean)
 		if err != nil {
 			return nil, true, fmt.Errorf("edit %d: %w", i+1, err)
 		}
@@ -639,7 +663,7 @@ func lineOf(v scheme.Value) (int, error) {
 // json-parse makes a JSON object. A field the guard would not read as the
 // edit's (a symbol key, a repeated name) is an error, not ignored, so what
 // is written is what the guard judged.
-func editOf(v scheme.Value) (edit, error) {
+func editOf(v scheme.Value, lean bool) (edit, error) {
 	fields, ok := v.Slice()
 	if !ok || len(fields) == 0 {
 		return edit{}, fmt.Errorf("expected an object with old and new, got %s", scheme.Write(v))
@@ -674,6 +698,9 @@ func editOf(v scheme.Value) (edit, error) {
 				return edit{}, fmt.Errorf("replace_all must be true or false, got %s", scheme.Write(val))
 			}
 		case "line":
+			if !lean {
+				return edit{}, fmt.Errorf("unknown field %q: an edit has old, new and replace_all", key)
+			}
 			if !scheme.Equal(val, scheme.Sym("null")) {
 				line, err := lineOf(val)
 				if err != nil {
@@ -682,7 +709,10 @@ func editOf(v scheme.Value) (edit, error) {
 				e.line = line
 			}
 		default:
-			return edit{}, fmt.Errorf("unknown field %q: an edit has old, new, replace_all and line", key)
+			if lean {
+				return edit{}, fmt.Errorf("unknown field %q: an edit has old, new, replace_all and line", key)
+			}
+			return edit{}, fmt.Errorf("unknown field %q: an edit has old, new and replace_all", key)
 		}
 	}
 	if !seen["old"] || !seen["new"] {
@@ -694,18 +724,18 @@ func editOf(v scheme.Value) (edit, error) {
 // applyEdits runs applyEdit over edits in order, each on the text the one
 // before left, so the file is written once or not at all. In the list form
 // a failure names the edit.
-func applyEdits(content string, edits []edit, list bool) (string, error) {
-	next, _, err := applyEditsAt(content, edits, list)
+func applyEdits(content string, edits []edit, list, lean bool) (string, error) {
+	next, _, err := applyEditsAt(content, edits, list, lean)
 	return next, err
 }
 
 // applyEditsAt is applyEdits that also says where the new text of each edit
 // lies in the result, in the order of edits: nil for one with replace_all,
 // which leaves no single place to compare with.
-func applyEditsAt(content string, edits []edit, list bool) (string, [][]span, error) {
+func applyEditsAt(content string, edits []edit, list, lean bool) (string, [][]span, error) {
 	sites := make([][]span, len(edits))
 	for i, e := range edits {
-		next, sp, err := applyEditAt(content, e)
+		next, sp, err := applyEditAt(content, e, lean)
 		switch {
 		case err == nil:
 			for j := 0; j < i; j++ {
@@ -766,7 +796,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 		if len(args) < 1 || args[0].Kind != scheme.KString {
 			return ""
 		}
-		edits, list, err := editsOf(args)
+		edits, list, err := editsOfWith(args, o.Lean)
 		if err != nil {
 			return "edit would fail: " + err.Error()
 		}
@@ -778,29 +808,41 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 		if err != nil {
 			return "cannot read " + args[0].S + ": " + err.Error()
 		}
-		next, err := applyEdits(string(cur), edits, list)
+		next, err := applyEdits(string(cur), edits, list, o.Lean)
 		if err != nil {
 			return "edit would fail: " + err.Error()
 		}
 		return Unified(args[0].S, string(cur), next, 3)
 	}
+	// A lean session's tool has the line parameter, the closest text for a miss
+	// and a note of where the replaced text also occurs; a full session's is the
+	// one it had (ADR 32, amended 2026-10-17).
+	doc := "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate. Several changes to one file: one call with edits, a list of {old, new, replace_all} given instead of old and new; they apply in order, each to the text the one before left, and nothing is written unless every one applies. If old is not found but matches when whitespace is ignored, the error quotes the file's exact text. A credential-shaped text in a file reads to you as [REDACTED <class>]: write that placeholder in old to match whatever the file holds there, and in new, in the same order, to keep it (leave it out of new to drop it). It answers with the changed lines as the file now reads them, numbered, with two lines around each, so the next edit near them needs no new read. Prefer this over fs-write for changes to existing files."
+	params := []scheme.Param{
+		{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
+		{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all); not with edits", Optional: true},
+		{Name: "new", Type: "string", Doc: "the replacement text; not with edits", Role: "payload", Optional: true},
+		{Name: "replace_all", Type: "boolean", Doc: "replace every occurrence of old instead of exactly one (default false)", Optional: true},
+		{Name: "edits", Type: "list", Doc: "several changes to this file, in order, instead of old and new", Optional: true, Items: []scheme.Param{
+			{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all)"},
+			{Name: "new", Type: "string", Doc: "the replacement text", Role: "payload"},
+			{Name: "replace_all", Type: "boolean", Doc: "replace every occurrence of old instead of exactly one (default false)", Optional: true},
+		}},
+	}
+	if o.Lean {
+		doc = "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate, or, when old occurs more than once, pass line: the 1-based number of a line of the occurrence you mean (a search that prints line numbers gives it), and the occurrence holding that line, or else the nearest, is the one edited; line is ignored when old occurs once. Several changes to one file: one call with edits, a list of {old, new, replace_all, line} given instead of old and new; they apply in order, each to the text the one before left (a line counts the file as the edits before it leave it), and nothing is written unless every one applies. If old is not found, the error shows the lines of the file closest to it, numbered, or says that nothing resembles it; if old matches when whitespace is ignored, the error quotes the file's exact text. A credential-shaped text in a file reads to you as [REDACTED <class>]: write that placeholder in old to match whatever the file holds there, and in new, in the same order, to keep it (leave it out of new to drop it). It answers with the changed lines as the file now reads them, numbered, with two lines around each, so the next edit near them needs no new read. When the replaced text (two lines or more, or 40 characters) also occurs elsewhere in the repository's source, in another file or in this one, the answer ends with where, as path:line: the same text is not always the same fault, but a change that belongs in one place often belongs in the others. Prefer this over fs-write for changes to existing files."
+		params[1].Doc = "the exact text to replace (must occur exactly once, unless replace_all or line); not with edits"
+		items := params[4].Items
+		items[0].Doc = "the exact text to replace (must occur exactly once, unless replace_all or line)"
+		const lineDoc = "when old occurs more than once: the 1-based line of the occurrence to edit (the one holding it, or the nearest); ignored when old occurs once"
+		params[4].Items = append(items, scheme.Param{Name: "line", Type: "integer", Doc: lineDoc, Optional: true})
+		params = append(params, scheme.Param{Name: "line", Type: "integer", Doc: lineDoc + "; not with edits", Optional: true})
+	}
 	return &scheme.Prim{
 		Name: "fs-edit",
 		Meta: scheme.Meta{
-			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate, or, when old occurs more than once, pass line: the 1-based number of a line of the occurrence you mean (a search that prints line numbers gives it), and the occurrence holding that line, or else the nearest, is the one edited; line is ignored when old occurs once. Several changes to one file: one call with edits, a list of {old, new, replace_all, line} given instead of old and new; they apply in order, each to the text the one before left (a line counts the file as the edits before it leave it), and nothing is written unless every one applies. If old is not found, the error shows the lines of the file closest to it, numbered, or says that nothing resembles it; if old matches when whitespace is ignored, the error quotes the file's exact text. A credential-shaped text in a file reads to you as [REDACTED <class>]: write that placeholder in old to match whatever the file holds there, and in new, in the same order, to keep it (leave it out of new to drop it). It answers with the changed lines as the file now reads them, numbered, with two lines around each, so the next edit near them needs no new read. When the replaced text (two lines or more, or 40 characters) also occurs elsewhere in the repository's source, in another file or in this one, the answer ends with where, as path:line: the same text is not always the same fault, but a change that belongs in one place often belongs in the others. Prefer this over fs-write for changes to existing files.",
-			Params: []scheme.Param{
-				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
-				{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all or line); not with edits", Optional: true},
-				{Name: "new", Type: "string", Doc: "the replacement text; not with edits", Role: "payload", Optional: true},
-				{Name: "replace_all", Type: "boolean", Doc: "replace every occurrence of old instead of exactly one (default false)", Optional: true},
-				{Name: "edits", Type: "list", Doc: "several changes to this file, in order, instead of old and new", Optional: true, Items: []scheme.Param{
-					{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all or line)"},
-					{Name: "new", Type: "string", Doc: "the replacement text", Role: "payload"},
-					{Name: "replace_all", Type: "boolean", Doc: "replace every occurrence of old instead of exactly one (default false)", Optional: true},
-					{Name: "line", Type: "integer", Doc: "when old occurs more than once: the 1-based line of the occurrence to edit (the one holding it, or the nearest); ignored when old occurs once", Optional: true},
-				}},
-				{Name: "line", Type: "integer", Doc: "when old occurs more than once: the 1-based line of the occurrence to edit (the one holding it, or the nearest); ignored when old occurs once; not with edits", Optional: true},
-			},
+			Doc:          doc,
+			Params:       params,
 			Host:         true,
 			Irreversible: true,
 			Preview:      preview,
@@ -810,7 +852,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			edits, list, err := editsOf(c.Args)
+			edits, list, err := editsOfWith(c.Args, o.Lean)
 			if err != nil {
 				return scheme.Value{}, err
 			}
@@ -818,7 +860,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			next, sites, err := applyEditsAt(string(cur), edits, list)
+			next, sites, err := applyEditsAt(string(cur), edits, list, o.Lean)
 			if err != nil {
 				return scheme.Value{}, err
 			}
@@ -836,8 +878,10 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			// The lines as the model reads them: a credential in them is its
 			// placeholder, as in any read and in a failed edit's quote.
 			answer := editedRegionsCounting(c.Args[0].S, redact.Redact(string(cur), nil).Text, redact.Redact(next, nil).Text, o.Lean)
-			if also := alsoOccurs(c, o, pin, abs, c.Args[0].S, next, edits, list, sites); also != "" {
-				answer += "\n" + also
+			if o.Lean {
+				if also := alsoOccurs(c, o, pin, abs, c.Args[0].S, next, edits, list, sites); also != "" {
+					answer += "\n" + also
+				}
 			}
 			return scheme.Str(answer), nil
 		},

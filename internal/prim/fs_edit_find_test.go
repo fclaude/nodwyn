@@ -1,6 +1,7 @@
 package prim
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -12,6 +13,35 @@ import (
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
+
+// newLeanHarness is newHarness for a lean session: the profile whose tools say
+// where an old text is, take a line, and say where the replaced text also
+// occurs (ADR 32, amended 2026-10-17). newHarness's is a full one, whose tools
+// are the ones they were.
+func newLeanHarness(t *testing.T) *harness {
+	t.Helper()
+	return newHarnessFor(t, true)
+}
+
+// newHarnessFor is a harness whose tools are lean or full.
+func newHarnessFor(t *testing.T, lean bool) *harness {
+	t.Helper()
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	h := &harness{root: root, logBuf: &bytes.Buffer{}}
+	h.in = scheme.New()
+	o := DefaultOptions(root)
+	o.MaxOutput = 4096
+	o.Lean = lean
+	if err := Register(h.in, o); err != nil {
+		t.Fatal(err)
+	}
+	confirm := guard.ConfirmFunc(func(_ context.Context, p guard.Prompt) (bool, error) {
+		h.prompts = append(h.prompts, p)
+		return h.answer, nil
+	})
+	h.in.SetGate(guard.New(confirm, recorder{nlog.New(h.logBuf, "test")}, Checkers(o, nil, nil)...))
+	return h
+}
 
 // call runs a tool as a model's call, with its named JSON arguments.
 func (h *harness) call(t *testing.T, tool, raw string) (string, error) {
@@ -68,7 +98,7 @@ func numbered(n int, f func(i int) string) string {
 // region with a tool the two-tool configuration does not have (24 of the 73
 // failed edits of its benchmark arms).
 func TestFsEditNotFoundShowsTheClosestText(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "m.py", numbered(40, func(i int) string {
 		if i == 21 {
@@ -117,7 +147,7 @@ func TestFsEditNotFoundShowsTheClosestText(t *testing.T) {
 // Nothing is shown for a text nothing in the file resembles, and the error
 // says so; and the window of lines stays inside the file at its ends.
 func TestFsEditNotFoundSaysWhenNothingResembles(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "m.py", "import os\nimport sys\n\ndef main():\n    return 0\n")
 
@@ -146,7 +176,7 @@ func TestFsEditNotFoundSaysWhenNothingResembles(t *testing.T) {
 // Of equally close lines the one whose following lines resemble the rest of
 // old is shown, then the first.
 func TestFsEditNotFoundBreaksTiesByWhatFollows(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "m.py", "class A:\n    def get(self, key):\n        a = 1\n\nclass B:\n    def get(self, key):\n        return self.data[key]\n")
 	_, err := h.call(t, "fs-edit", `{"path":"m.py","old":"def get(self, key, d):\n    return self.data[key]","new":"x"}`)
@@ -163,7 +193,7 @@ func TestFsEditNotFoundBreaksTiesByWhatFollows(t *testing.T) {
 // What the error quotes is bounded: a very long line is cut, and a miss in a
 // large file is as long as one in a small file.
 func TestFsEditNotFoundIsBounded(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	long := "value = compute(" + strings.Repeat("a_very_long_argument_name_", 40) + ")"
 	h.put(t, "m.py", numbered(3, func(i int) string { return long }))
@@ -177,7 +207,7 @@ func TestFsEditNotFoundIsBounded(t *testing.T) {
 // shell-exec and fs-edit, and an error that says to use fs-read sent the
 // model to sed -n after a call that could not work.
 func TestFsEditErrorsNameNoTool(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	big := strings.Repeat("    x   =   1\n", 200)
 	h.put(t, "m.py", "a = 1\nb = 2\na = 1\n")
@@ -212,7 +242,7 @@ func TestFsEditErrorsNameNoTool(t *testing.T) {
 // edits of the two-tool arms were an old that occurred 33 or 40 times, and
 // the model knew the line from grep -n.
 func TestFsEditLineChoosesAmongOccurrences(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	body := func(marks ...int) string {
 		return numbered(30, func(i int) string {
@@ -280,7 +310,7 @@ func TestFsEditLineChoosesAmongOccurrences(t *testing.T) {
 // A line inside a multi-line occurrence names it, even when another begins
 // nearer.
 func TestFsEditLineInsideAMultiLineOccurrence(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	text := "if a:\n    go()\n    stop()\nif b:\n    go()\n    stop()\n"
 	h.put(t, "m.py", text)
@@ -297,7 +327,7 @@ func TestFsEditLineInsideAMultiLineOccurrence(t *testing.T) {
 // line inside each edit of a list, counted in the text the edits before it
 // leave; line beside edits is refused, as is a line that is not a line number.
 func TestFsEditLineInAList(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	text := numbered(20, func(i int) string {
 		if i%5 == 0 {
@@ -353,7 +383,7 @@ func TestFsEditLineInAList(t *testing.T) {
 // line picks among occurrences in a file that holds a credential too, where
 // the match is made in the text the model reads (ADR 43).
 func TestFsEditLineInAFileWithACredential(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	const key = "sk-ant-abcdefgh1234"
 	text := "token = \"" + key + "\"\nuse(token)\nmid = 1\nuse(token)\n"
@@ -381,7 +411,7 @@ const sibling = "    related = getattr(obj, field.name)\n    return related.sele
 // occurs, in another file and in the same one: django-16938 needed one change
 // in two files, and every failing session edited one.
 func TestFsEditSaysWhereTheReplacedTextAlsoOccurs(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "pkg/python.py", "import x\n\n"+fn("handle", sibling)+"\n"+fn("handle_again", "    pass"))
 	// The sibling is indented otherwise and has a different tail of spaces.
@@ -416,7 +446,7 @@ func TestFsEditSaysWhereTheReplacedTextAlsoOccurs(t *testing.T) {
 
 // A second copy in the same file is named, and the edit's own lines are not.
 func TestFsEditAlsoOccursInTheSameFile(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "m.py", fn("a", sibling)+"\n"+fn("b", "    x = 1")+"\n"+fn("c", sibling))
 	got, err := h.call(t, "fs-edit", `{"path":"m.py","old":"def a(obj, field):\n    related = getattr(obj, field.name)\n    return related.select_related().only('pk').iterator()\n","new":"def a(obj, field):\n    return 1\n"}`)
@@ -442,7 +472,7 @@ func TestFsEditAlsoOccursInTheSameFile(t *testing.T) {
 // edit's own place, and is not named as another; in a list it stays the
 // edit's own after a later edit moved it.
 func TestFsEditAlsoOccursLeavesOutTheEditsOwnNewText(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	anchor := strings.ReplaceAll("    related = getattr(obj, field.name)\n    return related.select_related().only('pk').iterator()\n", "\n", `\n`)
 	want := "the replaced text also occurs at: n.py:1; check whether the same change applies there"
@@ -468,7 +498,7 @@ func TestFsEditAlsoOccursLeavesOutTheEditsOwnNewText(t *testing.T) {
 // Under two lines or 40 characters nothing is searched, no other copy gives
 // no note, and replace_all, which has changed every copy, gives none.
 func TestFsEditAlsoOccursStaysQuiet(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "a.py", "x = compute(1)\ny = compute(1)\n")
 	h.put(t, "b.py", "x = compute(1)\ny = compute(1)\n"+sibling+"\n")
@@ -523,7 +553,7 @@ func TestFsEditAlsoOccursStaysQuiet(t *testing.T) {
 // that are not source, and files the denylist or a checker of the user's
 // refuses are never searched, nor named.
 func TestFsEditAlsoOccursSkipsWhatItShould(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "pkg/edit.py", sibling+"\n")
 	h.put(t, "pkg/binary.py", "\x00\x01"+sibling+"\n")
@@ -560,9 +590,10 @@ func (private) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) gua
 // A file a checker of the user's refuses to the model's own read does not give
 // away that it holds the text.
 func TestFsEditAlsoOccursAsksTheGuardAboutWhatItNames(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	o := DefaultOptions(h.root)
+	o.Lean = true
 	h.in.SetGate(guard.New(guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { return true, nil }), recorder{nlog.New(h.logBuf, "test")}, append(Checkers(o, nil, nil), private{})...))
 	h.put(t, "pkg/edit.py", sibling+"\n")
 	h.put(t, "pkg/private_copy.py", sibling+"\n")
@@ -581,7 +612,7 @@ func TestFsEditAlsoOccursAsksTheGuardAboutWhatItNames(t *testing.T) {
 // without a count of what it did not reach. The limits are 5,000 files and
 // 400 ms.
 func TestFsEditAlsoOccursRunsOutQuietly(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	old := `"old":"` + strings.ReplaceAll(sibling, "\n", `\n`) + `"`
 	for i := 0; i < 5100; i++ {
@@ -618,6 +649,7 @@ func TestFsEditAlsoOccursRunsOutQuietly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	o := DefaultOptions(h.root)
+	o.Lean = true
 	h.in.SetGate(guard.New(guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { return true, nil }), recorder{nlog.New(h.logBuf, "test")}, append(Checkers(o, nil, nil), endsAtRead{cancel})...))
 	got, err = h.callIn(t, ctx, "fs-edit", `{"path":"edit.py",`+old+`,"new":"pass"}`)
 	if strings.Contains(got, "f0003") || strings.Contains(fmt.Sprint(err), "f0003") {
@@ -644,7 +676,7 @@ func (e endsAtRead) Check(_ context.Context, p *scheme.Prim, args []scheme.Value
 
 // Each edit of a list that replaced enough text gets its own line.
 func TestFsEditAlsoOccursInAList(t *testing.T) {
-	h := newHarness(t)
+	h := newLeanHarness(t)
 	h.answer = true
 	a := "    first_line_of_a = compute(alpha, beta)\n    second_line_of_a = compute(gamma)"
 	b := "    first_line_of_b = compute(delta, beta)\n    second_line_of_b = compute(gamma)"
