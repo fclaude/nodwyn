@@ -61,7 +61,7 @@
            (report (validate-read id)))
       (set! validated-state (validation-state))
       (string-append opening report)))
-  '((doc . "Run this repository's checks for what changed since the branch left its upstream (make validate, scripts/validate): gofmt, make accept, the browser checks for console, host and fake changes, the book catalogue's check after Go or Scheme changes, the release tests after a change to the release publisher, each changed Go test against the unchanged code, and the house rules a diff can show, among them removed tests and scenarios and edits to the guard. It does not build the book or the expert guide: the release flow does. It can take ten minutes or more. Returns a summary whose last line says PASS or FAIL; quote it in your answer, warnings included.")
+  '((doc . "Run this repository's checks for what changed since the branch left its upstream (make validate, scripts/validate): gofmt, make accept, the browser checks for console, host and fake changes, the book catalogue's check after Go or Scheme changes (generate.py --check, counting the files git does not track yet), the release tests after a change to the release publisher, each changed Go test against the unchanged code, and the house rules a diff can show, among them removed tests and scenarios and edits to the guard. It does not build the book or the expert guide: the release flow does. It can take ten minutes or more. Returns a summary whose last line says PASS or FAIL; quote it in your answer, warnings included.")
     (params . ())))
 
 ;; The finish check. A turn that changed files and ends without validate

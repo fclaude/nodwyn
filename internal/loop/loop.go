@@ -152,6 +152,11 @@ var defaultOptimizer string
 //go:embed plan.scm
 var defaultPlanGate string
 
+// planspec.scm: the plan as data (ADR 32, amended 2026-10-13), over plan.scm.
+//
+//go:embed planspec.scm
+var defaultPlanLanguage string
+
 // The working habits (ADR 32), loaded after the defaults they wrap, in this
 // order: shell.scm wraps run-calls and fold-result innermost, hygiene.scm
 // also wraps model-turn, readdef.scm feeds hygiene.scm's reads, and
@@ -210,6 +215,12 @@ func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
 		if _, err := interp.EvalString(harness, h.src); err != nil {
 			return nil, fmt.Errorf("loop: default habit %s: %w", h.name, err)
 		}
+	}
+	// The plan language goes last: its run-calls wraps the habits', so the
+	// notes it appends to a result are folded after the shell habit has
+	// rendered the result as plain text, and stay.
+	if _, err := interp.EvalString(harness, defaultPlanLanguage); err != nil {
+		return nil, fmt.Errorf("loop: default plan language: %w", err)
 	}
 	return l, nil
 }
@@ -500,6 +511,12 @@ func (l *Loop) policy() (window.Policy, int) {
 func (l *Loop) ResultCap() int {
 	pol, _ := l.policy()
 	return pol.MaxResultTokens
+}
+
+// ReadCap is the window's cap on one fs-read result now (Policy.ReadCap).
+func (l *Loop) ReadCap() int {
+	pol, _ := l.policy()
+	return pol.ReadCap()
 }
 
 // WindowTokens is the window's estimate of the next model-turn's request

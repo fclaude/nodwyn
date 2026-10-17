@@ -1,0 +1,107 @@
+diff --git a/internal/llm/responses_test.go b/internal/llm/responses_test.go
+index 7144c91..f192731 100644
+--- a/internal/llm/responses_test.go
++++ b/internal/llm/responses_test.go
+@@ -277,7 +277,7 @@ func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
+ 			defer srv.Close()
+ 			o := NewOpenAI(srv.URL, nil)
+ 			o.Dialect = ChatResponses
+-			want := "Responses stream ended without a terminal response"
++			want := `Responses stream (content type "text/event-stream") ended without a terminal response`
+ 			switch {
+ 			case strings.Contains(body, "response.failed"):
+ 				want = "the response failed: quota refused"
+@@ -295,3 +295,93 @@ func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
+ 		})
+ 	}
+ }
++
++// A reply is a stream unless its first byte after white space opens a JSON
++// object: the request asks for a stream, and a stream that a server answers
++// under another type (or none) opens with its first event, whose first
++// non-white byte is not "{" (session 20261007T165642Z-97ee33d1, which was
++// read as JSON and failed on "event:"). text/event-stream is still always a
++// stream, and a JSON object still reads as JSON.
++func TestResponsesReplyIsAStreamUnlessItOpensAsAnObject(t *testing.T) {
++	terminal := `{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"text":"ok"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`
++	stream := "event: response.created\ndata: " + terminal + "\n\n"
++	for _, tc := range []struct {
++		contentType string
++		body        string
++		wantErr     bool
++	}{
++		{"", stream, false},
++		{"application/json", stream, false},
++		{"text/plain", stream, false},
++		{"text/event-stream", stream, false},
++		// A single JSON object opens with "{", whatever the type: still JSON.
++		{"", `{"status":"completed","output":[{"type":"message","content":[{"text":"ok"}]}]}`, false},
++		{"application/json", `{"status":"completed","output":[{"type":"message","content":[{"text":"ok"}]}]}`, false},
++		// A stream that ends without its terminal event is an error.
++		{"", "event: response.created\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n", true},
++		{"application/json", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n", true},
++	} {
++		name := tc.contentType
++		if name == "" {
++			name = "no type"
++		}
++		t.Run(name, func(t *testing.T) {
++			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				if tc.contentType != "" {
++					w.Header().Set("Content-Type", tc.contentType)
++				}
++				fmt.Fprint(w, tc.body)
++			}))
++			defer srv.Close()
++			o := NewOpenAI(srv.URL, nil)
++			o.Dialect = ChatResponses
++			out, err := o.Chat(context.Background(), Request{Model: "test"}, nil)
++			if tc.wantErr {
++				if err == nil {
++					t.Fatal("want an error for a stream without a terminal event")
++				}
++				if !strings.Contains(err.Error(), "ended without a terminal response") {
++					t.Fatalf("want the missing terminal named, got %v", err)
++				}
++				return
++			}
++			if err != nil {
++				t.Fatalf("content type %q: %v", tc.contentType, err)
++			}
++			if out.Message.Content != "ok" {
++				t.Fatalf("content type %q: content %q", tc.contentType, out.Message.Content)
++			}
++		})
++	}
++}
++
++// A stream that ends without its terminal event names its Content-Type in the
++// error, not its body (which redaction has not seen, ADR 25).
++func TestResponsesMissingTerminalNamesTheContentType(t *testing.T) {
++	stream := "event: response.created\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"
++	for _, ct := range []string{"", "application/json", "text/plain", "text/event-stream"} {
++		h := http.Header{}
++		if ct != "" {
++			h.Set("Content-Type", ct)
++		}
++		resp := &http.Response{Header: h, Body: io.NopCloser(strings.NewReader(stream))}
++		_, err := readResponses(resp)
++		if err == nil {
++			t.Fatalf("content type %q: want an error", ct)
++		}
++		if !strings.Contains(err.Error(), "ended without a terminal response") {
++			t.Fatalf("content type %q: %v", ct, err)
++		}
++		want := ct
++		if want == "" {
++			want = "none"
++		}
++		if !strings.Contains(err.Error(), `content type "`+want+`"`) {
++			t.Fatalf("content type %q not named: %v", ct, err)
++		}
++		// The body must not leak into the error.
++		if strings.Contains(err.Error(), "partial") {
++			t.Fatalf("content type %q: the body leaked into the error: %v", ct, err)
++		}
++	}
++}

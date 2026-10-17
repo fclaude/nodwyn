@@ -206,8 +206,10 @@ type PathDenylist struct {
 	Dirs  []string // absolute directories that are entirely off limits
 	Root  string   // what relative paths are relative to (the repository)
 	// Except are directories inside Dirs that are not off limits: the
-	// session's scratch directory, which lives in nodwyn's data directory.
-	// Globs still apply in them.
+	// session's scratch directory, which is in the system's temporary
+	// directory and so outside Dirs, unless TMPDIR is set inside one of
+	// them (nodwyn's data directory, say): then it is the one place there
+	// the tools may use. Globs still apply in them.
 	Except []string
 }
 

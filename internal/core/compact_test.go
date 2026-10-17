@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -204,6 +205,59 @@ func TestCompactionHandsOverInANarrowedContext(t *testing.T) {
 		c[0].After <= 0 || c[0].After >= c[0].Before || c[0].After != reqs[3].EstTokens || c[0].NoteSeq == 0 || c[0].NoteTokens <= 0 || c[0].Truncated {
 		t.Fatalf("context.compact %+v (next request ~%d)", c, reqs[3].EstTokens)
 	}
+}
+
+// A compaction gives the turn's plan back after the handover note, under
+// the plan header and with the steps marked so far: the window keeps only
+// what follows the narrowing, and on commit-bench (dsl16, 6e18b7ba) every
+// compaction left the system prompt and the note alone, the note put the
+// plan in a file that did not hold it, and the model read the code again
+// to rebuild it (ADR 32, amended 2026-10-15).
+func TestCompactionCarriesThePlanWithItsMarks(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, "", 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("m", 3, "skipped", "no doc describes main.go"), readPath("a", "big.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
+		fake.Turn{Content: "NOTE: main.go only declares package main; nothing changed yet."},
+		fake.Turn{Content: "done"},
+	)
+	writeTokens(t, r.repo, "big.txt", 1000)
+	r.compactAfter(2000) // passed by the second read, with the plan and its mark
+	if err := r.turn("make main.go print hello"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 5 || r.narrowings() != 1 {
+		t.Fatalf("%d requests and %d narrowings, want 5 and 1", len(r.srv.Requests), r.narrowings())
+	}
+	if ask := lastMessage(r, 3); !strings.Contains(ask, "write a handover note") ||
+		!strings.Contains(ask, "do not say a file holds it") {
+		t.Fatalf("the note request does not say where the plan is kept:\n%s", ask)
+	}
+	// The plan recorded again (plan-carry, TestCompactionKeepsTheTurnsPlan)
+	// comes before this message: the merge with main kept both (ADR 32,
+	// amended 2026-10-16, "the benchmark stack merged with main").
+	after := requestMessages(t, r.srv.Requests[4])
+	if len(after) != 4 || after[1].Role != "user" || !strings.HasSuffix(after[1].Content, "Handover note:\nNOTE: main.go only declares package main; nothing changed yet.") ||
+		!strings.Contains(after[2].Content, shapedPlan) {
+		t.Fatalf("the compacted request is not the system prompt, the hand-over, the plan recorded again and the plan: %+v", after)
+	}
+	header := strings.Trim(r.eval("plan-header"), `"`)
+	want := header + "\n" + shapedPlan + "\n\nMarked before the conversation was cleared:\nStep 3 skipped: no doc describes main.go"
+	if plan := after[3]; plan.Role != "user" || !strings.HasPrefix(plan.Content, want) || !strings.Contains(plan.Content, "it is in no file in the repository") {
+		t.Fatalf("the plan after the hand-over:\n%s\nwant it to start:\n%s", plan.Content, want)
+	}
+	if c := r.compactions(); len(c) != 1 || c[0].After != requestEst(t, r, 4) {
+		t.Fatalf("context.compact %+v: the size after must count the plan", c)
+	}
+	r.replaysAll()
+}
+
+// requestEst is the window's estimate of request i, as its llm.req records it.
+func requestEst(t *testing.T, r *rig, i int) int {
+	t.Helper()
+	reqs, _ := r.requests()
+	return reqs[i].EstTokens
 }
 
 // Compaction is on by default, late: just under the window's high water
@@ -597,41 +651,34 @@ func TestNarrowContextOptions(t *testing.T) {
 	}
 }
 
-// A turn whose context fills a second time with nothing written since the
-// first compaction stops with a report instead of compacting again: in
-// session 20261004T182412Z-747045aa five compactions in seven minutes made
-// 103 reads, 88 of files read before, and no edit (compact.scm,
-// compact-stop-unchanged). The report is asked without tools, so it is the
-// turn's answer.
-func TestCompactionGoingRoundInCirclesStopsTheTurn(t *testing.T) {
-	t.Parallel()
-	r := strategyRig(t, "", 20,
-		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "a.txt")}},
-		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "b.txt")}},
-		fake.Turn{Content: "NOTE: still looking for where the bug is."},
-		fake.Turn{ToolCalls: []fake.ToolCall{readPath("c", "c.txt")}},
-		fake.Turn{ToolCalls: []fake.ToolCall{readPath("d", "d.txt")}},
-		fake.Turn{Content: "REPORT: read four files; the bug is in none of them."},
-	)
+// circlingTurns are a turn that reads two files, writes its handover note,
+// and reads two more without writing anything: its context fills a second
+// time with nothing written since it compacted. then is what the model does
+// after that.
+func circlingTurns(then ...fake.Turn) []fake.Turn {
+	return append([]fake.Turn{
+		{ToolCalls: []fake.ToolCall{readPath("a", "a.txt")}},
+		{ToolCalls: []fake.ToolCall{readPath("b", "b.txt")}},
+		{Content: "NOTE: the fix goes in fix.txt."},
+		{ToolCalls: []fake.ToolCall{readPath("c", "c.txt")}},
+		{ToolCalls: []fake.ToolCall{readPath("d", "d.txt")}},
+	}, then...)
+}
+
+// circlingRig runs circlingTurns(then...) as one turn, the context compacted
+// past 1,500 tokens of reading.
+func circlingRig(t *testing.T, init string, then ...fake.Turn) *rig {
+	t.Helper()
+	r := strategyRig(t, init, 30, circlingTurns(then...)...)
 	for _, name := range []string{"a.txt", "b.txt", "c.txt", "d.txt"} {
 		writeTokens(t, r.repo, name, 1000)
 	}
 	r.compactAfter(1500)
-	if err := r.turn("find the bug"); err != "" {
+	if err := r.turn("fix the bug"); err != "" {
 		t.Fatal(err)
-	}
-	if len(r.srv.Requests) != 6 {
-		t.Fatalf("%d requests, want 6", len(r.srv.Requests))
 	}
 	if c := r.compactions(); len(c) != 1 {
 		t.Fatalf("%d compactions, want 1: %+v", len(c), c)
-	}
-	last := r.srv.Requests[5]
-	if strings.Contains(string(last.Raw), `"tools":[`) {
-		t.Fatal("the report was asked with tools")
-	}
-	if ask := requestMessages(t, last); !strings.Contains(ask[len(ask)-1].Content, "Stop here") {
-		t.Fatalf("the last request did not ask for the report: %+v", ask[len(ask)-1])
 	}
 	stopped := false
 	for _, n := range r.notes() {
@@ -640,7 +687,115 @@ func TestCompactionGoingRoundInCirclesStopsTheTurn(t *testing.T) {
 	if !stopped {
 		t.Fatalf("no note says why the turn stopped: %q", r.notes())
 	}
-	// A write between the two is progress: the turn compacts again.
+	return r
+}
+
+// offeredTools are the names of the tools request i offered, sorted.
+func offeredTools(t *testing.T, r *rig, i int) []string {
+	t.Helper()
+	var out []string
+	for _, raw := range r.srv.Requests[i].Tools {
+		var tool struct {
+			Function struct{ Name string } `json:"function"`
+		}
+		if err := json.Unmarshal(raw, &tool); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, tool.Function.Name)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// A turn whose context fills a second time with nothing written since the
+// first compaction is not compacted again: in session
+// 20261004T182412Z-747045aa five compactions in seven minutes made 103
+// reads, 88 of files read before, and no edit (compact.scm,
+// compact-stop-unchanged). It gets a short write round first, offered the
+// edit tools alone, to make the edits its note and plan name: on
+// commit-bench (dsl16, 6e18b7ba) the stop asked at once, without tools, for
+// a report, which said all six edits were worked out, and the patch was
+// empty (ADR 32, amended 2026-10-15). A call to another tool is not run,
+// and the report ends the turn.
+func TestCompactionGoingRoundInCirclesGetsAWriteRound(t *testing.T) {
+	t.Parallel()
+	r := circlingRig(t, "",
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "fix.txt", "content": "fixed\n"}}, readPath("e", "a.txt")}},
+		fake.Turn{Content: "REPORT: fix.txt written; its test is left."},
+	)
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7", len(r.srv.Requests))
+	}
+	ask := lastMessage(r, 5)
+	if !strings.Contains(ask, "make the code changes now; tests and docs come after") || !strings.Contains(ask, "at most 6 rounds") ||
+		!strings.Contains(ask, "Then report what is done and what is left") {
+		t.Fatalf("the write round's request: %q", ask)
+	}
+	want := []string{"fs-edit", "fs-write", "read-definition"} // go-build is a repository's tool
+	for _, i := range []int{5, 6} {
+		if got := offeredTools(t, r, i); !slices.Equal(got, want) {
+			t.Fatalf("request %d offered %v, want %v", i, got, want)
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(r.repo, "fix.txt")); err != nil || string(data) != "fixed\n" {
+		t.Fatalf("the write round's edit was not made: %q, %v", data, err)
+	}
+	results := r.results()
+	if results["w"] != "" || !strings.HasPrefix(results["e"], "Not executed: the turn is ending, and only fs-edit, fs-write, read-definition may be used now") {
+		t.Fatalf("the write round ran %q and %q", results["w"], results["e"])
+	}
+}
+
+// A write round lasts compact-write-rounds requests at most, and is not
+// compacted although its writes leave the context past the threshold: a
+// third compaction would send the model round again. Then the report is
+// asked without tools, and a call the model makes anyway is not run.
+func TestAWriteRoundEndsWithAReportWithoutTools(t *testing.T) {
+	t.Parallel()
+	var writes []fake.Turn
+	for i := 1; i <= 6; i++ {
+		writes = append(writes, fake.Turn{ToolCalls: []fake.ToolCall{{ID: fmt.Sprint("w", i), Name: "fs-write", Args: map[string]any{"path": "fix.txt", "content": fmt.Sprint("fix ", i, "\n")}}}})
+	}
+	r := circlingRig(t, "", append(writes, fake.Turn{Content: "REPORT: fix.txt written six times.", ToolCalls: []fake.ToolCall{readPath("x", "a.txt")}})...)
+	if len(r.srv.Requests) != 12 {
+		t.Fatalf("%d requests, want 12: two reads, the note, two reads, six rounds and the report", len(r.srv.Requests))
+	}
+	if got := offeredTools(t, r, 10); len(got) == 0 {
+		t.Fatal("the sixth round was offered no tools")
+	}
+	last := r.srv.Requests[11]
+	if strings.Contains(string(last.Raw), `"tools":[`) {
+		t.Fatal("the report was asked with tools")
+	}
+	if ask := lastMessage(r, 11); !strings.Contains(ask, "tools are off now") {
+		t.Fatalf("the last request did not ask for the report: %q", ask)
+	}
+	if got := r.results()["x"]; !strings.HasPrefix(got, "Not executed: tools are off now") {
+		t.Fatalf("a call with the report: %q", got)
+	}
+	if data, _ := os.ReadFile(filepath.Join(r.repo, "fix.txt")); string(data) != "fix 6\n" {
+		t.Fatalf("fix.txt is %q after six rounds", data)
+	}
+}
+
+// With compact-write-rounds at 0 the turn stops with the report alone,
+// asked without tools, as before the write round.
+// A write between the two compactions is progress: the turn compacts again.
+func TestCompactionGoingRoundInCirclesStopsTheTurn(t *testing.T) {
+	t.Parallel()
+	r := circlingRig(t, "(define compact-write-rounds 0)",
+		fake.Turn{Content: "REPORT: read four files; the bug is in none of them."},
+	)
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6", len(r.srv.Requests))
+	}
+	last := r.srv.Requests[5]
+	if strings.Contains(string(last.Raw), `"tools":[`) {
+		t.Fatal("the report was asked with tools")
+	}
+	if ask := requestMessages(t, last); !strings.Contains(ask[len(ask)-1].Content, "Stop here") {
+		t.Fatalf("the last request did not ask for the report: %+v", ask[len(ask)-1])
+	}
 	w := strategyRig(t, "", 20,
 		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "a.txt")}},
 		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "b.txt")}},

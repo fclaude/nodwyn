@@ -20,9 +20,9 @@ you wrote should do is not evidence.
 
 **Before calling work done, run `validate`** (the tool; `make validate`
 outside nodwyn) after your last edit (ADR 37). It runs what the list below
-asks for the files you changed (`gofmt`, `make accept`, the browser checks),
-runs each Go test you added or changed against the unchanged
-code, and checks the house rules a diff can show. Fix what fails, and quote
+asks for the files you changed (`gofmt`, `make accept`, the browser checks,
+the books' source inventory), runs each Go test you added or changed
+against the unchanged code, and checks the house rules a diff can show. Fix what fails, and quote
 its summary in your answer, answering each warning: a test that passes on
 the unchanged code is fixed or explained. A failure the unchanged code has
 too is not yours: say so. Never change `scripts/validate`, the `Makefile`
@@ -81,9 +81,11 @@ are faster.
   (`scripts/release.py build`, ADR 42), not by `validate` or a session.
   After changing tracked Go or Scheme files, regenerate their inventory with
   `python3 docs/book/source/generate.py` and check it with `--check`; its counts
-  include test files even though the listings omit Go tests. Commit the sources
-  and catalogue. Generated PDFs are ignored and published as Gitea release
-  attachments (ADR 42); do not add them to Git.
+  include test files even though the listings omit Go tests. It lists the
+  files git tracks, so `git add -N` a new file first: `validate` counts it
+  whether or not you did. Commit the sources and catalogue. Generated PDFs
+  are ignored and published as Gitea release attachments (ADR 42); do not
+  add them to Git.
 
 A plan's `Docs:` steps name every file this list asks for the change.
 
@@ -145,8 +147,12 @@ A plan's `Docs:` steps name every file this list asks for the change.
 
 ## When nodwyn runs its own tests
 
-TMPDIR is then the session's scratch directory, inside nodwyn's protected data
-directory, and commits may find no signing agent. Packages whose tests build a
-guard or commit isolate HOME with `test/fakes/home`; a new such package does
-the same in its `TestMain`. A test that fails on the unchanged code too is not
-yours: say so rather than fix around it.
+TMPDIR is then the session's scratch directory, a private directory in the
+system's temporary directory (until 2026-10-16 it was inside nodwyn's protected
+data directory, where every test repository was refused), and commits may find
+no signing agent. Packages whose tests build a guard or commit isolate HOME
+with `test/fakes/home`; a new such package does the same in its `TestMain`. A
+test that starts a session and kills it, or never closes it, leaves its scratch
+directory in the temporary directory: give it a `TMPDIR` of its own
+(`TestResumeAfterProcessKilled` does). A test that fails on the unchanged code
+too is not yours: say so rather than fix around it.

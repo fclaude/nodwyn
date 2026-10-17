@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 273 of 577 tracked Go files: every non-test Go file, 63,190 of 118,497 Go source lines (53.3\% by lines). It also includes all 35 tracked Scheme files (3,332 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 280 of 601 tracked Go files: every non-test Go file, 67,094 of 127,962 Go source lines (52.4\% by lines). It also includes all 36 tracked Scheme files (5,889 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -49,6 +49,8 @@ This is the checked-in policy discussed in Chapter~\ref{chap:repo-customisation}
 \sourcefile{dev/git.scm}{Scheme}
 
 \sourcefile{dev/repo.scm}{Scheme}
+
+\sourcefile{internal/loop/planspec.scm}{Scheme}
 
 \sourcefile{test/exfil/scenarios/001-read-env-denied.scm}{Scheme}
 
@@ -314,6 +316,8 @@ Read \src{internal/loop/loop.go} for installation, freezing and turn entry; \src
 
 Read registration and checker assembly in \src{internal/prim/prim.go}, then choose one operation. A primitive's declaration and handler belong together: changing its arguments without changing their roles can alter what the guard sees. Filesystem reads and edits live in fs; subprocess lifetime spans shell and procs; policy and versions have their own persistence rules. The package's tests and \file{test/exfil/} cover different levels of the same boundary.
 
+\sourcefile{internal/prim/claims.go}{Go}
+
 \sourcefile{internal/prim/diff.go}{Go}
 
 \sourcefile{internal/prim/docs.go}{Go}
@@ -336,21 +340,33 @@ Read registration and checker assembly in \src{internal/prim/prim.go}, then choo
 
 \sourcefile{internal/prim/land.go}{Go}
 
+\sourcefile{internal/prim/operands.go}{Go}
+
+\sourcefile{internal/prim/original.go}{Go}
+
+\sourcefile{internal/prim/planspec.go}{Go}
+
 \sourcefile{internal/prim/policy.go}{Go}
 
 \sourcefile{internal/prim/prim.go}{Go}
 
 \sourcefile{internal/prim/procs.go}{Go}
 
+\sourcefile{internal/prim/removed.go}{Go}
+
 \sourcefile{internal/prim/repoindex.go}{Go}
 
 \sourcefile{internal/prim/shell.go}{Go}
+
+\sourcefile{internal/prim/support.go}{Go}
 
 \sourcefile{internal/prim/term.go}{Go}
 
 \sourcefile{internal/prim/versions.go}{Go}
 
 \sourcefile{internal/prim/walk.go}{Go}
+
+\sourcefile{internal/prim/without.go}{Go}
 
 \chapter{Permission at the single exit}
 

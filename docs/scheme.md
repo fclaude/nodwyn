@@ -320,7 +320,7 @@ into Scheme values (ADR 3).
 | `(git-status)` `(git-diff [path [staged [against]]])` `(git-head)` | only when the root holds `.git`: the working tree's status (branch, changed, staged and untracked files, short format), and the uncommitted changes as a unified diff, the working tree against the index or with `staged` (`#t`) the index against the last commit; `path` narrows it; `against`, a commit or branch name (never anything that starts like an option), compares with it instead of the last commit, so what was committed since counts too (`--end-of-options` goes before it). `(git-head)`, not offered as a tool, is the commit HEAD names as a full hash, `#f` before the first commit: a strategy measures a turn's change against the commit it began on, so a commit moves nothing out of it (this repository's validate reminder does). Read-only, so no approval: git runs with fixed arguments and everything that would run another program switched off (external diff drivers, text conversion, the file system monitor, the pager), and a diff leaves out the contents of the files `fs-read` refuses. The status names every file, credential files included: a name is no secret, and the evidence loop reads it to know what changed. Untracked files are not in a diff |
 | `(shell-exec cmd args)` | run a program with an argument **list** in the repository root, scrubbed environment (`TMPDIR` is the scratch directory); irreversible; returns `(("status" . n) ("stdout" . s) ("stderr" . s))`. Each stream is cut at 256 KiB by keeping its first and last 128 KiB with a line between them that counts what was left out, since a long run's failure is at its end. A command still running after 10 minutes is stopped and returns what it printed, with `status` the text `timed out after 10m0s` in place of a number. A `bash -c` command line runs with `pipefail`, so a pipeline's status is that of its last command that failed (`make test \| tail -n 40` reports the tests' failure; a pipeline into `head` can end in 141 when `head` stops reading early). Whatever the program leaves running in its process group (a server started with `&`) is stopped when it ends: SIGTERM, then SIGKILL after 2 seconds; a program that keeps running goes to `shell-start` |
 | `(shell-start cmd args)` | start a program that keeps running (a server, a watcher, a program to talk to) in the repository root, in the background: no shell, the same scrubbed environment and `TMPDIR` as `shell-exec`, its own process group. Irreversible, and checked like `shell-exec` (its `cmd` and `args` are the command line). Returns text: `p1: running (the command line)` and its first output (as soon as there is some, waiting at most a second). At most 4 run at once; every one is stopped when the session closes. A `bash -c` command line runs with `pipefail`, as `shell-exec`'s does |
-| `(shell-read id [wait])` | what process `id` printed since the last read (stdout and stderr together), after a first line with its state: `running` or `exited N`. With `wait` (0 to 60 seconds) it first waits for new output or an exit. The latest 1 MiB of output is kept, and a read says how much was dropped before it, or how much is left past the output cap. Read-only, so no approval |
+| `(shell-read id [wait])` | what process `id` printed since the last read (stdout and stderr together), after a first line with its state: `running` or `exited N`. With `wait` (0 to 600 seconds) it first waits for new output or an exit. The latest 1 MiB of output is kept, and a read says how much was dropped before it, or how much is left past the output cap. Read-only, so no approval |
 | `(shell-send id text)` | type `text` into the process's input (end a line with `\n`), and return what it printed next (as soon as there is output, waiting at most a second). At most 16 KiB a call; a program that does not read its input fails the call after 5 seconds, and an abort ends the wait at once. Irreversible, with the reason that what it does depends on the program: it asks every time; `text` is a payload the credential checks read |
 | `(shell-stop id)` | stop the process (SIGTERM to its group, SIGKILL after 2 seconds) and return its last output and exit status. Needs no approval: it ends only what this session started |
 | `(term-open cmd args [cols rows])` | **Experimental and temporary (ADR 48); only with `[experimental] terminal = true`.** Run a program on a pseudo-terminal in the repository root (100 by 30 unless `cols` (20 to 250) and `rows` (5 to 100) say otherwise), with `shell-start`'s scrubbed environment, `TERM=xterm-256color`, a UTF-8 locale when there is none and a `TMUX_TMPDIR` of the session's own, so full-screen programs (tmux, neovim, `less`) work. Irreversible, with a confirm that says it is experimental; `cmd` and `args` are checked like `shell-start`'s. Nothing typed into it afterwards is checked. Returns the screen (see `term-screen`) once the program has been quiet for 300 ms. At most 3 are open; all are hung up on when the session closes |
@@ -329,7 +329,7 @@ into Scheme values (ADR 3).
 | `(term-screen id [offset])` | the terminal's screen as text: a header (`t1: running (nvim main.go) 100x30, cursor row 7 col 12, full-screen`, or `exited N`), then each row with its number and `\| ` (not part of the screen), trailing spaces cut and three or more blank rows in a row shown as one `2-19\| (blank)`. With `offset` (a number of lines), the view scrolled back that many lines through the history of a program that does not use the alternate screen (5000 lines kept), as a scroll wheel would; a full-screen program keeps no history and refuses it. Readable after the program has exited, until `term-close`. Read-only, so no approval |
 | `(term-wait id [seconds [until]])` | wait, then return the screen as `term-screen` does and, on a last line, why it returned: `[matched after 2.1s]` when a line of the screen matches the regular expression `until` (Go syntax, multi-line; the rows without their numbers; it returns at once if one already does), `[quiet after 0.5s]` when with no `until` the program has printed nothing for half a second, `[exited after …]`, or `[timed out after …]` after `seconds` (1 to 60, 10 when left out). Read-only, so no approval |
 | `(term-close id)` | hang up on the terminal's program (SIGHUP to its process group, SIGKILL after 2 seconds), return its last screen and free the id. A tmux server the program started keeps running, in the session's own `TMUX_TMPDIR`, until the session ends, so a later `term-open` can run `tmux attach`. No approval: it ends only what this session opened |
-| `(scratch-dir)` | the session's scratch directory (a session always has one; `nodwyn repl` and `eval` have none of the session's primitives, and `load` is their only host primitive). It is a private directory (mode 0700) under nodwyn's data directory, outside the repository; the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept once untouched for a week (a session touches its own at every turn). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
+| `(scratch-dir)` | the session's scratch directory (a session always has one; `nodwyn repl` and `eval` have none of the session's primitives, and `load` is their only host primitive). It is a private directory (mode 0700) in the system's temporary directory, outside the repository and outside nodwyn's configuration and data directories, so a program run with it as `TMPDIR` makes its temporary files there without being refused (until 2026-10-16 it was in the data directory, ADR 28); the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left, in the temporary directory or in the data directory, are swept once untouched for a week (a session touches its own at every turn; only this user's own, named for a scratch directory, go). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
 | `(project-notes)` `(project-notes-save text)` | this repository's notes kept across sessions (how tests run, where things are, runbooks), `""` when there are none; and replacing them. They live in nodwyn's data directory, keyed by the repository's path, never in the repository. A save is capped at 8 KiB and redacted, and its text is a payload the guard checks, so content that looks like a credential needs a person's approval. The default system prompt shows the notes under a heading that calls them leads to check, not instructions. `project-notes-save` is also a tool the model is offered, and the working rules ask it to keep there what a later session would need and could not quickly find |
 | `(git-land message)` | offered only in a session given a git worktree of its own (ADR 34, amended 2026-10-05): lands the session's work on its base branch in one step. It commits every change with `message` (needed when there is one; the files `fs-read` refuses are left out and named, taken out of the index when already staged, and nothing is committed if one stays there), signed as the repository's git configuration says with the person's agent (`SSH_AUTH_SOCK`, `GNUPGHOME`, the person's `GIT_SSH_COMMAND` and the like pass to git; when they have set none, ssh runs with `BatchMode`; every prompt is off, so a passphrase prompt fails at once); rebases the session's own commits, those after the worktree's base commit or after where the branch last met the base, onto the newest base (its upstream, fetched first, when it has one); refuses a change whose outgoing diff adds credential-shaped text (a line it removes, or context it only edits beside, is not scanned); pushes to the base's upstream by fast-forward only; and moves the local base branch: its ref when no checkout has it, a fast-forward merge in a clean checkout that has it, nothing (said) in one with changes. A conflict stops the rebase, naming the files; a call after the model resolved them goes on. A `core.hooksPath` inside the worktree is refused, since the model could have written those hooks. Irreversible: it asks, as any such call does. Returns what it did, a line each |
 | `(worktree)` | `#f`, or the git worktree made for this session when the person started it in one (ADR 34), as `(("repository" . P) ("branch" . "nodwyn/1968c13a") ("base" . "main") ("base-commit" . C))`: the session's root is then that worktree, at `P/.nodwyn/worktrees/1968c13a`, and `base` is `""` when the repository's `HEAD` was detached. No primitive makes or moves a worktree: the host makes it before the session loads, when a client asks with `worktree.open` |
@@ -595,7 +595,18 @@ change and no test run after it, gets `finish-no-change-message` or
 `finish-untested-message`, at most `finish-reminders` (2) times; one whose
 last test or check run after the last edit exited non-zero gets
 `finish-failing-message` once until the next edit, and may answer that the
-tests fail on the unchanged code too and end. An exit that says no test ran
+tests fail on the unchanged code too and end. The loop reads the tests a run
+reports failing (`failure-names`: Go's `--- FAIL:` and `FAIL<tab>package`,
+pytest's `FAILED`, unittest's `FAIL:` and `ERROR:`) and keeps those of the
+runs it knows are on the unchanged code through the edits after: any run on
+`$TMPDIR/base`, and a full test run (not `-run`, `-k` or a node id) before the
+turn's first edit, in a turn that began on the last commit. A run that fails
+only such tests, none of which the request, the plan or a file the turn wrote
+names (`failures-known?`), is not told: its result says they failed on the
+unchanged code (`failure-known-hint`) and the reminder is not due. When only
+some are such, the reminder names them (`finish-failing-known-message`: say
+so in your answer, do not fix them) and the others (ADR 32, amended
+2026-10-16). An exit that says no test ran
 is no failure: `not-run-statuses` (126 and 127, a program not found or not
 executable) and, for a pytest command, `pytest-not-run-statuses` (4 and 5, a
 path it could not find, no tests collected). A run on the copy of the last
@@ -603,13 +614,99 @@ commit (`$TMPDIR/base`, `base-run?`) tests nothing of the change; one that
 fails after the change's run failed is the comparison done, and the failing
 run is not told. After `finish-no-change-message` a turn that has run a test
 or check may end unchanged: the code may already do what the request asks,
-and the message says to show it with a check (ADR 32, amended 2026-10-10). A
-command is
-a test run when its command line contains one of `test-command-words`
-(pytest, go test, cargo test, npm test, make test, …; a project may redefine
-the list). After `unrunnable-after` (6) test commands in a row fail to run,
+and the message says to show it with a check (ADR 32, amended 2026-10-10). When such a turn first ends with a change
+and none of those reminders is due, the finish review
+(`finish-review-points`) gathers what the change lacks and says it in one
+message, `(finish-review-message points)`: one point as it is, several
+numbered, closed by `finish-review-close` (asked once; run the check again
+after any change; the next reply without tool calls ends the turn). It is
+made once a turn, and the turn is accepted after it: an answer ends it, and
+the reminders above are not asked again (ADR 32, amended 2026-10-15). In a run
+nobody reads as it goes it is made at most `finish-review-limit` (2) times in
+all, counted in `finish-reviews` over the session's turns; a turn after the
+second ends on its report. A turn whose answer a person reads
+(`(reviewed?)`) is not held to it (ADR 32, amended 2026-10-16). Its
+points: files new since the turn began that git does not track
+(`(finish-new-files-message files)`, below); a plan's steps without their
+evidence (§9.5, `plan-language-unmet-message`; a test step may name a
+scenario or fixture file, a path through a `scenarios`, `testdata` or
+`fixtures` folder, which is met by that file, one the repository has or one
+the turn wrote whose name starts with the step's path, and by a `go test` run
+of the folder above it: `plan-language-test-present?`); the parts of the change the
+check or test run that exited 0 since the last edit and runs the most of what
+changed (`broadest-passing`: the one that names the most of the changed files'
+directories, `./...` and the whole-check words naming all of them, one not
+narrowed to some tests before one that is, the newest of those that tie; not
+the last passing run, which was the exfiltration suite alone on 855e90e7)
+does not test, run again with each part taken out in turn (`check-without`) and naming the
+parts it still passes without, printing the same
+(`finish-untested-parts-message`): a check that cannot fail for a part does
+not test it, and one that prints something else without it does, whatever
+its exit status. The review asks for a test only a few times: it names at most
+`finish-ask-limit` (3) of those parts, the largest first, and of the plan's
+test steps whose test is missing or passes on the unchanged code, and of the
+dropped conditions, says how many more there were, and does not name an item
+again in a later review of the run (`finish-ask`, `finish-asked`); the parts
+message asks for a case only for a part that implements what the request asks
+for, and says a flag, a rename, a refactor or a skip gets no test (ADR 32,
+amended 2026-10-17). And a command the final report cites in backquotes, one
+the turn ran (`shell-commands` reads each command line as the shell does)
+and has not run since the last edit (`stale-citations`,
+`finish-stale-citations-message`). Runs on `$TMPDIR/base` never go stale, and
+once the repository's whole check (`whole-check-words`: make validate, make
+check, make test, …) has passed since the last edit, a cited check command
+stands on it. When the latest run since the last edit passed, so the model's
+own check did not notice, the review also names what the change removed
+(`change-removals`): definitions HEAD had in a changed file that its
+package no longer defines and the request does not name
+(`finish-removed-definitions-message`: keep it and have its callers go
+through it, unless removing it is the task), and lines of existing tests that
+stated an expectation, a case of a table or an assertion, removed or
+rewritten (`finish-removed-expectations-message`: restore each the request
+does not change, or quote the words that change it; not the lines whose answer
+to the question at the edit was read and supported, and, as the review's first
+point, the lines it was not: `finish-unsupported-edits-message`, below), and the existing tests
+the turn edited that fail when their files are as HEAD had them
+(`original-tests`, `finish-original-tests-message`: the tests are named; either
+the change is wrong, so change the code, appending to what a test pins rather
+than rewording it; or the request names the new result for that input or case,
+so the assertion changes and the answer says which sentence requires it; or the
+request contradicts the test's setup, a fixture, so change the setup and not its
+assertions, and say which sentence requires it; Go only, the log says so for
+another language), and the parts of a
+condition a rewritten Go function no longer checks
+(`change-dropped-conditions`, `finish-dropped-conditions-message`: add a test
+case where it is false if the task drops it, else put it back). And it names the lines
+the change adds to documents and Go and Scheme comments that state what
+nothing in the turn showed (`change-claims`, `finish-unshown-claims-message`):
+a sentence reporting a run (passed, warnings, found nothing, executions, a
+fuzz or benchmark figure) that no run of the command it names, exited 0 in the
+turn, backs with its figures among its last lines; an amendment date the file
+did not have that no command printed and the request does not give; three or
+more lines a document's edit inserted that stand word for word elsewhere in
+it; and entries a hand edit added to a generated file (its head says Code
+generated or Generated by, or names a `"source"` address, or a trusted
+`.nodwyn/init.scm` lists it in `generated-files` as `(path command)` rows) with
+no command after the edit that made or fetched it. The loop keeps the turn's
+commands for it (`shown-entry`: each command line, exit status and the first
+`shown-head` and last `shown-tail` characters it printed, at most `shown-max`
+of them; the file tools and the tools that only look are left out, since their
+answers show the model's own text) and the files it edited by hand with the
+commands run since (`hand-edits-add`). A command is a test run when its command line contains one of
+`test-command-words` (pytest, go test, cargo test, npm test, make test, make
+validate, …; a project may redefine the list), whether shell-exec ran it or
+shell-start did and shell-read or shell-stop saw it exit after the last edit
+(`background-call`: the shell-start call itself, never one rebuilt from the shell's output, whose taint the guard would refuse when check-without runs it again), or a tool the repository registers to run a command did (`tool-commands`: `validate` is make validate, `go-test {pkg}` go test <pkg>, `run-make {target}` make <target>; a project may add rows): `tool-call` makes the shell-exec call that runs its command from the call's own arguments, and the tool's text gives its status ("exit N", or a background run's "pN: exited N"); a tool's whole check (validate) runs for minutes, so it is not the check check-without takes apart, though its pass stands for the whole check's. A run whose status may be another command's (`masked-run?`: a pipe without pipefail, an `||`, a `$?` in the line) passed, for a plan's evidence and marks, only when its output shows tests passing and none failing, and a run on `$TMPDIR/base` never did (`run-entry`); a Go test step needs its test's `--- PASS` or its package's `ok` in the output (ADR 32, amended 2026-10-14). After `unrunnable-after` (6) test commands in a row fail to run,
 the model gets `(finish-unrunnable-message n)` once: finish and report the
-change as unverified rather than spend the budget on a broken environment.
+change as unverified rather than spend the budget on a broken environment. A
+run that shows tests ran here does not count, and ends the count (`tests-ran?`:
+a test it names failed, a test or package passed, or a package says `FAIL`
+with a time of its own, not `[build failed]`), and neither does a failing
+run after an edit that took part of the model's own change out
+(`shrinking-edit?`: the file's changes against HEAD got smaller, measured
+from the turn's first command on), which is a revert experiment, expected to
+fail, and leaves the count where it was (ADR 32, amended 2026-10-16, the
+original tests).
 When a person reads the turn's answer before anything else happens,
 `(reviewed?)` (a chat's turn, or a supervised run's turn that a run
 checkpoint follows; not an unattended run, nor a run's last turn), a reply
@@ -635,10 +732,84 @@ Where `git-status` exists, git says whether anything changed, edits made
 through the shell included: a tracked file's status differs from the start
 of the turn, or the file tools wrote a file git now lists as new or listed
 already; files a run leaves behind are no change. Files new
-since the turn began that git does not track get
-`(finish-new-files-message files)` once before the turn ends: whatever is
-left in the repository is in the change. Files the turn's plan names, by path
-or by name (`plan-names?`), are left out of it: the plan asked for them.
+since the turn began that git does not track are a point of the finish
+review, `(finish-new-files-message files)`: whatever is left in the
+repository is in the change. Files the turn's plan names, by path or by name
+(`plan-names?`), or whose name starts with a plan step's path (a scenario
+file: `test/exfil/scenarios/019` for `019-key-before-private-key.scm`), are
+left out of it: the plan asked for them.
+A shell run of `make validate` or `go run ./scripts/validate`
+(`validate-commands`) that ran to an exit counts, for a repository
+whose `.nodwyn/init.scm` defines `validation-state` and `validated-state`
+(nodwyn's does, to remind a turn that has not validated since its last
+change), as its validate tool's run: `validated-run` sets `validated-state`
+as the tool does, and either is a test run, the whole check, and no check
+for check-without to take apart. The untracked files a validate run, or a
+tool of `tool-commands`, leaves (`files-made`: new in `git-status` since the
+round began, not written by the file tools) are the run's output, not the
+change. The validate result names them (`validate-left-note`: delete them
+unless they are part of the change; that needs no new run), and the loop
+keeps the repository as validate left it: when the only thing that moved
+since is that some of those files are gone, validate still stands and
+`validate-settle` sets `validated-state` again, so the repository's reminder
+is not said for a deletion. A file still there when the finish review is made
+is named in it as one whose deletion needs no new run (ADR 32, amended
+2026-10-16).
+
+The loop also asks about an expectation of an existing test as the edit is
+made, not only at the finish. After a round whose calls wrote a test file
+(`test-file-path?`: `x_test.go`, `test_x.py`, `x.test.js`, a file under
+`tests/`) not yet asked about in the turn, it sets the change against HEAD with
+`change-removals` and, for the lines of that file, adds
+`(edited-expectations-message lines)` before the next request (`test-edit-nudge`,
+which returns `(files . lines)`): which sentence of the request requires the new
+expectation, for that input or case, answered in a form, one line for each
+row, the row and then a sentence copied word for word from the request that
+names the input or case the row tests; if none does, `none`, restore the line
+and change the code (appending to the phrase a test pins, not rewording it).
+The expectation lines are a case of a table, an assertion that carries
+one, a literal assigned to `want`, `expect`, `expected` or a name that starts
+with one (`wantErr`, `expected_msg`), and in Go a `strings` or `bytes` check
+(`Contains`, `ContainsAny`, `HasPrefix`, `HasSuffix`, `EqualFold`) of a string
+literal that is not a `case` line; a line whose
+string literals all stand on one line the change adds (a case moved from a map
+to a direct assertion) is not removed. The edit is never refused. The lines are HEAD's, so a test
+the turn added, or a case it adds to a table, is not asked about, and a file is
+asked about once in a turn.
+
+The answer is read, not weighed (`edit-answers`, `edit-support`). The rows the
+question named are kept for the turn, each in the state `asked`, `firm` or `ok`.
+After every round whose reply has words, the rows still changed (the model may
+have restored one: then it is answered) are set against the reply with
+`(edit-support lines request reply)`: a quote is a run of three words or more of
+the reply that stands in the request in the same order, case, punctuation and
+white space aside, and it supports a row when it shares a distinctive token with
+the row's string literals, its input and the message it expects, and with the
+line that replaces it (a word of three letters or more, or a number from 2 up,
+lightly stemmed, that is no stop word and no part of the name of a function the
+row calls; the words of its identifiers when its literals give none). A row
+whose replacement cuts words out of the phrase it expects, or puts words inside
+it, needs more: a quote with most of the words cut or all of the words put, so
+that appending to a pinned phrase is supported by the sentence that asks for the
+addition, and cutting or splitting it is not. A supported row is `ok`; a row
+with no token to judge it by is left to the review's other point. A reply that
+quotes the request and supports no more of a row gets one firmer message for it
+(`edited-expectations-firm-message`: what the request does not mention, the
+default of restoring the old expectation and changing the code, and that the row
+is kept only by quoting the sentence that names it), and its state becomes
+`firm`. A reply that quotes nothing is no answer yet, and the reply that ends the
+turn is read for the rows it supports and says nothing more. At the finish, the
+rows still unsupported are the review's first point, with the original tests that
+fail (`finish-unsupported-edits-message`). Nothing is reverted or refused: the
+model may keep an edit, against the evidence (ADR 32, amended 2026-10-17).
+
+The finish review used to ask for the lines of the change that no test ran
+(`finish-uncovered-lines-message`, with `coverage-extensions`, `branch-words`
+and `coverage-run?`) and no longer does: on commit-bench 6e18b7ba (dsl22) the
+model spent 62 of its 167 calls and 1.12M of its 2.38M cost-eq running coverage
+and writing tests for branches of its own defensive code. `source-extensions`
+and `source-path?` remain, for the directories a change touches
+(`changed-dirs`, which `broadest-passing` uses).
 
 Both loops also count, in `stall-check`, the rounds in a row whose reply
 thought at length (`stall-reasoning-tokens`, 10,000, or more reasoning
@@ -721,13 +892,16 @@ strings (§1.1):
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them; a question is answered, and a request for something never built is told so, with what exists, what is missing and what the model would build, before it builds anything |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach, the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
-| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)` | what the evidence loop tells the model (§9) |
+| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts omitted)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-original-tests-message failures)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-unsupported-edits-message rows original)`, `(finish-review-message points)`, `finish-review-close`, `(edited-expectations-message lines)`, `(edited-expectations-firm-message verdicts)` | what the evidence loop tells the model (§9); from `finish-new-files-message` to `finish-unsupported-edits-message`, points of the finish review, and the one message that carries them; `edited-expectations-message` is said as a test file is edited, once for each file, and `edited-expectations-firm-message` once for a row whose answer quoted the request and did not support it |
+
+| `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach (each cited as `path:line`), the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
+| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts omitted)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-original-tests-message failures)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-unsupported-edits-message rows original)`, `(finish-review-message points)`, `finish-review-close` | what the evidence loop tells the model (§9); from `finish-new-files-message` on, points of the finish review, and the one message that carries them |
 | `(reading-reminder-message n)`, `(reading-reminder-reviewed-message n)` | what the default loop tells a model whose last `n` rounds only looked (§9) |
-| `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5): leads found without running anything, and any fix in them a guess to test |
+| `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5): leads found without running anything, and any fix in them a guess to test; `plan-hand-over` adds the lines of the files they cite (`plan-excerpts`, below) |
 | `task-header` `plan-header` | the headers under which the window shows the user's request, at the head of their message, and its plan, as a message of its own after the calls it came with are answered; neither is ever trimmed away. The system prompt stays the same, so a new request or a plan keeps the server's cached prefix (window recipe v15); before v15 the system prompt carried both |
 | `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for. It asks for the plan's next unmarked step and says the plan carries over to the next turn (§9.5) |
 | `(plan-system-prompt repo)` | the planner's system prompt |
-| `(plan-shape)` | the shape every plan is asked for, built from `plan-kinds` (§9.5): each step starts with its kind and a short name for what it does, then — and the detail the console folds away; a step that says all it should in its name needs no dash; the last is the `Check:`; a plan with no test or no doc to change says so, and why, in a step (`Test: none — only docs change`) |
+| `(plan-shape)` | the shape every plan is asked for, built from `plan-kinds` (§9.5): each step starts with its kind and a short name for what it does, then — and the detail the console folds away; a step that says all it should in its name needs no dash; the last is the `Check:`; a plan with no test or no doc to change says so, and why, in a step (`Test: none — only docs change`); a step carries only what the request states, behaviour it does not state goes on an unnumbered line after the steps, `Assumptions: ...`, checked against the existing tests before a step relies on it, and for each rule the request states the cases are listed by clause and, for a range, an overlap or an edge, by position (inside, crossing the start, crossing the end, equal, empty). With the plan language (planspec.scm) the planner writes forms, and `(assumes "behaviour" "what it was checked against")` is that line, written out after the steps as one unnumbered line (ADR 32, amended 2026-10-16) |
 | `(plan-draft-prompt request)` | the planner's request for a plan, in the shape `(plan-shape)` gives |
 | `(plan-revise-prompt request plan score)` | the request for a better plan after the judge scored it `score` (0..1), with the shape again: the planner revises in a context of its own |
 | `plan-needed-question` | the judge's yes/no question: does this request need a plan? A plan is a plan of changes: a question, a review, a comparison, an explanation or a proposal asks for an answer and needs none, however much reading the answer takes; a reply to the model's question or a correction carries on the request before it |
@@ -772,7 +946,10 @@ tool results), `maybe-compact` asks the model for a handover note (the
 task and its example as given, what it found with the evidence for each
 finding, what it changed, how to test, what is unsure or left, and its check
 script), then narrows the
-context to the session's system prompt, the request and that note. The
+context to the session's system prompt, the request and that note, and gives
+the turn's plan back after the note, under `plan-header` with the steps marked
+so far (`compact-plan`), since the window shows a plan where it was recorded,
+which the narrowing leaves behind. The
 narrowing lasts (`narrow-context` with `'((lasting . #t))`, labelled
 `compaction`): the rest of the turn goes on from the note, and so do later
 turns, each under the session's system prompt with its own request, rather
@@ -821,13 +998,15 @@ calls it, in this turn or the next, and the request is used once.
 |---|---|
 | `compact-threshold` | context tokens, as `(context-tokens)` counts them, past which the context is compacted; `#f` never compacts on its own (`/compact` and `compact-next-round` still do). The default, `'high-water`, is just under the window's high water as it is now, a twenty-fifth below it (`(window-limits)`: 58983 at the default 61440), so only work that really runs long compacts (ADR 32) and a switch to a model with another window moves it; `(compact-limit)` gives it in tokens. A compaction that gives up raises it by a quarter until one works |
 | `compact-attempts` | replies to the note request that may be tool calls (they are skipped), or notes cut off at the output limit (asked for again, shorter, with `compact-note-cut-message`), before compaction gives up or keeps the cut note; after giving up it waits for the context to grow another quarter of the threshold |
-| `compact-stop-unchanged` | `#t` (the default): the second automatic compaction of a turn with no `fs-write` or `fs-edit` asked for since the first stops the turn instead, with `compact-stop-message` and `turn-stopping` set, so the model's next reply is asked without tools and ends the turn; `#f` compacts as often as the context fills |
-| `turn-stopping` | (strategy.scm) `#f`, or the message that stopped the turn: while it is set `ask-model` offers no tools and the finish checks ask nothing more; each turn starts with it `#f` |
-| `compact-summary-prompt`, `compact-note-cut-message` | the request for the note, at most 600 words with an edit decided and not made first, and the request for a shorter one when it was cut off (prompts, §9.1) |
+| `compact-stop-unchanged` | `#t` (the default): the second automatic compaction of a turn with no `fs-write` or `fs-edit` asked for since the first stops the turn instead (`compact-stop`), and a turn that is stopping is not compacted again. The model first gets a write round: `compact-write-message` tells it to make the code changes its note and plan name, tests and docs after, and report; it is offered `compact-write-tools` (`fs-edit`, `fs-write`, `read-definition`, `go-build`: those of them the session has) for at most `compact-write-rounds` (6) requests, then asked for its report without tools (`turn-stop-report`), and that answer, or one it gives sooner, ends the turn. With `compact-write-rounds` at 0, or neither `fs-edit` nor `fs-write` in the session, it is asked for the report at once with `compact-stop-message`. `#f` compacts as often as the context fills |
+| `turn-stopping` | (strategy.scm) `#f`, or the message that stopped the turn: while it is set `ask-model` offers only `turn-stop-tools` for `turn-stop-rounds` more requests, then no tools after saying `turn-stop-report`, skips a call to any tool it did not offer (a reply whose every call it skipped spends its round and is asked again), and the finish checks ask nothing more; each turn starts with it `#f` and no tools left |
+| `compact-summary-prompt`, `compact-note-cut-message` | the request for the note, at most 600 words with an edit decided and not made first, and the request for a shorter one when it was cut off (prompts, §9.1). The note leaves the turn's plan out, since it comes back after the note, and says a file holds something only when the work wrote it there or read it there |
+| `(compact-plan)` | the turn's plan as the compacted context gets it back after the note (`compact-plan-message`), or `#f` when the turn recorded none (`plan-steps`): the plan as recorded, with the latest mark of each step, read with `unfinished-plan` |
+| `(compact-plan-message plan marks)` | that message: `plan-header`, the plan, its marks (`Step 3 skipped: why`) under "Marked before the conversation was cleared:", and a line saying the harness keeps the plan and no file holds it (prompts, §9.1) |
 | `(compact-focus-prompt focus)` | what the note must keep, as the user put it after `/compact` or a strategy gave `compact-next-round`, added after `compact-summary-prompt` |
 | `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to make the edit it names as decided and not made, then re-run its reproduction and re-check its findings before building on them |
 | `(maybe-compact request reply)` | compact if a strategy asked for it with `compact-next-round`, or if the context the next `model-turn` would send passed the threshold; call it once the reply's calls are answered (`reply` itself is not read) |
-| `(compact-context request [focus [trigger]])` | compact now, handing over `request`; `#t` if the turn continues in the narrowed context. `trigger` (`auto`, `command`, or `requested`, the default) is what the record says set it off |
+| `(compact-context request [focus [trigger]])` | compact now, handing over `request` and the turn's plan (`compact-plan`); `#t` if the turn continues in the narrowed context. `trigger` (`auto`, `command`, or `requested`, the default) is what the record says set it off |
 | `(compact-next-round [focus])` | compact at the next `maybe-compact`, whatever the size; `compact-requested` holds the request (`#f` when there is none) |
 | `(compact-request? request)` `(compact-turn request)` | whether a message is a `/compact`, and what the default `agent-turn` does with one |
 
@@ -856,8 +1035,9 @@ code, in `internal/loop/agents.scm`:
 |---|---|
 | `(sub-agent system task tools [name [options]])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (its model is offered only those, and other calls are skipped; `'()` offers none), is a procedure that takes a call and says whether it may run (its model is then offered every tool), or is `#f` for all; `name` (or `#f`) labels it in the log (default: the agent tool being answered, else `sub-agent`); `options` is an alist, `'((model . "NAME"))` asking the configured model `NAME` instead of the control model and `'((rounds . N))` giving it `N` rounds instead of `sub-agent-max-rounds` (a caller that wants fewer says so here rather than setting the global, which a stop inside the sub-agent left set); returns its final answer, after `fold-context`. An error on the way folds its context before it is raised again, unchanged, so a caller that catches it goes on in its own context |
 | `(delegate-models)`, the `delegate` tool | the configured models this task's model may hand work to, chosen when the task opened (none by default; never `"control"`; hidden primitive). When there are any, a `delegate` tool is offered: `model` and `task`, run as a sub-agent on that model, offered every tool but `delegate` (`tool-names`). A helper that fails (its provider down, out of quota, refusing the request) answers the call with its error, so the task's model goes on without it. Its description is fixed with the tool list, so a call with an empty `task` lists the models, with each one's id, context length and current labels; the model chooses by labels, not names. A model outside the set is refused whatever name is asked for. No exposed model, no tool |
-| `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40); its last calls are then skipped and it is asked for its answer with no tools (`sub-agent-wrap-up-message`), so its work is not lost |
-| `sub-agent-repeat-limit` | identical calls (same tool and arguments) a sub-agent may run in a row (2). The core's progress stop, at four in a row, ends the whole turn and cannot be caught, so a sub-agent stops short of it: the next identical call is skipped with `sub-agent-repeat-reason`, and if it repeats again it is asked for its answer with no tools, which it returns with `sub-agent-stopped-note`. Its caller's work goes on |
+| `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40); its last calls are then skipped and it is asked for its answer (`sub-agent-wrap-up-message`), so its work is not lost. It is offered the tools it had, so a caching server reads only the request's end again, and a call it makes is skipped (`sub-agent-text-only-reason`) and it is asked once more with none (ADR 32, amended 2026-10-14) |
+| `sub-agent-repeat-limit` | identical calls (same tool and arguments) a sub-agent may run in a row (2). The core's progress stop, at four in a row, ends the whole turn and cannot be caught, so a sub-agent stops short of it: the next identical call is skipped with `sub-agent-repeat-reason`, and if it repeats again it is asked for its answer as an agent out of rounds is, which it returns with `sub-agent-stopped-note`. Its caller's work goes on |
+| `sub-agent-seen` | `#f`, or a list the calls a sub-agent runs are added to with their results, newest first, as `(call . result)`: how a caller learns what a sub-agent read, whose context folds away when it answers. `plan-explore` sets it to `'()` for the explorer, reads the explorer's `fs-read`s from it and sets it back to `#f`; the plan gate clears it at the start of every turn |
 | `(define-agent-tool name doc params handler)` | register a tool the model calls like any other, answered by `(handler call args)`, `args` parsed from the model's JSON; define it in `.nodwyn/init.scm` |
 | `(run-calls calls)` | run a reply's calls: agent tools through their handlers and `answer-call`, the rest with `run-tools`; returns one result alist per call. The default `agent-turn` uses it |
 
@@ -987,7 +1167,8 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
 | `plan-max-revisions` | revisions after the first draft (3) |
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2): an empty reply, tool calls, a line that opens a fenced code block, or more than `plan-max-chars` (8000) characters (`plan-not-a-plan`); after the retries the last reply stands. An empty revision keeps the best plan |
-| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, index-search, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12, and 16 for the muse-spark, glm, qwen, deepseek and gpt-6-luna families, whose rounds hold fewer calls: a table, §9.7); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
+| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, index-search, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12; 16 for the muse-spark, glm, deepseek and gpt-6-luna families, whose rounds hold fewer calls; 8 for qwen, whose explorer used all 16 in most commit-bench runs while the work read again about half of what it read: a table, §9.7); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
+| `plan-excerpts-cap`, `plan-excerpt-cap`, `plan-excerpt-before`, `plan-excerpt-after` | what the explorer read goes with its findings to the model doing the work, so it does not read it again after the explorer's context folds away (`plan-excerpts`, over `plan-explore-reads`, one `(path first lines)` per `fs-read` of the explorer). For each file the findings name, in the order they name them: the lines around each place they cite as `path:line` or `path:first-last` (`plan-excerpt-before` lines before, 2, and `plan-excerpt-after` after, 12; places that touch become one), copied from what the explorer read, as the file has them and under a heading with the lines' numbers; a file named without a line only when what the explorer read of it is at most `plan-excerpt-cap` characters (3000, also an excerpt's most). All of it is at most `plan-excerpts-cap` characters (12000, 0 for none): an excerpt that does not fit what is left is left out, and a shorter one after it may still go in. It is information, not a read the model must make; the message says to read more of a file in a range. `plan-excerpts-intro` is the sentence that introduces it; the explorer is asked to cite `path:line` (`plan-explore-task`) |
 | `plan-earlier-requests` | in a chat's later turn, how many of the person's messages before it the gate's judge, explorer and planner read first, so a reply to the model's question or a correction is not read alone (2); 0 reads the request alone. Each is cut at `plan-earlier-cap` characters (2000). A run's turns each repeat the run's task, and read it alone |
 | `(record-compaction facts)` | record a compaction as `context.compact`, from an alist: `trigger` (`auto`, `command` or `requested`), `compacted`, `before` (the size `(context-tokens)` gave before it), `threshold` and `focus`. The size after and the note's reply are read when it is called, so call it once the handover is in place, as `compact-context` does |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded`, `required`, `carried` or `model`), `plan`, `score`, `revisions`, `reason`, and `marks`, the steps of the plan already marked, each an alist of `step`, `state` and `note` as `run-plan` and `unfinished-plan` give them; the turn's `record-step` and the window start from them. Without `marks`, a plan recorded in a turn that has marked steps of an earlier plan keeps the marks of the steps it keeps word for word, at their new numbers. An error for a step the plan does not have, another state, a step marked twice, or marks without a plan |
@@ -995,6 +1176,20 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `(reviewed?)` | true when a person reads this turn's answer before anything else happens: a chat's turn, and a supervised run's turn that a run checkpoint follows; false in an unattended run, in a run's last turn (no checkpoint follows it) and outside a turn. The evidence loop lets a reviewed turn end unchanged when the request asks for no change yet |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
 | `(keep-passing)` | keep the repository's uncommitted changes as they are now, as a state a test run passed on, and return how many files were kept; `#f` when the session has no keeper, an error saying why when it cannot keep (not a git work tree, a file over 8 MiB, more than 64 MiB or 4000 files). What is kept is the files git lists as changed (modified, new, deleted) as the bytes on disk, in the scratch directory, replacing the earlier keep. A file the credential denylist refuses, a path the guard protects (`.nodwyn/`, `.git/`, `Makefile`, `scripts/` …), a link and a directory are neither kept nor touched, and the index is not. The evidence loop calls it after a passing run in a turn nobody reads; when a hard limit or the progress guard stops the turn, the core puts back what differs from it, from the files kept or from HEAD, never through a link out of the repository, and refuses if HEAD moved. What it replaces is saved under the scratch directory's `kept/discarded` |
+| `(check-without cmd args)` | run a check again with each part of the uncommitted change taken out in turn, and put each part back after its run: a hunk of a changed code file, or a whole new one; documents, tests, comment-only hunks, deleted files, hunks that only delete lines (their added lines, if any, comments or blank) and what keep-passing leaves alone (credential files, protected paths, links) are not parts, and every file ends with the bytes the change left whatever happens. At most 8 parts, run within 5 minutes in all, so a slow check cannot take the turn's wall time: a part not reached by then is not listed. The check runs once with the whole change first, and it is an error when it does not exit 0 then; that run's output is what each run without a part is compared with (that run counts within the 5 minutes). Returns one alist per part: `path`, `line` (its first line now; 0 for a whole file), `added`, `removed`, `kind` (`hunk` or `new file`), `status`, the check's exit status without the part, and `same`, whether it printed what it printed with the whole change, with durations, `(cached)`, clock times, hex addresses and numbers of four digits or more masked; or `error`. Hidden from the model; registered in a git work tree. Its `cmd` and `args` are judged by the guard as a command's are. The evidence loop calls it before an unattended turn ends on a passing check: a part the check still passes without, printing the same, is one it does not test (ADR 32, amended 2026-10-11 and 2026-10-12: a check ending in `; echo EXIT=$?` exits 0 without every part; 2026-10-15: a deletion put back is no part a check can be extended to test) |
+| `(read-data text)` | every datum in `text` as data, unevaluated: the forms, strings, symbols and numbers it holds; an error names where `text` stops being readable. Pure; hidden from the model. planspec.scm reads a plan written as forms with it (ADR 32, amended 2026-10-13) |
+| `(request-names text)` | the names a request gives, in order, each once: spans in backquotes without a space, and words that read as names (a hyphen, an underscore or a dot inside, or a capital after the first letter: `session-id`, `cache_key`, `readResponses`); not links, issue numbers or versions. Pure; hidden. A plan as data must hold each (planspec.scm) |
+| `(plan-evidence names paths)` | a plan set against the uncommitted change as git shows it: an alist of `missing`, the names the change does not add (found whole and in any case in the added lines and new files, so `session-id` is not found in `X-Session-Id`), and `unchanged`, the paths it does not change. Hidden; registered in a git work tree. The evidence loop checks a plan's steps with it before an unattended turn ends (planspec.scm) |
+| `(test-before path cmd args)` | run a test on the code as it was before the change: a copy of HEAD in the scratch directory (`plan-base`) with the working tree's version of the file at `path` put in, and the change's other test files and test support (a fake, a fixture), the command run there within 3 minutes; its exit status, or an error when it could not run. Hidden; registered in a git work tree; its command is judged by the guard as a command's is. The evidence loop runs a plan's test steps that say they fail today with it: one that passes there does not show the change (planspec.scm, ADR 32, amended 2026-10-13) |
+| `(head-has-name name)` | whether a file of HEAD holds `name` whole and in any case (`session-id` is not in `X-Session-Id`). Hidden; registered in a git work tree. planspec.scm puts a request's name the plan left out and the code already has into the plan's context instead of asking the planner again, and asks the change only for names HEAD lacks |
+| `(docs-mentioning names [packages])` | the repository's documents (Markdown, LaTeX, reStructuredText, AsciiDoc, as HEAD has them) that hold one of `names` whole, and the ADRs whose file name has a word starting with one of `packages` (`0025-ingress-redaction.md` for `redact`), most names first, at most 4, as a list of `(path . "the names it holds")`; a name in more than 8 documents, or shorter than 4 characters, is left out. Hidden; registered in a git work tree. Before an unattended turn ends, when the change edited no document, planspec.scm says which documents describe a function or package the plan's change steps name |
+| `(git-intend paths)` | mark the files of `paths` that are new (untracked, inside the repository, not ignored) as intended for the next commit (`git add -N`), so tools that list the tracked files see them; returns the paths it marked. Nothing is staged. Hidden; registered in a git work tree. planspec.scm marks the new files the plan names as the model writes them: the book's catalogue generator lists files with `git ls-files` |
+| `(change-removals request)` | what the uncommitted change takes away that its own check cannot show, as an alist: `definitions`, the top-level definitions (Go functions, methods as `Type.Method`, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, at most 6, each an alist of `path`, `name`, `kind` and `line` (at HEAD), leaving out a name `request` gives whole or in words that spell it (`workspace-kind` for `WorkspaceKind`; a method by its type unless the type is a plain word); and `expectations`, the lines of existing tests (`x_test.go`, `test_x.py`, `x_test.py`) that state an expectation (a case of a table, a line ending in a comma that holds a literal; an assertion that carries it: testify's `assert.`/`require.`, Python's `assert`; a literal assigned to `want`, `expect`, `expected` or a name that starts with one, such as `wantErr` or `expected_msg`; or, in Go, a `strings` or `bytes` check (`Contains`, `ContainsAny`, `HasPrefix`, `HasSuffix`, `EqualFold`) of a string literal) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, or whose string literals all stand on one line it adds (a case moved into another shape), at most 8, each an alist of `path`, `line` (at HEAD), `text` and `new` (the line the change puts in its place: of the lines its change block adds, the one that shares most of its words with this one, if half of them; each used once; `""` for none). Hidden; registered in a git work tree. The finish review names them when the latest run since the last edit passed, and the test-edit question reads them as a test file is edited (ADR 32, amended 2026-10-15, 2026-10-16 and 2026-10-17) |
+| `(edit-support lines request reply)` | the reply to the question "which sentence of the request requires the new expectation?" read against the request, for `lines` (the expectations of `change-removals`, with their `text` and `new`): a list with an alist for each line, in order, of `path`, `line`, `text`, `status`, `quote`, `quoted`, `unmentioned`, `cut` and `put`. The reply quotes the request when a run of three words or more of it stands in the request in the same order, case, punctuation and white space aside (`quoted`: whether it does so at all). `status` is `"supported"` when a quote shares a distinctive token with the line and its replacement (a word of three letters or more, or a number from 2 up, lightly stemmed, that is no stop word and no part of the name of a function the line calls; its identifiers' words when its string literals give none), `quote` being the best one; `"unsupported"` when none does; `"unchecked"` when the line has no token. When the replacement cuts words out of the phrase the line expects, or puts words inside it, a supporting quote also holds most of the words cut or all of the words put (`cut`, `put`: the phrases). `unmentioned` lists the string literals of the line that the request does not contain. Pure; hidden from the model. The evidence loop reads the reply that follows the question with it (ADR 32, amended 2026-10-17) |
+| `(original-tests paths)` | run the existing tests the turn edited as the last commit had them, against the change as it is: for each of `paths` that is a Go test file (`x_test.go`) HEAD has and the working tree edited or deleted, the tests HEAD's version declares run with HEAD's version in place of the working tree's (`go test -overlay`: nothing on disk changes, nothing is fetched), within 3 minutes in all; a test that also fails with every changed Go file as HEAD had it is left out. An alist of `failures`, each an alist of `path` and `tests` (the names of the file's tests that fail), and `unrun`, the directories whose tests did not build with HEAD's files in place or did not finish. A file HEAD does not have, and a file that is not a Go test, is left out. Hidden; registered in a git work tree. The finish review names the failures (`finish-original-tests-message`; ADR 32, amended 2026-10-16, the original tests) |
+| `(change-claims request runs edits declared)` | the lines the uncommitted change adds to documents (under `docs/`, or `.md`, `.tex`, `.rst`, `.adoc`, `.txt`) and to Go and Scheme comments that state what nothing in the turn showed, at most 6, each an alist of `path`, `line` (now), `kind`, `text` and `why`. Kinds: `run`, a sentence reporting a run (past tense or "passes with": passed, N or zero warnings, found nothing, executions, a fuzz or benchmark figure; not a caveat such as "not run") when no run of each command it names (`make validate`, `make accept`, `go test`, a fuzz, a benchmark, or any test command) exited 0, or none printed its figures within 5% among its last 6 lines (of a fuzz run's progress lines the last only); `date`, an amendment date the file did not have that no run printed and `request` does not give (as `2026-10-15` or `20261015`), each date once; `repeat`, three or more non-blank lines, 120 characters or more, a document's edit inserted that stand word for word elsewhere in it; `generated`, a file in `edits` whose head says Code generated or Generated by, or names a `"source"` address, or that `declared` lists, with no command after its last edit holding `go generate`, its generator, or its source's address or host. `runs` is the turn's commands, each `(line status output)` (`status` `#f` when it did not run to an exit or ran on the copy of the last commit); `edits` an alist of each path edited by hand and the command lines run after its last edit; `declared` a list of `(path command)` rows. Hidden; registered in a git work tree (ADR 32, amended 2026-10-15) |
+| `(change-dropped-conditions request)` | the parts of conditions the uncommitted change stopped checking, at most 3: for each Go function of a changed non-test file whose body changed, the operands of the `&&` and `\|\|` of its old body, and the conditions of its old guards (an `if` whose block ends in a return), that neither its new body holds (white space and a leading `!` aside) nor the body of a function of its package it calls that the change added or rewrote; error and ok checks, literals, one-letter names and operands with a word `request` names (four characters or more, not a word every condition uses) left out. A list of alists of `path`, `function` (`Type.Method` for a method), `operand` and `guard` (`#t` for a guard's whole condition). Hidden; registered in a git work tree. The finish review names them when the latest run since the last edit passed (ADR 32, amended 2026-10-15) |
+| `(shell-commands cmd args)` | the simple commands a command line runs, each as its words from the program on, joined by spaces: a shell's `-c` line read as the shell reads it (a here-document's body, a quoted pattern and a redirection's target are no command; the commands inside a substitution are left out), any other command line as one command; `()` for a `-c` line that does not parse (an unclosed quote). Pure; hidden from the model. The evidence loop matches the commands a report cites against the ones the turn ran with it (ADR 32, amended 2026-10-12) |
 | `(run-plan)` | the plan of the run this turn belongs to, as its earlier turns left it, read from the log: `((plan . text) (steps . list) (marks . list) (next . n))`, where `marks` are the latest mark per step, in step order, each `((step . n) (state . s) (note . t))`, and `next` is the first unmarked step, or `#f` when every step is marked. `#f` when this turn is not a run's (its `user.msg` follows no `run.turn`) or no turn of the run has recorded a plan. Only the run's turns count: a chat turn between leaves its plan alone, a resume keeps it, and a run started afresh has none |
 | `(unfinished-plan)` | the plan a turn that did not finish left to this one, read from the log, in the shape `run-plan` gives. A turn did not finish when an error, a limit or the person's Stop ended it (its `turn.end` outcome is `error`, `stopped`, `hard_budget`, `spend_limit` or `canceled`), or when nothing ended it; its plan, with every mark made since, goes on through such turns. `#f` when the latest turn that ended finished (outcome `completed`, or none recorded, as in an older log) or no turn since has recorded a plan. `plan-gate` carries it in a chat's turn when a step is unmarked (`plan-left`) |
 | `(turn-plan)` | the plan this turn recorded, in the shape `run-plan` gives (`plan`, `steps`, `marks`, `next`), `#f` when it has recorded none. A compaction (`compact-context`) records it again, with its marks, in the narrowed context, since the window shows only a plan recorded in the context it sends |
@@ -1002,10 +1197,10 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `(plan-run-request request run)` | the planner's request when a run's plan has every step marked: `request`, the previous plan and how each step went, and what remains to plan in the same shape; `request` alone when `run` is `#f` |
 | `(plan-steps [plan])` | the steps of the plan recorded in this turn, as strings: its numbered or bulleted lines, in order, or the whole plan when it is prose (one step); `'()` before a plan is recorded. With `plan`, a plan's text, the steps of that text, read the same way: `plan-write` checks a plan's steps before it records it. The console reads a plan's steps the same way |
 | `(record-step n state note)` | record that step `n` (from 1) of this turn's plan is `"done"` or `"skipped"`, with a note saying what shows it, as `plan.step`; a later mark of the same step replaces it, one a carried plan brought included. Returns `((done . k) (of . n) (next . m))`: the steps marked so far, carried ones included, the plan's steps, and the first unmarked one, or `#f`. An error without a plan, for a step the plan does not have, or for another state |
-| `plan-write` | the model's tool for a plan of its own, an agent tool answered by `plan-write-answer`: `{"plan"}`, recorded with `record-plan`, decision `model`, so the window shows it under `plan-header` after the call's answer and `plan-step` marks it. The model's thinking comes back to it only as the server reported it (window recipe v14), often a summary or nothing, and a reply that only calls tools keeps nothing else: without a written plan a design is worked out again at every request. Writing it again revises it: a step it keeps word for word keeps its mark and note, at its new number, and a new or reworded step starts unmarked; in a run it becomes the run's plan, and a turn that does not finish leaves it to the next. The working rules ask for it once the model knows what to change. Its description gives the shape, with an example, and it checks it (`plan-problems`): a plan with a step of no known kind, no `Change:`, `Test:` or `Docs:` step, a last step that is not a `Check:`, a `Test:` step that says neither how its test fails on the unchanged code nor that it guards behaviour that already works, or a step of a known kind whose short name — what comes before the first boundary the console folds a step on, the kind included — runs past `plan-name-cap` (80) characters is turned down, unrecorded, with each problem by step number and what to add. After `plan-write-refusals` refusals in a turn the next plan is recorded as written, and so is any after it in that turn, answered `Plan recorded: ` and what it still lacks, so a model that cannot get the shape right is not kept from the work |
+| `plan-write` | the model's tool for a plan of its own, an agent tool answered by `plan-write-answer`: `{"plan"}`, recorded with `record-plan`, decision `model`, so the window shows it under `plan-header` after the call's answer and `plan-step` marks it. The model's thinking comes back to it only as the server reported it (window recipe v14), often a summary or nothing, and a reply that only calls tools keeps nothing else: without a written plan a design is worked out again at every request. Writing it again revises it: a step it keeps word for word keeps its mark and note, at its new number, and a new or reworded step starts unmarked; in a run it becomes the run's plan, and a turn that does not finish leaves it to the next. The working rules ask for it once the model knows what to change. Its description gives the shape, with an example and the rule on assumptions and cases (`(plan-shape)`), and it checks it (`plan-problems`): a plan with a step of no known kind, no `Change:`, `Test:` or `Docs:` step, a last step that is not a `Check:`, a `Test:` step that says neither how its test fails on the unchanged code nor that it guards behaviour that already works, or a step of a known kind whose short name — what comes before the first boundary the console folds a step on, the kind included — runs past `plan-name-cap` (80) characters is turned down, unrecorded, with each problem by step number and what to add. After `plan-write-refusals` refusals in a turn the next plan is recorded as written, and so is any after it in that turn, answered `Plan recorded: ` and what it still lacks, so a model that cannot get the shape right is not kept from the work |
 | `plan-kinds`, `plan-required-kinds`, `plan-last-kind`, `plan-none-kinds`, `plan-test-reasons`, `plan-name-cap`, `plan-name-boundaries`, `plan-write-refusals` | the shape `plan-write` checks and the planner is asked for (ADR 32, amended 2026-10-03): the kinds a step starts with, the word before its first `:` in any case, each with what a step of it names (`Change`, `Test`, `Docs`, `Check`); the kinds a plan needs a step of (`Change`, `Test`, `Docs`); the kind of its last step (`Check`; `#f` for any); the kinds whose step may say `none` and why instead (`Test`, `Docs`); what a `Test:` step says of the unchanged code, any of them in any case (`fails today`, `passes today`, and the same with `on the unchanged code`); how many characters a step's short name may take, the kind included, before the console cuts its title (80); and the boundaries the console folds a step on, a dash with a space before it or a sentence end or semicolon with a space after (` —`, ` –`, ` --`, `. `, `; `); and the refusals in a turn before a plan is recorded as written (2). A project redefines them in `.nodwyn/init.scm` |
 | `(plan-problems steps)` | what is wrong with a plan's steps, from `(plan-steps plan)`: one message per problem, step by step and then for the plan as a whole, `'()` when there is none. The messages are Scheme too (`plan-kind-problem`, `plan-test-problem`, `plan-name-problem`, `plan-missing-problem`, `plan-last-problem`, `plan-refused-message`, `plan-recorded-message`); a project that wants no check defines it to return `'()` |
-| `plan-step` | the model's tool for those marks, an agent tool (`define-agent-tool`) answered by `plan-step-answer`: `{"step", "state", "note"}`, answered with what was marked and the next unmarked step. Its description says to mark a step as soon as its work is done, before starting the next — never several together at the end — so whoever follows the task sees the plan's progress move as the work happens (ADR 32, amended 2026-10-04), and that a `Test:` step is done once its test has failed without the change and passes with it, the note naming both runs. The plan header (`plan-header`) and a run's turn prompt ask the model the same. A mark is the model's word, not a proof: the console shows it as such, and the evidence is the transcript |
+| `plan-step` | the model's tool for those marks, an agent tool (`define-agent-tool`) answered by `plan-step-answer`: `{"step", "state", "note"}`, answered with what was marked and the next unmarked step. Its description says to mark a step as soon as its work is done, in the same reply as the next step's first call — never several together at the end — so whoever follows the task sees the plan's progress move as the work happens (ADR 32, amended 2026-10-04) without a request of its own for each mark (amended 2026-10-12: 69 of 103 marking replies held nothing else), and that a `Test:` step is done once its test has failed without the change and passes with it, the note naming both runs. The plan header (`plan-header`) and a run's turn prompt ask the model the same. A mark is the model's word, not a proof: the console shows it as such, and the evidence is the transcript |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
 | `(workspace)` | the workspace's mounted folders, from the workspace list in the config directory (ADR 22), as `(("mounts" (("path" . P) ("access" . "read")) …))`. Both default system prompts add a section naming the mounted folders, so a plain repository's prompt is unchanged; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it, unless a git work tree at the root has the file committed and unchanged (ADR 35) |
 | `(log-note text)` | add a note to the session log, for the record and the transcript; the model never sees it |
@@ -1055,8 +1250,8 @@ loaded after the files above in this order. Each wraps `run-calls` (and
   that never ran a test is folded to one line once a later one does (a
   command ran tests when it exited 0 or its output says so in a runner's
   words, `hygiene-ran-words`: pytest's, Go's `ok`, `--- PASS`/`--- FAIL`
-  and `=== RUN`, mocha's, jest's, node's, cargo's; a Go package that did
-  not build ran none); a read
+  and `=== RUN`, mocha's, jest's, node's, cargo's, and a repository
+  validate's summary; a Go package that did not build ran none); a read
   of a file edited since is folded to its outline after `hygiene-stale-age`
   rounds; a read `hygiene-age` rounds old is folded to its outline; neither
   folds a read of a file edited in the last `hygiene-editing-rounds` (4)
@@ -1069,9 +1264,15 @@ loaded after the files above in this order. Each wraps `run-calls` (and
   context anyway (it read less than `hygiene-cache-share`, a quarter, of the
   last `hygiene-cache-requests` prompts; a provider that does not say, such
   as Ollama, counts as serving it), or when the context is past
-  `hygiene-pressure` (half) of the high water. The log note of each fold says
-  which. It wraps `sub-agent`, to watch the main context only, and
-  `model-turn`, to read the cache counts of its requests.
+  `hygiene-pressure` (three quarters) of the high water. The log note of each
+  fold says which. A read `(hygiene-keep? r)` holds, which the plan language
+  says of a file its plan will change and the turn has not edited, is left
+  out of the batch until the context is past `hygiene-keep-pressure` (three
+  quarters too): below it the held read stays and the others fold only when
+  it pays, past it every due read folds in one sweep. Were
+  `hygiene-pressure` above it, a held read would lose its hold before the
+  others fold whatever the cache. It wraps `sub-agent`, to watch the main
+  context only, and `model-turn`, to read the cache counts of its requests.
 - `readdef.scm`: the tool `read-definition` (path, name) reads a function,
   method or class by name, its whole definition and line range, or the start
   and members of a long class; a shell script that only reads a file to print
@@ -1096,7 +1297,7 @@ for every model, or a table: rows of `(family . value)` and a
 
 ```scheme
 (define plan-explore-rounds
-  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 16) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
+  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 8) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
 (define reading-reminder-after '((default . 12)))
 ```
 
@@ -1111,7 +1312,10 @@ wins. The knobs that are tables are `plan-explore-rounds` (§9.5) and
 keeps that number for every model, and `0` still turns it off. The rows
 shipped come from the logs and say so in their comments (ADR 32, amended
 2026-10-05): `gpt-6.1-sol` and `claude-sonnet` have none and take the
-default, and the reminder's table has only a default row.
+default, and the reminder's table has only a default row. `qwen`'s explorer
+row is 8 since commit-bench showed it using all 16 rounds in 39 of 48 runs,
+with the work reading again about half of what it read (amended
+2026-10-15).
 
 ## 10. Not in nodwyn Scheme
 

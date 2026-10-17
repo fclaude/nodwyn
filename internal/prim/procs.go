@@ -23,7 +23,7 @@ const (
 	procLimit      = 4               // running at once per session
 	procBufferSize = 1 << 20         // output kept per process: the latest MiB
 	procSettle     = 1 * time.Second // how long shell-start waits for first output
-	procMaxWait    = 60              // seconds shell-read may wait
+	procMaxWait    = 600             // seconds shell-read may wait: a whole test suite, read once
 	procStopGrace  = 2 * time.Second // SIGTERM, then SIGKILL
 	procMaxText    = termMaxText     // the most one shell-send types
 )
@@ -109,6 +109,13 @@ func stateText(done bool, exit int, signalName string) string {
 	return "running"
 }
 
+// procReadSettle is how long a waiting read that has new output waits on,
+// for more of it or for the exit, before it returns. A check that prints its
+// summary and then exits was read as still running: on commit-bench (nodwyn
+// dsl6, 556d6d12) make validate's PASS came with "running", the model read
+// no further, and the loop never saw the run end (2026-10-13).
+var procReadSettle = time.Second
+
 // exitStatus is the code a finished command reports and, when a signal
 // ended it, the signal's name: a shell's convention of 128 plus the number.
 func exitStatus(err error) (code int, signalName string) {
@@ -128,12 +135,27 @@ func exitStatus(err error) (code int, signalName string) {
 
 // read waits up to wait for new output or an exit, then returns what the
 // model reads: the id and state on the first line, then the new output.
-func (p *proc) read(ctx context.Context, wait time.Duration, limit int) (string, error) {
+// Once there is new output it waits settleFor more for the rest, or for the
+// exit, within wait (shell-read gives procReadSettle).
+func (p *proc) read(ctx context.Context, wait time.Duration, limit int, settleFor time.Duration) (string, error) {
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
+	var settle *time.Timer
+	settled := false
+	defer func() {
+		if settle != nil {
+			settle.Stop()
+		}
+	}()
 	for {
 		p.mu.Lock()
-		if wait <= 0 || p.done || p.cursor < p.total {
+		if p.cursor < p.total && settle == nil && settleFor > 0 && wait > 0 && !p.done {
+			settle = time.NewTimer(settleFor)
+		}
+		if settleFor <= 0 {
+			settled = true
+		}
+		if wait <= 0 || p.done || p.cursor < p.total && settled {
 			text, dropped, left := p.take(limit)
 			var b strings.Builder
 			fmt.Fprintf(&b, "%s: %s (%s)\n", p.id, p.state(), p.line)
@@ -149,11 +171,17 @@ func (p *proc) read(ctx context.Context, wait time.Duration, limit int) (string,
 		}
 		changed := p.changed
 		p.mu.Unlock()
+		var settleC <-chan time.Time
+		if settle != nil {
+			settleC = settle.C
+		}
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-deadline.C:
 			wait = 0
+		case <-settleC:
+			settled = true
 		case <-changed:
 		}
 	}
@@ -278,7 +306,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 				if err != nil {
 					return scheme.Value{}, err
 				}
-				text, err := p.read(c.Ctx, procSettle, o.MaxOutput)
+				text, err := p.read(c.Ctx, procSettle, o.MaxOutput, 0)
 				if err != nil {
 					return scheme.Value{}, err
 				}
@@ -288,10 +316,10 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 		{
 			Name: "shell-read",
 			Meta: scheme.Meta{
-				Doc: "Read what a background process printed since the last read, and whether it is still running or how it exited. With wait, first wait up to that many seconds (at most 60) for new output or an exit. Needs no approval.",
+				Doc: "Read what a background process printed since the last read, and whether it is still running or how it exited. With wait, first wait up to that many seconds (at most 600) for new output or an exit. Needs no approval.",
 				Params: []scheme.Param{
 					{Name: "id", Type: "string", Doc: "the id shell-start returned, such as p1"},
-					{Name: "wait", Type: "integer", Doc: "seconds to wait for new output, 0 to 60; 0 returns at once", Optional: true},
+					{Name: "wait", Type: "integer", Doc: "seconds to wait for new output, 0 to 600; 0 returns at once", Optional: true},
 				},
 				Host: true, TaintSource: scheme.TagShell,
 			},
@@ -314,7 +342,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 				if err != nil {
 					return scheme.Value{}, err
 				}
-				text, err := p.read(c.Ctx, time.Duration(wait)*time.Second, o.MaxOutput)
+				text, err := p.read(c.Ctx, time.Duration(wait)*time.Second, o.MaxOutput, procReadSettle)
 				if err != nil {
 					return scheme.Value{}, err
 				}
@@ -361,7 +389,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 				if werr != nil {
 					return scheme.Value{}, fmt.Errorf("%s: %w", id, werr)
 				}
-				out, err := p.read(c.Ctx, procSettle, o.MaxOutput)
+				out, err := p.read(c.Ctx, procSettle, o.MaxOutput, 0)
 				if err != nil {
 					return scheme.Value{}, err
 				}
@@ -385,7 +413,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 					return scheme.Value{}, err
 				}
 				p.stop()
-				text, err := p.read(c.Ctx, 0, o.MaxOutput)
+				text, err := p.read(c.Ctx, 0, o.MaxOutput, 0)
 				if err != nil {
 					return scheme.Value{}, err
 				}

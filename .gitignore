@@ -9,6 +9,16 @@ coverage.out
 /docs/book/nibb.pdf
 /docs/book/nodwyn.pdf
 /docs/expert/expert.pdf
+# What latexmk leaves when run by hand (make book and make expert clean it up
+# with latexmk -c); an agent's run of latexmk put five of these in its change.
+/docs/**/*.aux
+/docs/**/*.fdb_latexmk
+/docs/**/*.fls
+/docs/**/*.log
+/docs/**/*.out
+/docs/**/*.synctex.gz
+/docs/**/*.toc
+/docs/**/*.xdv
 
 # session tooling (not part of the project)
 /.remember/

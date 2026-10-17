@@ -1,0 +1,23 @@
+A Responses reply is read as a stream unless it opens as a JSON object
+
+Session 20261007T165642Z-97ee33d1 (gpt-6.1-sol on a ChatGPT plan credential)
+got past the system-message refusal: each of its three attempts was answered
+200 OK after about four seconds. Each then failed with "openai: bad response:
+invalid character 'e' looking for beginning of value". readResponses parsed a
+stream only when the Content-Type began text/event-stream and decoded anything
+else as JSON; a stream opens "event: response.created", and this one came
+under another type.
+
+The request asks for a stream, so a reply is now JSON only when its first byte
+after white space opens an object, and a stream otherwise; text/event-stream
+is still always a stream. A stream that ends without a terminal event names
+its Content-Type in the error, not its body, which redaction has not seen.
+
+session's exact error for a stream under no type, application/json and
+text/plain, and passes here; make validate passes with 0 warnings.
+
+Not shown: the Content-Type the plan server actually sends (the log does not
+record it), or that a whole plan turn now completes; nothing here talks to
+OpenAI. ADR 8 is amended with this and with the finding that no nodwyn session
+had completed a request on a plan credential before: the 2026-10-05 sessions
+at api.openai.com used an API key.

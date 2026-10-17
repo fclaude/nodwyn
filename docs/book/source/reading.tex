@@ -431,10 +431,14 @@ Source text edits are picked up by LaTeX directly; regenerate too if line
 counts change. PDFs are a snapshot of the checkout used for that build,
 not a claim that a particular release contains every listed function.
 
-The repository's validation command selects checks by changed paths.
-Changes confined to the shared source directory are under \file{docs/book/};
-run \code{make expert} explicitly as well, because the validator's path
-selection does not infer that shared dependency. When changing Go, follow
+The repository's validation command selects checks by changed paths. It
+builds neither book; the release flow does. For any changed, added or
+deleted Go or Scheme file it runs the generator's check on a copy of git's
+index with the untracked Go and Scheme files added and the deleted ones
+removed, so an inventory regenerated before a new file was added to git
+fails there, while git's own index is left as it was. Build
+\code{make book} and \code{make expert} yourself to see a LaTeX change
+typeset. When changing Go, follow
 the package and whole-repository checks in \file{AGENTS.md}. When changing
 the console, run its browser checks. A successful typeset is evidence for
 the book build, not evidence that changed application code works.

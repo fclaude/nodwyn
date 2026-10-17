@@ -1,7 +1,8 @@
 ;; Context compaction, written as user code over the loop's primitives
 ;; (docs/scheme.md §9.2). When the context grows past compact-threshold
 ;; tokens, the model writes a handover note, and the turn goes on in a
-;; narrowed context holding only the task and that note. The narrowing
+;; narrowed context holding only the task, that note and the turn's plan
+;; with its marks. The narrowing
 ;; lasts: later turns start from the note too, not from the whole
 ;; conversation again. The log keeps the whole conversation, so replay and
 ;; audit see everything.
@@ -93,11 +94,30 @@
             ((string-empty? note) #f)
             (else note)))))
 
+;; The turn's plan as the compacted context gets it back after the note
+;; (compact-plan-message), or #f when the turn has recorded none. The window
+;; shows a plan where it was recorded, and a compaction keeps only what comes
+;; after its narrowing, so the plan went with the cleared conversation: none
+;; of the 37 compactions in commit-bench's trusted runs of 2026-10-14 and 15
+;; left one in the window. On 6e18b7ba (dsl16) the note said the plan was in
+;; plan.md, which is the repository's own roadmap, and the model, finding no
+;; plan, read the code again to work out the design it had already reached
+;; (ADR 32, amended 2026-10-15). The plan is the one recorded, with
+;; the latest mark of each step, as unfinished-plan reads them from the log:
+;; the plan this turn would leave to the next if it ended now.
+(define (compact-plan)
+  (and (pair? (guard (e (else '())) (plan-steps)))
+       (let* ((left (guard (e (else #f)) (unfinished-plan)))
+              (plan (if left (format "~a" (assoc-ref left 'plan "")) "")))
+         (and (not (string-empty? (string-trim plan)))
+              (compact-plan-message plan (assoc-ref left 'marks '()))))))
+
 ;; Compact now: #t once the turn continues in the narrowed context, #f if no
 ;; note came back and the turn goes on in the full one. The narrowing lasts
-;; past the turn, so the next turns start from the note as well. An optional
-;; focus says what the note must keep, and an optional trigger what asked for
-;; it (auto, command, or requested, the default). Either way it is recorded as
+;; past the turn, so the next turns start from the note as well, and the
+;; turn's plan follows the note (compact-plan). An optional focus says what
+;; the note must keep, and an optional trigger what asked for it (auto,
+;; command, or requested, the default). Either way it is recorded as
 ;; context.compact, with the context's size before and after.
 (define (compact-context request . more)
   (let* ((focus (if (pair? more) (car more) ""))
@@ -116,11 +136,17 @@
           (set! compact-gave-up-at 0)
           (narrow-context (session-system-prompt) "compaction" '((lasting . #t)))
           (add-message (compact-handover-prompt request note))
-          ;; The window shows a plan recorded in the context it sends, and
-          ;; the narrowing left the turn's plan behind, while the reminders
-          ;; go on saying it is in front of the model: it is recorded
-          ;; again, with its marks, in the new context.
-          (when plan (plan-carry plan))
+          ;; The plan comes back twice: recorded again (plan-carry) and as the
+          ;; message after the note (compact-plan), which is read before the
+          ;; plan is recorded again. Each was built for the same failure on
+          ;; its own branch, and the merge of claude/dsl23 kept both.
+          (let ((told (compact-plan)))
+            ;; The window shows a plan recorded in the context it sends, and
+            ;; the narrowing left the turn's plan behind, while the reminders
+            ;; go on saying it is in front of the model: it is recorded
+            ;; again, with its marks, in the new context.
+            (when plan (plan-carry plan))
+            (when told (add-message told)))
           (record #t)
           #t)
         (begin (add-message "Never mind the handover note; continue the task.")
@@ -133,12 +159,25 @@
 ;; left at its default 61,440 tokens, five compactions in seven minutes made
 ;; 125 requests and 103 reads, 88 of files read before, and no edit; 42% of
 ;; the session's output went into handover notes. So the second automatic
-;; compaction with no file written since the first stops the turn instead:
-;; the model is asked, without tools, for what it found, what is done, what
-;; is left and what is in the way, and that answer ends the turn
-;; (turn-stopping, strategy.scm). A person can then raise the context, or
-;; send the work on. #f turns the stop off.
+;; compaction with no file written since the first stops the turn instead
+;; (turn-stopping, strategy.scm), and a turn that is stopping is not
+;; compacted again. A person can then raise the context, or send the work
+;; on. #f turns the stop off.
+;;
+;; The stop first gives the model a short write round, then asks for its
+;; report. On commit-bench (dsl16, 6e18b7ba, 2026-10-15) the model had all
+;; six edits worked out, in its note and its plan, when the context filled
+;; the second time with 24 minutes left; asked without tools what was done,
+;; it answered "All six edit sites confirmed" with none of them made, and
+;; the turn ended with an empty patch (ADR 32, amended 2026-10-15). So the
+;; model is offered compact-write-tools, those of them the session has, for
+;; at most compact-write-rounds requests, told to make the code changes its
+;; note and plan name and then report; once the rounds are spent it is asked
+;; for the report without tools, and that answer ends the turn as before.
+;; 0 rounds stops with the report alone (compact-stop-message).
 (define compact-stop-unchanged #t)
+(define compact-write-rounds 6)
+(define compact-write-tools '("fs-edit" "fs-write" "read-definition" "go-build"))
 
 ;; Writes the model asked for in this turn (fs-write and fs-edit calls, as
 ;; maybe-compact sees each reply), and how many it had asked for when the
@@ -154,32 +193,64 @@
 (define compact-stop-message
   "The context has filled twice in this turn with no file written between the two times: compacting again would send you back over what you have read. Stop here. In a few lines say what you found, what is done, what is left and what stands in the way; tools are off for this answer, and the turn ends with it.")
 
+;; What the write round says: the tools it offers and its rounds.
+(define (compact-write-message tools rounds)
+  (string-append
+   "The context has filled twice in this turn with no file written between the two times: compacting again would send you back over what you have read. Your note and plan name the edits: make the code changes now; tests and docs come after. You have at most "
+   (number->string rounds) " rounds, with " (string-join tools ", ")
+   " only. Then report what is done and what is left; the turn ends with that answer."))
+
+;; The write round's tools: those of compact-write-tools the session offers
+;; (go-build is a repository's, dev/go.scm), or '() when none of them writes.
+(define (compact-write-offer)
+  (let* ((names (guard (e (else '())) (tool-names)))
+         (tools (filter (lambda (t) (member t names)) compact-write-tools)))
+    (if (or (member "fs-edit" tools) (member "fs-write" tools)) tools '())))
+
+;; Stop the turn (compact-stop-unchanged): a write round, then the report.
+(define (compact-stop)
+  (let ((tools (if (> compact-write-rounds 0) (compact-write-offer) '())))
+    (if (pair? tools)
+        (let ((message (compact-write-message tools compact-write-rounds)))
+          (log-note (string-append "the context filled again with no file written since it was last compacted: the model has "
+                                   (number->string compact-write-rounds)
+                                   " rounds to make the edits, then the turn stops with a report, instead of compacting again"))
+          (add-message message)
+          (set! turn-stop-tools tools)
+          (set! turn-stop-rounds compact-write-rounds)
+          (set! turn-stopping message))
+        (begin (log-note "the context filled again with no file written since it was last compacted: the turn stops with a report instead of compacting again")
+               (add-message compact-stop-message)
+               (set! turn-stopping compact-stop-message)))))
+
 ;; Compact if a strategy asked for it (compact-next-round), or if the context
 ;; the next model-turn would send passed the threshold. Call it once the
 ;; latest reply's tool calls are answered; the reply itself is not read,
 ;; since the context is measured as it stands. The second automatic
 ;; compaction of a turn with no file written since the first stops the turn
-;; instead (compact-stop-unchanged).
+;; instead (compact-stop-unchanged), and a turn that is stopping is not
+;; compacted at all: its write round writes, but a third compaction would
+;; send it round again.
 (define (maybe-compact request reply)
   (set! compact-writes (+ compact-writes (length (filter edit-call? (assoc-ref reply 'tool-calls '())))))
   (let ((focus compact-requested))
-    (if focus
-        (begin (set! compact-requested #f)
-               (compact-context request focus "requested"))
-        (let* ((size (context-tokens))
-               (limit (compact-limit)))
-          (and limit
-               (> size limit)
-               (> size (+ compact-gave-up-at (quotient limit 4)))
-               (cond ((and compact-stop-unchanged compact-writes-at (= compact-writes compact-writes-at))
-                      (log-note "the context filled again with no file written since it was last compacted: the turn stops with a report instead of compacting again")
-                      (add-message compact-stop-message)
-                      (set! turn-stopping compact-stop-message)
-                      #f)
-                     ((compact-context request "" "auto")
-                      (set! compact-writes-at compact-writes)
-                      #t)
-                     (else (set! compact-gave-up-at size) #f)))))))
+    (cond (turn-stopping #f)
+          (focus
+           (set! compact-requested #f)
+           (compact-context request focus "requested"))
+          (else
+           (let* ((size (context-tokens))
+                  (limit (compact-limit)))
+             (and limit
+                  (> size limit)
+                  (> size (+ compact-gave-up-at (quotient limit 4)))
+                  (cond ((and compact-stop-unchanged compact-writes-at (= compact-writes compact-writes-at))
+                         (compact-stop)
+                         #f)
+                        ((compact-context request "" "auto")
+                         (set! compact-writes-at compact-writes)
+                         #t)
+                        (else (set! compact-gave-up-at size) #f))))))))
 
 (define (compact-request? request)
   (let ((r (string-trim request)))

@@ -594,6 +594,12 @@ Primitive & What it does \\
 \code{(recall seq [start [count [task]]])} & one event of the conversation, or of an earlier task, by its seq, the \code{N} of \code{[elided seq=N]}, as the log recorded it, in lines as a ranged \code{fs-read} reads a file (\adr{50}); a turn's first message with what the turn did and the events it holds (\adr{51}) \\
 \code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree only: status, and the changes since the last commit or since \code{against}; the commit HEAD is on; read-only, no approval \\
 \code{(keep-passing)} & keep the changes as a test run passed on them, for a turn nobody reads that a hard limit or the progress guard stops; the core then puts the files back to it and saves what they held \\
+\code{(check-without cmd args)} & run a check again with each part of the change taken out in turn, putting each back; a part the check still passes without is one it does not test \\
+\code{(change-removals request)} & what the change takes away that its check cannot show: the definitions gone from their package, and the cases, assertions, \code{want} values and phrase checks of existing tests removed or rewritten \\
+\code{(edit-support lines request reply)} & read the reply to the question on an edited test against the request: for each line, whether the reply quotes a sentence of the request that shares a distinctive word with it \\
+\code{(original-tests paths)} & run the Go tests of the test files the change edited as the last commit had them, against the change, and name the ones that fail \\
+\code{(change-claims request runs edits declared)} & the lines the change adds to documents and comments that state what nothing in the turn showed: a run's result or figures, an amendment date, a paragraph pasted twice, entries added by hand to a generated file \\
+\code{(change-dropped-conditions request)} & the operands of an old \code{\&\&} or \code{||}, and the guards, that a rewritten Go function no longer checks \\
 \code{(shell-exec cmd args)} & run a program and wait for it; irreversible \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background; irreversible \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
@@ -680,9 +686,11 @@ it or the session closes, and at most four run at once.
 
 \section{The scratch directory}
 
-Each session has a private scratch directory outside the repository, for
-throwaway files: a reproduction script, notes, temporary output.
-\code{(scratch-dir)} names it, but a program rarely needs to: in every
+Each session has a private scratch directory outside the repository, in
+the system's temporary directory and so outside \nodwyn's own configuration
+and data directories, for throwaway files: a reproduction script, notes,
+temporary output; a test suite a command runs makes its temporary
+directories there without being refused them. \code{(scratch-dir)} names it, but a program rarely needs to: in every
 path argument and every command argument, a value that is \code{\$TMPDIR}
 or starts with \code{\$TMPDIR/} (or \code{\$\{TMPDIR\}/}) is rewritten to
 it before the guard sees the call, and commands get it as \code{TMPDIR}.

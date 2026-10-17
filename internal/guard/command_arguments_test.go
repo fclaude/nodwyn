@@ -145,3 +145,43 @@ func TestArgvTriggerSeesPathsInsideFlagValues(t *testing.T) {
 		}
 	}
 }
+
+// A standing approval cannot cover an absolute path, and the repository's
+// own is one: the system prompt gives it, and an unattended run that wrote
+// "cd <repository> && go test" was refused for good, with a reason that
+// said only that the path was absolute (commit-bench, 7513f7eb). The reason
+// now says a command already runs in the repository root, for a path inside
+// it and for no other; the refusal itself is unchanged.
+func TestAbsoluteRepositoryPathRefusalSaysToWriteItRelative(t *testing.T) {
+	repo, bin, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	repo, _ = filepath.EvalSymlinks(repo)
+	for _, name := range []string{"go", "bash"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 99\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	allow := guard.NewCommandAllowIn(repo, "go test")
+	const hint = "write it relative to the repository root"
+	ctx := scheme.WithOrigin(context.Background(), scheme.OriginModel)
+	for _, tc := range []struct {
+		argv []string
+		hint bool
+	}{
+		{[]string{"bash", "-c", "cd " + repo + " && go test ./... 2>&1 | tail -n 5"}, true},
+		{[]string{"bash", "-c", "cd " + filepath.Join(repo, "internal") + " && go test ./..."}, true},
+		{[]string{"go", "test", filepath.Join(repo, "internal")}, true},
+		{[]string{"bash", "-c", "cd " + outside + " && go test ./..."}, false},
+		{[]string{"bash", "-c", "cd " + repo + "/../elsewhere && go test ./..."}, false},
+		{[]string{"go", "test", outside}, false},
+	} {
+		d := allow.Check(ctx, shellP(), shellArgs(tc.argv[0], tc.argv[1:]...))
+		if d.Verdict != guard.Confirm || !d.Security {
+			t.Errorf("%q: not a security confirm: %+v", tc.argv, d)
+			continue
+		}
+		if got := strings.Contains(d.Reason, hint); got != tc.hint {
+			t.Errorf("%q: reason %q: says to write it relative = %v, want %v", tc.argv, d.Reason, got, tc.hint)
+		}
+	}
+}

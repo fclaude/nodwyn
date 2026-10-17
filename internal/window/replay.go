@@ -29,8 +29,9 @@ import (
 // their calls through elision (Policy.PairTools), and v17 cuts a result too
 // large to show at line ends and names the lines it leaves out
 // (Policy.NamedCuts), and v18 gives a reply's signed reasoning back with it
-// (Policy.Blocks). Older logs replay with their original policies.
-const RecipeVersion = "window-v18"
+// (Policy.Blocks), and v19 shows an fs-read's result up to twice the cap
+// (Policy.WideReads). Older logs replay with their original policies.
+const RecipeVersion = "window-v19"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas
 // and model options. It verifies reconstruction; it is not a tamper-proof seal.
@@ -73,7 +74,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			// Replies logged their thinking before v14 too; from v14 it
 			// goes back. Until v15 the system prompt carried the request
 			// and its plan.
-			thinking, inConversation, pairTools, namedCuts, blocks := false, false, false, false, false
+			thinking, inConversation, pairTools, namedCuts, blocks, wideReads := false, false, false, false, false, false
 			switch c.Version {
 			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", "window-v8", "window-v9", "window-v10", "window-v11", "window-v12", "window-v13":
 			case "window-v14":
@@ -84,8 +85,10 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 				thinking, inConversation, pairTools = true, true, true
 			case "window-v17":
 				thinking, inConversation, pairTools, namedCuts = true, true, true, true
-			case RecipeVersion:
+			case "window-v18":
 				thinking, inConversation, pairTools, namedCuts, blocks = true, true, true, true, true
+			case RecipeVersion:
+				thinking, inConversation, pairTools, namedCuts, blocks, wideReads = true, true, true, true, true, true
 			default:
 				return zero, fmt.Errorf("window replay: unsupported recipe %q", c.Version)
 			}
@@ -102,7 +105,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 				build = buildV1
 			}
 			pol := Policy{HighWater: c.HighWater, LowWater: c.LowWater, MaxResultTokens: c.MaxResultTokens,
-				TaskHeader: c.TaskHeader, PlanHeader: c.PlanHeader, Thinking: thinking, InConversation: inConversation, PairTools: pairTools, NamedCuts: namedCuts, Blocks: blocks}
+				TaskHeader: c.TaskHeader, PlanHeader: c.PlanHeader, Thinking: thinking, InConversation: inConversation, PairTools: pairTools, NamedCuts: namedCuts, Blocks: blocks, WideReads: wideReads}
 			if rec.HighWater > 0 {
 				pol.HighWater = rec.HighWater
 			}

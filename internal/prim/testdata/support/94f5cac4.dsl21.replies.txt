@@ -1,0 +1,6 @@
+#### R30
+Sentence covering it: “A skipped optional argument before a later one that is given now gets its type's empty value ("", 0, #f, ())” — count given after missing start fills 0.
+#### R31
+Sentence covering it: “fs-read's start 0 is line 1” — start 0 no longer errors.
+#### R33
+Sentence covering it: “index-grep caps context above 5 instead of refusing it (models asked for 6, 8 and 10)” — context 6 caps to 5.

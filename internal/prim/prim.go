@@ -123,6 +123,7 @@ func Register(in *scheme.Interp, o Options) error {
 	prims = append(prims, indexPrims(o, pin)...)
 	if isGitWorkTree(o.Root) {
 		prims = append(prims, gitPrims(o, pin)...)
+		prims = append(prims, checkWithout(o), planEvidence(o), testBefore(o), headHasNamePrim(o), docsMentioningPrim(o), gitIntend(o), changeRemovalsPrim(o), changeClaimsPrim(o), droppedOperandsPrim(o), originalTestsPrim(o))
 		if o.Worktree != nil {
 			prims = append(prims, gitLand(o))
 		}
@@ -138,7 +139,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o), keepPassing(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), shellCommandsPrim(), readData(), requestNamesPrim(), editSupportPrim(), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o), keepPassing(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -194,8 +195,9 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 
 // denylist is the credential denylist for a session in o.Root. It adds
 // nodwyn's own directories where the session found them to the default
-// places. The scratch directory lives in nodwyn's data directory, which the
-// list protects; it is the one place there the session's tools may use.
+// places. The scratch directory is in the system's temporary directory,
+// outside the directories the list protects; should TMPDIR put that inside
+// one of them, it is the one place there the session's tools may use.
 func denylist(o Options) guard.PathDenylist {
 	d := guard.DefaultDenylist()
 	d.Root = o.Root
@@ -226,6 +228,46 @@ func scratchDir(o Options) *scheme.Prim {
 				return scheme.False, nil
 			}
 			return scheme.Str(o.Scratch), nil
+		},
+	}
+}
+
+// shellCommandsPrim builds (shell-commands cmd args): the simple commands a
+// command line runs (guard.ShellCommands), for the evidence loop to match a
+// report's citations against.
+func shellCommandsPrim() *scheme.Prim {
+	return &scheme.Prim{
+		Name: "shell-commands",
+		Meta: scheme.Meta{
+			Doc: "The simple commands a command line runs, each as its words from the program on joined by spaces: a shell's -c line read as the shell reads it (a here-document's body, a quoted pattern and a redirection's target are no command; a substitution's commands are left out), anything else as one command. () for a line that does not parse.",
+			Params: []scheme.Param{
+				{Name: "cmd", Type: "string", Doc: "the program"},
+				{Name: "args", Type: "list", Doc: "its arguments"},
+			},
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			name, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			items, err := c.List(1)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			argv := []string{name}
+			for _, it := range items {
+				if it.Kind != scheme.KString {
+					return scheme.Value{}, errors.New("args must be a list of strings")
+				}
+				argv = append(argv, it.S)
+			}
+			cmds := guard.ShellCommands(argv)
+			out := make([]scheme.Value, len(cmds))
+			for i, s := range cmds {
+				out[i] = scheme.Str(s)
+			}
+			return scheme.List(out...), nil
 		},
 	}
 }

@@ -23,6 +23,22 @@
 ;; is past hygiene-pressure of the high water, where room matters more.
 ;; Rule 1 folds results near the end. The log keeps everything; fs-read
 ;; ranges bring any part back.
+;; A read hygiene-keep? holds is not folded by rules 2 and 3 until the
+;; context is past hygiene-keep-pressure of the high water: the plan language
+;; holds the reads of files its plan will change and the turn has not edited
+;; yet. On commit-bench (dsl16, 2026-10-14) 31 of the 38 reads that a fold
+;; sent the model back to were of such files: read early, folded by age, then
+;; read again to edit them.
+;; hygiene-pressure was half the high water. On commit-bench's trusted runs of
+;; 2026-10-14 and 15 (A, dsl16, dsl18m, dsl19; high water 102,400) 94 of the
+;; 108 folds were pressure folds, 63 to 79 of them with the context under
+;; three quarters of the high water, each making the server read the rest of
+;; the prompt again, and the model then read folded files again. It is now three quarters, hygiene-keep-pressure's value (ADR
+;; 32, amended 2026-10-15); set above it, a held read would lose its hold
+;; before the others fold whatever the cache. Below three quarters a held
+;; read stays and the others fold only when it pays; past them every due
+;; read folds, held ones too, in one sweep: one re-read of the prompt where
+;; there were two.
 
 (define hygiene-age 8)            ; rounds before a read is old
 (define hygiene-stale-age 2)      ; rounds before a stale read may fold
@@ -32,7 +48,12 @@
 (define hygiene-outline-lines 40) ; outline lines kept per read
 (define hygiene-cache-share 0.25) ; the cache serves the context when it read this much of the recent prompts
 (define hygiene-cache-requests 4) ; the recent requests that say whether it does
-(define hygiene-pressure 0.5)     ; past this share of the high water, reads fold whatever the cache
+(define hygiene-pressure 0.75)    ; past this share of the high water, reads fold whatever the cache
+(define hygiene-keep-pressure 0.75) ; past this share of the high water, the reads hygiene-keep? holds fold too
+
+;; Whether a read stays in the window for now (rules 2 and 3); the plan
+;; language redefines it.
+(define (hygiene-keep? r) #f)
 
 ;; Lines an outline keeps: definitions, across common languages.
 (define hygiene-outline-words
@@ -42,14 +63,21 @@
 
 ;; Words in a test command's output that mean tests ran, pass or fail,
 ;; lower-cased: pytest's and unittest's, then Go's ("ok  <tab>pkg", "--- PASS",
-;; "--- FAIL", "=== RUN"), then mocha's, jest's, node's and cargo's. Go's were
-;; missing until 2026-10-05: 138 of the 151 results folded as "did not run
-;; any test" in the local session logs were go test runs that ran,
-;; failing-before evidence among them.
+;; "--- FAIL", "=== RUN"), then mocha's, jest's, node's and cargo's, then a
+;; repository validate's summary (scripts/validate: "PASS  gofmt", "PASS
+;; tests vs unchanged", "validate: PASS"; a failing one says "failed"). Go's
+;; were missing until 2026-10-05: 138 of the 151 results folded as "did not
+;; run any test" in the local session logs were go test runs that ran,
+;; failing-before evidence among them. validate's were missing until
+;; 2026-10-14: a validate tool's run counts as a test command
+;; (strategy.scm, tool-commands), and its passing result was folded as "this
+;; test command did not run any test ()" in 7 of 10 trusted dsl18m attempts on
+;; commit-bench (3422faf1, call 111; ADR 32, amended 2026-10-14).
 (define hygiene-ran-words
   '("passed" "failed" "ran " "tests in" "no tests ran"
     "ok  \t" "--- pass" "--- fail" "--- skip" "=== run"
-    "passing" "failing" "tests:" "# pass" "# fail" "test result:"))
+    "passing" "failing" "tests:" "# pass" "# fail" "test result:"
+    "validate: pass" "pass  gofmt" "tests vs unchanged"))
 
 (define hygiene-depth 0)   ; sub-agents running; the rules watch the main context only
 (define hygiene-round 0)   ; rounds of calls in the main context
@@ -142,14 +170,16 @@
           (and (pair? ws) (or (string-contains? out (car ws)) (any (cdr ws))))))))
 
 ;; Why a test command did not run: the end of its stderr, else of its
-;; output (go test reports a package that does not build there), or its
-;; error.
+;; output (go test reports a package that does not build there), the end of
+;; the text a repository's tool answered with (go-test's "exit 1" and
+;; output), or its error.
 (define (hygiene-why result)
   (let* ((v (guard (e (else #f)) (json-parse (format "~a" (assoc-ref result 'value "")))))
-         (err (if (pair? v)
-                  (let ((e (string-trim (format "~a" (assoc-ref v "stderr" "")))))
-                    (if (string-empty? e) (format "~a" (assoc-ref v "stdout" "")) e))
-                  (format "~a" (assoc-ref result 'error "")))))
+         (err (cond ((pair? v)
+                     (let ((e (string-trim (format "~a" (assoc-ref v "stderr" "")))))
+                       (if (string-empty? e) (format "~a" (assoc-ref v "stdout" "")) e)))
+                    ((assoc-ref result 'ok #f) (format "~a" (assoc-ref result 'value "")))
+                    (else (format "~a" (assoc-ref result 'error ""))))))
     (let ((t (string-trim err)))
       (hygiene-cut (if (> (string-length t) 200) (substring t (- (string-length t) 200) (string-length t)) t) 200))))
 
@@ -197,10 +227,10 @@
           (* hygiene-cache-share (fold (lambda (n r) (+ n (car r))) 0 hygiene-cache)))))
 
 ;; Tokens folding reads takes out of the window: what each shows there,
-;; shortened past max-result-tokens as the window shortens it, less its
+;; shortened past max-read-tokens as the window shortens an fs-read, less its
 ;; outline.
 (define (hygiene-saved due)
-  (let ((cap (assoc-ref (window-limits) 'max-result-tokens 0)))
+  (let ((cap (assoc-ref (window-limits) 'max-read-tokens (assoc-ref (window-limits) 'max-result-tokens 0))))
     (fold (lambda (n r)
             (let ((shown (hygiene-tokens (list-ref r 3))))
               (+ n (max 0 (- (if (and (> cap 0) (> shown cap)) cap shown)
@@ -234,8 +264,11 @@
 ;; Fold old and stale reads, once there is enough to fold at once and
 ;; folding it pays (hygiene-fold-reason).
 (define (hygiene-sweep)
-  (let* ((due (filter (lambda (r) (let ((age (- hygiene-round (list-ref r 4))))
+  (let* ((high (assoc-ref (window-limits) 'high-water 0))
+         (full (or (<= high 0) (>= (context-tokens) (* hygiene-keep-pressure high))))
+         (due (filter (lambda (r) (let ((age (- hygiene-round (list-ref r 4))))
                                     (and (not (hygiene-editing? r))
+                                         (or full (not (hygiene-keep? r)))
                                          (or (>= age hygiene-age) (and (hygiene-stale? r) (>= age hygiene-stale-age))))))
                       hygiene-reads))
          (bytes (fold (lambda (n r) (+ n (string-length (list-ref r 3)))) 0 due))

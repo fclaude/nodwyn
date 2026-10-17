@@ -145,10 +145,16 @@
 ;; there is none (a session always has one; the check keeps the prompt
 ;; buildable without it). It names $TMPDIR, not the directory's path,
 ;; which differs per session: the system prompt stays the same across a
-;; repository's sessions.
+;; repository's sessions. The second sentence says what the directory being
+;; the commands' TMPDIR means: until 2026-10-16 it was inside nodwyn's
+;; protected data directory, and on commit-bench (dsl20r, 2026-10-16, review
+;; of 67a1f950, 855e90e7 and 7513f7eb) 5 to 17 calls of a run went on working
+;; around that: HOME and TMPDIR set to paths in /tmp (13 of the 23 shell
+;; commands refused in 26 runs named /tmp) or to a folder of the repository
+;; (ADR 32, amended 2026-10-16).
 (define (scratch-rule dir)
   (if dir
-      "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends."
+      "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends. Your commands run with TMPDIR set to it, so a test suite or a tool that makes temporary files puts them there without being told: do not set TMPDIR or HOME to another place, and do not use /tmp, which is outside what you may use."
       ""))
 
 ;; The system prompt's rule for the read-only git tools, or "" where they
@@ -171,7 +177,17 @@
    ;; shell.scm: a command line through cmd/args is answered with the call
    ;; that runs it; say so up front.
    "\n- shell-exec runs one program with its arguments. For pipes, redirects, cd or chained commands, run cmd \"bash\" with args [\"-c\", \"<command line>\"], and keep long output short with | tail -n 40 or | grep."
-   "\n- shell-exec waits for its command to end and stops one that runs too long. A program that keeps running (a server, a watcher) or that may hang goes to shell-start instead: read its output with shell-read, which can wait for it, and end it with shell-stop."
+   ;; "Or that may hang" sent the repository's whole check to shell-start:
+   ;; on commit-bench (nodwyn 0a9f700, 2026-10-12) 75 background runs, nearly
+   ;; all make validate or go test -race ./... piped into tail, which prints
+   ;; nothing until the end, read with 115 waits of 60 seconds, each a request
+   ;; that sends the whole conversation again. A check that ends by itself is
+   ;; one shell-exec call however slow it is. The same runs ended checks in
+   ;; ; echo EXIT=$?, which exits 0 whatever the check did: the loop reads
+   ;; the status (run-outcome, check-without), so such a check passed for it
+   ;; with the change broken (ADR 32, amended 2026-10-12).
+   "\n- shell-exec waits for its command to end, however long a test suite or a build takes, and stops one that runs past the shell timeout. A program that keeps running (a server, a watcher) goes to shell-start instead: read its output with shell-read, which can wait for it, and end it with shell-stop."
+   "\n- shell-exec and shell-read report a command's exit status, and a bash -c line runs with pipefail. Let a check's status be its result: do not end it with ; echo $?, || true or anything else that exits 0 when the check fails."
    ;; The example used to list /opt/*/envs, a path outside the repository,
    ;; which the guard asks a person about and an unattended turn is refused:
    ;; on the long-context benchmark (nodwyn d64209d, 107 attempts on 40
@@ -182,11 +198,22 @@
    ;; (guard.ArgvTrigger, ADR 17, amended 2026-10-10).
    "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; conda env list; ls -d .venv venv 2>/dev/null), then run that environment's interpreter by the full path it shows, or with conda run -n NAME. Listing folders outside the repository asks for approval; running an environment's interpreter does not."
    "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
+   ;; The main loop shared the planner's belief on 556d6d12 (session-id read
+   ;; as X-Session-Id) and never tested it (ADR 32, amended 2026-10-12).
+   "\n- Take each name the request gives (a header, a flag, a field, a file) as meant literally. If you conclude it is a different name the code already has, show that with a run before you rely on it."
    ;; index-search comes from ADR 50 (ADR 32, amended 2026-10-15): 57% of
    ;; the regular-expression searches in the 78 local logs were
    ;; alternations of three or more guessed names, a concept looked for by
    ;; listing what it might be called.
-   "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-search with scope \"repo\" and plain words to find code by what it does or under names you would have to guess, index-grep for an exact string or pattern, and fs-find for file names. Use the shell to run code, not to read files."
+   ;; Right after the explorer and the planner were folded away, the model
+   ;; read again what the explorer had read: on commit-bench (dsl20r, 2026-10-16)
+   ;; 33,000 to 280,000 characters of a run's reads were of files the explorer
+   ;; had read, and docs/scheme.md (53,000 characters) was read nine times in
+   ;; one run, twice whole (7513f7eb). What the explorer read now goes with
+   ;; its findings (plan.scm, plan-excerpts); the rule says to read the rest
+   ;; in ranges (ADR 32, amended 2026-10-16).
+   "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with start and count for lines of a file, index-search with scope \"repo\" and plain words to find code by what it does or under names you would have to guess, index-grep for an exact string or pattern, and fs-find for file names. Use the shell to run code, not to read files."
+   "\n- Read a long file or document (docs/scheme.md, a manual, a large source file) by the part you need, not whole: index-grep for a heading, a definition or a name finds its line, then fs-read with start and count reads that part. What you have already read, and the lines you were given with the explorer's findings, are in front of you: read a range again only when it changed or a result of yours was folded."
    ;; project-notes-save was the person's alone, so no model ever kept a
    ;; note, and each session found out again how the tests run (ADR 32,
    ;; amended 2026-10-05).
@@ -229,6 +256,10 @@
    ;; where escape and conditional_escape agree (django-16877), the string
    ;; '255' asserted where the hidden test wants 255 (django-11790), a repro
    ;; that printed the wrong __name__ and was accepted (django-14787).
+   ;; The same, for a choice: a check that passes for the option rejected
+   ;; as well does not decide it (django-16877 r2 chose by recall and its
+   ;; test asserted the recalled output; ADR 32, amended 2026-10-11).
+   "\n- When you chose between options (the plan's, or your own), run your check once against the option you rejected too: if it passes there as well, the check does not decide the choice, so extend it until it fails for the rejected option."
    "\n- A test or check that is to show your change is right includes an input that tells it apart from the nearest wrong version: the one you considered and rejected, or the simpler fix. A value that does not start at zero, an item already marked safe, a dict where the example used an object, the second call site, the expected value with its exact type. A check built only from the case you designed for passes for the wrong fix as readily as for the right one."
    ;; plan.scm: thinking was not sent back, and a model re-derived one
    ;; design at every request of a turn without changing anything. It is
@@ -242,6 +273,20 @@
    ;; long-context benchmark (ADR 32, amended 2026-10-10), so it now says
    ;; which tests it means.
    "\n- When the request weighs more than one way to do something, follow the way it concludes for. When it asks for behaviour to change, change it, and update the existing tests that encode the old behaviour the request changes, instead of keeping the old behaviour behind a narrower special case. Only those: an existing test of something the request does not mention is a constraint, and when your change breaks it, the change is what is wrong. Name in your report each existing test whose expectations you changed, and the words of the request that called for it."
+   ;; The rule above names the changed tests in the report, after the
+   ;; edit. On commit-bench's Muse runs (2026-10-16) the wrong side lost two
+   ;; tasks, each the mirror of the other. 94f5cac4: the plan said "count 0
+   ;; stays and means default", which the request never states, and the run
+   ;; then rewrote the existing row `(fs-read "big.txt" 1 0)`, "count must be
+   ;; at least 1", to `1 -1`; the hidden test kept the row. 855e90e7: an
+   ;; existing test failed after a correct change, and Pi added an untested
+   ;; skip to the denylist's code instead of fixing the test, which removed
+   ;; the directories the hidden test expects denied (ADR 32, amended
+   ;; 2026-10-16). The finish review's "a test for each side" then led the
+   ;; same run to add a test that pinned the skip, and a later point to 53
+   ;; calls of revert experiments on it: a test for a branch is for one the
+   ;; request asks for (ADR 32, amended 2026-10-16, the original tests).
+   "\n- When an existing test fails after your change, decide which side is wrong before you edit either. The old expectation stands unless the request names the new behaviour for that input or case: otherwise change the code, not the test. Never add a conditional skip or exception to production code (least of all in a guard or denylist) to make an old test pass unless the request asks for it; if the test's setup contradicts what the request names, fix the setup (a fixture is setup; its assertions are not). A branch the request asks for gets a test for each side of it; a branch you add for any other reason is not tested into place: delete it."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
    ;; The jev-key console change (ADR 32, amended 2026-10-02): Go tests and
    ;; node --check passed in every round while the page went blank on a
@@ -288,7 +333,7 @@
 (define (plan-explore-task request)
   (string-append
    "Request:\n" request
-   "\n\nReport what a plan for this request needs to know, as facts with paths:"
+   "\n\nReport what a plan for this request needs to know, as facts with paths, each place cited as path:line (path:first-last for lines you read together):"
    "\n- every place the change must reach: each function, call site, class or export the request's words cover, not only the one its example uses;"
    "\n- the request's own examples, expected outputs, names and formats, copied exactly, and any detail of the code that decides between ways of doing it (a helper's behaviour, a type, a convention), quoted from where you read it;"
    "\n- where more than one helper, convention or fix could serve, each of them with its path and what it does, without choosing;"
@@ -336,16 +381,278 @@
 ;; cancelled (ADR 32, amended 2026-10-10).
 (define finish-failing-message
   "Your last test run after your last edit failed. If those failures come from your change, fix the change and run the tests again; do not edit an existing test's expectations to make it pass unless the request asks for the behaviour it checks to change. If the same tests fail on the unchanged code too (compare on a copy of the last commit, as the rules ask), say so in your report and finish.")
+
+;; The tests (strategy.scm, failure-names) at most eight at a time.
+(define (failure-list names)
+  (let take ((ns names) (n 0) (out '()))
+    (cond ((null? ns) (string-join (reverse out) ", "))
+          ((>= n 8) (string-append (string-join (reverse out) ", ") ", …"))
+          (else (take (cdr ns) (+ n 1) (cons (car ns) out))))))
+
+;; The failing-run reminder when some of the failures are the unchanged
+;; code's: seen before the first edit or on the copy of the last commit
+;; (strategy.scm, failures-known?). On commit-bench (dsl20r, 7513f7eb) the
+;; model had shown that an existing test failed on a pristine copy, and the
+;; reminder sent it back to prove it again: about 14 calls in dsl20r and 30
+;; in dsl16r (ADR 32, amended 2026-10-16).
+(define (finish-failing-known-message known fresh)
+  (string-append
+   "Your last test run after your last edit failed. These also fail on the unchanged code (say so in your answer, do not fix them): "
+   (failure-list known)
+   (if (null? fresh)
+       ". The run failed in other ways too, such as a package that does not build: if that comes from your change, fix it and run the tests again."
+       (string-append ". These do not: " (failure-list fresh)
+                      ". If they come from your change, fix the change and run the tests again; do not edit an existing test's expectations to make it pass unless the request asks for the behaviour it checks to change."))))
+
+;; Said in a failing run's own result when every failure in it is one the
+;; unchanged code showed earlier in the turn, so the model need not compare
+;; again and the reminder above is not due.
+(define (failure-known-hint known)
+  (string-append "\n[hint: these also failed on the unchanged code earlier in this turn: " (failure-list known)
+                 ". Say so in your answer; do not fix them.]"))
+
 (define (finish-unrunnable-message attempts)
   (string-append
    "Your last " (number->string attempts)
    " test commands did not run successfully. If the project's tests cannot run here, stop trying: finish, and say in your report that the change is unverified and why."))
+;; The parts of the change the passing check still passed without
+;; (check-without, strategy.scm): a check that cannot fail for a part does
+;; not test it. On the long-context benchmark every losing run checked its
+;; change with something that passed whether or not the change was right, and
+;; in the person's sessions Go tests stayed green while the page the change
+;; was for went blank (ADR 32, amended 2026-10-11).
+;; The message names at most finish-ask-limit parts, once in a run, and asks
+;; for a case only for a part that implements what the request asks for.
+;; On commit-bench 6e18b7ba (dsl22) it named six small hunks, four of one
+;; line, next to the plan's three tests (two that passed on the unchanged
+;; code, one not written), and the model spent 33 calls (0.52M cost-eq of
+;; 2.38M) on a concurrency test and a wrapper that fakes git for hunks no
+;; sentence of the request asks for (ADR 32, amended 2026-10-17). omitted:
+;; how many more parts it found than it names.
+(define (finish-untested-parts-message check parts omitted)
+  (string-append
+   "Your check (" (if (> (string-length check) 160) (string-append (substring check 0 160) "…") check)
+   ") still passes with each of these parts of your change taken out in turn, so it does not test them: "
+   (string-join
+    (map (lambda (p)
+           (let ((line (assoc-ref p "line" 0)))
+             (string-append (format "~a" (assoc-ref p "path" ""))
+                            (if (and (integer? line) (> line 0)) (string-append ":" (number->string line)) "")
+                            " (" (format "~a" (assoc-ref p "kind" "")) ", +" (format "~a" (assoc-ref p "added" 0))
+                            " -" (format "~a" (assoc-ref p "removed" 0)) " lines)")))
+         parts)
+    "; ")
+   (if (> omitted 0) (string-append "; " (number->string omitted) " more of the same kind are not named") "")
+   ". Only these parts are asked about. For a part that implements what the request asks for, add the input, case or step that needs it to your check so that it fails without the part, and run it again; do not test anything else because of this message. A part the request does not ask for (a flag, a rename, a refactor, a skip or an exception added to make an existing test pass) gets no test: remove it, or defend it in your report with the sentence of the request that requires it."))
+
+;; Commands the report cites that have not run since the last edit
+;; (strategy.scm, stale-citations).
+(define (finish-stale-citations-message spans)
+  (string-append
+   "Your report cites " (string-join (map (lambda (s) (string-append "`" s "`")) spans) ", ")
+   ", which has not run since your last edit. What you say works stands on a run of the code as it is now: run it again and report what it shows, or say the claim is unchecked."))
+
+;; The finish review's points, said in one message once a turn
+;; (strategy.scm, finish-review-points): one point as it is, several
+;; numbered. Each was a message of its own, and each answer re-armed the
+;; next: on commit-bench six chained reminders cost 0.38M tokens with no edit
+;; (A c97f9a41), so the turn ends at the next answer, and the message says so
+;; (ADR 32, amended 2026-10-15).
+(define finish-review-close
+  "This is asked once. Act on each point, or say in your report why you keep what it names; if you change anything, run your check again before you answer. Your next reply without tool calls ends the turn.")
+
+(define (finish-review-message points)
+  (string-append
+   (if (and (pair? points) (null? (cdr points)))
+       (car points)
+       (let number ((ps points) (i 1) (out '()))
+         (if (null? ps)
+             (string-append "Before you finish, a look at your change found " (number->string (- i 1)) " things:\n\n"
+                            (string-join (reverse out) "\n\n"))
+             (number (cdr ps) (+ i 1) (cons (string-append (number->string i) ". " (car ps)) out)))))
+   "\n\n" finish-review-close))
+
+;; What the change removed that its check could not show (strategy.scm,
+;; change-removals), points of the finish review. dsl16 and Pi deleted
+;; evalOr, a helper the hidden test called, as dead code once they had
+;; rerouted its callers (67a1f950); a kept helper its callers go through
+;; keeps the name and is not dead. Pi rewrote or deleted existing cases its
+;; change broke (94f5cac4, ef04de9c), against the working rule that names
+;; each changed test with the request's words (ADR 32, amended 2026-10-15).
+(define (finish-removed-definitions-message defs)
+  (let ((one (null? (cdr defs))))
+    (string-append
+     "Your change removes "
+     (string-join (map (lambda (d) (string-append "`" (format "~a" (assoc-ref d "name" "")) "` (" (format "~a" (assoc-ref d "path" "")) ")")) defs) ", ")
+     ", which the request does not name. Tests and code you cannot see may call " (if one "it" "them")
+     " by name, and your check passed without " (if one "it" "them") ". Unless removing " (if one "it" "one")
+     " is the task, keep it and have its callers go through it with the new behaviour (it may call what replaced it); if the request removes it, say so in your report with its words.")))
+
+(define (expectation-lines lines)
+  (apply string-append
+         (map (lambda (l) (string-append "\n- " (format "~a" (assoc-ref l "path" "")) ":" (number->string (assoc-ref l "line" 0))
+                                         ": " (format "~a" (assoc-ref l "text" ""))))
+              lines)))
+
+(define (finish-removed-expectations-message lines)
+  (string-append
+   "Your change removes or rewrites these expectations of existing tests:"
+   (expectation-lines lines)
+   "\nAn existing test of something the request does not change is a constraint: restore each such line and fix the code instead, or quote in your report the request's words that change it."))
+;; The tests of the test files the turn edited, run as the last commit had
+;; them against the change (strategy.scm, original-tests), a point of the
+;; finish review: a grader lays the maintainers' test files over the patch.
+;; On commit-bench 5040f9fe the request added the response's Content-Type to
+;; an error; the model reworded the error so that a phrase an existing test
+;; pins was split, edited that test's want string to match, and its runs all
+;; passed; the original test failed on the patch, and the real change had
+;; appended to the phrase. 855e90e7 is the other way round: the request
+;; contradicts a fixture (one folder as repository, configuration and data),
+;; and the real change fixed the fixture. A request that changes a result
+;; changes the test that pins it, as much of the benchmark's resolved patches
+;; do, so that is the middle way out, with the sentence that requires it
+;; (ADR 32, amended 2026-10-16, the original tests). failures: alists of path
+;; and tests.
+(define (finish-original-tests-message failures)
+  (string-append
+   "These original tests fail on your change (the last commit's version of each test file you edited, run against your code): "
+   (string-join (map (lambda (f)
+                       (string-append (string-join (map (lambda (n) (format "~a" n)) (assoc-ref f "tests" '())) ", ")
+                                      " (" (format "~a" (assoc-ref f "path" "")) ")"))
+                     failures)
+                "; ")
+   ". Either your change is wrong (change the code, appending to what a test pins rather than rewording it); or the request names the new result for that input or case (a rule stated in general words does not cover an input it does not name), and the test's assertion changes: say which sentence of the request requires it; or the request contradicts the test's setup (a fixture): then change the setup, not its assertions, and say which sentence of the request requires it."))
+
+;; The same lines, said as the edit that changes them is made rather than at
+;; the finish (strategy.scm, test-edit-nudge), once for each test file. At the
+;; finish the review had named them on 94f5cac4, as one of four points, and
+;; the answer defended every one of the six by quoting the request's rule
+;; for a skipped argument, the wrong count row among them: the request names
+;; a skipped argument, and that row's count was given as 0. So the question is
+;; asked of the input or case the line tests, with the edit still in view
+;; (ADR 32, amended 2026-10-16). On the next run (dsl22) it fired three times
+;; in 16 seconds and was answered the same way, in prose the loop did not read.
+;; So the answer has a form, a line for each row: the row, then a sentence
+;; copied from the request that names its input or case; the loop checks it
+;; against the request (edit-answers), and what it cannot support gets one
+;; firmer message (edited-expectations-firm-message) and, at the finish, the
+;; review's first point (finish-unsupported-edits-message). Nothing is
+;; refused: the model may keep the edit, against the evidence (ADR 32,
+;; amended 2026-10-17).
+(define (edited-expectations-message lines)
+  (string-append
+   "You changed these expectations of existing tests (the line numbers are the last commit's):"
+   (expectation-lines lines)
+   "\nWhich sentence of the request requires the new expectation, for that input or case? Answer with one line for each line above: the line, then a sentence copied word for word from the request that names the input or case that line tests, as in `(f 0)`: \"the sentence\". A rule the request states in general words does not cover an input it does not name. If none does, write the line and none, restore the line and change the code to meet it (to add to what a test pins, append to the phrase it checks; do not reword it). Your answer is checked against the request's text. Answer in your next reply, beside a call. This is asked once for each test file."))
+
+;; One row of the firmer message: the line, and what the request does not
+;; say of it. verdict: an alist of edit-support's.
+(define (edit-unmentioned-text verdict)
+  (let ((missing (assoc-ref verdict "unmentioned" '()))
+        (cut (assoc-ref verdict "cut" '()))
+        (put (assoc-ref verdict "put" '())))
+    (string-append
+     (if (null? missing)
+         "no sentence you quoted names it"
+         (string-append "the request does not mention "
+                        (string-join (map (lambda (m) (string-append "`" m "`")) missing) " or ")))
+     (apply string-append (map (lambda (c) (string-append "; nor does it say that `" c "` goes")) cut))
+     (apply string-append (map (lambda (p) (string-append "; nor does it put `" p "` in that phrase")) put)))))
+
+;; Said once for each row the answer to the question above did not support,
+;; when the reply quoted the request and still answered with a sentence about
+;; something else (94f5cac4: the request's rule for a skipped argument, for a
+;; count of 0 it never mentions). verdicts: alists of edit-support's.
+(define (edited-expectations-firm-message verdicts)
+  (string-append
+   "No sentence you quoted from the request names the input or case of "
+   (if (null? (cdr verdicts)) "this change" "these changes")
+   " to an existing test:"
+   (apply string-append
+          (map (lambda (v)
+                 (string-append "\n- " (format "~a" (assoc-ref v "path" "")) ":" (number->string (assoc-ref v "line" 0)) ": "
+                                (format "~a" (assoc-ref v "text" "")) " (" (edit-unmentioned-text v) ")"))
+               verdicts))
+   "\nThe default is to restore the old expectation and change the code to meet it: the last commit's version of that test is what a grader runs against your change. Keep the new expectation only by quoting, word for word, the sentence of the request that names this input or case, and saying why it requires the new result. This is said once."))
+
+;; The review's first point: the rows the question named whose answer the
+;; check could not support, with the original tests that fail on the change
+;; (original: finish-original-tests-message's failures), the grader's side
+;; of the same rows.
+(define (finish-unsupported-edits-message rows original)
+  (string-append
+   "You changed these expectations of existing tests, and no sentence you quoted from the request names their input or case:"
+   (expectation-lines rows)
+   "\nThe default is to restore each such line and change the code to meet it; keep one only by quoting, in your report, the sentence of the request that names its input or case."
+   (if (pair? original) (string-append "\n" (finish-original-tests-message original)) "")))
+
+;; The parts of a condition the change no longer checks (strategy.scm,
+;; change-dropped-conditions), a point of the finish review. On commit-bench
+;; dsl19 turned `Jev.Enabled() && ...` into `state == stateReady`, as its
+;; plan said, against its own doubts four times; no test had a case where the
+;; judge's content was none, so every check passed (c80b38ac; ADR 32, amended
+;; 2026-10-15).
+(define (finish-dropped-conditions-message dropped)
+  (string-append
+   "Your change no longer checks "
+   (string-join
+    (map (lambda (d)
+           (string-append "`" (format "~a" (assoc-ref d "operand" "")) "` in "
+                          (format "~a" (assoc-ref d "function" "")) "() (" (format "~a" (assoc-ref d "path" "")) ")"
+                          (if (assoc-ref d "guard" #f) ", a guard that returned early" "")))
+         dropped)
+    "; ")
+   ", and your check passed without " (if (null? (cdr dropped)) "it" "them")
+   ". If the task drops " (if (null? (cdr dropped)) "it" "one")
+   ", add a test case where it is false and say so in your report; otherwise put it back."))
+
+;; The lines the change adds to documents and comments that state what
+;; nothing in the turn showed (strategy.scm, change-claims), a point of the
+;; finish review. On commit-bench three builds copied the task's "40 s (9.4M
+;; executions) found nothing" into ADR 25 without a fuzz run of their own,
+;; models guessed amendment dates, one edit pasted an ADR paragraph twice,
+;; and four builds wrote catalogue entries from memory under models.dev's
+;; name (ADR 32, amended 2026-10-15).
+(define (finish-unshown-claims-message claims)
+  (string-append
+   "These lines your change adds state what nothing in this turn showed:"
+   (apply string-append
+          (map (lambda (c)
+                 (let* ((text (format "~a" (assoc-ref c "text" "")))
+                        (short (if (> (string-length text) 160) (string-append (substring text 0 160) "…") text))
+                        (kind (format "~a" (assoc-ref c "kind" ""))))
+                   (string-append "\n- " (format "~a" (assoc-ref c "path" ""))
+                                  (if (equal? kind "generated") " " (string-append ":" (number->string (assoc-ref c "line" 0)) ": "))
+                                  (if (member kind '("run" "date")) (string-append "\"" short "\" (") "")
+                                  (format "~a" (assoc-ref c "why" ""))
+                                  (cond ((member kind '("run" "date")) ")")
+                                        ((equal? kind "generated") ": run the command that makes it, or take the entries out and say they are missing; do not pin them in a test")
+                                        (else "")))))
+               claims))
+   "\nThe request's account of its author's runs is not evidence for this change. Rewrite each line from your own output, say whose run or source it was, or take it out."))
+
 ;; In a git work tree, files new since the turn began that git does not
 ;; track, said once: whatever is left in the repository is in the change.
-(define (finish-new-files-message files)
-  (string-append
-   "These files are new in the repository and git does not track them: " (string-join files ", ")
-   ". Remove the ones that are not part of the change (a script, notes, output, a backup, what a run left behind; throwaway files belong in $TMPDIR), keep the ones the change needs, then finish."))
+;; made, optional, is the files the turn's validate runs and tools left
+;; (strategy.scm, validate-settle): said in the validate result already, and
+;; if they are still there named here as ones whose deletion needs no new run
+;; (ADR 32, amended 2026-10-16).
+(define (finish-new-files-message files . made)
+  (let ((left (if (pair? made) (filter (lambda (f) (member f (car made))) files) '())))
+    (string-append
+     "These files are new in the repository and git does not track them: " (string-join files ", ")
+     ". Remove the ones that are not part of the change (a script, notes, output, a backup, what a run left behind; throwaway files belong in $TMPDIR), keep the ones the change needs, then finish."
+     (if (pair? left)
+         (string-append " Deleting what a validate run left (" (string-join left ", ") ") needs no new run of validate.")
+         ""))))
+
+;; What a validate run left untracked, said in its result (strategy.scm,
+;; evidence-loop): the model can delete it at once, and the deletion is no
+;; change since validate. The last validate run of 6e18b7ba on commit-bench
+;; (dsl20r, effort low) left the 1 MB expert.pdf in the patch.
+(define (validate-left-note files)
+  (string-append "\n[validate left these files, which git does not track: " (string-join files ", ")
+                 ". Delete them unless they are part of your change; that needs no new run of validate.]"))
 
 ;; What the default loop says after rounds that only read and searched
 ;; (strategy.scm, reading-reminder-after): the thinking behind them is
@@ -393,7 +700,7 @@
 ;; The plan header said "follow it", and a model kept the plan's wrong
 ;; choice against its own runs (xarray-6599, ADR 32, amended 2026-10-10).
 (define task-header "Current task (the user's latest request):")
-(define plan-header "Plan for the current task (work through it, and mark each step with plan-step as its work is done, before you start the next — never several together at the end; it was written before anything ran, so when a run contradicts it, follow the run and write the plan again):")
+(define plan-header "Plan for the current task (work through it, and the harness marks a step done when it sees its evidence (its file changed, its test passed after your last edit, its check passed): mark one with plan-step only to skip it, saying why, or when its evidence is something the harness cannot see; it was written before anything ran, so when a run contradicts it, follow the run and write the plan again):")
 
 ;; The message a supervised run sends for each of its turns (docs/runs.md).
 ;; complete-line is the marker the run looks for to know the task is done.
@@ -402,7 +709,7 @@
 (define (run-turn-prompt task complete-line turn max-turns)
   (string-append
    "Run task:\n" task
-   "\n\nWork on the plan's next unmarked step, mark it with plan-step as its work is done, before the next step, then report progress for review. The plan carries over to the run's next turn, with your marks; if it no longer fits, mark the steps that do not apply skipped, saying why, and once every step is marked the next turn plans again. If the entire task is complete, put "
+   "\n\nWork on the plan's next unmarked step; the harness marks a step done when it sees its evidence, so mark one with plan-step only to skip it, saying why. Then report progress for review. The plan carries over to the run's next turn, with your marks; if it no longer fits, mark the steps that do not apply skipped, saying why, and once every step is marked the next turn plans again. If the entire task is complete, put "
    complete-line
    " alone on the final line. Do not claim completion while work remains. This is turn "
    (number->string turn) " of at most " (number->string max-turns) "."))
@@ -444,6 +751,15 @@
 ;; to work and what to cover, names an open choice with what decides it
 ;; rather than making it, copies the request's literals, and asks for a test
 ;; input that tells the right behaviour from the nearest wrong one.
+;; Copying was not enough when the planner decided a name the request gave
+;; was one the code already had: on commit-bench (556d6d12, 2026-10-12) the
+;; request named three headers, session-id, thread-id and
+;; x-client-request-id; the planner read session-id as the X-Session-Id the
+;; code already sent, planned the other two, and the change failed the
+;; maintainers' test. Two of three planners on that task reasoned the same
+;; way, and so did the main loops that followed them. So a name the request
+;; lists stays in the plan as the request spells it, and a belief that it is
+;; already there becomes a test of the request's own spelling.
 (define (plan-shape)
   (string-append
    "Each step starts with its kind and a short name for what it does, then a dash (—) and the detail after it:"
@@ -451,7 +767,16 @@
    (if plan-last-kind (string-append "\nThe last step is a " plan-last-kind ": step.") "")
    " A step that says all it should in its name needs no dash. A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."
    " Say what the code should do as behaviour, in which cases and with what result, not as code to type: whoever carries the plan out reads the code and writes it, and a function name or signature quoted from memory that the code does not have misleads them."
-   " Where the request or the code leaves a detail open (which helper or function to call, a literal's type or format, which of several fixes), name the options and what will decide between them (the definition to read, the code nearby to imitate, the request's example), and leave the choice to whoever carries the plan out, who can run the code: a choice made by reading alone is the one most often wrong. Copy the request's own examples, names and formats word for word."))
+   " Where the request or the code leaves a detail open (which helper or function to call, a literal's type or format, which of several fixes), name the options and what will decide between them (the definition to read, the code nearby to imitate, the request's example), and leave the choice to whoever carries the plan out, who can run the code: a choice made by reading alone is the one most often wrong. Copy the request's own examples, names and formats word for word."
+   " Every name the request lists for what the change must produce or touch (a header, a flag, a field, a command, a file) appears in a step, spelled as the request spells it; if you think one is already there under another name, keep it anyway: the step names both, and a Test: step checks the request's own spelling, so a run shows whether they are the same."
+   ;; 94f5cac4 and 3422faf1 (ADR 32, amended 2026-10-16): the first plan
+   ;; copied "count 0 stays and means default" as a step, a behaviour the
+   ;; request never states, and the run rewrote an existing test to match;
+   ;; the second said only "drop an overlapping token", with no case for a
+   ;; token inside the other, crossing its start or crossing its end, and
+   ;; the tests never reached the edge the hidden test checks.
+   " A step carries only what the request states. Behaviour it does not state goes on an unnumbered line after the steps, \"Assumptions: ...\", each checked against the existing tests the exploration found before any step relies on it; an assumption an existing test contradicts is dropped."
+   " For each rule the request states, list its cases: one per clause, and for a range, an overlap or an edge one per position (inside, crossing the start, crossing the end, equal, empty)."))
 
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)
@@ -561,6 +886,12 @@
 ;; (django-15280), and a fix found before the clear went in 11 to 13
 ;; minutes after it (django-14351). So: an edit already decided comes
 ;; first, ruled out means a run ruled it out, and the note is short.
+;; On commit-bench (dsl16, 6e18b7ba, ADR 32, amended 2026-10-15) a note
+;; said "plan.md is on disk at repo root with all 19 steps": the plan was
+;; the harness's, and plan.md the repository's own roadmap. The plan now
+;; comes back after the note (compact-plan-message), so the note leaves it
+;; out and says a file holds something only when the work put it there or
+;; read it there.
 (define compact-summary-prompt
   """
   The conversation is getting long and will be cleared to make room. Before that, write a handover note for yourself; it is all you will keep. Do not call tools. Write it straight away, in at most 600 words: a note cut off at the output limit is lost. Include:
@@ -573,6 +904,7 @@
   - what is left to do, in order, and what you ruled out, each with the run that ruled it out. An option you set aside without such a run is an open question, not ruled out.
   Be specific: names, paths and commands, not descriptions of them.
   Name your check script (its path) and what its latest run showed; the script itself is still on disk.
+  The plan recorded for this turn, if there is one, is kept by the harness, not in a file: it comes back after your note with the steps marked so far, so do not copy it, and do not say a file holds it. Say a file holds something only when you wrote it there or read it there.
   """)
 
 ;; Asked again when the note itself was cut off at the output limit
@@ -598,3 +930,22 @@
    Handover note:
    """
    "\n" note))
+
+;; The turn's plan as a compacted context gets it back, after the handover
+;; note (compact.scm, compact-plan): as the window shows a recorded plan,
+;; under plan-header, then the steps marked so far with their notes, as the
+;; window lists a carried plan's marks, and where the plan is kept, since a
+;; note had put it in a file that did not hold it (ADR 32, amended
+;; 2026-10-15). marks are alists of step, state and note, in step order.
+(define (compact-plan-message plan marks)
+  (string-append
+   plan-header "\n" plan
+   (if (null? marks)
+       ""
+       (apply string-append "\n\nMarked before the conversation was cleared:"
+              (map (lambda (m)
+                     (let ((note (format "~a" (assoc-ref m 'note ""))))
+                       (string-append "\nStep " (number->string (assoc-ref m 'step 0)) " " (format "~a" (assoc-ref m 'state ""))
+                                      (if (string-empty? note) "" (string-append ": " note)))))
+                   marks)))
+   "\n\nThis is your plan as it was recorded before the conversation was cleared, kept by the harness: it is in no file in the repository."))

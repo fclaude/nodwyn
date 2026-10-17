@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -20,19 +21,30 @@ import (
 // a new, empty one.
 //
 // Each directory is made by os.MkdirTemp (unpredictable name, mode 0700)
-// under nodwyn's own data directory, so no other user can plant or share it;
-// only a session without a data directory (tests, embedders) falls back to
-// the system's temporary directory. Directories a crashed session left
-// behind are swept once they are a week old.
+// under the system's temporary directory, so no other user can plant or
+// share it, and outside nodwyn's configuration and data directories, which
+// the guard protects: a program run with that TMPDIR (a test suite that
+// builds temporary repositories) is not refused its own files. Until
+// 2026-10-16 it lived in the data directory (ADR 28), where on the
+// benchmark 5 to 17 calls of a run went on working around it. Directories a
+// crashed session left behind are swept once they are a week old.
 
 // scratchMaxAge is how long a scratch directory may outlive its session.
 const scratchMaxAge = 7 * 24 * time.Hour
 
-// scratchRoot holds the sessions' scratch directories: dataDir/scratch, or
-// the system temporary directory when there is no data directory.
-func scratchRoot(dataDir string) string {
+// scratchRoot holds the sessions' scratch directories: the system's
+// temporary directory.
+func scratchRoot() string {
+	return config.CanonicalPath(os.TempDir())
+}
+
+// legacyScratchRoot is where sessions before 2026-10-16 kept theirs:
+// dataDir/scratch. Nothing is made there now; the sweep still clears what
+// those sessions left, so a crashed one does not leave its directory for
+// good.
+func legacyScratchRoot(dataDir string) string {
 	if dataDir == "" {
-		return config.CanonicalPath(os.TempDir())
+		return ""
 	}
 	return config.CanonicalPath(filepath.Join(dataDir, "scratch"))
 }
@@ -44,11 +56,14 @@ func makeScratch(dataDir, id string) (string, error) {
 	if id == "" || strings.ContainsAny(id, `/\`) || strings.HasPrefix(id, ".") {
 		return "", fmt.Errorf("core: scratch: bad session id %q", id)
 	}
-	root := scratchRoot(dataDir)
+	root := scratchRoot()
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", fmt.Errorf("core: scratch: %w", err)
 	}
 	sweepScratch(root)
+	if legacy := legacyScratchRoot(dataDir); legacy != "" {
+		sweepScratch(legacy)
+	}
 	dir, err := os.MkdirTemp(root, "nodwyn-scratch-"+id+"-")
 	if err != nil {
 		return "", fmt.Errorf("core: scratch: %w", err)
@@ -104,7 +119,9 @@ func removeScratch(dir string) {
 
 // sweepScratch removes scratch directories older than scratchMaxAge: those
 // of sessions that ended without closing. A session touches its directory
-// at every turn (touchScratch), so an open one is never this old.
+// at every turn (touchScratch), so an open one is never this old. The
+// system's temporary directory is shared, so only a directory of this
+// user's own, not a link to one, is removed.
 func sweepScratch(root string) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -114,10 +131,17 @@ func sweepScratch(root string) {
 		if !e.IsDir() || !strings.HasPrefix(e.Name(), "nodwyn-scratch-") {
 			continue
 		}
-		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > scratchMaxAge {
+		if info, err := e.Info(); err == nil && ownedByUs(info) && time.Since(info.ModTime()) > scratchMaxAge {
 			_ = os.RemoveAll(filepath.Join(root, e.Name()))
 		}
 	}
+}
+
+// ownedByUs reports whether info, from a directory listing (so a link is
+// described, not followed), is of a directory this user made.
+func ownedByUs(info os.FileInfo) bool {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	return ok && info.Mode().IsDir() && int(st.Uid) == os.Getuid()
 }
 
 // notesFile is where a repository's notes kept across sessions live:

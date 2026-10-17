@@ -558,6 +558,7 @@ func TestThePromptsLeaveThePlansChoicesToTheRuns(t *testing.T) {
 			"includes an input that tells it apart from the nearest wrong version",
 			"the existing tests that encode the old behaviour the request changes",
 			"Only those: an existing test of something the request does not mention is a constraint",
+			"run your check once against the option you rejected too",
 			"conda env list",
 			"PYTHONPATH=$TMPDIR/base",
 		} {
@@ -607,5 +608,503 @@ func TestTheExplorerAndThePlannerLeaveChoicesOpen(t *testing.T) {
 		if !strings.Contains(planner, want) {
 			t.Errorf("the planner's request lacks %q", want)
 		}
+	}
+}
+
+// codeRepo is a git repository with calc.py committed, for the checks that
+// look at code: check-without leaves documents such as tracked.txt alone.
+func codeRepo(t *testing.T) string {
+	t.Helper()
+	repo := gitWorkTree(t)
+	cmd := exec.Command("sh", "-c", "printf 'def one():\\n    return 1\\n\\n\\ndef two():\\n    return 2\\n' > calc.py && git add calc.py && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m code")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return repo
+}
+
+// Before an unattended turn ends on a passing check, the check runs again
+// with each part of the change taken out in turn (check-without), and the
+// parts it still passes without are named: it does not test them. Here the
+// check looks at one()'s return only, so two()'s change is named, once (ADR
+// 32, amended 2026-10-11).
+func TestTheChecksUntestedPartsAreNamed(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // told the check does not test two()'s change
+		fake.Turn{Content: "two() is part of the change; the check now covers it."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 4)
+	if !strings.Contains(msg, "still passes with each of these parts of your change taken out") || !strings.Contains(msg, "calc.py:6 (hunk") || strings.Contains(msg, "calc.py:2 (hunk") {
+		t.Fatalf("untested parts message: %q", msg)
+	}
+	if data, _ := os.ReadFile(filepath.Join(repo, "calc.py")); !strings.Contains(string(data), "return 20") {
+		t.Fatalf("calc.py was not put back as the model left it:\n%s", data)
+	}
+}
+
+// A report that cites a command as its evidence is asked about it, once,
+// when that command has not run since the last edit: "done" was claimed on
+// runs that predated the last edit (ADR 32, amended 2026-10-11).
+func TestAReportCitingAnOldRunIsAsked(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w1"),
+		shellArgs("t1", "bash", "-c", "pytest -q tests || true"), // a run, before the last edit
+		write("w2", "fix.txt", "y\n"),
+		shell("t2", "true # go test ./..."), // a run after it, of something else
+		fake.Turn{Content: "Done: `pytest -q tests` passes."},
+		fake.Turn{Content: "Re-ran it: unchecked after the last edit."},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 5); !strings.Contains(msg, "cites `pytest -q tests`, which has not run since your last edit") {
+		t.Fatalf("citation message: %q", msg)
+	}
+}
+
+// A check whose exit status cannot fail (; echo EXIT=0) still tells a part
+// apart when it prints something else without it: only the parts it prints
+// the same without are named. Here it counts one()'s return, so two()'s
+// change alone is named, as for a check that fails (ADR 32, amended
+// 2026-10-12).
+func TestAMaskedCheckTellsPartsApartByWhatItPrints(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -c 'return 10' calc.py; echo EXIT=0\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // told the check does not test two()'s change
+		fake.Turn{Content: "two() is part of the change; the check now covers it."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 4)
+	if !strings.Contains(msg, "calc.py:6 (hunk") || strings.Contains(msg, "calc.py:2 (hunk") {
+		t.Fatalf("untested parts message: %q", msg)
+	}
+}
+
+// Output a report quotes, the lines of a here-document and the words of a
+// grep pattern are no command the turn ran, and a command it never ran is no
+// citation of an old run: none of them is asked about (ADR 32, amended
+// 2026-10-12).
+func TestAReportQuotingOutputIsNotAsked(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		shellArgs("t1", "bash", "-c", "cat > $TMPDIR/out.txt <<'EOF'\nok in 0.4s\n--- PASS: TestX\nEOF\ngrep -E '^(--- PASS|ok in)' $TMPDIR/out.txt || true"),
+		writeFile("w"),
+		shell("t2", "true # go test ./..."),
+		fake.Turn{Content: "Done: the run printed `ok in 0.4s` and `--- PASS: TestX`; `make accept` should pass too."},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 4 {
+		t.Fatalf("%d requests, want 4; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// A check that the repository's whole check runs again is not asked about
+// once the whole check has passed since the last edit: make validate runs go
+// test -race ./... itself (ADR 32, amended 2026-10-12).
+func TestACitationTheWholeCheckRanAgainIsNotAsked(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w1"),
+		shellArgs("t1", "bash", "-c", "go test -race ./... 2>&1 | tail -n 5 || true"), // before the last edit
+		write("w2", "fix.txt", "y\n"),
+		shellArgs("t2", "bash", "-c", "true # make validate"), // the whole check, after it
+		fake.Turn{Content: "Done: `go test -race ./...` and `make validate` pass."},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// A test run in the background that exits after the last edit is a test run
+// as shell-exec's is: the turn is not told it changed files after its last
+// one (ADR 32, amended 2026-10-12).
+func TestABackgroundTestRunIsATestRun(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w"),
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "shell-start", Args: map[string]any{"cmd": "sh", "args": []any{"-c", "sleep 2; true # go test ./..."}}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 30}}}},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 4 {
+		t.Fatalf("%d requests, want 4; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// A check run in the background is the passing check check-without runs
+// again, as shell-exec's is. The call it runs is the shell-start call, the
+// model's own words: one rebuilt from the shell's output carries its taint,
+// and the guard refused it as a command built from tool output, which ended
+// a finished turn in an error (commit-bench, nodwyn c768750, 556d6d12; ADR
+// 32, amended 2026-10-12).
+func TestABackgroundCheckIsTakenApartLikeAnyOther(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "shell-start", Args: map[string]any{"cmd": "bash", "args": []any{"-c", "sleep 2; bash $TMPDIR/check.sh"}}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 30}}}},
+		fake.Turn{Content: "done"}, // told the check does not test two()'s change
+		fake.Turn{Content: "two() is part of the change; the check now covers it."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 5); !strings.Contains(msg, "calc.py:6 (hunk") || strings.Contains(msg, "calc.py:2 (hunk") {
+		t.Fatalf("untested parts message: %q", msg)
+	}
+}
+
+// What the end of an unattended turn finds is said in one message, once:
+// here a new file git does not track, a part the passing check does not test
+// and a command the report cites from before the last edit. They were three
+// messages, each once a turn, and each answer re-armed the next; on
+// commit-bench the rounds after the first report cost 0.41-0.85M tokens over
+// five tasks (ADR 32, amended 2026-10-15). An answer to it ends the turn.
+func TestTheFinishReviewIsOneMessage(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py\n"),
+		shellArgs("t1", "bash", "-c", "pytest -q tests || true"), // a run before the last edit
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		write("s", "stray.txt", "left behind\n"),
+		shellArgs("t2", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "Done: `pytest -q tests` passes."}, // reviewed: three points
+		fake.Turn{Content: "stray.txt is gone; two() is part of the change; pytest did not run here."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 6)
+	for _, want := range []string{"found 3 things", "1. These files are new in the repository", "stray.txt", "2. Your check",
+		"calc.py:6 (hunk", "3. Your report cites `pytest -q tests`", "Your next reply without tool calls ends the turn"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the review lacks %q: %q", want, msg)
+		}
+	}
+}
+
+// After the finish review the turn is accepted: an answer ends it, even after
+// an edit the model did not test again, which the review asked it to. On
+// commit-bench (A c97f9a41) six chained reminders, each re-armed by the
+// answer to the one before, cost 0.38M tokens with no edit to the repository
+// (ADR 32, amended 2026-10-15).
+func TestAnAnswerAfterTheFinishReviewEndsTheTurn(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // reviewed: two()'s change is untested
+		write("w2", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2 * 10\n"),
+		fake.Turn{Content: "two() now says what it computes; the check does not cover it."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 4); !strings.Contains(msg, "calc.py:6 (hunk") {
+		t.Fatalf("review: %q", msg)
+	}
+}
+
+// validationTools stands for the part of nodwyn's .nodwyn/init.scm that
+// reminds a turn which changed files to validate: it compares the repository
+// with validated-state, which only its validate tool sets.
+const validationTools = `
+(define validation-base (guard (e (else #f)) validation-base))
+(define (validation-state)
+  (list (filter (lambda (l) (string-prefix? "?? " l)) (or (git-state) '()))
+        (guard (e (else "")) (format "~a" (git-diff "." #f (or validation-base "HEAD"))))))
+(define validated-state (guard (e (else #f)) validated-state))
+(define validate-base-agent-turn (or (guard (e (else #f)) validate-base-agent-turn) default-agent-turn))
+(define (default-agent-turn request)
+  (set! validation-base (guard (e (else #f)) (git-head)))
+  (let ((before (validation-state)))
+    (validate-base-agent-turn request)
+    (let ((now (validation-state)))
+      (when (and (not turn-stopping) (not (equal? now before)) (not (equal? now validated-state)))
+        (add-message "You changed files in this turn and validate has not run since your last change.")
+        (ask-model)))))
+`
+
+// A make validate run through the shell counts as the validate tool's run
+// for a repository's own reminder: on commit-bench (A c97f9a41) "validate
+// has not run" came twice right after make validate had run in the shell,
+// and the harness runs against old snapshots whose init.scm it cannot change
+// (ADR 32, amended 2026-10-15).
+func TestAShellMakeValidateCountsAsValidated(t *testing.T) {
+	t.Parallel()
+	repo := gitWorkTree(t)
+	cmd := exec.Command("sh", "-c", "printf 'validate:\\n\\t@echo \"validate: PASS (0 warnings)\"\\n' > Makefile && git add Makefile && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m make")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	r := trustedRigIn(t, repo, validationTools,
+		write("w", "tracked.txt", "two\n"),
+		shellArgs("v", "bash", "-c", "make validate 2>&1 | tail -n 5"),
+		fake.Turn{Content: "done: validate: PASS (0 warnings)"},
+	)
+	if e := r.turn("change tracked.txt"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 3 {
+		t.Fatalf("%d requests, want 3; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if got := r.results()["v"]; got != "" {
+		t.Fatalf("make validate failed: %s", got)
+	}
+}
+
+// goRepo is a git repository with a Go package calc: Root calls the helper
+// evalOr, and calc_test.go has a table of two cases.
+func goRepo(t *testing.T) string {
+	t.Helper()
+	repo := gitWorkTree(t)
+	for name, content := range map[string]string{
+		"calc/calc.go":      "package calc\n\nfunc evalOr(p string) string { return p }\n\nfunc Root(p string) string { return evalOr(p) }\n",
+		"calc/calc_test.go": "package calc\n\nvar cases = []string{\n\t\"a\",\n\t\"b\",\n}\n",
+	} {
+		if err := os.MkdirAll(filepath.Join(repo, filepath.Dir(name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("sh", "-c", "git add calc && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m calc")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return repo
+}
+
+// The finish review names what the change removed that its passing check
+// could not show: a definition HEAD had and the package no longer has, and
+// a case of an existing test. dsl16 and Pi deleted evalOr, which the hidden
+// test of 67a1f950 called, and Pi deleted or rewrote existing cases its
+// change broke (ef04de9c, 94f5cac4), each after its own tests had passed
+// (ADR 32, amended 2026-10-15).
+func TestTheReviewNamesWhatTheChangeRemoved(t *testing.T) {
+	t.Parallel()
+	repo := goRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'func Root' calc/calc.go\n"),
+		write("w", "calc/calc.go", "package calc\n\nfunc Root(p string) string { return p + \"x\" }\n"),
+		write("t", "calc/calc_test.go", "package calc\n\nvar cases = []string{\n\t\"a\",\n}\n"),
+		shellArgs("r", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // reviewed
+		fake.Turn{Content: "Root no longer needs evalOr; the request drops case b."},
+	)
+	if e := r.turn("make Root add an x to its path"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 5)
+	for _, want := range []string{"Your change removes `evalOr` (calc/calc.go), which the request does not name",
+		"have its callers go through it", "expectations of existing tests:\n- calc/calc_test.go:5: \"b\","} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the review lacks %q: %q", want, msg)
+		}
+	}
+}
+
+// A removal the request names, and a change to a test that only adds a case,
+// are nothing to say: the turn ends at its answer. The analysts found 6 of
+// 73 original commits deleting a function and 39 editing existing test
+// lines (ADR 32, amended 2026-10-15).
+func TestTheReviewIsQuietOnRemovalsTheRequestNames(t *testing.T) {
+	t.Parallel()
+	repo := goRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'p + \"x\"' calc/calc.go\n"),
+		write("w", "calc/calc.go", "package calc\n\nfunc Root(p string) string { return p + \"x\" }\n"),
+		write("t", "calc/calc_test.go", "package calc\n\nvar cases = []string{\n\t\"a\",\n\t\"b\",\n\t\"c\",\n}\n"),
+		shellArgs("r", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("make Root add an x to its path and drop evalOr"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// adrRepo is codeRepo with an ADR committed, whose one amendment is dated
+// 2026-10-01.
+func adrRepo(t *testing.T) string {
+	t.Helper()
+	repo := codeRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "docs", "adr"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "docs", "adr", "0001-calc.md"), []byte("# ADR 1: calc\n\n## Amendment 2026-10-01: one\n\none returns 1.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-c", "git add docs && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m adr")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return repo
+}
+
+const adrAmended = "# ADR 1: calc\n\n## Amendment 2026-10-01: one\n\none returns 1.\n\n## Amendment 2026-10-06: ten\n\none returns 10. Fuzzing `one` for 40 s (9.4M executions) found nothing.\n"
+
+// The finish review names the lines a change adds to its documents that
+// nothing in the turn showed: here a fuzz run's figures with no fuzz run, and
+// an amendment date no command printed. On commit-bench three builds copied
+// the task's "40 s (9.4M executions) found nothing" into ADR 25 and models
+// guessed amendment dates (ADR 32, amended 2026-10-15).
+func TestTheReviewNamesClaimsNothingShowed(t *testing.T) {
+	t.Parallel()
+	r := unattendedRigIn(t, adrRepo(t),
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py && grep -q 'return 20' calc.py\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		write("a", "docs/adr/0001-calc.md", adrAmended),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // reviewed: two lines nothing showed
+		fake.Turn{Content: "The fuzz figures were the request's; I took them out."},
+	)
+	if e := r.turn("make one return 10 and two return 20, fuzzed for 40 s (9.4M executions)"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 5)
+	for _, want := range []string{"These lines your change adds state what nothing in this turn showed:",
+		"docs/adr/0001-calc.md:7: \"## Amendment 2026-10-06: ten\" (no command of yours printed 2026-10-06",
+		"docs/adr/0001-calc.md:9: \"Fuzzing `one` for 40 s (9.4M executions) found nothing.\" (no run of fuzz of yours passed this turn)",
+		"The request's account of its author's runs is not evidence"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the review lacks %q: %q", want, msg)
+		}
+	}
+}
+
+// The same lines stand when the turn's own runs showed them: a command that
+// printed the date, and a fuzz run that passed printing the figures among its
+// last lines. The turn ends at its answer.
+func TestTheReviewIsQuietOnClaimsARunShowed(t *testing.T) {
+	t.Parallel()
+	r := unattendedRigIn(t, adrRepo(t),
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py && grep -q 'return 20' calc.py\n"),
+		shellArgs("d", "bash", "-c", "echo 2026-10-06"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		write("a", "docs/adr/0001-calc.md", adrAmended),
+		shellArgs("f", "bash", "-c", "printf 'fuzz: elapsed: 40s, execs: 9412345 (235308/sec)\\nPASS\\n' # go test -fuzz FuzzOne -fuzztime 40s"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// The finish review names a part of a condition a rewritten Go function no
+// longer checks, when the check passed without it: dsl19 dropped the
+// judge's Enabled() on c80b38ac, as its plan said, and no test had a case
+// where it was false (ADR 32, amended 2026-10-15).
+func TestTheReviewNamesADroppedCondition(t *testing.T) {
+	t.Parallel()
+	repo := goRepo(t)
+	write := func(id, content string) fake.Turn { return write(id, "calc/judge.go", content) }
+	old := "package calc\n\nfunc judge(enabled, stored bool, state string) bool {\n\treturn enabled && stored\n}\n"
+	if err := os.WriteFile(filepath.Join(repo, "calc", "judge.go"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-c", "git add calc && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m judge")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	r := unattendedRigIn(t, repo,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "c", Name: "fs-write", Args: map[string]any{"path": "$TMPDIR/check.sh", "content": "grep -q 'state == \"ready\"' calc/judge.go\n"}}}},
+		write("w", "package calc\n\nfunc judge(enabled, stored bool, state string) bool {\n\treturn stored && state == \"ready\"\n}\n"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // reviewed: enabled is no longer checked
+		fake.Turn{Content: "The request drops it."},
+	)
+	if e := r.turn("the judge requires its key's state to be ready"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 4); !strings.Contains(msg, "Your change no longer checks `enabled` in judge() (calc/judge.go), and your check passed without it. If the task drops it, add a test case where it is false") {
+		t.Fatalf("review: %q", msg)
+	}
+}
+
+// A planner told to change a condition names each part of the old one and
+// says whether it stays: dsl19's planner read "judge requires ready" as
+// "judge equals ready" and dropped Enabled() from the line it had been given
+// (commit-bench c80b38ac; ADR 32, amended 2026-10-15).
+func TestThePlannerSaysWhichPartsOfAConditionStay(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true,
+		fake.Turn{Content: "main.go declares package main."}, // the explorer
+		fake.Turn{Content: "1. Edit main.go."},               // the planner
+		fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+	)
+	if err := r.s.SendPlanned("change main.go"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if planner := lastMessage(r, 1); !strings.Contains(planner, "When a step changes an existing condition, it names each part of the old condition and says whether that part stays.") {
+		t.Fatalf("the planner's request: %q", planner)
 	}
 }

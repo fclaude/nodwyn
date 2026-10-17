@@ -164,10 +164,13 @@ the tool list is fixed.
 A sub-agent that loops would trip the core's progress stop and end your
 whole turn. So \code{sub-agent} stops short of it on its own: an identical
 call more than \code{sub-agent-repeat-limit} (2) times in a row is skipped,
-and if it repeats again the sub-agent is asked for its answer without
-tools, which comes back with a note that it may be incomplete. After
-\code{sub-agent-max-rounds} (40) rounds it is likewise asked to wrap up. Its
-caller's work goes on either way.
+and if it repeats again the sub-agent is asked for its answer, which comes
+back with a note that it may be incomplete. After
+\code{sub-agent-max-rounds} (40) rounds it is likewise asked to wrap up. The
+wrap-up offers the tools the sub-agent had and refuses any call it makes,
+then asks once more with none: a request without the tools changes the
+prompt near its start, and a caching server reads the whole context again.
+Its caller's work goes on either way.
 
 \section{Compaction}
 
@@ -177,9 +180,13 @@ just under the high water: 58,983 of 61,440), \code{maybe-compact} asks the mode
 \textbf{handover note}: the task and its example as given, what it found
 with the evidence for each finding, what it changed, how to test, what is
 unsure, and its check script. Then it narrows the context to the system
-prompt, the request and that note, and the work continues, from a clean
-window, with the changes already in the files. The narrowing lasts: the
-next turns start from the note too, not from the whole conversation.
+prompt, the request and that note, followed by the turn's plan under the
+plan header with the steps marked so far (\code{compact-plan}): the window
+shows a plan where it was recorded, before the narrowing, so without it the
+plan went with the conversation, and a model that no longer saw it read the
+code again to write it. The work continues from a clean window, with the
+changes already in the files. The narrowing lasts: the next turns start from
+the note too, not from the whole conversation.
 
 You can compact whenever you like, whatever the size, by sending a message:
 
@@ -207,9 +214,14 @@ goes on in the full context. A turn whose context fills a second time with
 no file written since its last compaction stops instead: compacting again
 would only send the model back over what it read (five compactions and no
 edit in seven minutes, in one session on a 61,440-token window). The model
-is asked, without tools, what it found, what is done, what is left and what
-is in the way, and that answer ends the turn (\code{compact-stop-unchanged},
-\code{turn-stopping}). How full the context is shows as you work:
+first gets a write round: told to make the code changes its note and plan
+name, tests and docs after, it is offered only the edit tools
+(\code{compact-write-tools}) for at most \code{compact-write-rounds} (6)
+requests; then it is asked, without tools, what is done and what is left,
+and that answer ends the turn (\code{compact-stop-unchanged},
+\code{turn-stopping}). A model that had worked out all six edits of a
+change and made none was asked only for that report, and its run ended
+with nothing written. How full the context is shows as you work:
 in the terminal client's title (\code{context \textasciitilde 45k of
 \textasciitilde 61k}) and \code{:budget}, and in the console's Context
 meter.

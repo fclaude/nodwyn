@@ -1040,3 +1040,1232 @@ reach the progress guard and the tool-call budget, through a third argument of
 5 ended with no stop after 13 model requests, where the same twelve real calls
 stop at the fourth. The strategy's own skips (a sub-agent's repeats, tools off
 for a handover note) stay out, since the sub-agent ends itself before the guard.
+
+## Amendment 2026-10-11: a check must be able to fail
+
+Two runs of `9c44245` on the long-context cohort, read by hand against the
+d64209d runs, showed one failure behind every task that flipped: no run fed the
+candidate fixes the input that tells them apart. django-16877 r2 asserted its
+recalled output; xarray-6599 never ran timedelta data that does not start at
+0; django-14787 r2 read `bound_method called with…` as success; pytest-7205
+r2's reproduction used a flag that does not reproduce. The person's own
+sessions show the same in work that is no bug fix: Go tests and `node --check`
+green while the page went blank on a click (the jev-key console change), and
+"done" twice on broken UI with Go tests green (muse-spark). A rule to test the
+nearest wrong version (2026-10-10) shows up in plans and rarely in the tests
+that run, so the loop now checks what a rule cannot:
+
+- **Each part of the change against the check.** Before an unattended turn
+  with a change ends on a check that passed since the last edit, the host runs
+  that check again with each part of the change taken out in turn and put back
+  (`check-without`, `internal/prim/without.go`): a hunk of a changed code file,
+  or a whole new or deleted file, at most 8 and within 5 minutes in all,
+  documents, tests and comment-only hunks left out. The parts it still passes without are named, once a turn
+  (`finish-untested-parts-message`): either a part is not needed, or the check
+  cannot tell whether it works. It needs no notion of the task, only the diff
+  and the model's own check, so it applies to a feature, a refactor or a fix
+  alike. New files the untracked-files reminder already named are left out of
+  the answer. `TestCheckWithoutTakesOutEachPart`,
+  `TestCheckWithoutStopsAtItsBudget`, `TestTheChecksUntestedPartsAreNamed`.
+- **A cited command must have run since the last edit.** A command the final
+  report cites in backquotes, starting with a program the turn ran, that no
+  command line run since the last edit matches is named, once
+  (`stale-citations`, `finish-stale-citations-message`). A plain "done" cites
+  nothing and is not asked. `TestAReportCitingAnOldRunIsAsked`.
+- **The rejected option, too.** A working rule asks to run the check once
+  against the option a choice rejected: a check that passes there as well does
+  not decide it. `TestThePromptsLeaveThePlansChoicesToTheRuns` covers its text.
+- **Not built.** Asking every claim in a report for its run: most reports end
+  on a plain "done" with the evidence above it, and a reminder on each would
+  nag. A check that the rejected option really fails: that needs the option
+  written out as code, which the plan only names.
+
+They are to be measured on the commit-replay set kept with the benchmark runs
+(features, refactors and fixes from this repository's history, graded by each
+commit's own tests) as well as on SWE-bench, since SWE-bench alone covers bug
+fixes. Each test above fails on `9c44245` and passes with the change.
+
+## Amendment 2026-10-14: the repository's own tools are runs the harness sees
+
+A trusted repository runs its checks through tools its `.nodwyn/init.scm`
+registers: nodwyn's `validate` (make validate, in the background),
+`go-test {pkg}` (go test -race) and `run-make {target}`. The evidence loop,
+check-without and the plan's marks counted `shell-exec` runs only, so on
+commit-bench (dsl18m, `1e595e5`, trusted, 2026-10-14) they did not see those
+runs:
+
+- the end-of-turn evidence message ("has not passed since your last edit")
+  fired in every attempt, mostly after a validate or go-test that had passed
+  since the last edit: on 3422faf1 steps 3, 4, 6 and 8 after validate passed
+  at call 111. About 73 calls, 0.6M tokens and 33 minutes over 10 attempts
+  followed it, an upper bound since some of it was real work;
+- hygiene's first rule folded validate's passing result as "this test command
+  did not run any test ()" in 7 of 10 attempts, since no word of
+  `hygiene-ran-words` is in its summary;
+- a run whose exit status was another command's marked plan steps passed: on
+  3422faf1 steps 3-6 from a run on the copy of the last commit whose tests had
+  failed, each ending in `| tail -n 8 || true`, and on c80b38ac a step from
+  `| tail; echo exit=$?`.
+
+So:
+
+- **A tool is the command it runs.** `tool-commands` (strategy.scm) maps
+  `validate` to make validate, `go-test {pkg}` to go test <pkg> and
+  `run-make {target}` to make <target>; a project may add rows. `tool-call`
+  makes the shell-exec call that runs that command from the tool call's own
+  arguments, never from its output, and `tool-result` reads the status the
+  tool's text reports ("exit N" first, or a background run's "pN: exited N").
+  `command-line` and `test-call?` see the command, and the evidence loop
+  counts such a run toward the turn's test runs, the commands that passed
+  (`passed`), the passing check check-without takes apart (`passing`), and
+  the commands a report may cite. The plan's marks (`plan-language-round`)
+  see them too. A tool's whole check (validate) is not check-without's check:
+  it runs for minutes against check-without's five for all its runs, as a
+  shell `make validate && make accept; echo exit=$?` did on 3422faf1, naming
+  nothing; the check before it stays. Its pass counts as the whole check's
+  for the plan's evidence and for the report's citations
+  (`whole-check-passed?`), and the repository's own gate test
+  (`TestValidateCountsAsARunsTestRun`) still sees a run end after validate.
+- **validate's summary says it ran.** `hygiene-ran-words` gains "validate:
+  pass", "pass  gofmt" and "tests vs unchanged"; a failing validate already
+  said "failed". The fold of a tool's run that ran nothing gives the end of
+  the tool's text as its reason, not "()".
+- **A masked status is no evidence without output.** A run passed, for the
+  plan's marks and its end-of-turn evidence, when it exited 0, was not on the
+  copy of the last commit (`base-run?`), and, when its status may be another
+  command's (`masked-run?`: an unquoted pipe without pipefail, an `||`, or a
+  `$?` in the line), when its output shows tests passing (`--- PASS:`, go
+  test's `ok`, `validate: PASS`) and none failing (`run-entry`). A Go test
+  step (a `_test.go` file) takes a run only when its output shows the test
+  (`--- PASS: <name>`) or its package (`ok ... /<dir>`, not "[no tests to
+  run]") passing; a go test of the package with no `-run` counts for every
+  test step in it, which is how the go-test tool runs.
+  `TestTheRepositorysToolsAreTheRunsTheyMake`,
+  `TestARunWhoseStatusHidesItsTestsIsNoEvidence`,
+  `TestARepositorysTestToolsAreFoldedByWhatTheyRan`.
+- **Not built.** Masking for the failing-run reminder and for check-without:
+  check-without already tells a part apart by output as well as status. Test
+  steps whose test is not in the file the step names (an exfil scenario run
+  by `TestScenarios`). Reading a browser check's own summary (`== credentials:
+  ok in 6.1s`): it is this repository's runner, not a test runner's, so a
+  browser check piped into tail (on c80b38ac's runs, `run.sh credentials 2>&1
+  | tail -n 3`) is no longer a step's evidence, and validate, which runs the
+  browser checks for a console change, is. Counting `make accept` as a whole
+  check.
+
+Replayed through `run-entry`, the logged calls of 3422faf1 give: the
+base-copy run (call 78) no evidence; `generate.py --check; echo exit=$?`
+(call 108, which printed `exit=1`) none either; `make validate && make
+accept; echo exit=$?` (call 119), whose output shows its passes, evidence; and
+each go-test of a planned test's package, evidence for that test.
+
+A go-test run is now check-without's check when it is the latest that passed,
+which no trusted run's was before: one package's tests may still pass with a
+part in another package taken out, so the untested-parts message may name
+parts other runs test, as the dsl18m review found for shell runs. Each test
+above fails on `1e595e5` and passes with the change.
+
+## Amendment 2026-10-14: a sub-agent wraps up with the tools it had
+
+A sub-agent out of rounds, or stopped for repeating a call, was asked for its
+answer with no tools. A local server lists the tools near the start of the
+prompt, so that request shared no prefix with the ones before it and the
+whole context was read again. On commit-bench (dsl18m, 2026-10-14) the
+explorer's last request re-read 25,000 to 48,000 tokens so in 16 of 18
+attempts, about 0.03-0.05M cost-eq (4-7% of a task) and 13-27 s each, and
+dsl16 and A did the same.
+
+So `sub-agent-wrap-up` asks as the sub-agent did, offering its tools, after
+`sub-agent-wrap-up-message`; a call the model makes anyway is skipped with
+`sub-agent-text-only-reason`, and the model is asked once more with no tools,
+as before. At most two asks, as before. `TestSubAgentOutOfRoundsStillAnswers`,
+`TestSubAgentRepeatingItselfEndsOnlyItself` and
+`TestSubAgentWrapUpSurvivesAToolCall` now expect the tools on the wrap-up
+request, and fail on `1e595e5`.
+
+## Amendment 2026-10-15: the whole check stands only for the plan's check steps it runs
+
+Before an unattended turn ends, the plan's steps are set against what
+happened (`plan-language-check`, planspec.scm), and the repository's whole
+check passing since the last edit (`whole-check-passed?`: make validate,
+make check, make test, ...) met every Check step, whatever its command. A
+whole check runs the repository's tests, builds and linters, not every
+command a plan names: on commit-bench (dsl16, `550e3b9`, c97f9a41, session
+20261013T224535Z-ac7eaa5c) the planner's `python3
+docs/book/source/generate.py && python3 docs/book/source/generate.py
+--check` step was met by a run of make validate (call 3217) that ran no
+generator, after two test edits (3187, 3211) had changed the line counts the
+book's inventory records. The evidence message (3248) named two test steps
+and not that one, and the change ended with the inventory stale, which the
+parent's validate did not check.
+
+So the whole check stands for a Check step only when the step's command is
+one that checks the code (`check-command?`: a test run, a build, go vet, a
+linter, a make target), as the whole check does. Any other Check step, a
+generator's `--check`, a browser check or a `go generate`, is met only by a
+passing run of its own command since the last edit; until then the evidence
+message names it ("step N (Check) <command>: it has not passed since your
+last edit"), which costs a round when the model did not run it again, and
+the harness no longer marks it done. Test steps are unchanged: the whole
+check runs the tests. `TestAWholeCheckStandsOnlyForTheChecksItRuns` fails
+on `defffcd` and passes with the change.
+
+Of the 107 Check forms in the planners' final plans across the recorded
+commit-bench sessions (257), 101 are commands that check the code, which
+this leaves as they were. Of the other six, two are this generator (dsl15
+and dsl16, c97f9a41), two `go generate ./internal/frontend/rpc`, one the
+bare tool name `validate`, which the validate tool's own run (make validate)
+meets, and one `go run ./scripts/validate` (dsl16 on another model,
+8e172440), which is what make validate runs: that step would now be said
+after a pass of the validate tool alone, a round spent on a step already
+met. In that session the model ran it itself (call 1085), which meets it.
+
+- **Not built.** The evidence message is said once a turn, so a Check step
+  met when it fires stays met through later edits. The deep study's example
+  of this rule, 107251d0 under dsl19, is that case and not this one: its
+  plan's check was the planner's `go build ./... && ... && make validate`,
+  a check command, and the message had fired (call 3921) before the test
+  file that made the inventory stale (3935). For nodwyn's own tasks
+  validate now runs the inventory check (ADR 37, amended 2026-10-15); this
+  amendment covers repositories, and older snapshots of this one, whose
+  whole check does not.
+
+## Amendment 2026-10-15: a compaction gives the plan back
+
+A compaction narrows the context, and the window keeps what follows the
+narrowing: the handover note. The turn's plan is a message where it was
+recorded, before the narrowing, so it went with the cleared conversation. In
+the trusted commit-bench runs of A, dsl16, dsl18m and dsl19 (2026-10-14 and
+15), none of the 37 compactions left a plan in the window, though every one
+of those turns had recorded one. On 6e18b7ba (dsl16) the model had worked out
+all six edits by ten minutes and wrote none before the context filled; its
+note said "plan.md is on disk at repo root with all 19 steps", but plan.md is
+the repository's own roadmap and the plan was the harness's. After the clear
+it concluded the plan "isn't actually in the repository's plan.md file, so I
+need to rebuild it", read the code again and spent 13,200 tokens working out
+the design a second time.
+
+So `compact-context` adds the turn's plan after the note (`compact-plan`,
+compact.scm): the plan as recorded, under `plan-header`, with the latest
+mark of each step and its note under "Marked before the conversation was
+cleared:", as the window lists a carried plan's marks, and a line saying the
+harness keeps it and no file holds it (`compact-plan-message`, prompts.scm).
+It is read from the log with `unfinished-plan`, the plan this turn would
+leave to the next, and only when the turn has recorded one (`plan-steps`):
+a `/compact` between turns adds none, since the next turn carries an
+unfinished plan itself. It is a harness message, so the window and its
+replay are unchanged; it stays in the conversation after the turn, as a
+recorded plan does. The note request now says the plan comes back after the
+note, so the note leaves it out and does not say a file holds it, and that a
+file holds something only when the work wrote it there or read it there.
+
+A compaction now carries about the plan's size more (a few hundred to 2,000
+tokens). `TestCompactionCarriesThePlanWithItsMarks` fails on `d880bb3`: the
+compacted request is the system prompt and the note alone, and the note
+request says nothing of where the plan is.
+
+## Amendment 2026-10-15: a turn that fills twice gets a write round before its report
+
+The stop of 2026-10-05 is right that a third compaction would repeat the
+second, and wrong to write nothing when the model knows the edits. On
+6e18b7ba (dsl16) the context filled the second time at 36 of the run's 60
+minutes with nothing written; asked without tools for a report, the model
+answered that all six edit sites were confirmed, listed every code change as
+left, and the run ended with an empty patch. The other runs of that task
+(A, dsl18m, Pi) had written their code before their compactions and found
+it on disk after them.
+
+So the stop first gives a write round (`compact-stop`, compact.scm): the
+model is told "Your note and plan name the edits: make the code changes now;
+tests and docs come after", and to report what is done and what is left
+after them, and is offered `compact-write-tools` (`fs-edit`, `fs-write`,
+`read-definition`, and a repository's `go-build`: those of them the session
+has) for at most `compact-write-rounds` (6) requests. Then
+`turn-stop-report` asks for the report without tools, and that answer, or
+one the model gives sooner, ends the turn as before; the finish checks still
+ask nothing more. While the turn stops, `ask-model` skips a call to a tool it
+did not offer (as `compact-note` does), and a reply whose every call it
+skipped spends its round and is asked again; before, such a call with the
+report would have run. A turn that is stopping is not compacted again, so
+the writes of the write round do not lead to a third compaction. With
+`compact-write-rounds` at 0, or neither edit tool in the session, the turn
+stops with the report alone, as before.
+
+Not built: the reading reminder at 4 rounds rather than 12 while nothing has
+been written since a compaction. The risk is a hasty edit in a run that
+would otherwise have ended with none.
+`TestCompactionGoingRoundInCirclesGetsAWriteRound` and
+`TestAWriteRoundEndsWithAReportWithoutTools` fail on the commit before this
+one; `TestCompactionGoingRoundInCirclesStopsTheTurn` now covers the report
+alone, with `compact-write-rounds` at 0.
+
+## Amendment 2026-10-15: a shorter explorer for qwen, and folds at three quarters
+
+Two knobs set by the earlier amendments were read against commit-bench's
+trusted runs of A, dsl16, dsl18m and dsl19 (qwen3.8-27b, high water 102,400,
+2026-10-14 and 15).
+
+**The explorer.** qwen's row of `plan-explore-rounds` was 16, set on 2026-10-05
+with no qwen explorer run to read. The explorer used all 16 rounds in 39 of
+48 runs. It read 571 files, 296 of them first after its eighth round, and
+the model doing the work read 313 of the 571 again itself, 154 of those 296
+among them. The deep study put the explorer at 0.13-0.15M cost-eq a task. The
+row is now 8. Expected: about half the explorer's requests and their prefill
+go, an estimated 0.05M a task. Risk: the planner sees fewer facts; the 142
+files the explorer read after its eighth round and the work never read are
+the facts it may miss, so plans and their reviews on the nine are what to
+read next.
+
+**Hygiene's pressure.** 94 of the 108 hygiene folds in those runs were
+pressure folds ("the context is filling the window", past half the high
+water), 63 to 79 of them with the context under three quarters of it. Each
+fold makes a caching server read the rest of the prompt again, and the
+model read files whose reads had been folded again 57 to 156 times an arm
+(some of them to edit them, which a fold does not cause). `hygiene-pressure`
+is now 0.75. Expected: most of those folds wait until three quarters, or do
+not happen before the turn ends or compacts, and below three quarters a
+batch still folds when it pays for its re-read or the cache is not serving.
+Risk: requests carry more context, which a working prefix cache serves
+cheaply, and a long turn may reach the compaction threshold sooner.
+
+It meets `hygiene-keep-pressure` (0.75, 2026-10-14), which holds the reads of
+files the plan will change until the turn edits them. The two are equal: below
+three quarters a held read stays and the others fold only when it pays; past
+it every due read, held ones too, folds in the same sweep, one re-read of the
+prompt where the old values made two (the others at half, the held ones at
+three quarters). The held reads fold at the share of the high water they
+did, though a context folded less may reach it sooner. Were
+`hygiene-pressure` set above `hygiene-keep-pressure`, a held read would lose its
+hold before the others fold whatever the cache; a project that raises one
+raises both.
+
+`TestTunedValuesFollowTheModelsFamily` and `TestExplorerRoundsFollowTheModelsFamily`
+(a qwen explorer is stopped after its eighth round) and
+`TestHygieneWaitsForThreeQuartersOfTheHighWater` fail on the commit before
+this one: at 0.62 of the high water a fold that does not pay waits, and a
+held read stays while the other folds because it pays, where before both
+folded because the context was past half. Its case past three quarters, the
+held and the other read folding in one sweep, passes on both.
+
+## Amendment 2026-10-15: the finish checks are said once, together
+
+Before an unattended turn ended with a change, four checks could each send
+the model back once a turn: the new files git does not track, the plan's
+steps without their evidence, check-without's untested parts and the
+report's stale citations. Each answer was an edit or a script, which re-armed
+the reminders before them ("You changed files after your last test run"),
+and a trusted repository's own reminder ("validate has not run") came on
+top. In the deep study of commit-bench (2026-10-15, reports 12 and 13):
+
+- on five tasks set against Pi, the rounds after the first finished report
+  cost A 0.85M tokens and dsl18m 0.41M, in 21 segments 17 of which edited
+  nothing in the repository; on the ten held-out tasks 8 of A's 10 runs were
+  sent back after a final reply, adding 193 calls, check-without 1.80M of the
+  2.16M;
+- on c97f9a41 (A) six chained reminders cost 0.38M with no edit, among them
+  "validate has not run" twice, right after `make validate` had run in the
+  shell: `.nodwyn/init.scm` sets `validated-state` only when its validate
+  tool runs;
+- deletions made 7 of the 69 parts check-without named, and on 8c795994 one
+  message named nine deleted empty logs "(deleted file, +0 -0 lines)", whose
+  answer cost 19 calls and 200k tokens changing only a script in the scratch
+  directory.
+
+So:
+
+- **One finish review, once a turn.** When a turn with a change first ends
+  and no reminder of the turn's evidence is due (no change, no test run since
+  the last edit, a failing run), `finish-review-points` (strategy.scm)
+  gathers the new files, the plan's unmet evidence (the steps that have it
+  are marked as before), check-without's untested parts and the stale
+  citations, and `finish-review-message` (prompts.scm) says them in one
+  message: one point as before, several numbered, closed by
+  `finish-review-close`, which says it is asked once, asks for the check to
+  run again after any change, and says the next answer ends the turn.
+  `TestTheFinishReviewIsOneMessage`.
+- **The turn is accepted after it.** An answer to the review ends the turn;
+  the evidence reminders are not asked again. `TestAnAnswerAfterTheFinishReviewEndsTheTurn`.
+- **check-without leaves deletions alone.** A deleted file and a hunk that
+  only deletes lines (its added lines, if any, comments or blank) are no
+  parts: a check that passes with the deletion put back cannot be extended to
+  fail without code that is gone, and asked to, models wrote ablation
+  scripts or kept dead code. Documents were never parts (`codeFile`).
+  `TestCheckWithoutLeavesDeletionsAlone`.
+- **A shell make validate is validate's run.** After a run of `make
+  validate` that ran to an exit, `validated-run` sets `validated-state` to
+  `(validation-state)`, as the validate tool does, in a repository whose
+  `init.scm` defines both; elsewhere it does nothing. The benchmark runs the
+  harness against old snapshots whose `init.scm` it cannot change, and every
+  snapshot since validate came (`ea9921b`, 2026-10-03) defines both. `TestAShellMakeValidateCountsAsValidated`.
+
+What is kept: every check still runs at the first finish, with the same
+findings and wording; the evidence reminders still come first, and the
+failing-run reminder still lets a turn end on failures the unchanged code
+shares. What is given up: a second chance after the review, so an edit made
+in answer to it and not tested again ends the turn untested (the review asks
+for the run), and an untested deletion goes unnamed. The analysts estimate
+0.1-0.2M tokens saved per task where the checks fire; the three segments of
+the study in which a reminder led to a stronger test (A and dsl18m on
+1d401bf3, dsl18m on 7513f7eb) would get their message once. Each test above
+fails on `d880bb3` and passes with the change.
+
+## Amendment 2026-10-15: the finish review names what the change removed
+
+Three of the benchmark's losses came from what a change took away, each after
+the model's own tests had passed (deep study of commit-bench, 2026-10-15,
+reports 02, 03 and 04):
+
+- on 67a1f950 dsl16 and Pi fixed the behaviour by rerouting `rootRefusal` and
+  deleting `evalOr` as dead code; the hidden test calls `evalOr`, which the
+  task never names, so neither patch built against it. check-without named
+  the deletion and dsl16 kept it, "rather than reintroduce an unused helper";
+- on 94f5cac4 Pi turned the visible case "count 0 is an error" into one for
+  -1 before its first test run, and dsl16 followed its planner in the same;
+- on ef04de9c Pi deleted the negative case its new JWT pattern broke, and on
+  5040f9fe it rewrote the stream cases of the test that then failed as a
+  pass-to-pass test.
+
+The working rule that names each changed test and the request's words behind
+it was in every one of these versions, and was not followed.
+
+So `change-removals` (internal/prim/removed.go, hidden) reads the change
+against HEAD and the finish review names, when the latest run since the last
+edit passed (the model's check did not notice):
+
+- **Definitions gone from their package.** A top-level Go function, method,
+  type, variable or constant (Python's functions and classes, Scheme's
+  defines) that HEAD has in a changed non-test file and no file of the same
+  language in its directory defines now; a name in another case counts,
+  since a test calls it by name. A name the request gives is left out, whole
+  or in words that spell it ("the guard's workspace-kind checker is gone"
+  for `WorkspaceKind`, "the first known finding" for `firstKnown`).
+  `finish-removed-definitions-message` asks to keep it and have its callers
+  go through it with the new behaviour, which a hidden caller and staticcheck
+  both accept, or to say which words of the request remove it.
+- **Expectations of existing tests.** A line of an existing test
+  (`x_test.go`, `test_x.py`, `x_test.py`) that states an expectation, a case
+  of a table (a line ending in a comma that holds a literal) or an assertion
+  that carries one (testify, Python's `assert`), removed and added back
+  nowhere in the change's test files once white space and trailing comments
+  are set aside: gofmt's realigned columns and a case moved to another file
+  are not removed. A `t.Errorf`'s message and the `if` before it are not
+  counted: with them the replay below flagged 84 patches, most of them
+  ordinary rewrites. `finish-removed-expectations-message` asks to restore
+  each line the request does not change, or to quote the words that change
+  it.
+
+`TestTheReviewNamesWhatTheChangeRemoved`, `TestTheReviewIsQuietOnRemovalsTheRequestNames`,
+`TestRemovedDefinitionsAreTheOnesGoneFromThePackage`,
+`TestRemovedDefinitionsTheRequestNamesAreNotNamed`,
+`TestRemovedExpectationsAreCasesAndAssertions`,
+`TestChangeRemovalsReadsTheWorkingTree`.
+
+Replayed over the benchmark's patches (each applied to its task's parent,
+306 that apply: 233 attempts and 73 original commits): definitions are
+named in 12 attempts and 5 originals, among them dsl16's and Pi's `evalOr`;
+6 of the 12 remove what the original removes too (e752f151's `errDocsEval`
+and `code-workspace?`, 1fd4c3e7's `latex`). Expectations are named in 31
+attempts, among them Pi's ef04de9c, 94f5cac4 and 5040f9fe cases; the
+originals cannot be counted, since their patches leave out the hidden test
+files. So the note stays advisory, and costs a round on its own in at most
+about one attempt in six. Not built: running the change's check with the
+test files as HEAD had them (report 04's "tests as they were"), which would
+name only cases the change breaks, at the cost of a run of the check; and
+the planner rule that a `(change ...)` step fixes a function rather than
+deleting it (report 02), held for want of more than one case.
+
+## Amendment 2026-10-15: the lines a change adds to its documents stand on the turn's runs
+
+No rule read what a change wrote into its documents and comments, and the
+deep study of commit-bench (2026-10-15, reports 05, 07, 09, 10 and 11) found
+15 claims in 36 candidate patches that nothing in their run showed:
+
+- the task's own account of its author's fuzz run, "40 s (9.4M executions)
+  found nothing", in ADR 25 of three builds: dsl18m and dsl19 never fuzzed
+  (dsl19's fuzz runs were refused by the guard), and A's own run, made
+  after a reminder, counted 29.5M executions while the ADR kept 9.4M;
+- "make validate passed with zero warnings" written before validate ran
+  (dsl16, 107251d0; both runs passed later);
+- amendment dates guessed: "the day after the last amendment, the natural
+  today" (dsl18m), "I'll use 2026-10-03" (dsl19);
+- an amendment of ADR 9 pasted twice by one fs-edit whose new text re-typed
+  the paragraph before its anchor (A, 5040f9fe);
+- 24 Baseten entries of models.json, whose head names models.dev as its
+  source, written from memory by dsl18m, dsl19 and A's other run, and
+  copied by dsl16 from another agent's catalogue (dc679e46).
+
+So the finish review names them (`change-claims`, internal/prim/claims.go,
+hidden; `finish-unshown-claims-message`, one point however many lines):
+
+- **A sentence that reports a run** (in the past tense or "passes with":
+  passed, N or zero warnings, found nothing, executions, a fuzz or benchmark
+  figure; not a caveat such as "not run here"), in a document or a Go or
+  Scheme comment, stands on a run of each command it names (`make validate`,
+  `make accept`, `go test`, a fuzz, a benchmark, or any test command) that
+  exited 0 in the turn, whose last six lines (of a fuzz run's progress lines,
+  the last) hold each figure it gives within 5%. The request's account of
+  its author's runs is no such run.
+- **An amendment date** the file did not have stands on a command that
+  printed it, as `2026-10-15` or `20261015`, or on the request; the message
+  suggests `date +%F`. Each date is named once.
+- **Three or more lines a document's edit inserted** (120 characters or
+  more) that stand word for word elsewhere in it are named, as report 05
+  proposed for `editedRegions`; read from the diff at the finish rather than
+  in fs-edit's answer, so it is one point of the one message.
+- **Entries added by hand to a generated file** (its head says Code
+  generated or Generated by, or names a `"source"` address, or a trusted
+  `.nodwyn/init.scm` lists it in `generated-files`) stand on a command after
+  the last hand edit holding `go generate`, the generator its head names,
+  or its source's address or host.
+
+The loop keeps the turn's commands for it (`shown-entry`): each command
+line, its exit status (none for a run on the copy of the last commit) and
+the first 2,000 and last 8,000 characters it printed, at most 200; the file
+tools and the tools that only look are left out, since their answers show
+the model's own text. `TestTheReviewNamesClaimsNothingShowed`,
+`TestTheReviewIsQuietOnClaimsARunShowed`,
+`TestARunClaimStandsOnARunThatPrintedIt`,
+`TestRunClaimsNameEachCommandAndLeaveProseAlone`,
+`TestAnAmendmentDateStandsOnACommandThatPrintedIt`,
+`TestARepeatedParagraphIsNamed`,
+`TestHandEditsOfAGeneratedFileStandOnItsGenerator`,
+`TestChangeClaimsReadsTheWorkingTree`.
+
+Replayed over the benchmark's patches with each nodwyn run's session log
+(its commands, exit statuses and output, and its hand edits): on the 36
+diffs of the study 10 runs are named, all for what the reports found: the
+fuzz line of A, dsl18m and dsl19, the two guessed dates, A's pasted
+paragraph, and the four hand-written catalogues. dsl16's backed validate
+line and its own fuzz stay silent. Over the 176 nodwyn attempts with a log,
+21 are named; the one false alarm found is a fuzz run read in the
+background whose exit no read saw (A, 0a9f700, 3422faf1), which the
+harness does not count as a run either. Not built: the server behaviour
+stated as known, and a citation the plan made up (report 11's other
+cases), which no command's output can settle.
+
+## Amendment 2026-10-15: a dropped part of a condition is named, and plans say which parts stay
+
+On commit-bench's c80b38ac (deep study, 2026-10-15, report 08) dsl19's
+planner turned "judge requires ready" into `result.Judge = (state ==
+stateReady)`, though the old line it had been given read
+`s.options.Config.Jev.Enabled() && ...`. The executor saw the dropped check
+four times, named the case where the judge's content is none, and followed
+the plan each time; no test had that case, so every check passed and
+validate passed. dsl16's planner made the same drop and its executor put the
+operand back, "safer". Nothing in the harness looked at a condition the
+change removed: the plan's evidence marks a change step done when its file is
+written, and check-without takes out whole hunks, and this hunk was needed.
+
+So:
+
+- **The finish review names a dropped part of a condition.**
+  `change-dropped-conditions` (internal/prim/operands.go, hidden) reads each
+  Go function of a changed non-test file whose body changed: the operands of
+  the `&&` and `||` of its old body, and the condition of each old guard (an
+  `if` whose block ends in a return), that its new body no longer holds,
+  white space and a leading `!` aside. An operand that stands in the body of
+  a function of the package the new body calls, one the change added or
+  rewrote, is still checked; so are error and ok checks, literals and
+  one-letter names, left out; and so is an operand with a word the request
+  names (the request is about it). When the latest run since the last edit
+  passed, `finish-dropped-conditions-message` says: "Your change no longer
+  checks X in F(), and your check passed without it. If the task drops it,
+  add a test case where it is false and say so in your report; otherwise
+  put it back." Report 08 proposed "your check passes either way"; the
+  harness has only run the check without the operand, so it says that.
+  `TestTheReviewNamesADroppedCondition`,
+  `TestDroppedOperandsAreThePartsTheNewBodyLacks`,
+  `TestDroppedOperandsLeaveMovedAndNamedConditionsAlone`,
+  `TestChangeDroppedConditionsReadsTheWorkingTree`.
+- **A plan step that changes a condition names its old parts.**
+  `plan-language-shape` (planspec.scm) asks: "When a step changes an
+  existing condition, it names each part of the old condition and says
+  whether that part stays." `TestThePlannerSaysWhichPartsOfAConditionStay`.
+
+Replayed over the benchmark's patches: on c80b38ac's original and the four
+builds of the study (A, dsl16, dsl18m, dsl19) it names dsl19's
+`s.options.Config.Jev.Enabled()` alone; the keychain operands the others
+dropped from that line still stand in its `stored` line. Over all patches
+that apply (310: a run in progress had added four since the replay of the
+removals above) it names something in 24 of 237 attempts and 13 of 73
+original commits, most of them conditions the task rewrote on purpose (validate's
+book rules on 1fd4c3e7, the pending ask's fields on 48f90ea8), so it stays
+advisory. Without the request's words left out it named 53 attempts and 21
+originals. Not built: Python and Scheme conditions.
+
+## Amendment 2026-10-16: a changed expectation of an existing test is asked about at the edit
+
+The review of the Muse runs on commit-bench (2026-10-16, eight tasks,
+transcripts of dsl20r, dsl16r and Pi) found that both losses of dsl20r and the
+one of Pi are one mistake: an existing test fails after the change, and the
+agent picks the wrong side.
+
+- **94f5cac4** (dsl20r, at high and at low): the planner wrote "count 0 stays
+  and means default", which the request does not state (it says "fs-read's
+  start 0 is line 1", and nothing of count). Both runs then rewrote the
+  existing row `(fs-read "big.txt" 1 0)`, "count must be at least 1", to
+  `1 -1` and `1 -2`; at the high run's round 22 the old failure was printed
+  and round 23 called it "failing as expected". dsl16r and Pi kept the row.
+  The finish review named the row, as one of six lines of one of four points,
+  some twenty rounds after the edits, and the answer defended all six by
+  quoting the request's rule for a skipped argument, whose words do not name
+  a count given as 0.
+- **855e90e7** (Pi, the mirror): an existing test failed after Pi's correct
+  wiring, and Pi added an untested `overlapsRepo` skip to production code
+  that removes exactly the directories the hidden test expects denied.
+  dsl20r met the same failure and fixed the test, as the real change did.
+
+None of the extra verification (review loops, check-without, comparisons)
+caught either. The owner's principle is that a harness does not block the
+model's choices: it asks, and follows the choice. So both additions below are
+a rule and a question, and no edit is refused.
+
+- **A working rule.** Both system prompts say: when an existing test fails
+  after the change, decide which side is wrong before editing either; the old
+  expectation stands unless the request names the new behaviour for that
+  input or case; never add a conditional skip or exception to production code
+  (least of all in a guard or denylist) to make an old test pass unless the
+  request asks for it, and fix the test's setup when it contradicts what the
+  request names; a branch you add gets a test for each side of it.
+  `TestThePromptsDecideWhichSideOfAFailingTestIsWrong`.
+- **The question at the edit.** After a round whose calls wrote a test file
+  (`test-file-path?`: `x_test.go`, `test_x.py`, `x.test.js`, a `tests/`
+  folder) that the turn has not been asked about, the evidence loop sets the
+  change against HEAD with `change-removals` and, for that file's lines,
+  says once (`test-edit-nudge`, `edited-expectations-message`): "Which
+  sentence of the request requires the new expectation, for that input or
+  case? A rule the request states in general words does not cover an input it
+  does not name. If none does, restore the line and change the code to meet
+  it; if one does, say which in your answer." It lists each line as
+  `path:line: text`, as HEAD had it. The edit is never refused. A test the
+  turn added has no line at HEAD, and neither has a case it adds to a table,
+  so neither is asked about; a file is asked about once in a turn (the
+  evidence loop's state is the turn's), whatever else of it the turn changes.
+  The finish review still names every such line when its latest run passed:
+  it is the last place to ask, and it is unchanged. The question is about the
+  input or case, not the rule: on 94f5cac4 the wrong row's count was given as
+  0, and "a skipped argument gets its empty value" does not name it. The
+  chat's loop, where a person reads each answer, does not ask.
+  `TestAnEditedExpectationOfAnExistingTestIsAskedAbout`,
+  `TestTheQuestionOnAnEditedExpectationIsAskedOncePerFile`,
+  `TestTheQuestionIsNotAskedOfTestsTheTurnAdded`.
+
+The new tests fail on 204f6f1 (each asserts what that code does not say) and
+pass here. The 94f5cac4 patch of dsl20r, applied to its parent and read by
+`change-removals`, yields the six lines of the review above: the question
+would have been asked three times, at the rounds that edited
+`json_test.go` (98, 99), `fs_read_range_test.go` (59, 60: the start row the
+request requires and the count row it does not, together) and
+`index_grep_test.go` (187, and 188, which was only moved from a map to a
+direct assertion, a false alarm of `change-removals` that the finish review
+already had). No model was run: whether the rule or the question changes what
+a model does is for the next benchmark. Not built: refusing or reverting the
+edit; the question for a test deleted or rewritten through the shell (the
+finish review names it).
+
+## Amendment 2026-10-16: plans keep unstated behaviour apart, and the review asks for the lines no test ran
+
+Two more losses of the same review (2026-10-16, `muse-review`):
+
+- **94f5cac4**, the plan: "count 0 stays and means default" was written as a
+  step although the request never states it, and the exploration's report had
+  listed `TestReadRanges` as testing "start 0/count 0 errors" and quoted the
+  `count must be at least 1` check. A behaviour the request lacks, planned as
+  if it were stated, is what the run then rewrote a test to match.
+- **3422faf1** (dsl20r, third replicate): `mergeFindings` held a dead branch,
+  `f.Class == ClassUnknownEntropy && curIsBlock`, which tests the wrong
+  variable. The plan said only "drop an overlapping unknown-entropy token",
+  with no positions; the probes covered a token inside the other and one
+  crossing its start, never one crossing its end; the diff review missed it.
+  The same test failed in dsl15, an earlier Muse dsl16 build and OpenCode.
+
+So:
+
+- **Plans copy only what the request states.** The planner's prose shape
+  (`plan-shape`), the plan language (`plan-language-shape`) and `plan-write`'s
+  description say: a step carries only what the request states; behaviour it
+  does not state goes on an unnumbered line after the steps, "Assumptions:
+  ...", each checked against the existing tests the exploration found before
+  a step relies on it, and one a test contradicts is dropped; for each rule
+  the request states, the cases are listed by clause, and for a range, an
+  overlap or an edge by position: inside, crossing the start, crossing the
+  end, equal, empty. In the plan language the line is a part like `names` and
+  `context`: `(assumes "behaviour" "the test or code it was checked
+  against")`, written out as one unnumbered line (a plan's steps are its
+  numbered lines, so the marks and the console are unchanged). Nothing checks
+  it. `TestThePlannerKeepsUnstatedBehaviourApartAndListsCases`.
+- **The finish review asks for the changed lines no test ran.** When the
+  latest run since the last edit passed, a source file (`coverage-extensions`)
+  was changed, the lines the change adds hold a branch or a condition
+  (`branch-words`, read from `git-diff` and from new files) and no command run
+  since the last edit measured coverage (`coverage-run?`), the review adds
+  `finish-uncovered-lines-message`: the check passed, which does not show a
+  test ran each changed line; run the tests of the changed files once with
+  coverage, name the changed lines none executed, and add a test that
+  executes each or delete it; if coverage cannot run, read the change against
+  the tests. The loop knows which commands passed and none of them says which
+  lines ran, so it asks the model to run coverage once rather than parse a
+  tool's output. check-without takes out whole hunks and a dead branch lives
+  inside a hunk the check needs, which is why 3422faf1's review was quiet.
+  Gated on an added branch so a straight-line change does not cost a review of
+  its own: none of the earlier finish-review tests adds one, and none changed.
+  `TestTheReviewAsksForTheChangedLinesNoTestRan`,
+  `TestTestFilesAndBranchesAreToldApart`.
+
+No model was run. The review's point costs a round (the coverage run and what
+follows) in each turn that adds a branch and passes; a benchmark run is the
+measure of whether that buys the tests it asks for. Not built: reading
+coverage output in the loop; a check that an assumption was compared with a
+test; the report's other candidates (gate work, sandbox paths, re-reads after
+folds).
+
+## Amendment 2026-10-16: the scratch rule says what TMPDIR is, long files are read by the part, and the explorer's reads go with its findings
+
+The review of the nine tasks' dsl20r transcripts (commit-bench, Muse,
+2026-10-16, `muse-review-2026-10-16.md`) found two costs the working rules
+could name.
+
+- **The scratch directory and the commands that use it.** The model's
+  `TMPDIR` was inside the guard-protected data directory: 5 to 17 calls of a
+  run (67a1f950, 855e90e7, 7513f7eb) went on tests that failed because their
+  temporary directory was a protected path, and on `HOME` and `TMPDIR` set to
+  `/tmp` paths (13 of the 23 shell commands refused in the 26 runs named
+  `/tmp`) or to a folder of the repository. The directory is now in the
+  system's temporary directory (ADR 28, amended 2026-10-16), and the scratch
+  rule adds the sentence that follows from it: commands run with `TMPDIR` set
+  to it, so a test suite puts its temporary files there without being told;
+  do not set `TMPDIR` or `HOME` elsewhere, and do not use `/tmp`.
+  `TestPromptsSayWhereScratchIsAndHowToReadLongFiles`.
+- **Reading again what the explorer read.** The explorer and the planner are
+  folded away, and the model doing the work read again what the explorer had
+  read. In the nine high-effort attempts (eight tasks, one of them twice),
+  33,000 to 280,000 characters of a run's `fs-read` results were of paths the
+  explorer had read, 73 to 100% of the main loop's reads in eight of nine
+  runs (37% in the ninth), with the same sizes right after the fold; in 7513f7eb the main loop
+  read agents.scm, prompts.scm and egress.go whole again, and docs/scheme.md
+  (53,000 characters) nine times, twice whole. Pi, which never folds, reads
+  whole files too. Two changes, both information and advice, no forced read:
+  - **The lines the findings cite go with them.** The explorer is asked to
+    cite places as `path:line` (`plan-explore-task`), and `plan-hand-over`
+    adds to the findings message the lines around each place cited, copied
+    from what the explorer read as the file has them, under a heading with
+    their numbers (`plan-excerpts`: 2 lines before, 12 after, at most
+    `plan-excerpts-cap`, 12000, characters in all and 3000 an excerpt; a file
+    named without a line only when what the explorer read of it is short). The
+    reads are kept by `sub-agent-seen`, which the sub-agent loop fills while
+    plan-explore asks for it. The message says to read more of a file in a
+    range, and a failure to make the excerpts leaves the findings as they were
+    (`TestAFailureToMakeExcerptsLeavesTheFindingsAndThePlan`).
+    `TestWhatTheExplorerReadGoesWithItsFindingsToTheModelDoingTheWork`,
+    `TestTheExcerptsAreBounded`,
+    `TestAReportThatCitesMoreThanFitsGetsTheCapNotMore`. Fewer than half of
+    the mentions of a path in the nine explorers' reports carry a line (150
+    of 368, the rest a bare name), and a bare one is carried only when short,
+    so the excerpts are a floor: they do not replace a read of a file the
+    model is going to edit.
+  - **Long files are read by the part.** The reading rule names
+    `fs-read` with `start` and `count`, and a second rule says to read a long
+    file or document (docs/scheme.md, a manual, a large source file) by the
+    part needed, found with `index-grep` first, and that what was read or
+    given is in front of the model: a range is read again when it changed or
+    a result was folded.
+
+Not measured yet: the next run on these tasks is what shows whether the
+re-reads fall and whether the 12000 characters pay for themselves; the folds
+broke even at best on this review (6e18b7ba). The caps are a first step.
+
+## Amendment 2026-10-16: the closing rounds stop making work
+
+The Muse review of 2026-10-16 (transcripts of nodwyn dsl20r and dsl16r on
+eight commit-bench tasks, with Pi) found that the gates and reminders at the end of a
+run cost 9-38% of a run's tokens and bought no correctness. Each change below
+is one such round:
+
+- **6e18b7ba.** validate regenerated the untracked `docs/expert/expert.pdf`
+  (the snapshots the benchmark runs against still built the books), the model
+  deleted it, the repository's reminder ("validate has not run since your last
+  change") counted the deletion as a change since validate and asked for
+  validate again, which made the file again: R96-R104, about 100k tokens, 7%,
+  in two builds. In a third the last validate run left the 1 MB file in the
+  patch (1,053,931 bytes). On dc679e46 the same happened with
+  `docs/book/nodwyn.pdf`, twice.
+- **7513f7eb.** About 14 calls (dsl20r) and 30 (dsl16r) went on proving that
+  an existing test fails on a pristine copy too, each time after "your last
+  test run after your last edit failed"; the model had compared the two sets
+  already, on a run the loop did not recognise as the comparison.
+- **3422faf1.** A 21-call tail, 22% of the run: the plan named
+  `TestExfilScenario019` for a scenario file, the gate wanted that test in the
+  file, and the run refactored a test file, regenerated the catalogue and ran
+  validate again. dsl16r's `go run ./scripts/validate` through `shell-exec`
+  was not counted as validate.
+- **The closing check-without rounds** took 9% of a run (dsl20r, high
+  effort) and 37-38% in two others (dsl16r, dsl20r at low effort).
+
+So:
+
+- **A deletion of what a validate run left is no change.** The loop keeps the
+  untracked files the round's validate runs and `tool-commands` tools made
+  (`files-made`: new in `git-status` since the round began, and not written
+  by the file tools) and the repository as validate left it (`repo-print`).
+  When the only thing that moved since is that some of those files are gone,
+  `validate-settle` sets `validated-state` again, so `.nodwyn/init.scm`'s
+  reminder is not said; any other difference ends the tracking and the
+  reminder stands. The loop cannot change what validate does in a snapshot
+  (and `scripts/validate` no longer builds the books, 1fd4c3e, so here it
+  leaves nothing), so the validate result carries one line naming what it
+  left (`validate-left-note`: delete them unless they are part of the change,
+  which needs no new run), where the model can act on it at once, rather than
+  the loop deleting a file the model did not choose to delete; and the finish
+  review still names a file that stays, saying its deletion needs no new run.
+  `TestDeletingWhatValidateLeftIsNoChange`,
+  `TestDeletingWhatTheValidateToolLeftIsNoChange`,
+  `TestDeletingWhatABackgroundValidateLeftIsNoChange`,
+  `TestWhatValidateLeftIsNamedInTheReview`; and
+  `TestAnEditAfterValidateIsStillAChange` for the change that is one.
+- **`go run ./scripts/validate` is validate.** `validate-commands` lists it
+  with `make validate`; a run of either through the shell is a test run
+  (`test-command-words`), the whole check (`whole-check-words`), no check
+  for check-without to take apart (a shell `make validate` was eligible,
+  though the tool's run is not), and sets `validated-state`.
+  `TestAShellGoRunValidateCountsAsValidated`,
+  `TestAShellValidateMeetsThePlansCheckStep`,
+  `TestAValidateRunInTheShellIsNotTakenApart`.
+- **A failure the unchanged code has is said once, not proved again.**
+  `failure-names` reads the failing tests and packages from a run's output
+  (Go, pytest, unittest). The loop keeps those of the runs on the unchanged
+  code: any run on `$TMPDIR/base`, and a full test run (no `-run`, `-k` or
+  node id) before the turn's first edit, in a turn that began with no tracked
+  change. They stay known through later edits, so the comparison is done
+  once. A run after the last edit that fails only known tests is not told as
+  a failing run; its result says they failed on the unchanged code
+  (`failure-known-hint`). When some are known the reminder names them and the
+  others (`finish-failing-known-message`: say so in your answer, do not fix
+  them). A test is not the unchanged code's to answer for when the request or
+  the plan names it, or a file the turn wrote mentions it: the model's own
+  test fails on the copy of the last commit as it should, and the test a
+  task asks to fix failing again is not done. A package that fails with no
+  known test (a build failure, a panic) is not excused either. Not used:
+  validate's own "fail on the unchanged code" lines, which are the change's
+  tests failing there by design. `TestAFailureTheUnchangedCodeHadIsNotTold`,
+  `TestANewFailureIsToldWithTheSharedOnes`,
+  `TestAComparisonOnTheCopyIsRememberedAcrossEdits`,
+  `TestAFailingTestTheRequestNamesIsStillTold`,
+  `TestAFailingTestTheTurnWroteIsStillTold`,
+  `TestAFailingValidateAfterAKnownFailureIsStillTold`,
+  `TestAFailureBeforeTheFirstEditIsNotTheLastCommitsIfTheTurnBeganDirty`,
+  `TestFailureNamesReadWhatTheOutputSays`.
+- **A scenario file meets a test step.** A test step whose path runs through
+  a `scenarios`, `testdata` or `fixtures` folder is met by that file (the
+  repository's, or one the turn wrote whose name starts with the step's path)
+  and by a passing `go test` of the folder above; the new file is no stray
+  when a step's path starts it (`plan-path-starts?`; only a scenario path, so
+  the backup of a planned file is still named). A test the existing runner's
+  cases hold under no name of their own is not asked for by name.
+  `TestAScenarioFileMeetsItsTestStep`, `TestABackupOfAPlannedFileIsStillNamed`.
+- **Nothing is asked again for a run that stands.** The plan's evidence that
+  a command passed is cleared only by an edit through the file tools to a
+  file that is not a document or in the scratch directory (as before), so a
+  deletion made through the shell never cleared it; what asked again with
+  nothing changed was `validated-state`, the repository's own reminder, and
+  the three points above are the ways it was: a deletion of validate's
+  output, a validate run the loop did not count, and a failure already
+  compared.
+- **The finish review is made at most twice in a run nobody reads.**
+  `finish-review-limit` (2), counted in `finish-reviews` over the session's
+  turns; a turn after the second ends on its report. A turn that edited
+  nothing has no review, so a later review needs new edits as the first did.
+  A chat's turn, which a person reads, is not held to it.
+  `TestTheFinishReviewIsMadeAtMostTwiceInARun`.
+
+What is kept: every check still runs; check-without still names the parts of
+the change a passing check does not test, once a turn; a model that wants
+to compare with the unchanged code still can, and the comparison is now kept.
+What is not built: the single-turn benchmark runs of dsl20r already had one
+review each (the cap above has nothing to do there; its cost is the work the
+review's points ask for, which the points that disappear above reduce and the
+check-without point, which stays, does not); a plan's check step that failed
+only on known failures (7513f7eb, `make accept`) is still asked for; the
+chase of a flaky browser check inside validate (c80b38ac, R61-R84) was the
+model's, not a reminder's, and nothing here touches it; the plain chat loop
+does not run `evidence-loop`, so none of this applies to a chat that is
+neither unattended nor planned. None of this was replayed on the benchmark.
+
+## Amendment 2026-10-16: the original tests are run at the finish, a want string is an expectation, and a skip is deleted, not tested
+
+Two more misses of dsl21 (Muse, effort low, `muse-review-2026-10-16.md`), each
+reproduced by a reviewer. They are one lesson from both sides: when an old
+test fails after a change, which side is wrong depends on the request. The old
+assertion stands unless the request names the new behaviour for that input or
+case; the fixture's setup may change, and be named, when the request
+contradicts it.
+
+- **5040f9fe** (replicate 2): the request added the response's Content-Type to
+  an error. The model reworded the error so that "Responses stream ended
+  without a terminal response", a phrase an existing test pins, was split, and
+  then edited that test's `want := "..."` to match. The real commit left the
+  test alone and appended the Content-Type to the intact phrase, so the
+  hidden (original) test fails on the patch. The test-edit question of the
+  2026-10-16 amendment did not fire: `expectationLine` read the cases of a
+  table and testify's asserts, and a want string beside a `strings.Contains`
+  is neither. `validate` said the test passed on the unchanged code and the
+  model answered "deliberately widened", without a sentence of the request.
+  Nine attempts of the benchmark's runs edited the same `want` line (the
+  builds dsl3, dsl6, dsl15, dsl17m, dsl19, dsl21, OpenCode, Pi and tok2).
+- **855e90e7**: an old test (`TestResumeAfterProcessKilled`) failed after the
+  model's correct change because its fixture uses one folder as repository,
+  configuration and data directory. The model added a skip to `denylist()`
+  (private directories that overlap the repository root) and left the fixture,
+  which removes exactly the directories the hidden test expects denied; the
+  real commit changed the fixture. The finish review made it worse: "a skip
+  nothing exercises: add a test or delete" and "a branch gets a test for each
+  side" led the model to add a test that pinned the skip, and check-without,
+  run on the exfiltration suite alone (the last passing command), named four
+  hunks no test of it covers, which cost 53 calls of per-hunk revert
+  experiments; the last six of those runs were told "Your last 6 test commands
+  did not run successfully".
+
+The owner's principle holds: nothing is refused, the harness asks, and follows
+what the model decides. So:
+
+- **The original tests are run at the finish.** A grader lays the maintainers'
+  test files over the patch; the finish review now does the same for the
+  files the turn edited. `original-tests` (internal/prim/original.go, hidden,
+  registered in a git work tree) takes the turn's changed test paths and, for
+  each Go test file HEAD has and the working tree edited or deleted, runs the
+  tests HEAD's version declares with HEAD's version in place of the working
+  tree's, against the change as it is: `go test -overlay`, so nothing on disk
+  is touched and there is nothing to put back if the run is stopped, within
+  3 minutes in all, with `GOPROXY=off` and the allowlisted environment. A test
+  that also fails with every changed Go file as HEAD had it (a second
+  overlay run, only for the failures) was not broken by the change and is
+  left out; a directory whose tests do not build with HEAD's files in place
+  (the request changed a signature, or a helper moved) is `unrun` and
+  named in the log only. A test the turn added to the file, or in a file of
+  its own, is not declared by HEAD and is never run. The point is
+  `finish-original-tests-message`, in the finish review, so it is said once a
+  turn, never refuses anything and never repeats for a file in the turn: "these
+  original tests fail on your change", with three ways out: the change is wrong
+  (change the code, appending to what a test pins rather than rewording it); the
+  request names the new result for that input or case (the assertion changes;
+  say which sentence requires it); the request contradicts the test's setup, a
+  fixture (change the setup, not its assertions, and say which sentence
+  requires it). The middle one is the owner's rule that the old assertion
+  stands unless the request names the new behaviour; the first message left it
+  out, and a request that changes a result changes the test that pins it, as
+  35 of the 244 resolved attempts that edit an existing Go test did (see the
+  replay below).
+  Go only: another language's tests would need a copy of the tree or an edit
+  in place, and the loop says in its log that it did not run them
+  (`original-test-failures`). Who runs what: this runs the repository's code,
+  the package of a test file the model edited, as the model's own `go test` of
+  that package would, in the environment a shell call gets, with no network;
+  it is no new authority, and (ADR 45) trust is not a sandbox here either.
+  `TestOriginalTestsNameTheTestsTheChangeBreaks`,
+  `TestOriginalTestsOfADeletedFileAndOfOneThatDoesNotBuild`,
+  `TestOriginalTestsPrimitive`, `TestTheReviewNamesOriginalTestsTheChangeBreaks`,
+  `TestTheReviewIsQuietWhenTheOriginalTestsPass`,
+  `TestOriginalTestsAreRunForGoOnly`.
+- **A want string is an expectation.** `expectationLine` also reads a literal
+  assigned to `want`, `expect`, `expected` or a name that starts with one
+  (`wantErr`, `expected_msg`; Go and Python), and in Go
+  a `strings` or `bytes` check (`Contains`, `ContainsAny`, `HasPrefix`,
+  `HasSuffix`, `EqualFold`) of a non-empty string literal, a switch's `case`
+  line left out, which picks the expectation and is not one: the question at the
+  edit and the finish review both read them through `change-removals`. Moved lines are not changes, as
+  before for a line added whole elsewhere, and now also for a line whose string
+  literals all stand on one line the change adds (`kept`): the 94f5cac4 replay
+  named a case that had only moved from a map to a direct assertion. The
+  question's text adds that to add to what a test pins, the model appends to the
+  phrase and does not reword it.
+  `TestRemovedExpectationsAreAlsoWantsAndPhraseChecks`,
+  `TestExpectationLinesOfWantsAndPhraseChecks`, `TestStringLiterals`,
+  `TestAnEditedWantStringOfAnExistingTestIsAskedAbout`.
+- **A skip is deleted, not tested.** The working rule says: a branch the
+  request asks for gets a test for each side of it; a branch added for any other
+  reason is not tested into place, delete it; and a fixture is setup, its
+  assertions are not. `finish-uncovered-lines-message` offers, for a branch no
+  case reaches (a condition that cannot be true, a skip nothing exercises),
+  deleting it or quoting the sentence of the request that requires it, adding the
+  test only then, and says a skip or exception added after an existing test
+  failed gets no test, since the test would pin it: fix that test's setup or the
+  code instead. `finish-untested-parts-message` ends the same way: a part the
+  request does not ask for is removed, or defended by the sentence that
+  requires it, not given a test.
+  `TestThePromptsDecideWhichSideOfAFailingTestIsWrong`,
+  `TestTheReviewAsksForTheChangedLinesNoTestRan`,
+  `TestTheUntestedPartsPointDoesNotTestASkipIntoPlace`.
+- **The check taken apart is the broadest passing run, and a revert experiment
+  is not a run that failed to run.** check-without and the coverage point used
+  the last passing command, the exfiltration suite on 855e90e7. They use
+  `broadest-passing` now: of the commands that passed since the last edit, the
+  one that names the most of the changed files' directories (`./...` and the
+  whole-check words name all of them), one not narrowed with `-run` or `-k`
+  before one that is, the newest of those that tie, so a turn with one passing
+  command is as before. `unrunnable-after` counted every failing test run, edits
+  between them leaving the count alone. A failing run now ends the count when
+  its output shows tests ran (`tests-ran?`: a failing test named, a test or
+  package that passed, or a package that says `FAIL` with a time of its own),
+  and leaves it where it was after an edit that took part of the model's own
+  change out (`shrinking-edit?`: the file's changes against HEAD got smaller,
+  measured with `git-diff` from the turn's first command on, since a part is
+  taken out to see a test fail only after one has run), which is a revert
+  experiment, expected to fail. A run on `$TMPDIR/base` did
+  not count already. `TestBroadestPassingPicksTheRunThatRunsTheMostOfTheChange`,
+  `TestTheReviewTakesApartTheBroadestPassingCheck`,
+  `TestTheLastOfEqualPassingChecksIsTheOneTakenApart`,
+  `TestTheCoveragePointNamesTheBroadestPassingCheck`,
+  `TestFailingTestsAreNotCommandsThatDidNotRun`,
+  `TestRevertExperimentsAreNotCommandsThatDidNotRun`,
+  `TestGrowingEditsFollowedByFailingRunsStillCountAsUnrunnable`.
+
+Every new test fails on 95834ba (dsl21) or cannot compile there: the three
+`TestOriginalTests...` of the primitive and `TestStringLiterals` call functions
+the old code lacks, and `TestBroadestPassingPicksTheRunThatRunsTheMostOfTheChange`
+calls Scheme functions it lacks. `TestTheReviewIsQuietWhenTheOriginalTestsPass`
+asserts an absence, and fails there only through the row that moved into a
+direct check, which the old code asks about.
+The replay (each patch applied to its task's parent and read by the new code, no
+model run; the 291 distinct patches of the benchmark's runs that edit an
+existing Go test file): the 5040f9fe patch of this miss yields the `want` line
+at responses_test.go:280 from `change-removals` and, from `original-tests`, the
+hidden test itself, `TestResponsesEventStreamRejectsMissingOrFailedTerminal`.
+`change-removals` names expectations in 37 of the 291 patches before and in 50
+after, and 98 lines before against 87 after: 12 patches stop being named (a map
+every attempt of 107251d0 extended and rewrapped, table rows whose literals all
+stand on a line the change adds, 94f5cac4's `index-grep` case that moved from a
+map to a direct assertion), 25 are named
+that were not, nine of them 5040f9fe's `want` line and the others phrase checks
+and want strings that were changed. `original-tests` names failing tests in 51
+of them: 35 of the 244 resolved attempts (14%) and 14 of the 39 unresolved
+(36%), 2 of the 8 not graded. The tasks it names are the known misses: all 8
+attempts of 94f5cac4 (`TestReadRanges` among them), and for 5040f9fe the three
+patches whose error no longer holds the pinned phrase (this one, not graded,
+and OpenCode's and Pi's, both unresolved on exactly the test named,
+`TestResponsesEventStreamRejectsMissingOrFailedTerminal`) against none of the
+20 resolved ones. The resolved
+attempts named are the ones whose request changes a result, so the test that
+pins it changes: 107251d0's 17 (the Responses round trip), 855e90e7's 6 (they
+edited the fixture of `TestResumeAfterProcessKilled` as the real commit did,
+and it fails as the last commit had it, which is the point's third way out),
+67a1f950's 6, 7513f7eb's 2 and four more. The point therefore costs a round
+for about one attempt in seven that edits a Go test (one in six counting the
+unresolved), and asks the model for the sentence of the request. 7 patches (2%) are unrun. The dsl21 patch of 855e90e7 is not named:
+it did not edit `resume_test.go`, the skip was in production code, and that is
+what the third and fourth points address (the finish review's own text led to
+the test of the skip, and check-without on the exfiltration suite to the 53
+calls).
+
+Not built: running the original tests of another language (pytest would need a
+copy of the tree); naming failing tests of files the turn did not edit (the
+model's own runs show those; 855e90e7's resume test was not edited, and the
+skip is what the third and fourth points ask about); recognising a revert
+experiment by what the model says; refusing or reverting any edit. Not
+measured: whether the new points change what a model does is for the next
+benchmark.
+
+## Amendment 2026-10-17: the review stops asking for the lines no test ran, bounds the tests it asks for, and the question on an edited test is answered in a form and read
+
+dsl22 (a000653, Muse, effort low, 32 runs; `muse-review-2026-10-16.md` and its
+digests) resolved 31 of 32, as dsl20r did, for about 17% more cost, and still
+failed 94f5cac4. Two findings.
+
+**Cost: 6e18b7ba took 167 calls and 2.38M cost-eq (uncached input, a tenth of
+cached input and five times the output), against 0.83M for dsl20r.** The
+first 65 calls cost 0.59M. The finish review came at 400 s with three
+test-writing points, and the model spent R66-R160 answering them, which the
+model's own reasoning summaries and its coverage runs attribute:
+
+| calls | cost-eq | what asked for it |
+|---|---|---|
+| R1-R65, before the review | 0.59M | |
+| R66-R98 (33) | 0.52M | the plan's evidence (three test steps: two passed on the unchanged code, one was not written) and check-without's six small hunks, four of one line: a concurrency test, a PATH-shadowing git wrapper to assert a flag |
+| R99-R160 (62) | 1.12M | the coverage point (`finish-uncovered-lines-message`): the model ran `go test -coverprofile`, mapped the zero-count blocks to the changed lines and wrote tests for the branches of its own defensive code, the waiter and retry paths of `Restore`, the empty-list branch of `versions.list` ("extending the RPC versions test to cover the store fallback and empty-list branches") |
+| R161-R167 (7) | 0.14M | validate and the report |
+
+- **The coverage point goes**: its trigger (`uncovered-lines-due?`: the latest
+  run passed, a source file changed, the added lines hold a branch word, no
+  command measured coverage) and its message, with the helpers only they used
+  (`added-source-lines`, `branch-words`, `branchy?`, `coverage-run?`). It was
+  added on 2026-10-16 for 3422faf1 (a dead branch that tested the wrong
+  variable), and that miss is the planner's to prevent, which the same
+  amendment's cases by position and assumptions do at the cost of a prompt, not
+  of a run: they stay. In 6e18b7ba the point took 62 of 167 calls and 1.12M of
+  2.38M cost-eq, for tests of code the request did not ask for.
+  `coverage-source?` stays as `source-path?`, which `changed-dirs` (and so
+  `broadest-passing`) reads.
+- **The tests a review asks for are bounded.** `finish-ask` names at most
+  `finish-ask-limit` (3) items of each kind: the parts check-without found
+  (the largest first), the plan's test steps that are missing or pass on the
+  unchanged code ("make it fail there"), and the dropped conditions; says how
+  many more there were; and keeps every item it considered in `finish-asked`,
+  so a later review of the run (`finish-review-limit` is 2) does not name it
+  again, the ones past the limit included: the model answered the review
+  once. `finish-untested-parts-message` asks for a case only for a part that
+  implements what the request asks for, says "do not test anything else
+  because of this message", and says a flag, a rename, a refactor, a skip or an
+  exception added to make a test pass gets no test: remove it, or defend it with
+  the sentence of the request that requires it. The review is still made once
+  a turn.
+  `TestTheReviewDoesNotAskForTheChangedLinesNoTestRan`,
+  `TestTheUntestedPartsPointNamesTheLargestThree`,
+  `TestAnItemTheReviewAskedAboutIsNotAskedAboutAgain`,
+  `TestThePlansUnwrittenTestsAreNamedThreeAtATime`,
+  `TestTheUntestedPartsPointDoesNotTestASkipIntoPlace` (changed).
+  `TestTheReviewAsksForTheChangedLinesNoTestRan` and
+  `TestTheCoveragePointNamesTheBroadestPassingCheck` are gone with the point;
+  `TestTestFilesAndBranchesAreToldApart` is
+  `TestTestFilesAndSourceFilesAreToldApart`.
+
+**94f5cac4 again: the question was asked three times and waved away.** The
+test-edit question fired at 73, 85 and 89 s (the ends of R26, R30 and R31).
+The model answered the first (R27) with "restoring the type-check case", and
+then (R28, R31) with the request's rule for a skipped argument (`A skipped
+optional argument before a later one that is given now gets its type's empty
+value ("", 0, #f, ())`), which it applied to `(fs-read "big.txt" 1 0)` "count
+must be at least 1": a row the request never mentions (the plan had invented
+"count 0 means default"), and the hidden (original) test keeps it. The patch rewrote it
+to `1 -1`. A prose answer the loop did not read cost nothing to give.
+
+- **The answer has a form, and is read.** The question asks for one line for
+  each changed row: the row, then a sentence copied word for word from the
+  request that names the input or case the row tests, or `none` (restore it and
+  change the code). The next reply with words is set against the request by
+  `edit-support` (`edit-answers`, strategy.scm), which judges text and nothing
+  else: a quote is a run of three words or more of the reply that stands in the
+  request in the same order (case, punctuation and white space aside), and it
+  supports a row when it shares a distinctive token with the row's string
+  literals, its input and the message it expects, and with the line that
+  replaces it (`change-removals` pairs the lines a change block removes and adds
+  by the words they share, and says the replacement in `new`). A token is a word
+  of three letters or more, or a number from 2 up (0 and 1 are in every sentence
+  about an index or a count), lightly stemmed, that is no stop word and no part of
+  the name of a function the row calls (a sentence that names `fs-read` says
+  nothing of which case of it the row tests); a row whose literals give none is
+  read by its identifiers' words. A row with no token to judge by is left to the
+  review's other point, as before.
+- **A rewrite that cuts or splits a phrase needs more.** 5040f9fe's pinned
+  phrase: the request has the error name its Content-Type, which adds to the
+  phrase, and the attempts that appended " (Content-Type: text/event-stream)" to
+  it passed the maintainers' test, while the one that cut the want string to
+  "ended without a terminal response" and OpenCode's, which put `(content type
+  "text/event-stream")` inside it, failed it. When the last string literal of the
+  replacement keeps the phrase whole at its start or its end, it is an append and
+  no more is asked. When it cuts two words or more, the quote must also hold most
+  of the words cut ("responses stream"); when it puts two words or more inside
+  the phrase, all the words put, as a run. The sentence about the error
+  ("A stream that ends without a terminal event names its Content-Type in the
+  error") supports the append and not the cut or the split.
+- **A row without a supported quote gets one firmer message**, when the reply
+  quoted the request at all and the row is still unsupported
+  (`edited-expectations-firm-message`, once for each row, so the second wrong
+  quote is not told again): it names what the request does not mention (the
+  input and the expectation, as the request is read for a quote; the words cut or
+  put), says the default is to restore the old expectation and change the code
+  because the last commit's version of that test is what a grader runs, and that
+  the row is kept only by quoting the sentence that names its input or case, and
+  saying why it requires the new result. A reply that quotes nothing is no
+  answer yet; the reply that ends the turn is read for the rows it supports and
+  gets no message (the review is firm enough, and a message there would be
+  another round). A row the model restored is answered.
+- **The finish review lists what is still unsupported as its first point, with
+  the original tests** (`finish-unsupported-edits-message`: the rows, and the
+  `finish-original-tests-message` failures, the grader's side of the same rows,
+  in the same point). The rows whose answer was read and supported are not
+  named again in the removed-expectations point.
+- **Nothing is reverted or refused.** The edit stands; the model may decide
+  otherwise, against the evidence.
+  `TestQuotesAreRunsOfTheRequest`, `TestTheTokensOfARow`,
+  `TestTheRepliesOf94f5cac4AreReadRowByRow`,
+  `TestRewritesArePairedByWhatTheyShare`,
+  `TestAnAppendedPhraseIsSupportedAndACutOrASplitIsNot`,
+  `TestARewrappedMapTheRequestAddsToIsSupported`,
+  `TestARowWithNoTokenIsUnchecked`, `TestEditSupportPrimitive`
+  (internal/prim, with the requests, patches and replies of the benchmark in
+  `testdata/support`); `TestAnAnswerIsReadAgainstTheRequest`,
+  `TestAReplyThatQuotesNothingIsNoAnswerYet`,
+  `TestTheAnswerThatEndsTheTurnIsRead`, `TestTheFirmerMessageIsSaidOnce`
+  (internal/core); `TestAnEditedExpectationOfAnExistingTestIsAskedAbout`
+  (changed).
+
+Tuned on the benchmark's own patches and replies, not on a model run.
+`TestSupportReplaysCommitBench` (set `NODWYN_COMMIT_BENCH` and `NODWYN_REPO`;
+skipped without them) reads the 304 attempt patches of the benchmark's runs
+(the gold patches left out) for the rows `change-removals` names and sets each
+against its task's request, twice: with every sentence of the request as a
+possible quote (the most the request can do for a row) and with the sentence a
+model would most likely quote, the one that shares the most tokens with the row.
+
+- 53 patches name 94 rows. Some sentence of the request supports 81 of them;
+  the natural quote supports 80. Of the 48 rows the real commit also changes
+  (its test diff, read from the repository), 41 are supported either way; the 7
+  that are not are a4dbffc7's two rows in four attempts (one has only the second),
+  where the attempt put its own sentence in the phrase ("a step you reword starts
+  unmarked") and the real commit cut "since that starts its marks over"
+  (supported by "The reading reminder no longer says a rewrite starts the marks
+  over").
+- 5040f9fe: 9 patches rewrite the `want` line, and the natural quote flags the
+  two that fail the maintainers' test with a phrase it can read, the cut one
+  (`want := "ended without a terminal response"`, dsl21's second replicate, not
+  graded) and OpenCode's split one (unresolved); the five that appended to the
+  phrase (dsl3, dsl6, dsl15, dsl17m, dsl19, all resolved) are supported. tok2
+  (resolved) and Pi's (unresolved on that test) restructured the test so that no
+  line replaces the old one, and are supported. Some sentence of the request
+  supports the cut one: the title, which holds "Responses" and "stream" and is
+  about neither the error nor the test, so the any-sentence count flags one row
+  fewer than the natural quote.
+- 107251d0: 5 patches, 5 rows (a map rewrapped around "instructions" in four,
+  one `{Role: RoleSystem, Content: "sys"}` row), all supported. 94f5cac4's other
+  correct rows (`(fs-read "big.txt" 0)`, the `index-grep` context, the two
+  `count needs start too` cases) are supported in all 9 of its patches.
+- 94f5cac4's `(fs-read "big.txt" 1 0)` row, rewritten to `1 -1` (or `1 -2`) in 5
+  of those patches, is supported by the natural quote: the sentences that
+  mention "count" do so of another message ("count needs start too"), so a model
+  that quoted that sentence for it would pass. None did. Set against the real
+  replies of dsl22 (R27, R28, R31, R32) the check reads: R27 quotes nothing; R28
+  supports the two `count` cases of `json_test.go` (the rule's "argument" is a
+  word of their message); R31 supports `(fs-read "big.txt" 0)` with
+  `fs-read's start 0 is line 1` and does not support `1 0`, for which it quoted
+  the rule for a skipped argument; R32 supports the `index-grep` row. Set against
+  dsl21's three replies to the same question, all four rows it rewrote are
+  supported. So the one row the check tells the model about in either run is the
+  one the hidden test keeps.
+- Flagged and not discussed above: the 14 rows of the 94 flagged are a4dbffc7 7,
+  c4cde303 4, 5040f9fe 2 (above) and 94f5cac4 1. c4cde303's is a
+  `strings.Contains` moved inside an `if` block by a refactor (its literals stand
+  on two added lines, so `kept` does not hold it), and 94f5cac4's is dsl20r's
+  `{"path":"p"}`: `1,` number table. `change-removals` named both before.
+
+Not built: a second firmer message, a message to the reply that ends the turn,
+reverting or refusing any edit, and a stricter reading of "count" (the rule is
+one shared token; two made the real `count`/`start` cases of
+94f5cac4 unsupported by the sentence the model quoted for them, and could not
+tell `count needs start too` from the row it is not about). Not measured: whether
+the model changes what it does with the form and the firmer message, and
+whether three tests a review is enough; for the next benchmark.
+
+## Amendment 2026-10-16: the benchmark stack merged with main
+
+The benchmark stack `claude/dsl23` and main changed the same loop on two
+branches. The merge keeps both, with these choices:
+
+- **Per-turn resets the stack added are made in `turn-start`**, where main's
+  amendment "benchmark habits fire only where they fit" moved the others:
+  the write round's `turn-stop-tools` and `turn-stop-rounds`
+  (strategy.scm), the plan language's state for the turn (planspec.scm
+  had wrapped `nodwyn-turn`, so a project that plans its own way kept the
+  last turn's plan steps), and `sub-agent-seen`, which a stop inside the
+  explorer left collecting every later sub-agent's calls.
+- **The explorer's rounds are the sub-agent's `rounds` option** (main), what
+  it read is still collected for the excerpts it hands over (the stack),
+  and it has `index-search` as well.
+- **A compaction gives the turn's plan back both ways**: recorded again with
+  its marks (main, `plan-carry`) and as the message after the note (the
+  stack, `compact-plan`). Each was built for the same failure on its own
+  branch; the plan now stands twice in a compacted context, a few hundred
+  to about 2,000 tokens more, and `TestCompactionCarriesThePlanWithItsMarks`
+  expects the recorded plan before the message. Which one stays is for a
+  run to decide.
+- **The finish review's diff readers use main's bounded `myers`**
+  (removed expectations, the change without each part, the documents'
+  added lines), and leave out a change too large to diff, as they leave
+  out a file too long.

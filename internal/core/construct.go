@@ -245,10 +245,11 @@ func resolveOptions(o Options) (Options, error) {
 	return o, nil
 }
 
-// rangeBytes is what a ranged read returns at most, a ranged fs-read's or
-// a recall's: under the window's cut for one tool result (window.Estimate is
-// bytes/3), with room for its header, as the window is sized now once the
-// loop has it (ADR 9, amended 2026-10-05).
+// rangeBytes is what a recall returns at most: under the window's cut for
+// one tool result (window.Estimate is bytes/3), with room for its header, as
+// the window is sized now once the loop has it (ADR 9, amended 2026-10-05).
+// A ranged fs-read has twice it where the window shows an fs-read up to
+// twice the cut (primitiveOptions, ADR 9, amended 2026-10-12).
 func (s *Session) rangeBytes() int {
 	if s.loop == nil {
 		return s.opts.Config.Window.MaxResultTokens*3 - 256
@@ -276,12 +277,18 @@ func (s *Session) primitiveOptions() prim.Options {
 	po.Versions = &prim.Versions{Dir: s.versionsDir(), Skip: prim.GitHoldsPath(o.Repo), Record: func(v prim.Version) {
 		_, _ = s.Record(log.KindFileVersion, log.FileVersion{Path: v.Path, Hash: v.Hash, Bytes: v.Bytes})
 	}}
-	// A ranged fs-read stays under the window's cut for one tool result
-	// (window.Estimate is bytes/3), with room for its header: the cut as
-	// the window is sized now, once the loop has it (ADR 9, amended
-	// 2026-10-05).
-	po.MaxRangeBytes = o.Config.Window.MaxResultTokens*3 - 256
-	po.RangeBytes = s.rangeBytes
+	// A ranged fs-read stays under the window's cut for one fs-read result
+	// (window.Estimate is bytes/3, Policy.ReadCap twice the cut on other
+	// results), with room for its header: the cut as the window is sized
+	// now, once the loop has it (ADR 9, amended 2026-10-05 and 2026-10-12).
+	// A recall is cut as other results are (rangeBytes).
+	po.MaxRangeBytes = 2*o.Config.Window.MaxResultTokens*3 - 256
+	po.RangeBytes = func() int {
+		if s.loop == nil {
+			return po.MaxRangeBytes
+		}
+		return s.loop.ReadCap()*3 - 256
+	}
 	// Retrieval (ADR 50): the conversation is the session's; the
 	// repository's index is the project's, so a worktree's session shares
 	// the repository's, beside its notes.
@@ -498,7 +505,7 @@ func (s *Session) initialize() (err error) {
 		s.note(sizing)
 	}
 	s.loop, err = loop.New(s, s.interp, loop.Config{
-		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens, Thinking: true, InConversation: true, PairTools: true, NamedCuts: true, Blocks: true},
+		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens, Thinking: true, InConversation: true, PairTools: true, NamedCuts: true, Blocks: true, WideReads: true},
 		Ceiling:        ceiling,
 		MaxOutput:      o.Config.Window.OutputReserve,
 		Models:         models,

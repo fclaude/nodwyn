@@ -40,8 +40,15 @@
 ;; they had. glm, qwen and deepseek have no explorer run there; they batch as
 ;; muse-spark does in the main loop (1.2 to 1.4 calls a round), so they share
 ;; its row. 16 is a first step, to be read against the next logs.
+;; qwen's logs came (commit-bench, trusted runs of A, dsl16, dsl18m and
+;; dsl19, qwen3.8-27b, 2026-10-14 and 15): the explorer used all 16 rounds in
+;; 39 of 48 runs, half the files it read (296 of 571) it first read after its
+;; eighth round, and the model doing the work read again 313 of the 571
+;; itself, 154 of those 296 among them. So qwen's row is 8 (ADR 32, amended
+;; 2026-10-15): the explorer costs 0.13-0.15M of a task's cost-eq, and the
+;; work re-reads what it needs.
 (define plan-explore-rounds
-  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 16) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
+  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 8) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
 (define plan-earlier-requests 2)   ; a chat's earlier messages the gate reads with its latest
 (define plan-earlier-cap 2000)     ; the characters of each it reads
 
@@ -95,10 +102,163 @@
 (define (plan-explore request)
   (if (<= (tuned plan-explore-rounds) 0)
       ""
-      (guard (e (else ""))
-        (sub-agent plan-explore-system (plan-explore-task request)
-                   '("fs-read" "fs-list" "index-grep" "index-search" "fs-find") "explorer"
-                   (list (cons 'rounds (tuned plan-explore-rounds)))))))
+      (begin
+        (set! sub-agent-seen '())
+        (let ((found (guard (e (else ""))
+                       (sub-agent plan-explore-system (plan-explore-task request)
+                                  '("fs-read" "fs-list" "index-grep" "index-search" "fs-find") "explorer"
+                                  (list (cons 'rounds (tuned plan-explore-rounds)))))))
+          (set! plan-explore-reads (plan-reads-of sub-agent-seen))
+          (set! sub-agent-seen #f)
+          found))))
+
+;; What the explorer read goes with its findings to the model that does the
+;; work. The explorer's context is folded away when it answers, and that
+;; model read again what the explorer had read: on commit-bench (dsl20r,
+;; nine tasks, 2026-10-16) 33,000 to 280,000 characters of a run's reads were
+;; of files the explorer had read, 73 to 100% of the main loop's reads in
+;; eight of nine runs, the same sizes right after the fold (7513f7eb:
+;; docs/scheme.md, 53,000 characters, nine times). The findings cite places
+;; as path:line, and the lines around them are copied from what the explorer
+;; read, within plan-excerpts-cap characters in all. They are information the
+;; model may use, not a read it must make: a file it needs more of it reads
+;; in a range, as the message says.
+(define plan-excerpts-cap 12000) ; characters of excerpts handed over in all; 0 hands over none
+(define plan-excerpt-cap 3000)   ; characters of one excerpt, and of a file named without a line that is carried whole
+(define plan-excerpt-before 2)   ; lines before a line the findings cite
+(define plan-excerpt-after 12)   ; lines after it, or after the last line of a range it cites
+
+(define plan-excerpts-intro
+  "\n\nThe lines of those files that the look read and its report points to, copied as the files are now. Use them instead of reading the same lines again; for more of a file, read a range of it (fs-read with start and count), not the whole file:\n")
+
+;; What the last explorer read, one (path first lines) per fs-read: the line
+;; number the text starts at and its lines in a vector.
+(define plan-explore-reads '())
+
+(define (plan-path p)
+  (let ((s (format "~a" p))) (if (string-prefix? "./" s) (substring s 2 (string-length s)) s)))
+
+;; The number s starts with and the rest after it, as (n . rest), or #f.
+(define (plan-leading-number s)
+  (let digits ((i 0))
+    (if (and (< i (string-length s)) (string-contains? "0123456789" (substring s i (+ i 1))))
+        (digits (+ i 1))
+        (and (> i 0) (< i 8) (cons (string->number (substring s 0 i)) (substring s i (string-length s)))))))
+
+;; An fs-read's text as (path first lines). A ranged read starts "[lines
+;; A-B of N]", then its lines as they are in the file.
+(define (plan-read path text)
+  (let* ((ranged (string-prefix? "[lines " text))
+         (head (and ranged (plan-leading-number (substring text 7 (string-length text)))))
+         (all (string-split text "\n"))
+         (body (if ranged (if (pair? all) (cdr all) '()) all))
+         (lines (if (and (pair? body) (string-empty? (car (reverse body)))) (reverse (cdr (reverse body))) body)))
+    (list path (if head (car head) 1) (list->vector lines))))
+
+;; The reads among the calls an explorer ran (sub-agent-seen, newest first),
+;; oldest first.
+(define (plan-reads-of seen)
+  (let walk ((seen seen) (out '()))
+    (if (null? seen)
+        out
+        (let* ((call (car (car seen))) (result (cdr (car seen)))
+               (args (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+               (path (and (pair? args) (assoc-ref args "path" #f))))
+          (walk (cdr seen)
+                (if (and (equal? (assoc-ref call 'name "") "fs-read") (assoc-ref result 'ok #f) (string? path))
+                    (cons (plan-read (plan-path path) (format "~a" (assoc-ref result 'value ""))) out)
+                    out))))))
+
+;; The lines text cites for path, as "path:N" or "path:N-M": a list of
+;; (first . last).
+(define (plan-cited-lines text path)
+  (let walk ((parts (cdr (string-split text path))) (out '()))
+    (if (null? parts)
+        (reverse out)
+        (let* ((s (car parts))
+               (a (and (string-prefix? ":" s) (plan-leading-number (substring s 1 (string-length s)))))
+               (b (and a (string-prefix? "-" (cdr a)) (plan-leading-number (substring (cdr a) 1 (string-length (cdr a)))))))
+          (walk (cdr parts) (if a (cons (cons (car a) (if b (max (car a) (car b)) (car a))) out) out))))))
+
+;; Ranges (lo . hi) in order, those that touch or overlap made one.
+(define (plan-merge-ranges ranges)
+  (let walk ((rs (sort ranges (lambda (a b) (< (car a) (car b))))) (out '()))
+    (cond ((null? rs) (reverse out))
+          ((and (pair? out) (<= (car (car rs)) (+ (cdr (car out)) 1)))
+           (walk (cdr rs) (cons (cons (car (car out)) (max (cdr (car out)) (cdr (car rs)))) (cdr out))))
+          (else (walk (cdr rs) (cons (car rs) out))))))
+
+;; The lines lo to hi of path that the explorer read, as (first last lines),
+;; from the read that holds most of them, or #f when it read none.
+(define (plan-lines-read reads path lo hi)
+  (let walk ((rs reads) (best #f))
+    (if (null? rs)
+        best
+        (let* ((r (car rs)) (first (list-ref r 1)) (v (list-ref r 2))
+               (a (max lo first)) (b (min hi (+ first (vector-length v) -1))))
+          (walk (cdr rs)
+                (if (and (equal? (car r) path) (<= a b) (or (not best) (> (- b a) (- (cadr best) (car best)))))
+                    (list a b (map (lambda (k) (vector-ref v (+ (- a first) k))) (iota (+ (- b a) 1))))
+                    best))))))
+
+;; The longest start of lines that fits cap characters, with the newlines.
+(define (plan-lines-within lines cap)
+  (let walk ((ls lines) (used 0) (out '()))
+    (if (or (null? ls) (> (+ used (string-length (car ls)) 1) cap))
+        (reverse out)
+        (walk (cdr ls) (+ used (string-length (car ls)) 1) (cons (car ls) out)))))
+
+(define (plan-excerpt path first lines)
+  (string-append "== " path " lines " (number->string first) "-" (number->string (+ first (length lines) -1)) " ==\n"
+                 (string-join lines "\n") "\n"))
+
+;; The excerpts for one path the findings name: the lines around each line
+;; they cite, or, for a path named without one, what the explorer read of it
+;; when that is short enough to carry whole.
+(define (plan-path-excerpts findings reads path)
+  (let ((cited (plan-cited-lines findings path)))
+    (if (null? cited)
+        (let ((whole (plan-lines-read reads path 1 100000000)))
+          (if (and whole (<= (string-length (string-join (list-ref whole 2) "\n")) plan-excerpt-cap))
+              (list (plan-excerpt path (car whole) (list-ref whole 2)))
+              '()))
+        (let walk ((ranges (plan-merge-ranges (map (lambda (c) (cons (max 1 (- (car c) plan-excerpt-before)) (+ (cdr c) plan-excerpt-after))) cited)))
+                   (out '()))
+          (if (null? ranges)
+              (reverse out)
+              (let ((got (plan-lines-read reads path (car (car ranges)) (cdr (car ranges)))))
+                (walk (cdr ranges)
+                      (if got
+                          (let ((lines (plan-lines-within (list-ref got 2) plan-excerpt-cap)))
+                            (if (null? lines) out (cons (plan-excerpt path (car got) lines) out)))
+                          out))))))))
+
+;; Where path is first named in text, as a count of characters before it.
+(define (plan-mention path text) (string-length (car (string-split text path))))
+
+(define (plan-distinct items)
+  (let walk ((items items) (out '()))
+    (cond ((null? items) (reverse out))
+          ((member (car items) out) (walk (cdr items) out))
+          (else (walk (cdr items) (cons (car items) out))))))
+
+;; The message section for what the explorer read of the files its findings
+;; name, in the order they name them, or "" when there is none. An excerpt
+;; that does not fit what is left of plan-excerpts-cap is left out, and a
+;; shorter one after it may still go in.
+(define (plan-excerpts findings reads)
+  (if (or (<= plan-excerpts-cap 0) (null? reads) (string-empty? (string-trim findings)))
+      ""
+      (let* ((named (filter (lambda (p) (and (not (string-empty? p)) (string-contains? findings p)))
+                            (plan-distinct (map car reads))))
+             (ordered (sort named (lambda (a b) (< (plan-mention a findings) (plan-mention b findings)))))
+             (blocks (apply append (map (lambda (p) (plan-path-excerpts findings reads p)) ordered)))
+             (kept (let take ((bs blocks) (used 0) (out '()))
+                     (cond ((null? bs) (reverse out))
+                           ((<= (+ used (string-length (car bs)) 1) plan-excerpts-cap)
+                            (take (cdr bs) (+ used (string-length (car bs)) 1) (cons (car bs) out)))
+                           (else (take (cdr bs) used out))))))
+        (if (null? kept) "" (string-append plan-excerpts-intro (string-join kept "\n"))))))
 
 ;; Whether the task has a judge it can ask now: one chosen for it, or
 ;; [judge]'s, whose key is stored (ADR 46, ADR 47). The primitive is
@@ -202,9 +362,13 @@
 
 ;; What exploring found goes to the model that does the work, not only to
 ;; the planner: it would otherwise read the same files again to learn it.
+;; The excerpts are a help: a failure to make them leaves the findings as
+;; they were, and the plan stands.
 (define (plan-hand-over findings)
   (unless (string-empty? (string-trim findings))
-    (add-message (plan-findings-message findings))))
+    (let ((excerpts (guard (e (else "")) (plan-excerpts findings plan-explore-reads))))
+      (set! plan-explore-reads '())
+      (add-message (string-append (plan-findings-message findings) excerpts)))))
 
 ;; A run's later turn, or the turn after one that did not finish: the plan
 ;; again, with the marks the earlier turns made, so the steps keep their
@@ -219,6 +383,7 @@
     (and left (assoc-ref left 'next #f) left)))
 
 (define (plan-gate request)
+  (set! sub-agent-seen #f) ; nothing an unfinished exploring left is kept
   (let ((judged (plan-judge?)))
     (cond ((plan-recorded?) #f) ; this turn has its plan already
           ((plan-required?)
@@ -267,11 +432,15 @@
                                 (string-append "Next unmarked: " (number->string next) ". " (list-ref steps (- next 1)))
                                 "Every step of the plan is marked.")))))))
 
+;; A mark goes with the next step's first call: on commit-bench (nodwyn
+;; 0a9f700, nine tasks) 69 of the 103 replies that marked a step held nothing
+;; else, each a request that sends the whole context again, and their notes
+;; ran to 716 characters (ADR 32, amended 2026-10-12).
 (define-agent-tool "plan-step"
-  "Mark a step of the current plan done as soon as its work is done, before you start the next step — never several together at the end: whoever follows the task sees the plan's progress move as the work happens. Mark it skipped when you decided against it, with what shows it: a test that passed, the file you changed, or why you skipped it. A Test: step is done once its test has failed without your change and passes with it (or passed both times, for one that guards behaviour that already works): the note names both runs. Steps are numbered from 1, as in the plan."
+  "Mark a step of the current plan skipped when you decided against it, saying why. The harness marks a step done when it sees its evidence (its file changed, its test passed after your last edit, its check passed), so mark one done yourself only when its evidence is something the harness cannot see, with what shows it, and in the same reply as your next call (a mark alone costs a whole request). A Test: step is done once its test has failed without your change and passes with it (or passed both times, for one that guards behaviour that already works): the note names both runs. Steps are numbered from 1, as in the plan."
   '(("step" "integer" "the step's number in the plan")
     ("state" "string" "done or skipped")
-    ("note" "string" "what shows it"))
+    ("note" "string" "what shows it, in one line"))
   (lambda (call args)
     (guard (e (else (string-append "plan-step failed: " (format "~a" (assoc-ref e 'message "")))))
       (plan-step-answer call args))))
@@ -418,10 +587,10 @@
 (define (plan-recorded-message n problems)
   (string-append "Plan recorded: " (number->string n) (if (= n 1) " step" " steps")
                  (if (null? problems)
-                     ". It stays in front of you; mark each step with plan-step as its work is done, before you start the next — never several together at the end."
+                     ". It stays in front of you; the harness marks a step done when it sees its evidence (its file changed, its test passed after your last edit, its check passed): mark one with plan-step only to skip it, saying why, or when its evidence is something the harness cannot see."
                      (string-append ", as written, since plan-write has turned down " (number->string plan-write-refusals)
                                     " plans in this turn. Still missing:" (plan-problem-lines problems)
-                                    "\nIt stays in front of you: cover what is missing as you work, and mark each step with plan-step as its work is done, before you start the next — never several together at the end."))))
+                                    "\nIt stays in front of you: cover what is missing as you work, and the harness marks a step done when it sees its evidence (its file changed, its test passed after your last edit, its check passed): mark one with plan-step only to skip it, saying why, or when its evidence is something the harness cannot see."))))
 
 ;; plan-write's refusals in a turn: the turn, as the number of the person's
 ;; messages so far (read from the log, so a project that redefines
@@ -460,8 +629,11 @@
                 (record-plan (list (cons 'decision "model") (cons 'plan plan)))
                 (plan-recorded-message (length (plan-steps)) problems)))))))
 
+;; The description's sentence on assumptions and cases is plan-shape's
+;; (prompts.scm), which says the failures it comes from; an unnumbered line is
+;; no step, so plan-problems and the marks leave it alone.
 (define-agent-tool "plan-write"
-  "Write down your plan for the task: numbered steps, each starting with its kind and a short name for what it does, then a dash (—) and the detail after it. Change: a file (or function) and what changes in it, at every place the change must reach. Test: the test file and name, the behaviour it checks with an input that tells it apart from the nearest wrong behaviour, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works. Docs: each file a person or a later session reads that the change makes wrong or incomplete. Check: the command that shows the whole change works, as the last step. With no test or no doc to change, say so and why (\"Test: none — only docs change\"). For example:\n1. Change: src/flags.go parseFlags — accept --verbose.\n2. Test: src/flags_test.go TestVerboseFlag — --verbose sets Verbose; fails today: the flag is unknown.\nYour thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps as the work happens. Write it once you know what to change, before changing it, and write it again only when it must change."
+  "Write down your plan for the task: numbered steps, each starting with its kind and a short name for what it does, then a dash (—) and the detail after it. Change: a file (or function) and what changes in it, at every place the change must reach. Test: the test file and name, the behaviour it checks with an input that tells it apart from the nearest wrong behaviour, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works. Docs: each file a person or a later session reads that the change makes wrong or incomplete. Check: the command that shows the whole change works, as the last step. With no test or no doc to change, say so and why (\"Test: none — only docs change\"). For example:\n1. Change: src/flags.go parseFlags — accept --verbose.\n2. Test: src/flags_test.go TestVerboseFlag — --verbose sets Verbose; fails today: the flag is unknown.\nA step carries only what the request states: behaviour it does not state goes on an unnumbered line after the steps, \"Assumptions: …\", checked against the existing tests before any step relies on it. For each rule the request states, list its cases, one per clause and, for a range or an overlap, one per position (inside, crossing the start, crossing the end, equal, empty).\nYour thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps as the work happens. Write it once you know what to change, before changing it, and write it again only when it must change."
   '(("plan" "string" "the numbered steps, each starting with Change:, Test:, Docs: or Check:, a short name for what it does, then — and the detail; the last a Check:"))
   (lambda (call args)
     (guard (e (else (string-append "plan-write failed: " (format "~a" (assoc-ref e 'message "")))))

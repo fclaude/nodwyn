@@ -28,7 +28,9 @@ like this:
     (0.5), the turn just proceeds.
   \item A read-only sub-agent labelled \code{explorer} looks at the folder
     for up to \code{plan-explore-rounds} (12; 16 for the families that ask
-    for few calls in a round, a table by model family) rounds (\code{fs-read},
+    for few calls in a round, but 8 for qwen, whose explorer used all 16 in
+    most benchmark runs while the work read half its files again: a table
+    by model family) rounds (\code{fs-read},
     \code{fs-list}, \code{index-grep}, \code{index-search},
     \code{fs-find}), so the plan is not
     written blind. It reads the code at the place the request describes
@@ -49,7 +51,14 @@ like this:
   \item The outcome is recorded as a \code{gate.plan} event, and the window
     adds the plan to the conversation under \code{plan-header}, where it
     is never trimmed away. The explorer's findings are handed to the model that
-    does the work as well, so it does not read the same files again.
+    does the work as well, so it does not read the same files again, and with
+    them the lines of those files that they cite as \code{path:line}, copied
+    from what the explorer read (\code{plan-excerpts}, at most
+    \code{plan-excerpts-cap}, 12000, characters in all): on the benchmark's
+    nine tasks 73 to 100\% of the work's reads (37\% in one run) were of files the explorer had
+    read (\adr{32}, amended 2026-10-16). It is information the model may use,
+    not a read it must make; the system prompt says to read a long file by
+    the part needed, found with \code{index-grep}.
 \end{enumerate}
 
 Without a judge, an ordinary interactive turn has no gate. If the judge's
@@ -82,6 +91,18 @@ test of behaviour that already works; a \code{Docs:} step each file a
 person or a later session reads that the change makes wrong or incomplete;
 and the last step, \code{Check:}, the command that shows the whole change
 works. A plan with no test or no doc to change says so in a step, and why.
+A step carries only what the request states: behaviour the request does not
+state goes on an unnumbered line after the steps, ``Assumptions: \ldots'',
+and is checked against the existing tests before a step relies on it, and
+one a test contradicts is dropped. For each rule the request states, the
+plan lists the cases by clause and, for a range, an overlap or an edge, by
+position: inside, crossing the start, crossing the end, equal, empty. (A
+planner that writes its plan as forms puts such a line in an
+\code{assumes} form; the unnumbered line is no step, so marks and the
+console are unchanged.) On one benchmark task a plan copied ``count 0
+stays and means default'', which the request never stated, and the run
+rewrote an existing test to match; on another a plan said only ``drop an
+overlapping token'', and the tests never reached a token crossing the end.
 
 \begin{txt}
 1. Change: internal/prim/fs.go fsEdit — take an optional edits list.
@@ -220,7 +241,74 @@ evidence:
     unchanged code too, and end. An exit that says no test ran (126, 127,
     and pytest's 4 and 5) is no failure, and a run on the copy of the last
     commit (\code{\$TMPDIR/base}) that fails too is the comparison done.
+    The loop also reads the tests a run reports failing
+    (\code{failure-names}) and remembers those of the runs on the unchanged
+    code, the copy's and the turn's first full run before any edit: a run
+    that fails only those, none named by the request, the plan or a file
+    the turn wrote, is not told, its result saying they failed there
+    before, and a run that fails some of them gets a reminder that names
+    which.
   \item At most \code{finish-reminders} (2) such reminders per turn.
+  \item When a turn with a change first ends and none of those reminders is
+    due, the \textbf{finish review} says what the change lacks, in one
+    message, once a turn: new files git does not track, the plan's steps
+    without their evidence, the parts of the change the passing check does
+    not test (it runs again with each part taken out in turn,
+    \code{check-without}; the check is the passing run since the last edit
+    that runs the most of what changed, not the last one; a deleted file or a
+    hunk that only deletes lines is no part), and a command the report cites
+    that has not run since the last edit. When that check passed, it also names what the change removed
+    (\code{change-removals}): a definition gone from its package that the
+    request does not name, and the cases and assertions of existing tests
+    it removed or rewrote (a case, an assertion, a \code{want} value, a phrase
+    a \code{strings.Contains} looks for); the existing Go tests the turn
+    edited that fail when their files are as the last commit had them
+    (\code{original-tests}, \code{finish-original-tests-message}: change the
+    code, appending to what a test pins; or, when the request names the new
+    result, change the assertion; or, when it contradicts the test's setup,
+    change the setup, and say which sentence of the request requires it; no
+    other language is run);
+    and the parts of a condition a rewritten Go
+    function no longer checks (\code{change-dropped-conditions}). And it names the lines the change adds to
+    documents and comments that nothing in the turn showed
+    (\code{change-claims}): a run's result or figures no passing run
+    printed, an amendment date no command printed, a paragraph pasted twice,
+    entries added by hand to a generated file. The tests it asks for are
+    bounded: at most \code{finish-ask-limit} (3) of the untested parts, the
+    plan's missing tests and the dropped conditions are named, the largest
+    first, with a count of the rest, and an item named in one review of a
+    run is not named in a later one (\code{finish-ask}); it asked for the
+    changed lines no test executed until 2026-10-17, and that point took
+    62 of a benchmark run's 167 calls. The existing tests of its first point
+    are the rows of an edit that no quote of the request supports,
+    with the original tests that fail (\code{finish-unsupported-edits-message}).
+    After the review the turn is
+    accepted: the model's next answer ends it, and the reminders above are
+    not asked again.
+  \item As a test file is edited, not only at the finish: after a round whose
+    calls wrote an existing test file, the loop sets the change against the
+    last commit and, for the lines of that file an edit removed or rewrote (a
+    case of a table, an assertion, a literal assigned to \code{want} or
+    \code{expected}, a Go \code{strings.Contains} of a phrase), asks which sentence of the request requires the new expectation, for that
+    input or case, answered as one line for each row, the row and a sentence
+    copied word for word from the request; if none does, restore it and change
+    the code (\code{edited-expectations-message}). The edit is never refused, a test
+    the turn added is not asked about, and each file is asked about once in
+    a turn. The loop reads the reply that follows (\code{edit-answers},
+    \code{edit-support}): a quote is a run of three words or more of the
+    reply that stands in the request, and supports a row when it shares a
+    distinctive word with the row's string literals and with the line that
+    replaces it; a phrase made shorter needs most of the words cut, a phrase
+    split all of the words put. A row not supported gets one firmer message
+    (\code{edited-expectations-firm-message}), and the finish review lists it
+    first.
+
+    not asked again. In a run nobody reads as it goes it is made at most
+    twice over the run's turns (\code{finish-review-limit}). A test step
+    may name a scenario file, a path through a \code{scenarios},
+    \code{testdata} or \code{fixtures} folder, which a file the turn wrote
+    or the repository has meets, with a \code{go test} run of the folder
+    above it.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),
     the no-change reminder is \code{finish-no-change-reviewed-message}: make
@@ -238,7 +326,16 @@ A command counts as a test run when its command line contains one of
 \code{cargo test}, \code{npm test}, \code{make test}, \code{rspec} and
 twenty-one more. A test run with failures still counts as a run; only
 commands that never got as far as running a test count against
-\code{unrunnable-after}.
+\code{unrunnable-after}: a run whose output shows tests ran (a test named as
+failed, a test or package passed, a package that says \code{FAIL} with a time
+of its own) ends the count, and a failing run after an edit that took part of
+the model's own change out, a revert experiment, leaves it where it was. A tool your repository registers to run a command
+counts as that command when \code{tool-commands} names it: nodwyn's
+\code{validate} is \code{make validate}, \code{go-test} is \code{go test}
+on its package, \code{run-make} is \code{make} on its target. A run whose
+exit status may be another command's (piped into \code{tail}, ending in
+\code{|| true} or \code{; echo \$?}) shows a plan's test passing only
+when its output does.
 
 The scratch directory is not the repository. A file the model writes there,
 such as its check script \code{\$TMPDIR/check.sh}, is not a change, and a
@@ -246,8 +343,13 @@ command that runs it is a test run; a check fails until the work is done, so
 its failing runs never count against \code{unrunnable-after}. In a git work
 tree git decides what changed, so an edit made through the shell counts and
 a write that changes nothing does not. Files new since the turn began that
-git does not track are named once, with
-\code{(finish-new-files-message files)}, before the turn ends.
+git does not track are named in the finish review, with
+\code{(finish-new-files-message files)}. A \code{make validate} or
+\code{go run ./scripts/validate} run in the shell counts as your
+\code{init.scm}'s validate tool's run when it keeps
+\code{validated-state} as nodwyn's does. The untracked files such a run
+leaves are its output: its result names them, and deleting them does not
+make \code{validated-state} stale (\code{validate-settle}).
 
 \begin{tip}
 If your project runs its tests some other way, teach the loop:
@@ -256,7 +358,15 @@ If your project runs its tests some other way, teach the loop:
   (append test-command-words '("./run_tests" "bazel test" "just check")))
 \end{scm}
 Otherwise the evidence loop will keep telling the model it has not tested,
-however many times it runs your test script.
+however many times it runs your test script. A tool of your own that runs
+one is a row of \code{tool-commands}: its name, the program, the words
+before its argument, and the argument's name. A file a command of yours
+generates, whose head does not say so, is a row of \code{generated-files}:
+\begin{scm}
+(define generated-files '(("data/prices.csv" "make prices")))
+\end{scm}
+and the finish review names entries the model adds to it by hand that no
+later \code{make prices} made.
 \end{tip}
 
 \section{Rounds that only read}

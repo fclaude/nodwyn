@@ -70,8 +70,9 @@ rules, main context only:
   \item a test command that never ran a test is folded to one line once a
     later one does. A command ran tests when it exited 0 or its output
     says so in a runner's words (\code{hygiene-ran-words}: pytest's, Go's
-    \code{ok} and \code{-{}-{}- FAIL}, mocha's, jest's, cargo's); a Go
-    package that did not build ran none;
+    \code{ok} and \code{-{}-{}- FAIL}, mocha's, jest's, cargo's, and a
+    repository validate's summary); a Go package that did not build ran
+    none;
   \item a read of a file edited since is \emph{stale}: after
     \code{hygiene-stale-age} (2) rounds it folds to its outline, noting the
     file changed;
@@ -93,9 +94,15 @@ batch also has to pay for itself. It folds when it is at least as large as
 the rest of the window after it (\code{(context-tokens result)} measures
 that), when the provider's cache is not serving the context anyway (it read
 less than \code{hygiene-cache-share}, a quarter, of the recent prompts), or
-when the context is past \code{hygiene-pressure} (half) of the high water,
-where room matters more than the cache. Otherwise the reads wait. Each
-fold's log note says which reason applied.
+when the context is past \code{hygiene-pressure} (three quarters) of the
+high water, where room matters more than the cache. Otherwise the reads
+wait. Each fold's log note says which reason applied. At half the high
+water, as it was, most of these folds came long before the context was
+short of room, and each sent the server back over the rest of the prompt.
+A read of a file the plan will change and the turn has not edited
+(\code{hygiene-keep?}) waits until \code{hygiene-keep-pressure}, three
+quarters too: until then it stays, and past it every due read folds in one
+sweep.
 
 \subsection{\file{readdef.scm}: \texttt{read-definition}}
 

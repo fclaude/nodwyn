@@ -11,8 +11,10 @@ import (
 
 // The two tables the loop ships (plan-explore-rounds, plan.scm, and
 // reading-reminder-after, strategy.scm) give the families that batch their
-// calls into few rounds a longer explorer, and every other model, claude-sonnet
-// and gpt-6.1-sol among them, the default.
+// calls into few rounds a longer explorer, qwen a shorter one (it used all
+// 16 rounds in 39 of 48 commit-bench runs, and the work read again half of
+// what it read; ADR 32, amended 2026-10-15), and every other model,
+// claude-sonnet and gpt-6.1-sol among them, the default.
 func TestTunedValuesFollowTheModelsFamily(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -28,8 +30,8 @@ func TestTunedValuesFollowTheModelsFamily(t *testing.T) {
 		{"openai/gpt-6-luna", "gpt-6-luna", 16},
 		{"meta/muse-spark-1.3-contributor", "muse-spark-1.3-contributor", 16},
 		{"z-ai/glm-5.3-flash", "glm-5.3-flash", 16},
-		{"qwen/qwen3.8-27b", "qwen3.8-27b", 16},
-		{"qwen-3.8-27b", "qwen-3.8-27b", 16},
+		{"qwen/qwen3.8-27b", "qwen3.8-27b", 8},
+		{"qwen-3.8-27b", "qwen-3.8-27b", 8},
 		{"deepseek/deepseek-v4.1-flash", "deepseek-v4.1-flash", 16},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
@@ -72,6 +74,7 @@ func TestExplorerRoundsFollowTheModelsFamily(t *testing.T) {
 	}{
 		{"test-model", 12},
 		{"openai/gpt-6-luna", 16},
+		{"qwen/qwen3.8-27b", 8},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			t.Parallel()

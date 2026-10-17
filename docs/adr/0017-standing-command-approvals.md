@@ -356,3 +356,16 @@ word, and `$TMPDIR` and `${TMPDIR}` as the session's scratch directory, which
 `shell-exec` gives as `TMPDIR`, so that spelling stays unasked. Other
 variables are read as written. The regression cases are in
 `TestArgvTriggerReadsAScriptWordByWord`.
+
+## Amendment 2026-10-16: the refusal of the repository's own absolute path says what to write
+
+The rule is unchanged: no standing approval covers an absolute path, the
+repository's own included. The system prompt gives the model the repository's
+absolute path, and on commit-bench (dsl20r, 7513f7eb) an unattended run's
+`cd <repository> && go test ...` was refused for good with a reason that
+said only that the path was absolute. When the path resolves inside the
+repository (and has no `..`), the reason now adds that the command already
+runs in the repository root, so the path is written relative to it
+(`pathRisk`, `TestAbsoluteRepositoryPathRefusalSaysToWriteItRelative`).
+Nothing else about the decision changes; a path outside the repository gets
+the reason it had.

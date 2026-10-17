@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -35,6 +36,14 @@ import (
 // run first, one at a time, and the parallel ones start after them.
 func TestMain(m *testing.M) {
 	fakecontainer.Main(containedTools()...)
+	// original-tests, and the Go modules some tests commit, run go: it keeps
+	// the build cache and modules it has, so a fresh home does not rebuild the
+	// standard library for every test.
+	for _, k := range []string{"GOCACHE", "GOMODCACHE", "GOPATH"} {
+		if out, err := exec.Command("go", "env", k).Output(); err == nil {
+			os.Setenv(k, strings.TrimSpace(string(out)))
+		}
+	}
 	// A home of its own (test/fakes/home): nodwyn's denylist, git's
 	// configuration and nodwyn's own read from it.
 	done := home.Isolate()

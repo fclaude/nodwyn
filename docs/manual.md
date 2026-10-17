@@ -558,20 +558,30 @@ the end of the conversation. This folds the display only; `/compact
 ### The scratch directory
 
 Each session gets a scratch directory outside the repository, a private
-directory (mode 0700) under nodwyn's data directory, for throwaway files: a
-script that reproduces a bug, notes, temporary output. The default system
-prompt names it as `$TMPDIR`, so the prompt is the same in every session, and
-`$TMPDIR` means it everywhere: commands run with `TMPDIR` set to it, and a
-file primitive's path or a command's argument that starts with `$TMPDIR/`
-(or `${TMPDIR}/`) is rewritten to it before the guard sees it. Writes there
-need no approval. Nothing in it reaches the repository or its diff; a clean
-close removes it, and a resumed session gets a new, empty one. A session
-touches it at every turn, and directories untouched for a week, left by
-sessions that ended without closing, are swept. It is the one place in
-nodwyn's data directory the tools may use: everything else outside the
-repository stays refused, the rest of the data directory included (wherever
-`XDG_DATA_HOME` puts it), and a symbolic link out of the scratch directory
-does not escape it (ADR 28).
+directory (mode 0700, a name no one can guess) in the system's temporary
+directory (`TMPDIR`, else `/tmp`), for throwaway files: a script that
+reproduces a bug, notes, temporary output. It is outside nodwyn's
+configuration and data directories, which the guard protects, so a test
+suite or a tool a command runs, with the scratch directory as its `TMPDIR`,
+makes its temporary files and directories there as it would anywhere, and is
+not refused them. The default system prompt names it as `$TMPDIR`, so the
+prompt is the same in every session, and `$TMPDIR` means it everywhere:
+commands run with `TMPDIR` set to it, and a file primitive's path or a
+command's argument that starts with `$TMPDIR/` (or `${TMPDIR}/`) is
+rewritten to it before the guard sees it. Writes there need no approval.
+Nothing in it reaches the repository or its diff; a clean close removes it,
+and a resumed session gets a new, empty one. A session touches it at every
+turn, and directories untouched for a week, left by sessions that ended
+without closing (in the temporary directory, and in the data directory, where
+sessions before 2026-10-16 kept theirs), are swept; only this user's own,
+named for a scratch directory, are removed. It is the one place outside the
+repository the tools may use: everything else outside it stays refused, the
+configuration and data directories included (wherever `XDG_CONFIG_HOME` and
+`XDG_DATA_HOME` put them; and if `TMPDIR` is itself set inside one, the
+scratch directory is still the one place there that is open), and a symbolic
+link out of the scratch directory does not escape it (ADR 28). A system whose
+temporary directory forbids running programs from it needs a `TMPDIR` for
+nodwyn that does not.
 
 ### Notes kept across sessions
 
@@ -701,7 +711,41 @@ change (docs/scheme.md §9): the system prompt is how to work rather than
 what to tell an approver, and a turn ends on evidence — a change, and a test
 run after it that did not fail — with an honest way out when the tests cannot
 run at all, and another when the code already does what was asked: a check
-that shows it. It answers the guard's questions; it does not
+that shows it. A run that fails because tests fail, or because the model took
+part of its own change out to see a test fail, is not "tests that cannot
+run". Before it ends, the check that passed (of those that passed since the
+last edit, the one that runs the most of what changed) is run again with each
+part of the change taken out in turn, and the parts it still passes without are
+named to the model: a check that cannot fail for a part does not test it, and
+that review is made at most twice in a run. The review asks the model to write
+a test only a few times: it names at most three of those parts (the largest
+first), three of the plan's tests that are missing or pass on the unchanged
+code, and three dropped conditions, says how many more there were, and does not
+ask about an item again; a part you did not ask for (a flag, a rename, a skip
+added to make a test pass) gets no test, it is removed or defended with the
+sentence of your request that requires it. It does not ask for the lines no test
+ran: that point cost one benchmark run a third of its calls. When an edit
+removes or rewrites an expectation of a test the repository already had (a case,
+an assertion, a `want` string, a phrase the test checks for), the model is asked
+once for that file, as it edits, which sentence of your request requires the new
+expectation, and to answer with a line for each, the row and a sentence copied
+word for word from your request that names its input or case. The loop reads the
+answer against your request: the quote must be in it, and share a distinctive
+word with the row (or, for a phrase made shorter or split, say most of the words
+cut or all of the words put). A row the answer does not support gets one firmer
+message, with the default of restoring the old expectation, and the finish
+review lists what is still unsupported as its first point, with the original
+tests that fail. The edit itself is never refused or reverted. And in a Go project, the test
+files it edited are run once more as the last commit had them, against the
+change, and the tests that fail are named to it: either its change is wrong,
+or your request names the new result and the assertion changes, or your request
+contradicts the test's setup, which it then changes, not the test's assertions;
+it says which sentence of the request requires a change to a test. A test
+that failed on the unchanged code too (in a run on a copy of the last commit,
+or in the turn's first full run before it edited anything) is said so when it
+fails again, and is not told to the model as its change's failure. Files that
+`make validate` leaves untracked are named in its result, and deleting them
+does not call for another run. It answers the guard's questions; it does not
 overrule its refusals. Still denied, exactly as with a human at the prompt:
 
 - anything outside the repository, and symlinks that leave it;
@@ -949,7 +993,9 @@ what it checks and why it fails on today's code, "fails today: …"),
 `Docs:` (each document the change makes wrong or incomplete) and, last,
 `Check:` (the command that shows the whole change works); a plan with no
 test or no doc to change says why in a step (`Test: none — only docs
-change`). The judge scores the gate's plans against it, and `plan-write`
+change`); behaviour your request does not state goes on an `Assumptions:` line
+after the steps, checked against the existing tests, not in a step. The judge
+scores the gate's plans against it, and `plan-write`
 turns down a plan without it, saying what is missing, at most twice in a
 turn: the third is recorded as written, with what it still lacks. The plan
 panel shows each step folded to its title, the clause up to its first dash
@@ -978,7 +1024,13 @@ change for its next unmarked step. In a chat a question gets an answer, and a re
 for something the model finds was never built gets told so, with what it
 would build, before it builds anything. A plan made with the judge or
 without one hands the explorer's findings to the model too, so it does not
-read the same files again. The explorer has twelve tool rounds, sixteen for
+read the same files again, and with them the lines of those files that the
+findings cite as `path:line`, copied from what the explorer read (at most
+`plan-excerpts-cap` characters in all, 12,000; a file named without a line is
+carried only when what the explorer read of it is short). They are
+information for the model, not a read it must make; the system prompt tells
+it to read a long file by the part it needs, found with `index-grep`, not
+whole. The explorer has twelve tool rounds, sixteen for
 the muse-spark, glm, qwen, deepseek and gpt-6-luna families, which ask for
 fewer calls in a round; the same table is where a project gives a model
 another count.
@@ -1151,10 +1203,13 @@ progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
 
 Long work is compacted on its own just under the window's high water: the
 model writes a handover note and goes on from it, in that turn and the next
-ones. A turn whose context fills a second time with no file written since
-the last compaction stops instead: the model is asked, without tools, what it
-found, what is done, what is left and what is in the way, and that is the
-turn's answer (`compact-stop-unchanged`, `#f` turns it off). Set
+ones, with the turn's plan and the steps marked so far given back after the
+note. A turn whose context fills a second time with no file written since
+the last compaction stops instead of compacting again: the model gets up to
+six requests with only the edit tools to make the code changes its note and
+plan name, then reports what is done and what is left, without tools, and
+that is the turn's answer (`compact-stop-unchanged`, `#f` turns it off;
+`compact-write-rounds` 0 asks for the report at once). Set
 `(define compact-threshold 40000)` to compact earlier, `#f` to
 only trim, and send `/compact` to compact whenever you like
 ([docs/scheme.md](scheme.md) §9.2). Each compaction is one line in every
