@@ -501,9 +501,10 @@ func TestShellExecSavedOutputCanBeReadThroughTheGuard(t *testing.T) {
 	for script, want := range map[string]string{
 		`sed -n '21,120p' $TMPDIR/out/1.stdout`:           joinLines(21, 120),
 		`grep -n 'line 150' $TMPDIR/out/1.stdout`:         "150:" + lineN(150) + "\n",
-		`sed -n '21,120p' ${TMPDIR}/out/1.stdout | wc -l`: "     100\n",
+		`sed -n '21,120p' ${TMPDIR}/out/1.stdout | wc -l`: "100\n",
 	} {
-		if got := r.run(t, script); got.Stdout != want {
+		// wc pads its count on some systems.
+		if got := r.run(t, script); strings.TrimLeft(got.Stdout, " ") != want {
 			t.Errorf("%s printed %.80q", script, got.Stdout)
 		}
 	}
