@@ -2534,14 +2534,106 @@ setting `lean-quiet` alone does not bring them back. In the Go host
 `prim.Options.Lean` carries the tool surface the same way: only a lean session
 registers `scheme`, `outline` and `tests-for`, gives `fs-read` its `symbol`
 parameter, counts the lines an edit added and removed, has `fs-write` say what
-it wrote and lets `index-grep` search source files alone in a tree of more
-than 3000. A full session's catalogue, tool schemas and answers are the ones
+it wrote, lets `index-grep` search source files alone in a tree of more
+than 3000, gives `fs-edit` its `line`, its closest text and its note of other
+copies, and `shell-exec` its view of a long stream and its saved files. A full session's catalogue, tool schemas and answers are the ones
 it had. `TestFullProfileTurnsOffEverySwitchTheDefaultsTurnOn` fails when a
 switch named `lean-...` is added to the defaults and not to `full.scm`, and the
 tests of `internal/core`, `internal/frontend/...` and the rest that were
 written against the previous loop run it (`test/fakes/home` sets
 `NODWYN_PROFILE=full` for them); origin/main's own test files pass unchanged
 against it.
+
+**Tools that name the occurrence, show the closest text and keep long output
+(lean profile alone).** On 484 shell-only SWE-bench sessions (Muse, a small
+cheap model; `shell-exec` and `fs-edit`) the tools' answers cost the model
+calls it did not need to make. `prim.Options.Lean` carries the changes, so a
+full session's tools, schemas and answers are origin/main's, and `lean-prompt`
+carries the one in the shell habit:
+
+- *`fs-edit` names no tool.* Of 73 `fs-edit` errors in the two-tool arms, 24
+  were "old text not found" whose generic variant ended "read the region again
+  with fs-read" (and one more "read them with fs-read and copy them exactly"),
+  though `fs-read` is not offered; the model switched to `sed -n` and
+  recovered in 3.9 calls on average (1.6 in the six-tool arm). A miss now
+  shows the closest text: the file line that shares most words with old's first
+  line (at least two words and half of old's; of equal lines the one whose next
+  lines resemble old's more, then the first), with the lines around it, five in
+  all, numbered, bounded by `editHintBytes`; or says that no line resembles it
+  and the text may be in another file.
+- *`fs-edit` takes a `line`.* Another 23 errors were "old text occurs N times"
+  (counts like 33 and 40) with no way to say which, though the model knew the
+  line from `grep -n`. `line` (1-based; also in each edit of `edits`, where it
+  counts the text the edits before it leave) chooses among the occurrences:
+  the one that holds the line, else the nearest, the earlier on a tie. It is
+  ignored for an old that occurs once and with `replace_all`, and it is the
+  last parameter, so a positional `(fs-edit path "" "" #f edits)` keeps its
+  meaning. The ambiguity error says "pass line to choose one, or replace_all".
+- *`fs-edit` says where the replaced text also occurs.* django-16938 needs the
+  identical change at `django/core/serializers/xml_serializer.py:158` as at
+  `python.py`, and every failing session edited one and never saw the other.
+  After a successful edit without `replace_all` of at least two non-blank lines
+  or 40 non-space characters, the answer ends `the replaced text also occurs
+  at: path:line, … (and N more); check whether the same change applies there`,
+  at most three named: "occurs", not "edit", since the same text is not always
+  the same fault. The search takes the edited file as it now is, its folder,
+  then the repository's source files in path order, skipping hidden entries,
+  `vendor`, `node_modules`, binary files and files over 1 MiB, at most 5,000
+  files and 400 ms; when it runs out it says what it had found. The edit's own
+  new text is left out (an insertion after an anchor holds the old text),
+  tracked through the edits of a list. A file is named only if the model's own
+  read of it would be allowed: the credential denylist and the guard,
+  including a checker of the user's, for each file that matches (a nested
+  `fs-read`, as `index-grep` does).
+- *`shell-exec` shows a long stream as a view with a file behind it.* In the
+  same sessions 84% of test runs were piped to `| tail -N` or `| head -N`, and
+  in 30% of the runs that executed (362 of 1,208) the output then showed no
+  verdict: Django's parallel runner prints only "Destroying test database ..."
+  lines at the end, and the model ran the suite again with other flags, a call
+  and minutes each. The lines were never lost to the tool, only to the pipe.
+  The principle is a pager's: a long output is not poured into the model's
+  context and is not trimmed by the model; the tool shows a bounded view and a
+  handle to the rest. On the model's own call, a stream (stdout and stderr
+  judged apart) of more than 8 KiB or 150 lines is returned as its first 20
+  lines, a marker line where the others are, and its last 50: at most 6 KiB, a
+  line cut at 300 characters, two views sharing the 6 KiB. The marker names the
+  missing lines and the file: `[... lines 21-310 of 330 not shown; full output
+  is saved at $TMPDIR/out/7.stdout: sed -n '21,120p' $TMPDIR/out/7.stdout shows
+  a range, grep -n PATTERN $TMPDIR/out/7.stdout searches it ...]`.
+- *The saved files.* `<scratch>/out/N.stdout` or `N.stderr`, N being 1, 2, 3
+  ... for the session, shared by a call's two streams and taken only by a call
+  that needs one (a counter under a mutex, files made with `O_EXCL`, so
+  primitives that share a scratch directory do not overwrite one another). A
+  file is made when the stream passes a threshold and holds the whole stream up
+  to 8 MiB, written from a tee in front of the existing 256 KiB `capped`
+  writer, which keeps its behaviour, so what it drops from the middle is on
+  disk; a file that stopped says so, with its last line. Without a scratch
+  directory there is no handle and nothing changes. `$TMPDIR/out/N.stdout` is
+  read with `sed -n` or `grep -n` without a question: the scratch directory is
+  not outside the repository to the argv trigger, as a test shows through the
+  guard's checkers, with `$TMPDIR` written by the shell and as an argument of a
+  command without a shell (which the host expands).
+- *What the view leaves alone.* A command line that reads a file or limits its
+  own output (`readLikeRE`: `cat`, `head`, `tail`, `nl`, `sed -n`, anywhere in
+  the line) is not shown as a view: whoever asks for a range of a file wants
+  that range, and a pipe through `tail` or `head` works exactly as it did;
+  nothing of the model's command is rewritten or inspected. Only the model's
+  own call gets a view: a program of the `scheme` tool (whose point is to split
+  and filter the whole result), a strategy and the person's own call get the
+  stream as before. A view is under what the window cuts (a result over
+  `max_result_tokens`, 3,072 tokens by default, 9 KiB, is shown head and tail),
+  as a test shows through the window's own `Build`, for the JSON the tool
+  returns and for the plain text the shell habit gives it, which clips at 7,700
+  characters.
+- *The note reaches the model.* `shell.scm`'s `shell-plain` rendered a result
+  from `status`, `stdout` and `stderr` alone, so the `note` field (exit 141,
+  and a read that printed nothing, both added above) was in the log and the
+  clients and never in what the model read: matplotlib-25960's `grep ... | head`
+  and django-14534's `sed -n` past the end of the file had the notes in their
+  results all along. With `lean-prompt` on, the note follows the output on a
+  line of its own, `[note] ...`; with it off the text is what it was. No new
+  switch, so `full.scm` is unchanged. The saved-file handle is in the stream's
+  own text, not in the note, so it reaches the model whatever the rendering.
 
 **Kept in both profiles**, because each is an improvement that origin/main's
 tests do not contradict: the finish review that runs the original tests in
@@ -2562,3 +2654,12 @@ measurement had none. The profile is not a setting of the console. Lean was
 measured on Python repositories, on one benchmark and one model family;
 `auto` keeps it away from sessions a person is in until a measurement says it
 does no harm there, and `profile = "lean"` is the way to try it.
+
+Also not built, of the tools above: stripping a trailing `| tail -N` from the
+model's command and returning the last N lines exactly, and a scanner for test
+runners' verdict lines (unittest, pytest, go test, cargo, jest) to quote in a
+note. The owner rejected rewriting the model's command; the view gives the same
+lines and a handle without reading the command, and a test of a Django-style
+run (the verdict, then twenty "Destroying test database" lines) finds its
+verdict among the last 50 lines. `recall` still renders a shell result
+without its note.

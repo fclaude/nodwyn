@@ -675,8 +675,8 @@ how to split it. Otherwise:
     reaches it, so a secret in \nodwyn's environment does not.
   \item Standard output and standard error are each capped at 256\,KiB,
     keeping the first and the last half with a line between them that
-    counts what was left out. On the model's own call a stream of more than
-    8\,KiB or 150 lines is shown instead as a view: its first 20 lines, a
+    counts what was left out. In a lean session, on the model's own call, a
+    stream of more than 8\,KiB or 150 lines is shown instead as a view: its first 20 lines, a
     marker where the others are (\code{[... lines 21-310 of 330 not shown;
     full output is saved at \$TMPDIR/out/7.stdout: ...]}), and its last 50,
     at most 6\,KiB; the whole stream is in that file for \code{sed -n} or

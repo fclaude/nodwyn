@@ -197,12 +197,14 @@ out, as the `fs-read` that brings them back. The cap follows the window:
 3,072 tokens by default, a 48th of the high water once the window grows
 with a large context (16,128 at a 1M one, at most 16,384), unless you set
 it. An `fs-edit` answers with the lines it changed, numbered as the file
-now reads them, and, when the text it replaced (two lines or 40 characters
-or more) also occurs elsewhere in the repository's source, says where, as
-`path:line`: the same text is not always the same fault, but a change that
-belongs in one place often belongs in the others. When the text it was
-given matches nowhere, it shows the lines of the file closest to it; when it
-matches several places, `line` (the number a search printed) says which.
+now reads them. In a lean session ([unattended runs](#unattended-runs)) it
+also says, when the text it replaced (two lines or 40 characters or more)
+occurs elsewhere in the repository's source, where, as `path:line`: the same
+text is not always the same fault, but a change that belongs in one place
+often belongs in the others. In a lean session, too, an edit whose text
+matches nowhere is answered with the lines of the file closest to it, and one
+that matches several places takes a `line` (the number a search printed) to
+say which.
 
 ### Where each phase lives
 
@@ -353,16 +355,20 @@ still built in one and not another.
 running in the background when it ends (SIGTERM, then SIGKILL two seconds
 later): a server started with `&` does not outlive the call. A `bash -c`
 command line runs with `pipefail`, so `make test | tail -n 40` reports the
-tests' failure rather than `tail`'s success. A long output is not poured
-into the model's context: when the model runs a command and a stream passes
-8 KiB or 150 lines, it reads that stream's first 20 lines, a marker saying
-which lines are not shown, and its last 50, and the whole stream is saved
-under the session's scratch directory (`$TMPDIR/out/N.stdout`, and
-`N.stderr` for errors; removed when the session closes) for the model to read
-a range of with `sed -n` or search with `grep -n`, without a question. A
-command that reads a file (`cat`, `head`, `tail`, `nl`, `sed -n`) is shown as
-it prints, up to 256 KiB, so is a person's own command, and so is a
-program's of the `scheme` tool, which computes with the whole of it. For a server, a watcher or a
+tests' failure rather than `tail`'s success. In a lean session
+([unattended runs](#unattended-runs)) a long output is not poured into the
+model's context: when the model runs a command and a stream passes 8 KiB or
+150 lines, it reads that stream's first 20 lines, a marker saying which lines
+are not shown, and its last 50, and the whole stream is saved under the
+session's scratch directory (`$TMPDIR/out/N.stdout`, and `N.stderr` for
+errors; removed when the session closes) for the model to read a range of
+with `sed -n` or search with `grep -n`, without a question. A command that
+reads a file (`cat`, `head`, `tail`, `nl`, `sed -n`) is shown as it prints, up
+to 256 KiB, so is a person's own command, and so is a program's of the
+`scheme` tool, which computes with the whole of it; a full session's output
+is cut at 256 KiB alone. A lean session's model also reads the result's note
+(exit 141 after a `head`; a read that printed nothing) after the output, as
+`[note] …`. For a server, a watcher or a
 program to talk to, the model has `shell-start` (asks, like `shell-exec`),
 `shell-read` to see new output (optionally waiting up to 60 s),
 `shell-send` to type into it (asks every time: typing into a shell is running
