@@ -136,17 +136,16 @@
           (set! compact-gave-up-at 0)
           (narrow-context (session-system-prompt) "compaction" '((lasting . #t)))
           (add-message (compact-handover-prompt request note))
-          ;; The plan comes back twice: recorded again (plan-carry) and as the
-          ;; message after the note (compact-plan), which is read before the
-          ;; plan is recorded again. Each was built for the same failure on
-          ;; its own branch, and the merge of claude/dsl23 kept both.
+          ;; The plan comes back once, as the message after the note
+          ;; (compact-plan), the way commit-bench ran it. The window shows a
+          ;; plan recorded in the context it sends, and the narrowing left the
+          ;; turn's plan behind while the reminders go on saying it is in
+          ;; front of the model, so a plan the message cannot give (the log
+          ;; holds no unfinished one) is recorded again, with its marks, in
+          ;; the new context instead (ADR 32, amended 2026-10-16).
           (let ((told (compact-plan)))
-            ;; The window shows a plan recorded in the context it sends, and
-            ;; the narrowing left the turn's plan behind, while the reminders
-            ;; go on saying it is in front of the model: it is recorded
-            ;; again, with its marks, in the new context.
-            (when plan (plan-carry plan))
-            (when told (add-message told)))
+            (cond (told (add-message told))
+                  (plan (plan-carry plan))))
           (record #t)
           #t)
         (begin (add-message "Never mind the handover note; continue the task.")

@@ -234,17 +234,13 @@ func TestCompactionCarriesThePlanWithItsMarks(t *testing.T) {
 		!strings.Contains(ask, "do not say a file holds it") {
 		t.Fatalf("the note request does not say where the plan is kept:\n%s", ask)
 	}
-	// The plan recorded again (plan-carry, TestCompactionKeepsTheTurnsPlan)
-	// comes before this message: the merge with main kept both (ADR 32,
-	// amended 2026-10-16, "the benchmark stack merged with main").
 	after := requestMessages(t, r.srv.Requests[4])
-	if len(after) != 4 || after[1].Role != "user" || !strings.HasSuffix(after[1].Content, "Handover note:\nNOTE: main.go only declares package main; nothing changed yet.") ||
-		!strings.Contains(after[2].Content, shapedPlan) {
-		t.Fatalf("the compacted request is not the system prompt, the hand-over, the plan recorded again and the plan: %+v", after)
+	if len(after) != 3 || after[1].Role != "user" || !strings.HasSuffix(after[1].Content, "Handover note:\nNOTE: main.go only declares package main; nothing changed yet.") {
+		t.Fatalf("the compacted request is not the system prompt, the hand-over and the plan: %+v", after)
 	}
 	header := strings.Trim(r.eval("plan-header"), `"`)
 	want := header + "\n" + shapedPlan + "\n\nMarked before the conversation was cleared:\nStep 3 skipped: no doc describes main.go"
-	if plan := after[3]; plan.Role != "user" || !strings.HasPrefix(plan.Content, want) || !strings.Contains(plan.Content, "it is in no file in the repository") {
+	if plan := after[2]; plan.Role != "user" || !strings.HasPrefix(plan.Content, want) || !strings.Contains(plan.Content, "it is in no file in the repository") {
 		t.Fatalf("the plan after the hand-over:\n%s\nwant it to start:\n%s", plan.Content, want)
 	}
 	if c := r.compactions(); len(c) != 1 || c[0].After != requestEst(t, r, 4) {
@@ -851,8 +847,10 @@ func TestACutHandoverNoteIsAskedForAgain(t *testing.T) {
 // A compaction in a turn with a plan keeps the plan in front of the model:
 // the window shows a plan recorded in the context it sends, and the
 // narrowing left it behind, while the reminders went on saying "your plan
-// is in front of you". It is recorded again, with its marks, in the new
-// context.
+// is in front of you". It comes back, with its marks, in the new context:
+// as the message after the note (TestCompactionCarriesThePlanWithItsMarks),
+// or recorded again when the log cannot give it
+// (TestCompactionRecordsThePlanTheLogCannotGive).
 func TestCompactionKeepsTheTurnsPlan(t *testing.T) {
 	t.Parallel()
 	r := judgedRig(t, nil, "",
@@ -874,6 +872,38 @@ func TestCompactionKeepsTheTurnsPlan(t *testing.T) {
 	last := string(r.srv.Requests[len(r.srv.Requests)-1].Raw)
 	if !strings.Contains(last, "TestGreeting") || !strings.Contains(last, "edited main.go") {
 		t.Fatalf("the request after the compaction lost the plan or its mark:\n%.2000s", last)
+	}
+}
+
+// When the log cannot give the turn's plan back as the message after the
+// note (compact-plan reads it with unfinished-plan), the plan this turn
+// recorded is recorded again in the new context (plan-carry), so it is
+// still in front of the model, and given back once, not twice.
+func TestCompactionRecordsThePlanTheLogCannotGive(t *testing.T) {
+	t.Parallel()
+	r := judgedRig(t, nil, "",
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("s", 1, "done", "edited main.go")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "big.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
+		fake.Turn{Content: "NOTE: step 1 is done; the test is next."},
+		fake.Turn{Content: "done"},
+	)
+	writeTokens(t, r.repo, "big.txt", 1000)
+	r.eval(`(define (compact-plan) #f)`)
+	r.compactAfter(1700)
+	if e := r.turn("make main.go print hello"); e != "" {
+		t.Fatal(e)
+	}
+	if n := r.narrowings(); n != 1 {
+		t.Fatalf("%d narrowings, want 1", n)
+	}
+	last := string(r.srv.Requests[len(r.srv.Requests)-1].Raw)
+	if !strings.Contains(last, "TestGreeting") || !strings.Contains(last, "edited main.go") {
+		t.Fatalf("the request after the compaction lost the plan or its mark:\n%.2000s", last)
+	}
+	if n := strings.Count(last, "TestGreeting"); n != 1 {
+		t.Fatalf("the plan is in the request after the compaction %d times, want once:\n%.3000s", n, last)
 	}
 }
 

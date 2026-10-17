@@ -125,7 +125,7 @@ func (l *Loop) install() error {
 		{
 			Name: "turn-plan",
 			Meta: scheme.Meta{
-				Doc:    "The plan recorded in this turn, as run-plan gives a run's: an alist of plan (the text), steps, marks (each an alist of step, state and note, in step order) and next (the first unmarked step, or #f). #f when this turn has recorded none. A compaction records it again in the new context, so the window still shows it.",
+				Doc:    "The plan recorded in this turn, as run-plan gives a run's: an alist of plan (the text), steps, marks (each an alist of step, state and note, in step order) and next (the first unmarked step, or #f). #f when this turn has recorded none. A compaction whose message after the note cannot give the plan (compact-plan) records it again in the new context, so the window still shows it.",
 				Hidden: true,
 				Origin: "builtin",
 			},

@@ -2258,13 +2258,15 @@ branches. The merge keeps both, with these choices:
 - **The explorer's rounds are the sub-agent's `rounds` option** (main), what
   it read is still collected for the excerpts it hands over (the stack),
   and it has `index-search` as well.
-- **A compaction gives the turn's plan back both ways**: recorded again with
-  its marks (main, `plan-carry`) and as the message after the note (the
-  stack, `compact-plan`). Each was built for the same failure on its own
-  branch; the plan now stands twice in a compacted context, a few hundred
-  to about 2,000 tokens more, and `TestCompactionCarriesThePlanWithItsMarks`
-  expects the recorded plan before the message. Which one stays is for a
-  run to decide.
+- **A compaction gives the turn's plan back once**, as the message after
+  the note (the stack's `compact-plan`, the way commit-bench ran it). Main's
+  `plan-carry`, built on its own branch for the same failure, stands down
+  then, and records the plan again only when that message cannot be made
+  (`compact-plan` gives `#f`): `TestCompactionCarriesThePlanWithItsMarks`
+  holds the first, `TestCompactionRecordsThePlanTheLogCannotGive` the
+  second, and `TestCompactionKeepsTheTurnsPlan` both. Both at once put the
+  plan twice in a compacted context, a few hundred to about 2,000 tokens
+  more.
 - **The finish review's diff readers use main's bounded `myers`**
   (removed expectations, the change without each part, the documents'
   added lines), and leave out a change too large to diff, as they leave

@@ -613,7 +613,7 @@ Primitive & What it does \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, its instructions for coding agents, which the system prompt carries \\
 \code{(worktree)} & \code{\#f}, or the git worktree made for this session: its repository, branch, base branch and base commit (\adr{34}) \\
 \code{(git-land message)} & in a worktree session only: commit, rebase onto the newest base, push by fast-forward and move the local base branch, in one irreversible step \\
-\code{(turn-plan)} & the loop's, not the model's: the plan this turn recorded, with its marks, as \code{run-plan} gives a run's; a compaction records it again in the new context, where the window shows it \\
+\code{(turn-plan)} & the loop's, not the model's: the plan this turn recorded, with its marks, as \code{run-plan} gives a run's; a compaction that cannot give the plan back as the message after the note records it again in the new context, where the window shows it \\
 \code{(credential class)}, \code{(credential-register class)} & the handle of a stored key, or \code{\#f}; store a new key (Section~\ref{sch:keys}) \\
 \code{(http-request cred url method position headers body)} & a keyed request, checked against the binding table and credential transport policy \\
 \code{(judge-yes-no ...)}, \code{(judge-score ...)}, \code{(judge-choice ...)} & ask the task's judge, Jev or OpenAI's Decisions API, a question about a text; Go supplies the stored key of the judge's server; the model's tools only at \code{judge.content = "full"} \\
