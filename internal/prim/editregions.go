@@ -22,6 +22,15 @@ const (
 // of changed lines with editContext lines around it, numbered as the file
 // now is. Runs closer than twice the context are shown as one.
 func editedRegions(path, before, after string) string {
+	return editedRegionsCounting(path, before, after, false)
+}
+
+// editedRegionsCounting is editedRegions that, when counting, says how many
+// lines the edit added and how many it removed (+2 -2) where the other says
+// how many more or fewer the file has now: an edit that swaps a line for
+// another leaves the count at no change, and the lean profile's model read
+// that as an edit that did nothing (ADR 32, amended 2026-10-17).
+func editedRegionsCounting(path, before, after string, counting bool) string {
 	a, b := splitLines(before), splitLines(after)
 	// What both keep at the start and the end is no change; only what is
 	// between is diffed, so a large file with a small edit costs little.
@@ -89,7 +98,7 @@ func editedRegions(path, before, after string) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "edited %s, now %d lines", path, len(b))
 	switch {
-	case added >= 0:
+	case counting && added >= 0:
 		fmt.Fprintf(&sb, " (+%d -%d)", added, removed)
 	case len(b) != len(a):
 		fmt.Fprintf(&sb, " (%+d)", len(b)-len(a))

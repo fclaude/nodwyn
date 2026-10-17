@@ -9,9 +9,13 @@ import (
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
+// schemeRig is a repository with files, and the tools a lean session has:
+// the scheme, outline and tests-for tools and fs-read's symbol are offered
+// with Options.Lean alone.
 func schemeRig(t *testing.T, files map[string]string) (*scheme.Interp, string) {
 	t.Helper()
 	root, k, git := keepRepo(t)
+	k.o.Lean = true
 	for name, content := range files {
 		write(t, root, name, content, 0o644)
 	}

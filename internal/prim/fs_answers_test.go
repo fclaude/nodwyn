@@ -73,6 +73,7 @@ func TestIndexGrepFallsBackToSourceFilesInALargeTree(t *testing.T) {
 	root, k, _ := keepRepo(t)
 	write(t, root, "pkg/code.py", "needle = 1\n", 0o644)
 	write(t, root, "pkg/notes.txt", "needle in notes\n", 0o644)
+	k.o.Lean = true
 	was := searchFileLimit
 	searchFileLimit = 3
 	defer func() { searchFileLimit = was }()

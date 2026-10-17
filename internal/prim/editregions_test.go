@@ -18,7 +18,7 @@ func TestEditedRegionsShowTheChangedLines(t *testing.T) {
 	after := strings.Replace(before.String(), "line 10\n", "line ten\nline ten and a half\n", 1)
 	after = strings.Replace(after, "line 50\n", "", 1)
 	got := editedRegions("a.txt", before.String(), after)
-	want := `edited a.txt, now 60 lines (+2 -2); the changed lines now read:
+	want := `edited a.txt, now 60 lines; the changed lines now read:
 8	line 8
 9	line 9
 10	line ten
@@ -39,7 +39,7 @@ func TestEditedRegionsShowTheChangedLines(t *testing.T) {
 	// A long run shows its ends, not every line just written.
 	long := strings.Repeat("new\n", 100)
 	got = editedRegions("b.txt", "a\nb\n", "a\n"+long+"b\n")
-	if !strings.Contains(got, "now 102 lines (+100 -0)") || !strings.Contains(got, "as written") || strings.Count(got, "\n") > 50 {
+	if !strings.Contains(got, "now 102 lines (+100)") || !strings.Contains(got, "as written") || strings.Count(got, "\n") > 50 {
 		t.Fatalf("a long run:\n%s", got)
 	}
 }

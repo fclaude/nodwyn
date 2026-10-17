@@ -14,8 +14,14 @@ import (
 
 // Isolate points HOME at a new empty directory, with the XDG directories
 // and git's global and system configuration starting from nothing, and git
-// given an identity unless the environment has one. Call it in TestMain
-// before m.Run; the function it returns removes the directory.
+// given an identity unless the environment has one. It also sets
+// NODWYN_PROFILE=full: the sessions these tests build run the default loop
+// the tests were written against (an explorer and a planner for a run, the
+// finish review, the whole catalogue of tools) and not the lean one that is
+// the binary's default for an unattended session (ADR 32, amended
+// 2026-10-17). A test of the lean profile sets the variable itself
+// (t.Setenv). Call it in TestMain before m.Run; the function it returns
+// removes the directory.
 func Isolate() func() {
 	dir, err := os.MkdirTemp("", "nodwyn-test-home-")
 	if err != nil {
@@ -26,6 +32,7 @@ func Isolate() func() {
 		os.Unsetenv(k)
 	}
 	os.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	os.Setenv("NODWYN_PROFILE", "full")
 	for k, v := range map[string]string{"GIT_AUTHOR_NAME": "nodwyn test", "GIT_AUTHOR_EMAIL": "test@nodwyn.invalid", "GIT_COMMITTER_NAME": "nodwyn test", "GIT_COMMITTER_EMAIL": "test@nodwyn.invalid"} {
 		if os.Getenv(k) == "" {
 			os.Setenv(k, v)

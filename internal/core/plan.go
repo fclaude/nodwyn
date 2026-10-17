@@ -36,7 +36,7 @@ func (s *Session) registerPlanRequired() error {
 				Origin: "builtin",
 			},
 			Handler: func(*scheme.Call) (scheme.Value, error) {
-				return scheme.Bool(s.opts.AutoApprove || s.opts.JudgeApprove || s.opts.Unattended), nil
+				return scheme.Bool(s.opts.unattended()), nil
 			},
 		},
 		{

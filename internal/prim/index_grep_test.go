@@ -112,8 +112,8 @@ func TestIndexGrepBoundsAndCancellation(t *testing.T) {
 	if len(got.Matches) != 100 || !got.Truncated {
 		t.Fatalf("%+v", got)
 	}
-	for i := 0; i <= searchFileLimit; i++ {
-		os.WriteFile(filepath.Join(h.root, fmt.Sprintf("f%d.py", i)), nil, 0600)
+	for i := 0; i < searchFileLimit; i++ {
+		os.WriteFile(filepath.Join(h.root, fmt.Sprintf("f%d", i)), nil, 0600)
 	}
 	if _, err = h.eval(t, `(index-grep "." "hello")`); err == nil || !strings.Contains(err.Error(), "narrow the path") {
 		t.Fatal(err)

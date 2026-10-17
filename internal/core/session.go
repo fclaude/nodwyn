@@ -33,6 +33,7 @@ type Session struct {
 	initSource   []byte                 // The exact project startup snapshot whose trust was checked.
 	initDefaults map[string]initDefault // What each global init.scm changed was bound to before it (reload.go).
 	opts         Options
+	profile      string // the default loop's profile, config.ProfileLean or config.ProfileFull (ResolveProfile)
 	id           string
 	logw         *log.Writer
 	events       []log.Event

@@ -43,10 +43,14 @@ type searchResult struct {
 }
 
 func indexGrep(o Options, pin guard.RepoPin) *scheme.Prim {
+	doc := "Search the contents of a repository file or directory with a regular expression (RE2 syntax, as in Go and ripgrep). Returns matches (path, line, text, and with context the lines before and after), files searched, files skipped and a truncated flag. At most 3000 candidate files and 100 matching lines: narrow the path, or pass a glob such as *.py. Hidden files, protected files, symlinks, binary and oversized files are skipped."
+	if o.Lean {
+		doc = "Search the contents of a repository file or directory with a regular expression (RE2 syntax, as in Go and ripgrep). Returns matches (path, line, text, and with context the lines before and after), files searched, files skipped and a truncated flag. At most 3000 candidate files and 100 matching lines: in a larger tree only source and configuration files are searched (a note says so); narrow the path or pass a glob such as *.py or docs/**/*.txt to choose. Hidden files, protected files, symlinks, binary and oversized files are skipped."
+	}
 	return &scheme.Prim{
 		Name: "index-grep",
 		Meta: scheme.Meta{
-			Doc: "Search the contents of a repository file or directory with a regular expression (RE2 syntax, as in Go and ripgrep). Returns matches (path, line, text, and with context the lines before and after), files searched, files skipped and a truncated flag. At most 3000 candidate files and 100 matching lines: in a larger tree only source and configuration files are searched (a note says so); narrow the path or pass a glob such as *.py or docs/**/*.txt to choose. Hidden files, protected files, symlinks, binary and oversized files are skipped.",
+			Doc: doc,
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "repository file or directory", Role: "path"},
 				{Name: "pattern", Type: "string", Doc: "regular expression, not command-line options"},
@@ -93,7 +97,7 @@ func indexGrep(o Options, pin guard.RepoPin) *scheme.Prim {
 			defer cancel()
 			files, err := searchFiles(ctx, o.Root, path, glob, searchFileLimit)
 			note := ""
-			if err != nil && glob == "" && strings.Contains(err.Error(), "candidate files") {
+			if err != nil && o.Lean && glob == "" && strings.Contains(err.Error(), "candidate files") {
 				// Refused until 2026-10-17: 33 of 748 calls in the benchmark
 				// transcripts, each a wasted call and the model's next one a
 				// glob it could have been spared. Source files are what a code

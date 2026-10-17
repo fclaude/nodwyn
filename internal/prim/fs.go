@@ -35,16 +35,24 @@ func resolve(pin guard.RepoPin, c *scheme.Call, i int) (string, error) {
 const readRangeLines = 200
 
 func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
+	doc := "Read a UTF-8 text file inside the repository. Without start, returns the whole file. With start (a 1-based line number) and count (default 200), returns a header [lines A-B of N] and those lines exactly as in the file, without line numbers. Read files over about 18 KB in ranges: a whole read that large is shortened in your context. index-grep gives line numbers to start from."
+	params := []scheme.Param{
+		{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
+		{Name: "start", Type: "integer", Doc: "first line to read, 1-based; omit both start and count to read the whole file", Optional: true},
+		{Name: "count", Type: "integer", Doc: "how many lines to read from start (default 200)", Optional: true},
+	}
+	if o.Lean {
+		// The lean profile's read by definition (lean6): the fourth parameter
+		// is offered only there, so the tool a full session is shown is the
+		// one it always had.
+		doc += " With symbol (a definition named in outline, such as Class.method or a function), returns that definition's lines under the header, and start and count are ignored."
+		params = append(params, scheme.Param{Name: "symbol", Type: "string", Doc: "read one definition instead of a range: Class.method, a function or a type, as outline lists it", Optional: true})
+	}
 	return &scheme.Prim{
 		Name: "fs-read",
 		Meta: scheme.Meta{
-			Doc: "Read a UTF-8 text file inside the repository. Without start, returns the whole file. With start (a 1-based line number) and count (default 200), returns a header [lines A-B of N] and those lines exactly as in the file, without line numbers. Read files over about 18 KB in ranges: a whole read that large is shortened in your context. index-grep gives line numbers to start from. With symbol (a definition named in outline, such as Class.method or a function), returns that definition's lines under the header, and start and count are ignored.",
-			Params: []scheme.Param{
-				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
-				{Name: "start", Type: "integer", Doc: "first line to read, 1-based; omit both start and count to read the whole file", Optional: true},
-				{Name: "count", Type: "integer", Doc: "how many lines to read from start (default 200)", Optional: true},
-				{Name: "symbol", Type: "string", Doc: "read one definition instead of a range: Class.method, a function or a type, as outline lists it", Optional: true},
-			},
+			Doc:         doc,
+			Params:      params,
 			Host:        true,
 			TaintSource: scheme.TagFile,
 		},
@@ -217,12 +225,18 @@ func fsWrite(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 				return scheme.Value{}, err
 			}
-			before, _ := os.ReadFile(abs) // absent for a new file
+			var before []byte // absent for a new file, and read only to say what the write did
+			if o.Lean {
+				before, _ = os.ReadFile(abs)
+			}
 			if err := o.Versions.Keep(abs); err != nil {
 				return scheme.Value{}, fmt.Errorf("keeping the previous version failed, so nothing was written: %w", err)
 			}
 			if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
 				return scheme.Value{}, err
+			}
+			if !o.Lean {
+				return scheme.Void, nil // "ok", as it answered before the lean profile
 			}
 			return scheme.Str(writeAnswer(c.Args[0].S, string(before), content, len(before) > 0)), nil
 		},
@@ -668,7 +682,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			}
 			// The lines as the model reads them: a credential in them is its
 			// placeholder, as in any read and in a failed edit's quote.
-			return scheme.Str(editedRegions(c.Args[0].S, redact.Redact(string(cur), nil).Text, redact.Redact(next, nil).Text)), nil
+			return scheme.Str(editedRegionsCounting(c.Args[0].S, redact.Redact(string(cur), nil).Text, redact.Redact(next, nil).Text, o.Lean)), nil
 		},
 	}
 }
