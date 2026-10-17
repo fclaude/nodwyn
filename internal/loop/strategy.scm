@@ -218,7 +218,11 @@
               (let any ((ws shell-look-words)) (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws)))))
               (not (let any ((ws shell-act-words)) (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws))))))))))
 
-(define (look-call? call) (or (member (assoc-ref call 'name) look-tools) (shell-look? call)))
+;; lean-shell-look is on in the lean profile and off in the full one, which
+;; counted the read tools alone (full.scm; docs/scheme.md §9.8).
+(define lean-shell-look #t)
+
+(define (look-call? call) (or (member (assoc-ref call 'name) look-tools) (and lean-shell-look (shell-look? call))))
 
 ;; Rounds in a row that only look, after which the model is told to write
 ;; down what it found and answer or plan (reading-reminder-message). A chat

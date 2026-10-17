@@ -28,7 +28,7 @@
 ;; through shell-exec, so the tool list and every request's schemas stay as
 ;; they were and the prompt gains one sentence.
 (define lean-cli #f)
-(define lean-cli-name "nibb")
+(define lean-cli-name "nodwyn")
 (define (lean-tool-words)
   (let* ((has (lambda (t) (and (member t lean-tools) #t)))
          (verbs (append (if (has "fs-read") '("read files") '())
