@@ -20,7 +20,7 @@ import (
 // the variable themselves, so none of them is parallel.
 
 const (
-	leanPromptStart = "You are a coding agent working inside the repository at "
+	leanPromptStart = "You are a coding agent working in the repository at "
 	fullPromptStart = "You are nodwyn, a coding agent working inside the repository at "
 )
 
@@ -89,10 +89,10 @@ func TestAnUnattendedSessionRunsTheLeanLoopByDefault(t *testing.T) {
 		t.Fatalf("profile %q, want lean", r.s.profile)
 	}
 	sys := r.s.loop.WindowContext().System
-	if !strings.HasPrefix(sys, leanPromptStart+r.repo+".\n") || !strings.Contains(sys, "You work unattended: nobody approves or watches your calls") {
+	if !strings.HasPrefix(sys, leanPromptStart+r.repo+", unattended: nobody approves or answers your calls.\n") {
 		t.Fatalf("system prompt:\n%s", sys)
 	}
-	if len(sys) > 2000 {
+	if len(sys)-len(r.repo) > 700 {
 		t.Errorf("the lean prompt is %d bytes", len(sys))
 	}
 	if e := r.turn("fix it"); e != "" {
@@ -369,7 +369,7 @@ func TestAProjectsInitCanRedefineALeanSwitch(t *testing.T) {
 	if got := offeredTools(t, r, 0); !slices.Equal(got, []string{"fs-edit", "fs-read", "index-grep", "shell-exec"}) {
 		t.Errorf("offered %v", got)
 	}
-	if sys := r.s.loop.WindowContext().System; !strings.Contains(sys, "read files, search their contents, edit files and run programs") {
+	if sys := r.s.loop.WindowContext().System; !strings.Contains(sys, "; fs-edit replaces exact text in a file; fs-read reads a file, or a range of its lines; index-grep searches the contents of files.") {
 		t.Errorf("the lean prompt does not name the tools offered:\n%s", sys)
 	}
 	if len(r.srv.Requests) != 1 {

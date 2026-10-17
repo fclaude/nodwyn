@@ -29,38 +29,45 @@
 ;; they were and the prompt gains one sentence.
 (define lean-cli #f)
 (define lean-cli-name "nodwyn")
-(define (lean-tool-words)
-  (let* ((has (lambda (t) (and (member t lean-tools) #t)))
-         (verbs (append (if (has "fs-read") '("read files") '())
-                        (if (has "index-grep") '("search their contents") '())
-                        (if (has "outline") '("outline a file's definitions") '())
-                        (if (has "tests-for") '("find the tests for a file") '())
-                        (if (has "fs-find") '("find files by name") '())
-                        (if (has "fs-list") '("list directories") '())
-                        (cond ((and (has "fs-edit") (has "fs-write")) '("edit and write files"))
-                              ((has "fs-edit") '("edit files"))
-                              ((has "fs-write") '("write files"))
-                              (else '()))
-                        (if (or (has "git-diff") (has "git-status")) '("show the repository's changes") '())
-                        (if (has "shell-exec") '("run programs") '()))))
-    (cond ((null? verbs) "")
-          ((null? (cdr verbs)) (car verbs))
-          (else (string-append (string-join (reverse (cdr (reverse verbs))) ", ") " and " (car (reverse verbs)))))))
+;; What the lean prompt says of each tool lean-tools may name, in one phrase; a
+;; tool not listed is named alone, and outline, tests-for and scheme have a
+;; sentence of their own below.
+(define prompt-tool-phrases
+  '(("shell-exec" . "shell-exec runs a program (cmd and args, no shell; use bash with args [\"-c\", \"...\"] for pipes, redirects or several commands)")
+    ("fs-edit" . "fs-edit replaces exact text in a file")
+    ("fs-read" . "fs-read reads a file, or a range of its lines")
+    ("fs-write" . "fs-write writes a whole file")
+    ("index-grep" . "index-grep searches the contents of files")
+    ("fs-find" . "fs-find finds files by name")
+    ("fs-list" . "fs-list lists a directory")
+    ("git-diff" . "git-diff shows the repository's changes")
+    ("git-status" . "git-status lists the changed files")))
 
+;; The tools of lean-tools, in its order, one phrase each.
+(define (lean-tool-sentence)
+  (string-append "Your tools: "
+                 (string-join (map (lambda (t) (assoc-ref prompt-tool-phrases t t)) lean-tools) "; ")
+                 "."))
+
+;; The lean prompt (2026-10-17): who and where, the tools, where throwaway
+;; files go, one sentence on the work and one on the answer, about 90 tokens.
+;; Every sentence the harness adds has to earn its place in the measurements,
+;; and none of the behavioural ones had: "act rather than announce" led to a
+;; placeholder edit before any reading, "nothing unrelated" was never cited,
+;; and a nudge that moved behaviour from 3% to 61% (git log -S) moved the
+;; score not at all, at 13% more cost. A sentence about a tool is said only
+;; when the tool is offered (ADR 32, amended 2026-10-17).
 (define (lean-system-prompt repo)
   (let ((has (lambda (t) (and (member t lean-tools) #t))))
     (string-append
-     "You are a coding agent working inside the repository at " repo ".\n"
-     "Your tools " (lean-tool-words) "."
-     (if (or (has "fs-read") (has "fs-edit") (has "fs-write") (has "fs-list")) " Paths are relative to the repository root and must stay inside it." "")
-     (if (has "shell-exec") " shell-exec runs one program with its arguments; for pipes, redirects, cd or chained commands, run bash with args [\"-c\", \"<command line>\"]." "")
-     "\n"
-     "You work unattended: nobody approves or watches your calls, so act rather than announce. Understand the request, read the code involved, make the change it calls for (the root cause, not only the example given, and nothing unrelated), and check it with the project's own tests. If you could not run something, say so.\n"
+     "You are a coding agent working in the repository at " repo ", unattended: nobody approves or answers your calls.\n"
+     (lean-tool-sentence)
+     " Paths are relative to the repository root; throwaway files go in $TMPDIR or /tmp.\n"
      (if (and lean-cli (has "shell-exec")) (string-append "Three commands of " lean-cli-name " show a repository's structure; run them with shell-exec: `" lean-cli-name " outline FILE` lists a file's classes and functions with their line ranges, `" lean-cli-name " symbol FILE Class.method` prints one definition with line numbers, `" lean-cli-name " tests-for FILE` lists the test files that exercise a source file and how to run them. Use them instead of reading a large file whole.\n") "")
      (if (has "outline") "outline lists a file's classes and functions with their line ranges and fs-read with symbol reads one of them (Class.method), so a large file need not be read whole; tests-for names the test files that exercise a source file and how to run them.\n" "")
      (if (has "scheme") "The scheme tool runs a small Scheme program that calls the other tools as procedures: use it to read, search or run several things in one call and keep only what matters of the results.\n" "")
-     "Throwaway files (scripts, notes) go in $TMPDIR, not in the repository.\n"
-     "Finish with a short report: what you changed and how you checked it.\n")))
+     "Do what the request asks, then check it by running something that exercises the change.\n"
+     "When you are done, say what you changed, what you ran and what it showed, and anything you could not check.\n")))
 
 ;; Two of its rules come from the jev-key console change (ADR 32, amended
 ;; 2026-10-02): its replies called the work done on a syntax check of a page
