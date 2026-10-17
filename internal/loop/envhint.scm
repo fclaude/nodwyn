@@ -8,6 +8,10 @@
 ;; a hint, a few times per session.
 
 (define envhint-hints 2)   ; missing-module hints per session
+;; The lean profile gives none (2026-10-17): the hint was added in 99% of
+;; sessions and plausibly mattered in 2 or 3 of 20, about half a call a task;
+;; Pi has none (ADR 32, amended 2026-10-17).
+(define lean-no-envhint #t)
 (define envhint-given 0)
 
 (define envhint-hint
@@ -26,7 +30,8 @@
   (let ((results (envhint-base-run-calls calls)))
     (for-each
      (lambda (c r)
-       (when (and (< envhint-given envhint-hints)
+       (when (and (not lean-no-envhint)
+                  (< envhint-given envhint-hints)
                   (equal? (assoc-ref c 'name) "shell-exec")
                   (envhint-missing-module? r))
          (set! envhint-given (+ envhint-given 1))

@@ -239,13 +239,18 @@
 ;; rounds in a row (2 to 3 calls a round; longest runs 7 and 5), claude-sonnet
 ;; once. Add a row when a family's logs show 12 is wrong for it.
 (define reading-reminder-after '((default . 12)))
+;; The lean profile has no reading reminder (2026-10-17): of 47 firings read,
+;; about 8 weakly helped, 20 changed nothing, 15 were false alarms and up to 4
+;; may have hurt, and it told the model to use plan-write, which the lean
+;; profile does not offer (ADR 32, amended 2026-10-17).
+(define lean-no-read-reminder #t)
 
 ;; The rounds in a row that only looked, counting this round's calls: when
 ;; they reach reading-reminder-after the reminder is added, after the
 ;; calls are answered, and the count starts again.
 (define (reading-rounds calls reading)
   (stall-check calls)
-  (let ((after (tuned reading-reminder-after)))
+  (let ((after (if lean-no-read-reminder 0 (tuned reading-reminder-after))))
     (cond ((or (<= after 0) (pair? (filter (lambda (c) (not (look-call? c))) calls))) 0)
           ((< (+ reading 1) after) (+ reading 1))
           (else (add-message (if (reviewed?)
@@ -1763,11 +1768,13 @@
                                 edited))
                    (gap (cond ((or turn-stopping review-made) #f)
                               ((and (not changed) (not excused) (not (and unchanged-told tested)))
-                               (if (reviewed?) finish-no-change-reviewed-message finish-no-change-message))
+                               (cond (lean-quiet finish-no-change-lean-message)
+                                     ((reviewed?) finish-no-change-reviewed-message)
+                                     (else finish-no-change-message)))
                               ((and changed (not tested) (not offered)) finish-untested-message)
                               ((and changed failing-msg) failing-msg)
                               (else #f))))
-              (cond ((and gap (< reminders (if (or (equal? gap finish-no-change-message) (equal? gap finish-no-change-reviewed-message))
+              (cond ((and gap (< reminders (if (member gap (list finish-no-change-message finish-no-change-reviewed-message finish-no-change-lean-message))
                                                  (max finish-reminders lean-empty-reminders)
                                                  finish-reminders)))
                      (add-message gap)

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -59,6 +60,46 @@ func TestALeanRunShowsTheModelNoPlan(t *testing.T) {
 		}
 		if !strings.Contains(r.logb.String(), `"hidden":true`) {
 			t.Errorf("the one-line plan was not recorded hidden")
+		}
+	}
+}
+
+// The lean harness says little (ADR 32, amended 2026-10-17): twelve rounds in a
+// row that only read get no reading reminder, a command that fails for a
+// missing module gets no environment hint, and a turn that changed nothing is
+// told so once, generically. With the switches off, as full.scm has them, each
+// comes back, the no-change reminder in its old words.
+func TestTheLeanHarnessSaysLittle(t *testing.T) {
+	useProfile(t, config.ProfileLean)
+	const missing = `echo "ModuleNotFoundError: No module named 'yaml'" >&2; exit 1`
+	for _, init := range []string{"", "(define lean-no-read-reminder #f)\n(define lean-no-envhint #f)\n(define lean-quiet #f)\n(define lean-empty-reminders 1)"} {
+		turns := []fake.Turn{shell("mod", missing)}
+		for i := 0; i < 12; i++ {
+			turns = append(turns, shell(fmt.Sprint("r", i), fmt.Sprintf("sed -n '%d,%dp' main.go", i+1, i+2)))
+		}
+		for i := 0; i < 6; i++ {
+			turns = append(turns, fake.Turn{Content: "done"})
+		}
+		r := profileRig(t, unattendedOptions, init, turns...)
+		_ = r.turn("fix it")
+		var all []string
+		for i := range r.srv.Requests {
+			all = append(all, lastMessage(r, i))
+		}
+		said := strings.Join(all, "\n---\n")
+		lean := init == ""
+		if strings.Contains(said, "You have only read") == lean {
+			t.Errorf("lean %v: the reading reminder: %v", lean, !lean)
+		}
+		if strings.Contains(said, "[hint: if this interpreter lacks the project's dependencies") == lean {
+			t.Errorf("lean %v: the environment hint: %v", lean, !lean)
+		}
+		const generic = "No file has changed. If the request needs a change, make it; if it does not, say what you ran that shows the code already does what is asked."
+		if lean && strings.Count(said, generic) != 1 {
+			t.Errorf("lean: the no-change reminder %d times in\n%s", strings.Count(said, generic), said)
+		}
+		if !lean && (strings.Contains(said, generic) || !strings.Contains(said, "No file has changed yet.")) {
+			t.Errorf("switches off: the no-change reminder in its new words, or none")
 		}
 	}
 }

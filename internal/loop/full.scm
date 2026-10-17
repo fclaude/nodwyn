@@ -32,3 +32,8 @@
 ;; A shell-exec call that only reads (grep, sed -n, cat) does not count toward
 ;; the rounds in a row that only look.
 (define lean-shell-look #f)
+
+;; Twelve rounds in a row that only read get the reading reminder, and a
+;; command that fails for a missing module gets the environment hint.
+(define lean-no-read-reminder #f)
+(define lean-no-envhint #f)

@@ -106,7 +106,7 @@ func TestAnUnattendedSessionRunsTheLeanLoopByDefault(t *testing.T) {
 			t.Errorf("request %d offered %v, want fs-edit and shell-exec alone", i, got)
 		}
 	}
-	if !strings.Contains(lastMessage(r, 1), "No file has changed yet") {
+	if !strings.Contains(lastMessage(r, 1), "No file has changed. If the request needs a change, make it") {
 		t.Errorf("a turn that changed nothing was not told so: %q", lastMessage(r, 1))
 	}
 	// The catalogue is the session's, and the lean tools are registered in it

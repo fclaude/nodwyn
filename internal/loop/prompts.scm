@@ -437,6 +437,10 @@
 ;; ((reviewed?)): the request may ask for no change yet.
 (define finish-no-change-reviewed-message
   "No file has changed yet. Make the change in the repository before finishing, unless the request asks for no change yet (to propose something first and wait for review, or to answer a question): then say so in your report and finish, since a person reads it before anything else happens.")
+;; The lean profile's (lean-quiet), said once (2026-10-17): generic, and with
+;; no instruction on how to show that the code already does what is asked.
+(define finish-no-change-lean-message
+  "No file has changed. If the request needs a change, make it; if it does not, say what you ran that shows the code already does what is asked.")
 (define finish-untested-message
   "You changed files after your last test run. Run the tests that cover what you changed, and a check of the behaviour you fixed or added, then finish.")
 ;; A run with failures counted as a run (shell.scm), so a turn could end with
