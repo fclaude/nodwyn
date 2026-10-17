@@ -38,11 +38,12 @@ func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-read",
 		Meta: scheme.Meta{
-			Doc: "Read a UTF-8 text file inside the repository. Without start, returns the whole file. With start (a 1-based line number) and count (default 200), returns a header [lines A-B of N] and those lines exactly as in the file, without line numbers. Read files over about 18 KB in ranges: a whole read that large is shortened in your context. index-grep gives line numbers to start from.",
+			Doc: "Read a UTF-8 text file inside the repository. Without start, returns the whole file. With start (a 1-based line number) and count (default 200), returns a header [lines A-B of N] and those lines exactly as in the file, without line numbers. Read files over about 18 KB in ranges: a whole read that large is shortened in your context. index-grep gives line numbers to start from. With symbol (a definition named in outline, such as Class.method or a function), returns that definition's lines under the header, and start and count are ignored.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
 				{Name: "start", Type: "integer", Doc: "first line to read, 1-based; omit both start and count to read the whole file", Optional: true},
 				{Name: "count", Type: "integer", Doc: "how many lines to read from start (default 200)", Optional: true},
+				{Name: "symbol", Type: "string", Doc: "read one definition instead of a range: Class.method, a function or a type, as outline lists it", Optional: true},
 			},
 			Host:        true,
 			TaintSource: scheme.TagFile,
@@ -59,7 +60,30 @@ func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
 			if st.IsDir() {
 				return scheme.Value{}, fmt.Errorf("%s is a directory (use fs-list)", c.Args[0].S)
 			}
-			if len(c.Args) > 1 {
+			if len(c.Args) > 3 && c.Args[3].Kind == scheme.KString && strings.TrimSpace(c.Args[3].S) != "" {
+				syms, _, _, err := outlineSymbols(c.Ctx, o, abs)
+				if err != nil {
+					return scheme.Value{}, fmt.Errorf("symbol %q: %w", c.Args[3].S, err)
+				}
+				sym, err := findSymbol(syms, c.Args[3].S)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				budget := o.MaxRangeBytes
+				if o.RangeBytes != nil {
+					budget = o.RangeBytes()
+				}
+				text, err := readLines(abs, c.Args[0].S, int64(sym.Line), int64(max(1, sym.End-sym.Line+1)), budget)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				head := sym.Kind + " " + sym.qualified()
+				if sym.Scope != "" {
+					head += " (in " + sym.Scope + ")"
+				}
+				return scheme.Str(head + "\n" + text), nil
+			}
+			if len(c.Args) > 1 && !(len(c.Args) > 3 && c.Args[1].Kind == scheme.KInt && c.Args[1].I == 0 && c.Args[2].Kind == scheme.KInt && c.Args[2].I == 0) {
 				start, err := c.Int(1)
 				if err != nil {
 					return scheme.Value{}, err
