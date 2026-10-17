@@ -16,14 +16,34 @@
 ;; request is 2.2k tokens against nodwyn's 15.7k.
 (define lean-prompt #t)
 (define lean-tools '("fs-read" "fs-list" "index-grep" "fs-edit" "fs-write" "shell-exec" "scheme"))
+(define (lean-tool-words)
+  (let* ((has (lambda (t) (and (member t lean-tools) #t)))
+         (verbs (append (if (has "fs-read") '("read files") '())
+                        (if (has "index-grep") '("search their contents") '())
+                        (if (has "fs-find") '("find files by name") '())
+                        (if (has "fs-list") '("list directories") '())
+                        (cond ((and (has "fs-edit") (has "fs-write")) '("edit and write files"))
+                              ((has "fs-edit") '("edit files"))
+                              ((has "fs-write") '("write files"))
+                              (else '()))
+                        (if (or (has "git-diff") (has "git-status")) '("show the repository's changes") '())
+                        (if (has "shell-exec") '("run programs") '()))))
+    (cond ((null? verbs) "")
+          ((null? (cdr verbs)) (car verbs))
+          (else (string-append (string-join (reverse (cdr (reverse verbs))) ", ") " and " (car (reverse verbs)))))))
+
 (define (lean-system-prompt repo)
-  (string-append
-   "You are a coding agent working inside the repository at " repo ".\n"
-   "Your tools read and search files, list directories, edit and write files, and run programs. Paths are relative to the repository root and must stay inside it. shell-exec runs one program with its arguments; for pipes, redirects, cd or chained commands, run bash with args [\"-c\", \"<command line>\"].\n"
-   "You work unattended: nobody approves or watches your calls, so act rather than announce. Understand the request, read the code involved, make the change it calls for (the root cause, not only the example given, and nothing unrelated), and check it with the project's own tests. If you could not run something, say so.\n"
-   "The scheme tool runs a small Scheme program that calls the other tools as procedures: use it to read, search or run several things in one call and keep only what matters of the results.\n"
-   "Throwaway files (scripts, notes) go in $TMPDIR, not in the repository.\n"
-   "Finish with a short report: what you changed and how you checked it.\n"))
+  (let ((has (lambda (t) (and (member t lean-tools) #t))))
+    (string-append
+     "You are a coding agent working inside the repository at " repo ".\n"
+     "Your tools " (lean-tool-words) "."
+     (if (or (has "fs-read") (has "fs-edit") (has "fs-write") (has "fs-list")) " Paths are relative to the repository root and must stay inside it." "")
+     (if (has "shell-exec") " shell-exec runs one program with its arguments; for pipes, redirects, cd or chained commands, run bash with args [\"-c\", \"<command line>\"]." "")
+     "\n"
+     "You work unattended: nobody approves or watches your calls, so act rather than announce. Understand the request, read the code involved, make the change it calls for (the root cause, not only the example given, and nothing unrelated), and check it with the project's own tests. If you could not run something, say so.\n"
+     (if (has "scheme") "The scheme tool runs a small Scheme program that calls the other tools as procedures: use it to read, search or run several things in one call and keep only what matters of the results.\n" "")
+     "Throwaway files (scripts, notes) go in $TMPDIR, not in the repository.\n"
+     "Finish with a short report: what you changed and how you checked it.\n")))
 
 ;; Two of its rules come from the jev-key console change (ADR 32, amended
 ;; 2026-10-02): its replies called the work done on a syntax check of a page
