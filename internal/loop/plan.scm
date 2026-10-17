@@ -26,6 +26,15 @@
 ;;
 ;; A project may redefine any of these, or plan-gate itself.
 
+;; The lean ladder (2026-10-16): the plan gate of a required turn (a run's) is
+;; skipped. The core wants a plan recorded before anything irreversible, so
+;; plan-minimal-text is recorded as the plan, with no explorer, no planner and
+;; no judge, and the model plans for itself. dsl23 spent 31% of a task's cost
+;; on the explorer (1,081 requests in 121 tasks) and the planner (245); Pi, which
+;; has neither, resolved 104 and 106 of the 121 against dsl23's 98 and 98.
+(define plan-minimal #t)
+(define plan-minimal-text "1. Make the change the request calls for, check it with the project's own tests, and report what you changed.")
+
 (define plan-needed-threshold 0.5) ; the judge's "needs a plan" probability at which a request gets one
 (define plan-accept-score 0.7)     ; the normalised score at which a plan is accepted
 (define plan-max-revisions 3)      ; revisions after the first draft (SPEC: at most 3)
@@ -386,6 +395,8 @@
   (set! sub-agent-seen #f) ; nothing an unfinished exploring left is kept
   (let ((judged (plan-judge?)))
     (cond ((plan-recorded?) #f) ; this turn has its plan already
+          ((and plan-minimal (plan-required?) (not (run-plan)))
+           (record-plan (list (cons 'decision "required") (cons 'plan plan-minimal-text))))
           ((plan-required?)
            (let ((run (run-plan)))
              (if (and run (assoc-ref run 'next #f))

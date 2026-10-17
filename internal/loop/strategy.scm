@@ -250,7 +250,14 @@
 ;; through the shell included, and files new since the turn began that git
 ;; does not track get finish-new-files-message once: a stray script or
 ;; backup would end up in the change.
-(define finish-reminders 2)
+;; The lean ladder, rung 2 (2026-10-16): lean-quiet drops what the harness says
+;; to the model while it works and as it ends: the finish review, its
+;; reminders, the question on an edited test, the hint on failures the
+;; unchanged code has. It keeps what keeps a run safe (the guard, the budget,
+;; the progress guard, the context window). Of dsl23's 4,385 requests in 121
+;; tasks, 707 came after the finish review began, and 17% of its cost.
+(define lean-quiet #f)
+(define finish-reminders (if lean-quiet 0 2))
 (define unrunnable-after 6) ; failed test commands in a row before the way out is offered
 
 ;; The finish review (finish-review-points) is made once a turn, and at most
@@ -262,7 +269,7 @@
 ;; ((reviewed?)) has none of the limit; the count is the session's, and a
 ;; resumed run starts it again (ADR 32, amended 2026-10-16: commit-bench
 ;; spent 9-38% of its runs' tokens in the closing rounds).
-(define finish-review-limit 2)
+(define finish-review-limit (if lean-quiet 0 2))
 (define finish-reviews 0)
 
 (define (finish-review-due?)
@@ -952,7 +959,7 @@
                  (cond ((null? ps) (reverse out))
                        ((or (member (car ps) told) (member (car ps) out)) (keep (cdr ps) out))
                        (else (keep (cdr ps) (cons (car ps) out)))))))
-    (if (or turn-stopping (null? fresh) (not (host-primitive? "change-removals")))
+    (if (or lean-quiet turn-stopping (null? fresh) (not (host-primitive? "change-removals")))
         (cons '() '())
         (let* ((removed (guard (e (else (log-note (string-append "change-removals failed: " (format "~a" (assoc-ref e 'message ""))))
                                         '()))
@@ -1619,7 +1626,7 @@
                                            (set! failing-call (and (not validating) (test-call? c) c))
                                            ;; The baseline run is the unchanged code's own: it
                                            ;; is not told that it failed there before.
-                                           (when (and (not baseline) (failures-known? names base-fails request written))
+                                           (when (and (not lean-quiet) (not baseline) (failures-known? names base-fails request written))
                                              (let ((known (car (failure-split names base-fails request written))))
                                                (unless (equal? known hinted)
                                                  (set! hinted known)
