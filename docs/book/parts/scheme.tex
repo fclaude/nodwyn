@@ -600,7 +600,7 @@ Primitive & What it does \\
 \code{(check-without cmd args)} & run a check again with each part of the change taken out in turn, putting each back; a part the check still passes without is one it does not test \\
 \code{(change-removals request)} & what the change takes away that its check cannot show: the definitions gone from their package, and the cases, assertions, \code{want} values and phrase checks of existing tests removed or rewritten \\
 \code{(edit-support lines request reply)} & read the reply to the question on an edited test against the request: for each line, whether the reply quotes a sentence of the request that shares a distinctive word with it \\
-\code{(original-tests paths)} & run the Go tests of the test files the change edited as the last commit had them, against the change, and name the ones that fail \\
+\code{(original-tests cmd args paths)} & run the check again with the test files the change edited as the last commit had them (any language, named from the run's output), and name the tests that fail there and pass on the last commit \\
 \code{(change-claims request runs edits declared)} & the lines the change adds to documents and comments that state what nothing in the turn showed: a run's result or figures, an amendment date, a paragraph pasted twice, entries added by hand to a generated file \\
 \code{(change-dropped-conditions request)} & the operands of an old \code{\&\&} or \code{||}, and the guards, that a rewritten Go function no longer checks \\
 \code{(read-data text)} & every datum in \code{text} as data, unevaluated: the forms, strings, symbols and numbers it holds; an error names where \code{text} stops being readable. A plan written as forms is read with it \\

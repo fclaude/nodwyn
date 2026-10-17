@@ -261,13 +261,15 @@ evidence:
     (\code{change-removals}): a definition gone from its package that the
     request does not name, and the cases and assertions of existing tests
     it removed or rewrote (a case, an assertion, a \code{want} value, a phrase
-    a \code{strings.Contains} looks for); the existing Go tests the turn
+    a \code{strings.Contains} looks for); the existing tests the turn
     edited that fail when their files are as the last commit had them
     (\code{original-tests}, \code{finish-original-tests-message}: change the
     code, appending to what a test pins; or, when the request names the new
     result, change the assertion; or, when it contradicts the test's setup,
-    change the setup, and say which sentence of the request requires it; no
-    other language is run);
+    change the setup, and say which sentence of the request requires it; in
+    any language, by running again the check the turn passed), and the
+    tests a failed run shows that the last commit passes
+    (\code{finish-regressed-tests-message});
     and the parts of a condition a rewritten Go
     function no longer checks (\code{change-dropped-conditions}). And it names the lines the change adds to
     documents and comments that nothing in the turn showed

@@ -288,6 +288,12 @@
    ;; request asks for (ADR 32, amended 2026-10-16, the original tests).
    "\n- When an existing test fails after your change, decide which side is wrong before you edit either. The old expectation stands unless the request names the new behaviour for that input or case: otherwise change the code, not the test. Never add a conditional skip or exception to production code (least of all in a guard or denylist) to make an old test pass unless the request asks for it; if the test's setup contradicts what the request names, fix the setup (a fixture is setup; its assertions are not). A branch the request asks for gets a test for each side of it; a branch you add for any other reason is not tested into place: delete it."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
+   ;; django-15916 (SWE-bench, dsl23): the title says a ModelForm's
+   ;; Meta.formfield_callback is ignored; the run fixed modelform_factory,
+   ;; the call the body's example makes, its own probe printed `Base2:
+   ;; False` for the plain ModelForm, and it moved on (ADR 32, amended
+   ;; 2026-10-16).
+   "\n- Before you finish, say the request's title or first sentence as a claim about the behaviour (\"X is ignored when Y\") and check the smallest form of that claim on your change: the plain case, without the helper or the call the example used. A fix that makes the example work can leave the claim false."
    ;; The jev-key console change (ADR 32, amended 2026-10-02): Go tests and
    ;; node --check passed in every round while the page went blank on a
    ;; click; the repository's browser check for that page, once run and
@@ -522,6 +528,17 @@
                      failures)
                 "; ")
    ". Either your change is wrong (change the code, appending to what a test pins rather than rewording it); or the request names the new result for that input or case (a rule stated in general words does not cover an input it does not name), and the test's assertion changes: say which sentence of the request requires it; or the request contradicts the test's setup (a fixture): then change the setup, not its assertions, and say which sentence of the request requires it."))
+
+;; The tests a run of the turn's that failed shows failing, and the last
+;; commit passes (strategy.scm, regression-failures), a point of the finish
+;; review. On psf-requests-2931 the change broke an existing test, the whole
+;; file's run failed 81 tests the model put down to the environment, and the
+;; one that was its own went with them (ADR 32, amended 2026-10-16).
+(define (finish-regressed-tests-message names)
+  (string-append
+   "Your last test run failed, and these tests pass on the last commit: "
+   (string-join (map (lambda (n) (format "~a" n)) names) ", ")
+   ". The same command was run again with every file you changed as the last commit had it, and they passed there: your change breaks them, whatever the other failures of that run are. Either your change is wrong (change the code, and run them again); or the request changes what they check: say which sentence of the request requires it."))
 
 ;; The same lines, said as the edit that changes them is made rather than at
 ;; the finish (strategy.scm, test-edit-nudge), once for each test file. At the

@@ -2379,3 +2379,70 @@ code and documents that cited it now cite this one.
   explorer went to 8 rounds (3e91d63) and back to 16 (be6a8f2) when a blind
   review scored the 8-round builds lower; the amendment of 2026-10-15 ("a
   shorter explorer for qwen") made it 8 again.
+
+## Amendment 2026-10-16: the original tests in any language, and what eight SWE-bench misses showed
+
+dsl23 on SWE-bench Verified's 121 clean tasks (Muse, effort low) resolved 98
+against Pi's 104; eight tasks Pi resolved and dsl23 did not were read one by
+one. The second replicate then showed most of them were not stable: dsl23
+resolved four of the eight, and Pi missed three that it had resolved. Two
+held (django-15916, django-16877), the rest were the loop's own gaps, each
+with a task it cost in at least one run. The loop's guards for them were Go's
+alone: `original-tests` ran Go tests and said in the log that it ran no other.
+
+- **`original-tests` takes the check, not a language** (`internal/prim/original.go`).
+  The evidence loop gives it the program and arguments of the passing run that
+  runs the edited test files (`original-check`; a run that names none of them,
+  or none that passed, is not repeated, and the log says so). The test files
+  the turn edited are written as HEAD has them and the ones it made are taken
+  away, the check runs, every file goes back to its bytes and its time (a
+  bytecode cache keyed on a source's time and size must not take one version
+  for the other); if it fails, it runs once more with every changed file as
+  HEAD had it, and only a test that fails with the originals and not there is
+  named. Names come from the output (pytest, unittest and Django, `go test`,
+  cargo, jest, vitest, rspec: `failureIDs`); a failure whose output names no
+  test is told by its exit status. The Go overlay is gone. pytest-5787 and
+  scikit-learn-13124 rewrote an existing test, in Python.
+- **A run that failed is held against the last commit** (`regression-failures`,
+  `finish-regressed-tests-message`): the same command, no file put back, and
+  with every changed file as HEAD had it; the tests that fail only with the
+  change are named. psf-requests-2931 broke an existing test, ran the whole
+  file, and put 81 failures down to the environment, its own among them.
+- **A run's output is read in every ecosystem** (`passing-lines`,
+  `failing-output?`, `failure-line-name`): "3 passed", "OK", "test result:
+  ok.", "1 failed", "FAILED (failures=1)", cargo's, jest's and rspec's lines.
+  Until now only Go's and validate's counted, so a Python run piped through
+  `tail` was no run that passed.
+- **The plan's run and check match by what they run** (`plan-language-ran?`):
+  flags, numbers and launchers do not count, so `-v 1` against `-v 2`, or
+  `python -m pytest x` against `pytest x`, are the same run. The review said a
+  check "has not passed since your last edit" for the first on two tasks.
+- **A task template's fields are not names the plan must hold**
+  (`request-names`): the key of a "- key: value" line (`instance_id`,
+  `base_commit`), a product's name (`SWE-bench`), and a name with a version
+  inside (a platform string). The planner was asked again for them on all
+  eight tasks reviewed.
+- **The expectation question reads more test files** (`expectationTest`):
+  tests by name or folder, in Go, Python, JavaScript and TypeScript, Ruby,
+  Rust, Java, Kotlin, C#, PHP; `expect(`, `assert_eq!`, `assertEquals(` as
+  well as Go's and Python's assertions. Django's `tests.py` was not read.
+- **The harness never measures a path outside the repository** (`repo-relative?`):
+  `edit-sizes` called `git-diff` on the path of a write the guard was about
+  to refuse, the guard refused the harness's own call, which a strategy cannot
+  catch, and django-11400 ended with `denied: path /tmp/check_order.py` at its
+  first write to /tmp after a run (one of 121 tasks).
+- **A habit line**: before finishing, say the request's title as a claim and
+  check its smallest form (django-15916, where the probe printed `Base2:
+  False` for the plain ModelForm and the run moved on).
+- **The plan prompt's example is Python's and says a test's run is the
+  repository's own command.**
+
+Not built, and why: `change-dropped-conditions` stays Go's, since it reads Go
+syntax; the explorer is not given `git log` (one task, a new primitive and the
+documents that come with it; the failed-run point above covers requests-2931
+from the other side); and the plan-form changes proposed for django-11400 and
+django-14534 (Pi missed both in the second replicate, so they are not shown to
+be the loop's). The bridge drops new test files from the submitted patch for
+both harnesses (django-16877: a new file at the path the hidden test creates
+makes the evaluation's `git apply` fail), in `swebench_nibb_bridge.py`, not
+here.
