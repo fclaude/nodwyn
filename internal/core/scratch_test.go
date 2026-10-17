@@ -11,6 +11,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -90,19 +91,23 @@ func TestScratchSweep(t *testing.T) {
 	root = scratchRoot()
 	data := t.TempDir()
 	legacy := legacyScratchRoot(data)
-	os.MkdirAll(filepath.Join(root, "nodwyn-scratch-old-1"), 0o700)
-	os.MkdirAll(filepath.Join(root, "nodwyn-scratch-new-1"), 0o700)
-	os.MkdirAll(filepath.Join(root, "unrelated"), 0o700)
-	os.MkdirAll(filepath.Join(legacy, "nodwyn-scratch-old-2"), 0o700)
-	os.MkdirAll(filepath.Join(legacy, "nodwyn-scratch-new-2"), 0o700)
+	must.MkdirAll(t, filepath.Join(root, "nodwyn-scratch-old-1"), 0o700)
+	must.MkdirAll(t, filepath.Join(root, "nodwyn-scratch-new-1"), 0o700)
+	must.MkdirAll(t, filepath.Join(root, "unrelated"), 0o700)
+	must.MkdirAll(t, filepath.Join(legacy, "nodwyn-scratch-old-2"), 0o700)
+	must.MkdirAll(t, filepath.Join(legacy, "nodwyn-scratch-new-2"), 0o700)
 	week := time.Now().Add(-8 * 24 * time.Hour)
 	elsewhere := t.TempDir()
-	os.Chtimes(elsewhere, week, week)
-	if err := os.Symlink(elsewhere, filepath.Join(root, "nodwyn-scratch-link-1")); err != nil {
+	// The ages are the setup: a directory left new by a failed Chtimes
+	// would be kept for the wrong reason.
+	if err := os.Chtimes(elsewhere, week, week); err != nil {
 		t.Fatal(err)
 	}
+	must.Symlink(t, elsewhere, filepath.Join(root, "nodwyn-scratch-link-1"))
 	for _, p := range []string{filepath.Join(root, "nodwyn-scratch-old-1"), filepath.Join(root, "unrelated"), filepath.Join(legacy, "nodwyn-scratch-old-2")} {
-		os.Chtimes(p, week, week)
+		if err := os.Chtimes(p, week, week); err != nil {
+			t.Fatal(err)
+		}
 	}
 	dir, err := makeScratch(data, "s1")
 	if err != nil {
