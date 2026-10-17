@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,10 +15,10 @@ import (
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
-// newLeanHarness is newHarness for a lean session: the profile whose tools say
-// where an old text is, take a line, and say where the replaced text also
-// occurs (ADR 32, amended 2026-10-17). newHarness's is a full one, whose tools
-// are the ones they were.
+// newLeanHarness is newHarness for a lean session: the profile whose fs-edit
+// shows the closest text, repairs literal escape sequences and says where the
+// replaced text also occurs (ADR 32, amended 2026-10-17). newHarness's is a
+// full one, whose tools are the ones they were.
 func newLeanHarness(t *testing.T) *harness {
 	t.Helper()
 	return newHarnessFor(t, true)
@@ -144,22 +145,23 @@ func TestFsEditNotFoundShowsTheClosestText(t *testing.T) {
 	}
 }
 
-// Nothing is shown for a text nothing in the file resembles, and the error
-// says so; and the window of lines stays inside the file at its ends.
+// Nothing is shown for a text no line of the file is close to, and the error
+// says there is no close match; and the window of lines stays inside the file
+// at its ends.
 func TestFsEditNotFoundSaysWhenNothingResembles(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "m.py", "import os\nimport sys\n\ndef main():\n    return 0\n")
 
 	_, err := h.call(t, "fs-edit", `{"path":"m.py","old":"class Frobnicator(Widget):\n    pass","new":"x"}`)
-	if err == nil || !strings.Contains(err.Error(), "no line of the file resembles the first line of old (`class Frobnicator(Widget):`)") {
+	if err == nil || !strings.Contains(err.Error(), "there is no close match for the first line of old (`class Frobnicator(Widget):`) in this file") {
 		t.Fatalf("unrelated old: %v", err)
 	}
 	if strings.Contains(err.Error(), "closest") || strings.Contains(err.Error(), "fs-read") {
 		t.Fatalf("unrelated old: %v", err)
 	}
 	// One shared word is no resemblance.
-	if _, err := h.call(t, "fs-edit", `{"path":"m.py","old":"import json","new":"x"}`); err == nil || !strings.Contains(err.Error(), "no line of the file resembles") {
+	if _, err := h.call(t, "fs-edit", `{"path":"m.py","old":"import json","new":"x"}`); err == nil || !strings.Contains(err.Error(), "there is no close match") {
 		t.Fatalf("one word in common: %v", err)
 	}
 	// Near the top and the bottom the window moves instead of shrinking.
@@ -237,166 +239,95 @@ func TestFsEditErrorsNameNoTool(t *testing.T) {
 	}
 }
 
-// With old occurring more than once, line names the occurrence: the one that
-// holds it or else the nearest, the earlier on a tie. 23 of the 73 failed
-// edits of the two-tool arms were an old that occurred 33 or 40 times, and
-// the model knew the line from grep -n.
-func TestFsEditLineChoosesAmongOccurrences(t *testing.T) {
+// A line that shares two of old's words among four others (0.44) is not shown:
+// in the transcripts the closest text was wrong once in four, a line that
+// shared a word or two; one with three of them among two others (0.67) is.
+func TestFsEditShowsOnlyACloseMatch(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
-	body := func(marks ...int) string {
-		return numbered(30, func(i int) string {
-			for _, m := range marks {
-				if i == m {
-					return "    count += 1"
-				}
-			}
-			return fmt.Sprintf("    other_%d()", i)
-		})
+	h.put(t, "m.py", "x = 1\nresult = other_function(items, extra, more, args)\ny = 2\n")
+	_, err := h.call(t, "fs-edit", `{"path":"m.py","old":"result = compute(items)","new":"x"}`)
+	if err == nil || !strings.Contains(err.Error(), "there is no close match") || strings.Contains(err.Error(), "closest text") {
+		t.Fatalf("a weak match: %v", err)
 	}
-	text := body(5, 12, 13, 25)
-	check := func(raw string, wantLines ...int) {
-		t.Helper()
-		h.put(t, "m.py", text)
-		if _, err := h.call(t, "fs-edit", raw); err != nil {
-			t.Fatalf("%s: %v", raw, err)
-		}
-		var marks []int
-		for _, m := range []int{5, 12, 13, 25} {
-			keep := true
-			for _, w := range wantLines {
-				keep = keep && m != w
-			}
-			if keep {
-				marks = append(marks, m)
-			}
-		}
-		if got := h.read(t, "m.py"); got != strings.Replace(body(marks...), fmt.Sprintf("    other_%d()", wantLines[0]), "    count += 2", 1) {
-			t.Fatalf("%s edited the wrong occurrence:\n%s", raw, got)
-		}
-	}
-	check(`{"path":"m.py","old":"    count += 1","new":"    count += 2","line":25}`, 25)
-	check(`{"path":"m.py","old":"    count += 1","new":"    count += 2","line":6}`, 5)    // nearest
-	check(`{"path":"m.py","old":"    count += 1","new":"    count += 2","line":9}`, 12)   // 3 from 12, 4 from 5
-	check(`{"path":"m.py","old":"    count += 1","new":"    count += 2","line":100}`, 25) // past the end: the last
-	check(`{"path":"m.py","old":"    count += 1","new":"    count += 2","line":1}`, 5)
-	// Equally near: the earlier.
-	check(`{"path":"m.py","old":"    count += 1","new":"    count += 2","line":19}`, 13) // 6 from 13, 6 from 25 -> 13
-
-	// Without it the edit is refused and the error says how to choose.
-	h.put(t, "m.py", text)
-	_, err := h.call(t, "fs-edit", `{"path":"m.py","old":"    count += 1","new":"x"}`)
-	if err == nil || !strings.Contains(err.Error(), "occurs 4 times") || !strings.Contains(err.Error(), "line 25: count += 1") || !strings.Contains(err.Error(), "pass line to choose one, or replace_all") {
-		t.Fatalf("ambiguous: %v", err)
-	}
-	// A line that is not there for an old that occurs once is ignored.
-	h.put(t, "m.py", "a = 1\nb = 2\n")
-	if _, err := h.call(t, "fs-edit", `{"path":"m.py","old":"b = 2","new":"b = 3","line":1}`); err != nil {
-		t.Fatalf("a line for a single occurrence: %v", err)
-	}
-	if got := h.read(t, "m.py"); got != "a = 1\nb = 3\n" {
-		t.Fatalf("a line for a single occurrence: %q", got)
-	}
-	// replace_all replaces every one whatever the line.
-	h.put(t, "m.py", text)
-	if _, err := h.call(t, "fs-edit", `{"path":"m.py","old":"    count += 1","new":"    count += 2","replace_all":true,"line":5}`); err != nil {
-		t.Fatal(err)
-	}
-	if got := h.read(t, "m.py"); strings.Contains(got, "count += 1") || strings.Count(got, "count += 2") != 4 {
-		t.Fatalf("replace_all with a line:\n%s", got)
+	h.put(t, "m.py", "x = 1\nresult = compute_total(items, tax_rate)\ny = 2\n")
+	_, err = h.call(t, "fs-edit", `{"path":"m.py","old":"result = compute_total(items, tax)","new":"x"}`)
+	if err == nil || !strings.Contains(err.Error(), "the closest text is at lines 1-3") {
+		t.Fatalf("a close match: %v", err)
 	}
 }
 
-// A line inside a multi-line occurrence names it, even when another begins
-// nearer.
-func TestFsEditLineInsideAMultiLineOccurrence(t *testing.T) {
+// An old written with literal \n sequences (a model that escaped its JSON
+// twice) that matches nowhere as written, but once unescaped, is applied
+// unescaped, new with it, and the answer says so: five lean sessions lost three
+// or four calls each to it and gave fs-edit up for a script.
+func TestFsEditRepairsLiteralEscapeSequences(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
-	text := "if a:\n    go()\n    stop()\nif b:\n    go()\n    stop()\n"
-	h.put(t, "m.py", text)
-	// The occurrence at line 2 spans lines 2-3; line 3 is inside it, and the
-	// other begins at line 5.
-	if _, err := h.call(t, "fs-edit", `{"path":"m.py","old":"    go()\n    stop()\n","new":"    pass\n","line":3}`); err != nil {
-		t.Fatal(err)
-	}
-	if got := h.read(t, "m.py"); got != "if a:\n    pass\nif b:\n    go()\n    stop()\n" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-// line inside each edit of a list, counted in the text the edits before it
-// leave; line beside edits is refused, as is a line that is not a line number.
-func TestFsEditLineInAList(t *testing.T) {
-	h := newLeanHarness(t)
-	h.answer = true
-	text := numbered(20, func(i int) string {
-		if i%5 == 0 {
-			return "    done()"
-		}
-		return fmt.Sprintf("    step_%d()", i)
-	})
-	h.put(t, "m.py", text)
-	_, err := h.call(t, "fs-edit", `{"path":"m.py","edits":[{"old":"    done()","new":"    done(1)","line":20},{"old":"    done()","new":"    done(2)","line":5}]}`)
+	h.put(t, "m.py", "def f():\n    s = \"a\"\n    return s\n")
+	// The JSON carries \\n: old reaches the tool with a backslash and an n.
+	got, err := h.call(t, "fs-edit", `{"path":"m.py","old":"    s = \\\"a\\\"\\n    return s","new":"    s = \\\"b\\\"\\n    return s.strip()"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := h.read(t, "m.py")
-	if !strings.Contains(got, "    step_19()\n    done(1)\n") || !strings.Contains(got, "    step_4()\n    done(2)\n") || strings.Count(got, "    done()") != 2 {
-		t.Fatalf("got:\n%s", got)
+	if want := "def f():\n    s = \"b\"\n    return s.strip()\n"; h.read(t, "m.py") != want {
+		t.Fatalf("the file:\n%q\nwant\n%q", h.read(t, "m.py"), want)
 	}
-	// An edit of a list that is still ambiguous names itself.
-	h.put(t, "m.py", text)
-	_, err = h.call(t, "fs-edit", `{"path":"m.py","edits":[{"old":"    step_1()","new":"    step_1(1)"},{"old":"    done()","new":"    done(2)"}]}`)
-	if err == nil || !strings.Contains(err.Error(), "edit 2 of 2 failed") || !strings.Contains(err.Error(), "pass line to choose one") {
-		t.Fatalf("an ambiguous edit in a list: %v", err)
+	if !strings.Contains(got, "\nold held literal \\n and \\\" sequences; they were matched as real newlines and quotes") {
+		t.Fatalf("answer:\n%s", got)
 	}
-	if got := h.read(t, "m.py"); got != text {
-		t.Fatal("a failed list changed the file")
+	// \n alone says it as the plan has it.
+	h.put(t, "n.py", "a = 1\nb = 2\n")
+	got, err = h.call(t, "fs-edit", `{"path":"n.py","old":"a = 1\\nb = 2","new":"a = 1\\nb = 3"}`)
+	if err != nil || h.read(t, "n.py") != "a = 1\nb = 3\n" || !strings.HasSuffix(got, "\nold held literal \\n sequences; they were matched as real newlines") {
+		t.Fatalf("\\n alone: %v\n%s\n%q", err, got, h.read(t, "n.py"))
 	}
-	for raw, want := range map[string]string{
-		`{"path":"m.py","edits":[{"old":"    done()","new":"x"}],"line":5}`:                               "give line inside each edit",
-		`{"path":"m.py","edits":[{"old":"    done()","new":"x","line":-1}]}`:                              "line must be a line number from 1",
-		`{"path":"m.py","old":"    done()","new":"x","line":-3}`:                                          "line must be a line number from 1",
-		`{"path":"m.py","edits":[{"old":"    done()","new":"x","line":"five"}]}`:                          "line must be a line number from 1",
-		`{"path":"m.py","edits":[{"old":"    done()","new":"x","lines":5}]}`:                              "unknown field",
-		`{"path":"m.py","old":"    done()","new":"x","line":5,"edits":[{"old":"a","new":"b"}]}`:           "not both",
-		`{"path":"m.py","edits":[{"old":"    done()","new":"x","line":null}],"old":"","new":"","line":0}`: "",
-	} {
-		_, err := h.call(t, "fs-edit", raw)
-		switch {
-		case want == "" && err != nil && !strings.Contains(err.Error(), "occurs 4 times"):
-			t.Errorf("%s: %v", raw, err)
-		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
-			t.Errorf("%s: want %q, got %v", raw, want, err)
-		}
+	// A code \n that new keeps escaped (\\\\n in the twice-escaped JSON) stays one.
+	h.put(t, "j.py", "x = 1\ny = 2\n")
+	if _, err := h.call(t, "fs-edit", `{"path":"j.py","old":"x = 1\\ny = 2","new":"x = '\\\\n'.join(a)\\ny = 2"}`); err != nil {
+		t.Fatal(err)
 	}
-	// Positional use: line is the last parameter, after edits.
-	h.put(t, "m.py", text)
-	if _, err := h.eval(t, `(fs-edit "m.py" "    done()" "    done(9)" #f '() 10)`); err != nil {
-		t.Fatalf("positional line: %v", err)
+	if got := h.read(t, "j.py"); got != "x = '\\n'.join(a)\ny = 2\n" {
+		t.Fatalf("an escaped backslash in new: %q", got)
 	}
-	if got := h.read(t, "m.py"); !strings.Contains(got, "    step_9()\n    done(9)\n") {
-		t.Fatalf("positional line:\n%s", got)
+	// In a list, the note names the edit.
+	h.put(t, "l.py", "a = 1\nb = 2\nc = 3\n")
+	got, err = h.call(t, "fs-edit", `{"path":"l.py","edits":[{"old":"c = 3","new":"c = 4"},{"old":"a = 1\\nb = 2","new":"a = 0"}]}`)
+	if err != nil || !strings.HasSuffix(got, "\nedit 2: old held literal \\n sequences; they were matched as real newlines") {
+		t.Fatalf("in a list: %v\n%s", err, got)
+	}
+	// Twice unescaped, or not at all, is no repair: the miss is told as before.
+	h.put(t, "t.py", "a = 1\nb = 2\na = 1\nb = 2\n")
+	if _, err := h.call(t, "fs-edit", `{"path":"t.py","old":"a = 1\\nb = 2","new":"x"}`); err == nil || !strings.Contains(err.Error(), "old text not found") {
+		t.Fatalf("two unescaped matches: %v", err)
+	}
+	if got := h.read(t, "t.py"); got != "a = 1\nb = 2\na = 1\nb = 2\n" {
+		t.Fatalf("a refused repair changed the file: %q", got)
+	}
+	// A full session's fs-edit does not repair.
+	f := newHarnessFor(t, false)
+	f.answer = true
+	f.put(t, "n.py", "a = 1\nb = 2\n")
+	if _, err := f.call(t, "fs-edit", `{"path":"n.py","old":"a = 1\\nb = 2","new":"x"}`); err == nil || !strings.Contains(err.Error(), "read the region again with fs-read") {
+		t.Fatalf("full: %v", err)
 	}
 }
 
-// line picks among occurrences in a file that holds a credential too, where
-// the match is made in the text the model reads (ADR 43).
-func TestFsEditLineInAFileWithACredential(t *testing.T) {
-	h := newLeanHarness(t)
-	h.answer = true
-	const key = "sk-ant-abcdefgh1234"
-	text := "token = \"" + key + "\"\nuse(token)\nmid = 1\nuse(token)\n"
-	h.put(t, "m.py", text)
-	_, err := h.call(t, "fs-edit", `{"path":"m.py","old":"use(token)","new":"use(token, 1)"}`)
-	if err == nil || !strings.Contains(err.Error(), "line 4: use(token)") || !strings.Contains(err.Error(), "pass line to choose one") {
-		t.Fatalf("ambiguous: %v", err)
-	}
-	if _, err := h.call(t, "fs-edit", `{"path":"m.py","old":"use(token)","new":"use(token, 1)","line":4}`); err != nil {
-		t.Fatal(err)
-	}
-	if got := h.read(t, "m.py"); got != "token = \""+key+"\"\nuse(token)\nmid = 1\nuse(token, 1)\n" {
-		t.Fatalf("got %q", got)
+// track makes the harness's root a git work tree with every file in it added,
+// for the note that searches only what git tracks.
+func (h *harness) track(t *testing.T) {
+	t.Helper()
+	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}} {
+		if args[0] == "init" {
+			if _, err := os.Stat(filepath.Join(h.root, ".git")); err == nil {
+				continue
+			}
+		}
+		cmd := exec.Command("git", args...)
+		cmd.Dir = h.root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
 	}
 }
 
@@ -407,33 +338,43 @@ func fn(name string, body ...string) string {
 
 const sibling = "    related = getattr(obj, field.name)\n    return related.select_related().only('pk').iterator()"
 
+// indented is sibling inside an if: the same lines once whitespace is
+// ignored, but not the same text to an exact match.
+var indented = "    if True:\n" + strings.ReplaceAll("    "+sibling, "\n", "\n    ")
+
 // After an edit of some size, the answer says where else the same text
 // occurs, in another file and in the same one: django-16938 needed one change
-// in two files, and every failing session edited one.
+// in two files, and every failing session edited one. A fourth other place is
+// one too many, and there is no note.
 func TestFsEditSaysWhereTheReplacedTextAlsoOccurs(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "pkg/python.py", "import x\n\n"+fn("handle", sibling)+"\n"+fn("handle_again", "    pass"))
 	// The sibling is indented otherwise and has a different tail of spaces.
 	h.put(t, "pkg/xml.py", "class S:\n    "+strings.ReplaceAll(fn("queryset", "\t"+strings.ReplaceAll(sibling, "\n", "\n\t")+"  "), "\n", "\n    "))
-	h.put(t, "other/deep/third.py", "if True:\n    "+strings.ReplaceAll(sibling, "\n", "\n    ")+"\n")
 	h.put(t, "pkg/same.py", fn("one", sibling)+"\n"+fn("two", sibling))
-
-	got, err := h.call(t, "fs-edit", `{"path":"pkg/python.py","old":"    related = getattr(obj, field.name)\n    return related.select_related().only('pk').iterator()","new":"    related = getattr(obj, field.name)\n    return related.only('pk').iterator()"}`)
+	h.track(t)
+	old := `"old":"` + strings.ReplaceAll(sibling, "\n", `\n`) + `"`
+	got, err := h.call(t, "fs-edit", `{"path":"pkg/python.py",`+old+`,"new":"    related = getattr(obj, field.name)\n    return related.only('pk').iterator()"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Folder first, then the rest in path order; three locations and the count.
-	want := "the replaced text also occurs at: pkg/same.py:2, pkg/same.py:6, pkg/xml.py:3 (and 1 more); check whether the same change applies there"
+	// Folder first, in path order.
+	want := "the replaced text also occurs at: pkg/same.py:2, pkg/same.py:6, pkg/xml.py:3; check whether the same change applies there"
 	if !strings.HasSuffix(got, "\n"+want) {
 		t.Fatalf("answer:\n%s\nwant it to end with\n%s", got, want)
 	}
-	// The note speaks of where the text occurs, never of editing it: the same
-	// text is not always the same fault.
 	if note := got[strings.Index(got, "the replaced text"):]; strings.Contains(note, "edit") {
 		t.Fatalf("the note speaks of editing:\n%s", note)
 	}
-
+	// A fourth: no note.
+	h.put(t, "pkg/python.py", "import x\n\n"+fn("handle", sibling)+"\n")
+	h.put(t, "other/deep/third.py", "if True:\n"+indented+"\n")
+	h.track(t)
+	got, err = h.call(t, "fs-edit", `{"path":"pkg/python.py",`+old+`,"new":"    pass"}`)
+	if err != nil || strings.Contains(got, "also occurs") {
+		t.Fatalf("four other places: %v\n%s", err, got)
+	}
 	// A short old is not searched for: one line of 31 characters.
 	got, err = h.call(t, "fs-edit", `{"path":"pkg/xml.py","old":"related = getattr(obj, field.name)","new":"related = getattr(obj, field.name, None)"}`)
 	if err != nil {
@@ -448,22 +389,13 @@ func TestFsEditSaysWhereTheReplacedTextAlsoOccurs(t *testing.T) {
 func TestFsEditAlsoOccursInTheSameFile(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
-	h.put(t, "m.py", fn("a", sibling)+"\n"+fn("b", "    x = 1")+"\n"+fn("c", sibling))
-	got, err := h.call(t, "fs-edit", `{"path":"m.py","old":"def a(obj, field):\n    related = getattr(obj, field.name)\n    return related.select_related().only('pk').iterator()\n","new":"def a(obj, field):\n    return 1\n"}`)
+	h.put(t, "m.py", fn("a", sibling)+"\n"+fn("c", indented))
+	h.track(t)
+	got, err := h.call(t, "fs-edit", `{"path":"m.py","old":"`+strings.ReplaceAll(sibling, "\n", `\n`)+`","new":"    related = getattr(obj, field.name)\n    return related.only('pk').iterator()"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(got, "also occurs") {
-		t.Fatalf("the def line differs, so the text is not elsewhere:\n%s", got)
-	}
-	// An old that is a part of the function: the copy in c is named, a is not
-	// (its text is gone), and neither is the new text itself.
-	h.put(t, "m.py", fn("a", sibling)+"\n"+fn("c", sibling))
-	got, err = h.call(t, "fs-edit", `{"path":"m.py","old":"    related = getattr(obj, field.name)\n    return related.select_related().only('pk').iterator()","new":"    related = getattr(obj, field.name)\n    return related.only('pk').iterator()","line":2}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasSuffix(got, "the replaced text also occurs at: m.py:6; check whether the same change applies there") {
+	if !strings.HasSuffix(got, "the replaced text also occurs at: m.py:7; check whether the same change applies there") {
 		t.Fatalf("answer:\n%s", got)
 	}
 }
@@ -474,10 +406,11 @@ func TestFsEditAlsoOccursInTheSameFile(t *testing.T) {
 func TestFsEditAlsoOccursLeavesOutTheEditsOwnNewText(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
-	anchor := strings.ReplaceAll("    related = getattr(obj, field.name)\n    return related.select_related().only('pk').iterator()\n", "\n", `\n`)
+	anchor := strings.ReplaceAll(sibling+"\n", "\n", `\n`)
 	want := "the replaced text also occurs at: n.py:1; check whether the same change applies there"
 	h.put(t, "m.py", fn("a", sibling)+"\n"+fn("c", "    pass"))
 	h.put(t, "n.py", sibling+"\n")
+	h.track(t)
 	got, err := h.call(t, "fs-edit", `{"path":"m.py","old":"`+anchor+`","new":"`+anchor+`    log(related)\n"}`)
 	if err != nil || !strings.HasSuffix(got, want) {
 		t.Fatalf("an insertion: %v\n%s", err, got)
@@ -487,43 +420,39 @@ func TestFsEditAlsoOccursLeavesOutTheEditsOwnNewText(t *testing.T) {
 	if err != nil || !strings.HasSuffix(got, "edit 1: "+want) {
 		t.Fatalf("insertions in a list: %v\n%s", err, got)
 	}
-	// Other places in the same file still count, beside the edit's own.
-	h.put(t, "m.py", fn("a", sibling)+"\n"+fn("c", sibling))
-	got, err = h.call(t, "fs-edit", `{"path":"m.py","old":"`+anchor+`","new":"`+anchor+`    log(related)\n","line":2}`)
-	if err != nil || !strings.HasSuffix(got, "the replaced text also occurs at: m.py:7, n.py:1; check whether the same change applies there") {
-		t.Fatalf("an insertion with another copy in the file: %v\n%s", err, got)
-	}
 }
 
-// Under two lines or 40 characters nothing is searched, no other copy gives
-// no note, and replace_all, which has changed every copy, gives none.
+// Under two lines or 40 characters nothing is searched, nor for import lines
+// and decorators however long; no other copy gives no note, and replace_all,
+// which has changed every copy, gives none.
 func TestFsEditAlsoOccursStaysQuiet(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
-	h.put(t, "a.py", "x = compute(1)\ny = compute(1)\n")
-	h.put(t, "b.py", "x = compute(1)\ny = compute(1)\n"+sibling+"\n")
+	imports := "from django.db.models import Model, QuerySet\nfrom django.utils.functional import cached_property"
+	decorator := "@pytest.mark.parametrize('value', [1, 2, 3, 4, 5, 6, 7, 8, 9])"
+	h.put(t, "a.py", "x = compute(1)\ny = compute(1)\n"+imports+"\n"+decorator+"\n")
+	h.put(t, "b.py", "x = compute(1)\ny = compute(1)\n"+sibling+"\n"+imports+"\n"+decorator+"\n")
 	h.put(t, "c.py", sibling+"\n")
-
-	// One line of 12 characters, and the same text is in b.py.
-	got, err := h.call(t, "fs-edit", `{"path":"a.py","old":"x = compute(1)","new":"x = compute(2)"}`)
-	if err != nil || strings.Contains(got, "also occurs") {
-		t.Fatalf("below the threshold: %v\n%s", err, got)
-	}
-	// 34 non-space characters on one line is below the threshold, 40 is not.
 	h.put(t, "e.py", "value = compute_something(1234, 5678)\n")
-	h.put(t, "f.py", "value = compute_something(1234, 5678)\n")
-	got, err = h.call(t, "fs-edit", `{"path":"e.py","old":"value = compute_something(1234, 5678)","new":"x"}`)
-	if err != nil || strings.Contains(got, "also occurs") { // 34 characters, not counting spaces
-		t.Fatalf("34 characters: %v\n%s", err, got)
+	h.put(t, "f.py", "value = compute_something(1234, 5678)\nvalue = compute_something(1234, 5678901234)\n")
+	h.put(t, "d.py", "unique_thing_here = some_function_with_a_long_name(argument_one, argument_two)\n")
+	h.track(t)
+
+	for name, raw := range map[string]string{
+		"one line of 12 characters": `{"path":"a.py","old":"x = compute(1)","new":"x = compute(2)"}`,
+		"34 characters":             `{"path":"e.py","old":"value = compute_something(1234, 5678)","new":"x"}`,
+		"imports":                   `{"path":"a.py","old":"` + strings.ReplaceAll(imports, "\n", `\n`) + `","new":"import os"}`,
+		"a decorator":               `{"path":"a.py","old":"` + decorator + `","new":"@pytest.mark.skip"}`,
+		"no other copy":             `{"path":"d.py","old":"unique_thing_here = some_function_with_a_long_name(argument_one, argument_two)","new":"unique_thing_here = 1"}`,
+		"replace_all":               `{"path":"c.py","old":"` + strings.ReplaceAll(sibling, "\n", `\n`) + `","new":"pass","replace_all":true}`,
+	} {
+		got, err := h.call(t, "fs-edit", raw)
+		if err != nil || strings.Contains(got, "also occurs") {
+			t.Errorf("%s: %v\n%s", name, err, got)
+		}
 	}
-	h.put(t, "e.py", "value = compute_something(1234, 5678901234)\n")
-	h.put(t, "f.py", "value = compute_something(1234, 5678901234)\n")
-	got, err = h.call(t, "fs-edit", `{"path":"e.py","old":"value = compute_something(1234, 5678901234)","new":"x"}`)
-	if err != nil || !strings.HasSuffix(got, "the replaced text also occurs at: f.py:1; check whether the same change applies there") { // 40
-		t.Fatalf("40 characters: %v\n%s", err, got)
-	}
-	// Two short lines are enough.
-	got, err = h.call(t, "fs-edit", `{"path":"a.py","old":"x = compute(2)\ny = compute(1)","new":"z = 0"}`)
+	// Two short lines are enough, and 40 characters on one.
+	got, err := h.call(t, "fs-edit", `{"path":"a.py","old":"x = compute(2)\ny = compute(1)","new":"z = 0"}`)
 	if err != nil || strings.Contains(got, "also occurs") {
 		t.Fatalf("two lines, no other copy: %v\n%s", err, got)
 	}
@@ -532,47 +461,49 @@ func TestFsEditAlsoOccursStaysQuiet(t *testing.T) {
 	if err != nil || !strings.HasSuffix(got, "the replaced text also occurs at: b.py:1; check whether the same change applies there") {
 		t.Fatalf("two lines: %v\n%s", err, got)
 	}
-	// No other copy.
-	h.put(t, "d.py", "unique_thing_here = some_function_with_a_long_name(argument_one, argument_two)\n")
-	got, err = h.call(t, "fs-edit", `{"path":"d.py","old":"unique_thing_here = some_function_with_a_long_name(argument_one, argument_two)","new":"unique_thing_here = 1"}`)
-	if err != nil || strings.Contains(got, "also occurs") {
-		t.Fatalf("no other copy: %v\n%s", err, got)
-	}
-	// replace_all.
-	got, err = h.call(t, "fs-edit", `{"path":"c.py","old":"`+strings.ReplaceAll(sibling, "\n", `\n`)+`","new":"pass","replace_all":true}`)
-	if err != nil || strings.Contains(got, "also occurs") {
-		t.Fatalf("replace_all: %v\n%s", err, got)
-	}
-	got, err = h.call(t, "fs-edit", `{"path":"b.py","edits":[{"old":"`+strings.ReplaceAll(sibling, "\n", `\n`)+`","new":"pass","replace_all":true}]}`)
-	if err != nil || strings.Contains(got, "also occurs") {
-		t.Fatalf("replace_all in a list: %v\n%s", err, got)
+	h.put(t, "e.py", "value = compute_something(1234, 5678901234)\n")
+	got, err = h.call(t, "fs-edit", `{"path":"e.py","old":"value = compute_something(1234, 5678901234)","new":"x"}`)
+	if err != nil || !strings.HasSuffix(got, "the replaced text also occurs at: f.py:2; check whether the same change applies there") {
+		t.Fatalf("40 characters: %v\n%s", err, got)
 	}
 }
 
-// Binary files, files over a mebibyte, hidden folders, vendored code, files
-// that are not source, and files the denylist or a checker of the user's
-// refuses are never searched, nor named.
+// Only the files git tracks are searched, outside build, dist, vendor,
+// node_modules and hidden folders, and not binary files, files over a
+// mebibyte, files that are not source, nor those the denylist or a checker of
+// the user's refuses; outside a git work tree nothing is.
 func TestFsEditAlsoOccursSkipsWhatItShould(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
 	h.put(t, "pkg/edit.py", sibling+"\n")
 	h.put(t, "pkg/binary.py", "\x00\x01"+sibling+"\n")
 	h.put(t, "pkg/big.py", sibling+"\n"+strings.Repeat("# padding padding padding\n", 50000))
-	h.put(t, ".hidden/h.py", sibling+"\n")
-	h.put(t, "vendor/v.py", sibling+"\n")
-	h.put(t, "node_modules/n/n.py", sibling+"\n")
+	for _, dir := range []string{".hidden", "vendor", "node_modules/n", "build", "dist", "src/build"} {
+		h.put(t, dir+"/copy.py", sibling+"\n")
+	}
 	h.put(t, "pkg/notes.txt", sibling+"\n")
 	h.put(t, "pkg/credentials.yml", sibling+"\n")
 	h.put(t, "pkg/keep.py", sibling+"\n")
+	h.track(t)
+	h.put(t, "pkg/untracked.py", sibling+"\n")
 	if st, _ := os.Stat(filepath.Join(h.root, "pkg/big.py")); st.Size() <= 1<<20 {
 		t.Fatalf("the big file is %d bytes", st.Size())
 	}
-	got, err := h.call(t, "fs-edit", `{"path":"pkg/edit.py","old":"`+strings.ReplaceAll(sibling, "\n", `\n`)+`","new":"pass"}`)
+	old := `"old":"` + strings.ReplaceAll(sibling, "\n", `\n`) + `"`
+	got, err := h.call(t, "fs-edit", `{"path":"pkg/edit.py",`+old+`,"new":"pass"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasSuffix(got, "the replaced text also occurs at: pkg/keep.py:1; check whether the same change applies there") {
 		t.Fatalf("answer:\n%s", got)
+	}
+	// No git: no note.
+	n := newLeanHarness(t)
+	n.answer = true
+	n.put(t, "a.py", sibling+"\n")
+	n.put(t, "b.py", sibling+"\n")
+	if got, err := n.call(t, "fs-edit", `{"path":"a.py",`+old+`,"new":"pass"}`); err != nil || strings.Contains(got, "also occurs") {
+		t.Fatalf("outside git: %v\n%s", err, got)
 	}
 }
 
@@ -598,6 +529,7 @@ func TestFsEditAlsoOccursAsksTheGuardAboutWhatItNames(t *testing.T) {
 	h.put(t, "pkg/edit.py", sibling+"\n")
 	h.put(t, "pkg/private_copy.py", sibling+"\n")
 	h.put(t, "pkg/public_copy.py", sibling+"\n")
+	h.track(t)
 	got, err := h.call(t, "fs-edit", `{"path":"pkg/edit.py","old":"`+strings.ReplaceAll(sibling, "\n", `\n`)+`","new":"pass"}`)
 	if err != nil {
 		t.Fatal(err)
@@ -607,58 +539,48 @@ func TestFsEditAlsoOccursAsksTheGuardAboutWhatItNames(t *testing.T) {
 	}
 }
 
-// A scan that runs out of files or of time says nothing and does not fail
-// the edit; one that found something before it ran out says what it found,
-// without a count of what it did not reach. The limits are 5,000 files and
-// 400 ms.
+// A scan that runs out of files or of time says nothing, since it cannot say
+// how many other places there are, and does not fail the edit. The limits are
+// 5,000 files and 400 ms.
 func TestFsEditAlsoOccursRunsOutQuietly(t *testing.T) {
 	h := newLeanHarness(t)
 	h.answer = true
 	old := `"old":"` + strings.ReplaceAll(sibling, "\n", `\n`) + `"`
-	for i := 0; i < 5100; i++ {
+	h.put(t, "edit.py", sibling+"\n")
+	h.put(t, "a/f0001.py", sibling+"\n")
+	h.track(t)
+	got, err := h.call(t, "fs-edit", `{"path":"edit.py",`+old+`,"new":"pass"}`)
+	if err != nil || !strings.HasSuffix(got, "the replaced text also occurs at: a/f0001.py:1; check whether the same change applies there") {
+		t.Fatalf("within the limits: %v\n%s", err, got)
+	}
+	// Past 5,000 files: nothing, though the copy is among the first.
+	for i := 2; i < 5100; i++ {
 		h.put(t, fmt.Sprintf("a/f%04d.py", i), "# nothing here\n")
 	}
 	h.put(t, "edit.py", sibling+"\n")
-
-	// A copy among the first 5,000 files is found; one after them is not
-	// looked for, and the edit goes through.
-	h.put(t, "a/f0001.py", sibling+"\n")
-	got, err := h.call(t, "fs-edit", `{"path":"edit.py",`+old+`,"new":"pass"}`)
-	if err != nil || !strings.HasSuffix(got, "the replaced text also occurs at: a/f0001.py:1; check whether the same change applies there") {
-		t.Fatalf("within the file limit: %v\n%s", err, got)
-	}
-	h.put(t, "a/f0001.py", "# nothing here\n")
-	h.put(t, "edit.py", sibling+"\n")
-	h.put(t, "z/late.py", sibling+"\n")
+	h.track(t)
 	got, err = h.call(t, "fs-edit", `{"path":"edit.py",`+old+`,"new":"pass"}`)
 	if err != nil || strings.Contains(got, "also occurs") || !strings.HasPrefix(got, "edited edit.py") {
 		t.Fatalf("past the file limit: %v\n%s", err, got)
 	}
-
-	// A call whose time runs out while it searches: its context ends when
-	// the first copy is read, and the copy after it is not looked for (the
-	// 400 ms limit ends the search the same way).
-	h.put(t, "edit.py", sibling+"\n")
-	h.put(t, "a/f0002.py", sibling+"\n")
-	h.put(t, "a/f0003.py", sibling+"\n")
-	got, err = h.call(t, "fs-edit", `{"path":"edit.py",`+old+`,"new":"pass"}`)
-	if err != nil || !strings.Contains(got, "also occurs at: a/f0002.py:1, a/f0003.py:1") {
-		t.Fatalf("with time: %v\n%s", err, got)
-	}
-	h.put(t, "edit.py", sibling+"\n")
+	// Out of time while it searches: the call's context ends when the copy is
+	// read, and there is no note (the 400 ms limit ends a search the same way).
+	small := newLeanHarness(t)
+	small.answer = true
+	small.put(t, "edit.py", sibling+"\n")
+	small.put(t, "a/f0002.py", sibling+"\n")
+	small.put(t, "a/f0003.py", sibling+"\n")
+	small.track(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := DefaultOptions(h.root)
+	o := DefaultOptions(small.root)
 	o.Lean = true
-	h.in.SetGate(guard.New(guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { return true, nil }), recorder{nlog.New(h.logBuf, "test")}, append(Checkers(o, nil, nil), endsAtRead{cancel})...))
-	got, err = h.callIn(t, ctx, "fs-edit", `{"path":"edit.py",`+old+`,"new":"pass"}`)
-	if strings.Contains(got, "f0003") || strings.Contains(fmt.Sprint(err), "f0003") {
+	small.in.SetGate(guard.New(guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { return true, nil }), recorder{nlog.New(small.logBuf, "test")}, append(Checkers(o, nil, nil), endsAtRead{cancel})...))
+	got, err = small.callIn(t, ctx, "fs-edit", `{"path":"edit.py",`+old+`,"new":"pass"}`)
+	if strings.Contains(got, "also occurs") || strings.Contains(fmt.Sprint(err), "also occurs") {
 		t.Fatalf("out of time: %v\n%s", err, got)
 	}
-	if err != nil {
-		t.Logf("the call's own context ended, so the call may say so: %v", err)
-	}
-	if b := h.read(t, "edit.py"); b != "pass\n" {
+	if b := small.read(t, "edit.py"); b != "pass\n" {
 		t.Fatalf("the edit was not made: %q", b)
 	}
 }
@@ -682,6 +604,7 @@ func TestFsEditAlsoOccursInAList(t *testing.T) {
 	b := "    first_line_of_b = compute(delta, beta)\n    second_line_of_b = compute(gamma)"
 	h.put(t, "m.py", fn("one", a)+fn("two", b)+fn("three", "    pass"))
 	h.put(t, "n.py", fn("one", a)+fn("two", b))
+	h.track(t)
 	got, err := h.call(t, "fs-edit", `{"path":"m.py","edits":[{"old":"`+strings.ReplaceAll(a, "\n", `\n`)+`","new":"    pass"},{"old":"`+strings.ReplaceAll(b, "\n", `\n`)+`","new":"    pass"}]}`)
 	if err != nil {
 		t.Fatal(err)

@@ -150,24 +150,18 @@ func placeholderList(classes []string) string {
 // text the model reads, and each match is a span of the file. found is false
 // when old does not occur there, and the caller looks for it in the file
 // itself, as before: a text the model typed that is what the file holds still
-// matches, which tells it nothing it could not try anyway. line chooses one
-// of several matches, as for any file (nearestOccurrence), by the lines of
-// the text the model reads. The splices are of the file's own text.
-func (v view) apply(old, repl string, all bool, line int, lean bool) (next string, sp []splice, found bool, err error) {
+// matches, which tells it nothing it could not try anyway. A lean session's
+// ambiguity error lists the occurrences' lines, as any file's does. The splices
+// are of the file's own text.
+func (v view) apply(old, repl string, all, lean bool) (next string, sp []splice, found bool, err error) {
 	starts := occurrences(v.text, old)
 	switch {
 	case len(starts) == 0:
 		return "", nil, false, nil
+	case len(starts) > 1 && !all && lean:
+		return "", nil, true, ambiguous(v.text, starts)
 	case len(starts) > 1 && !all:
-		i := nearestOccurrence(v.text, old, starts, line)
-		if i < 0 && !lean {
-			// A full session's error here never listed the lines.
-			return "", nil, true, fmt.Errorf("old text occurs %d times; include more context so it is unique, or pass replace_all to replace every one", len(starts))
-		}
-		if i < 0 {
-			return "", nil, true, ambiguous(v.text, starts, lean)
-		}
-		starts = starts[i : i+1]
+		return "", nil, true, fmt.Errorf("old text occurs %d times; include more context so it is unique, or pass replace_all to replace every one", len(starts))
 	}
 	var b strings.Builder
 	last := 0

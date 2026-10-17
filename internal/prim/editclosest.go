@@ -22,6 +22,12 @@ const (
 	closestLineBytes = 200
 	// closestFollow is how many lines after the first old's tie-break reads.
 	closestFollow = 4
+	// closestMin is how alike a line must be to be shown (resemblance): in
+	// the lean sessions' transcripts the closest text was the right one 3
+	// times of 4, and the fourth a line that shared a word or two (ADR 32,
+	// amended 2026-10-17). The cases this package's tests show score 0.57 or
+	// more; a line with two of old's words among four others scores 0.44.
+	closestMin = 0.5
 )
 
 // words are the lower-cased runs of letters, digits and underscores in s, by
@@ -53,9 +59,8 @@ func resemblance(a map[string]int, na int, b string) (score float64, common int)
 // closestRegion says where in the file old was probably meant, for a miss:
 // the line most like old's first line, with the lines around it numbered as
 // the file has them. A line counts only when it holds at least two of old's
-// words and half of them, and is at least a third as like it as a line can
-// be, so a text that is nowhere in the file is not answered with an unrelated
-// line; of equal lines the one whose following lines resemble the rest of
+// words and half of them, and is at least closestMin alike, so a text that is
+// nowhere in the file is not answered with an unrelated line; of equal lines the one whose following lines resemble the rest of
 // old's more is taken, then the first. want is old's normalized lines, lines
 // the file's, each with its line ending.
 func closestRegion(lines, want []string) string {
@@ -68,7 +73,7 @@ func closestRegion(lines, want []string) string {
 		score, common := resemblance(first, nFirst, l)
 		// A first line of one word counts for a line of that word alone.
 		single := nFirst == 1 && score == 1 && len(want[0]) >= 3
-		if score < 0.3 || (!single && (common < 2 || 2*common < nFirst)) {
+		if score < closestMin || (!single && (common < 2 || 2*common < nFirst)) {
 			continue
 		}
 		if best >= 0 && score < bestScore {
@@ -85,7 +90,7 @@ func closestRegion(lines, want []string) string {
 		}
 	}
 	if best < 0 {
-		return fmt.Sprintf("no line of the file resembles the first line of old (`%s`), so that text may be in another file, or may have changed since you looked", cutRunes(strings.TrimSpace(want[0]), 100))
+		return fmt.Sprintf("there is no close match for the first line of old (`%s`) in this file: the text may be in another file, or may have changed since you looked", cutRunes(strings.TrimSpace(want[0]), 100))
 	}
 	// A window of closestLines lines around the best, moved rather than
 	// shortened at either end of the file.

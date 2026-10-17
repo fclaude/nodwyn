@@ -24,42 +24,38 @@ func paramNames(params []scheme.Param) string {
 	return strings.Join(names, " ")
 }
 
-// A full session's fs-edit has no line parameter, in its schema, its
-// description or its edits, and a call that gives one is refused as an unknown
-// argument; a lean session's has it.
-func TestFsEditHasNoLineParameterInAFullSession(t *testing.T) {
+// Neither profile's fs-edit has a line parameter, in its schema, its
+// description or its edits: the lean profile's model used it 4 times in 242
+// sessions, and it was dropped (ADR 32, amended 2026-10-17). A call that gives
+// one is refused as an unknown argument.
+func TestFsEditHasNoLineParameter(t *testing.T) {
 	for _, lean := range []bool{false, true} {
 		h := newHarnessFor(t, lean)
 		p, _ := h.in.Lookup("fs-edit")
-		wantTop, wantItem := "path old new replace_all edits", "old new replace_all"
-		if lean {
-			wantTop, wantItem = wantTop+" line", wantItem+" line"
+		if got := paramNames(p.Meta.Params); got != "path old new replace_all edits" {
+			t.Errorf("lean %v: parameters %q", lean, got)
 		}
-		if got := paramNames(p.Meta.Params); got != wantTop {
-			t.Errorf("lean %v: parameters %q, want %q", lean, got, wantTop)
+		if got := paramNames(p.Meta.Params[4].Items); got != "old new replace_all" {
+			t.Errorf("lean %v: edit fields %q", lean, got)
 		}
-		if got := paramNames(p.Meta.Params[4].Items); got != wantItem {
-			t.Errorf("lean %v: edit fields %q, want %q", lean, got, wantItem)
-		}
-		doc := p.Meta.Doc + p.Meta.Params[1].Doc + p.Meta.Params[4].Items[0].Doc
-		if wordLine.MatchString(doc) != lean {
-			t.Errorf("lean %v: the description mentions line: %v", lean, !lean)
+		doc := strings.ReplaceAll(p.Meta.Doc+p.Meta.Params[1].Doc+p.Meta.Params[4].Items[0].Doc, "path:line", "")
+		if wordLine.MatchString(doc) {
+			t.Errorf("lean %v: the description mentions line", lean)
 		}
 		if strings.Contains(p.Meta.Doc, "also occurs") != lean {
 			t.Errorf("lean %v: the description speaks of where the text also occurs: %v", lean, !lean)
 		}
-	}
-	h := newHarnessFor(t, false)
-	h.answer = true
-	h.put(t, "m.py", "a = 1\nb = 2\na = 1\n")
-	if _, err := h.call(t, "fs-edit", `{"path":"m.py","old":"a = 1","new":"x","line":1}`); err == nil || !strings.Contains(err.Error(), "unknown argument(s): line") {
-		t.Fatalf("a line for a full session's fs-edit: %v", err)
-	}
-	if _, err := h.call(t, "fs-edit", `{"path":"m.py","edits":[{"old":"a = 1","new":"x","line":1}]}`); err == nil || !strings.Contains(err.Error(), `unknown field "line": an edit has old, new and replace_all`) {
-		t.Fatalf("a line in an edit of a full session's fs-edit: %v", err)
-	}
-	if _, err := h.eval(t, `(fs-edit "m.py" "a = 1" "x" #f '() 1)`); err == nil {
-		t.Fatal("a sixth positional argument of a full session's fs-edit was accepted")
+		h.answer = true
+		h.put(t, "m.py", "a = 1\nb = 2\na = 1\n")
+		if _, err := h.call(t, "fs-edit", `{"path":"m.py","old":"a = 1","new":"x","line":1}`); err == nil || !strings.Contains(err.Error(), "unknown argument(s): line") {
+			t.Errorf("lean %v: a line: %v", lean, err)
+		}
+		if _, err := h.call(t, "fs-edit", `{"path":"m.py","edits":[{"old":"a = 1","new":"x","line":1}]}`); err == nil || !strings.Contains(err.Error(), `unknown field "line": an edit has old, new and replace_all`) {
+			t.Errorf("lean %v: a line in an edit: %v", lean, err)
+		}
+		if _, err := h.eval(t, `(fs-edit "m.py" "a = 1" "x" #f '() 1)`); err == nil {
+			t.Errorf("lean %v: a sixth positional argument was accepted", lean)
+		}
 	}
 }
 
@@ -95,7 +91,7 @@ func TestFsEditErrorsAreUnchangedInAFullSession(t *testing.T) {
 	if _, err := l.call(t, "fs-edit", `{"path":"m.py","old":"nothing like it","new":"x"}`); err == nil || strings.Contains(err.Error(), "fs-read") {
 		t.Fatalf("lean, not found: %v", err)
 	}
-	if _, err := l.call(t, "fs-edit", `{"path":"m.py","old":"a = 1","new":"x"}`); err == nil || !strings.Contains(err.Error(), "pass line to choose one, or replace_all") {
+	if _, err := l.call(t, "fs-edit", `{"path":"m.py","old":"a = 1","new":"x"}`); err == nil || err.Error() != "fs-edit: old text occurs 2 times (line 1: a = 1; line 3: a = 1); include more context so it is unique (a line before or after the one you mean), or pass replace_all to replace every one" {
 		t.Fatalf("lean, ambiguous: %v", err)
 	}
 }
@@ -110,6 +106,7 @@ func TestFsEditAnswerIsUnchangedInAFullSession(t *testing.T) {
 		h.answer = true
 		h.put(t, "pkg/a.py", fn("handle", sibling))
 		h.put(t, "pkg/b.py", fn("other", sibling))
+		h.track(t)
 		got, err := h.call(t, "fs-edit", `{"path":"pkg/a.py","old":"`+strings.ReplaceAll(sibling, "\n", `\n`)+`","new":"pass"}`)
 		if err != nil {
 			t.Fatal(err)

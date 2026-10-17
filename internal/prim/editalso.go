@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,6 +22,12 @@ import (
 // repository the text it replaced occurs, as locations only: it does not say
 // to edit them, since the same text is not always the same fault (ADR 32,
 // amended 2026-10-17).
+//
+// It was right once in eight in the lean sessions' transcripts: the misses
+// were import lines and decorators, generated and vendored copies, and a text
+// that was everywhere. So an old that is only such lines is not searched, only
+// the files git tracks are, outside build, dist, vendor and node_modules, and a
+// text found in more than alsoShown other places gets no note at all.
 
 // The scan is bounded in files and time, and a repository too large for it
 // is searched as far as it goes. The names are variables so a test can lower
@@ -33,26 +39,39 @@ var (
 
 const (
 	alsoMaxFile   = 1 << 20 // larger files are skipped
-	alsoShown     = 3       // locations named
-	alsoCountCap  = 20      // matches counted before the scan stops
+	alsoShown     = 3       // the most other places a note names; more is no note
 	alsoMaxEdits  = 3       // edits of one call that get a note
 	alsoMinLines  = 2       // non-blank lines of old, or
 	alsoMinSpaces = 40      // non-space characters of it, for it to be worth a search
 )
 
 // worthSearching is whether old is long enough for another copy of it to
-// mean something: a line or a few words occur everywhere.
+// mean something: a line or a few words occur everywhere, and so do import
+// lines and decorators, however long.
 func worthSearching(old string) bool {
-	lines, chars := 0, 0
+	lines, chars, plain := 0, 0, false
 	for _, l := range strings.Split(old, "\n") {
 		n := len(strings.Join(strings.Fields(l), ""))
 		if n > 0 {
 			lines++
+			plain = plain || !importOrDecorator(l)
 		}
 		chars += n
 	}
-	return lines >= alsoMinLines || chars >= alsoMinSpaces
+	return plain && (lines >= alsoMinLines || chars >= alsoMinSpaces)
 }
+
+// importOrDecorator is whether a line is an import (import x, from x import
+// y, import ... from '...') or a decorator.
+func importOrDecorator(line string) bool {
+	t := strings.TrimSpace(line)
+	return strings.HasPrefix(t, "import ") || strings.HasPrefix(t, "@") ||
+		(strings.HasPrefix(t, "from ") && strings.Contains(t, " import "))
+}
+
+// alsoSkipped are the folders whose files are no part of the source a change
+// belongs in, though git may track them.
+var alsoSkipped = []string{"build", "dist", "vendor", "node_modules"}
 
 // alsoQuery is one edit's old text to look for elsewhere.
 type alsoQuery struct {
@@ -61,7 +80,7 @@ type alsoQuery struct {
 	token string   // the longest word of old, which any copy of it holds
 	skip  []span   // where its new text lies in the edited file
 	found []string // locations, path:line
-	total int      // matches found, the scan stopped at alsoCountCap
+	total int      // matches found; past alsoShown the scan stops for it
 	done  bool
 }
 
@@ -89,10 +108,11 @@ func (q *alsoQuery) matches(norm []string) []int {
 
 // alsoOccurs is the note fs-edit appends to its answer: for each edit that
 // replaced a text worth searching for (and did not replace all of them),
-// where else in the repository's source the same text occurs, other places in
-// the edited file included and the lines just edited left out. It says
-// nothing when the scan finds nothing or runs out of files or time before it
-// finds a thing, and never fails the edit.
+// where else in the repository's tracked source the same text occurs, other
+// places in the edited file included and the lines just edited left out, when
+// that is one to alsoShown places. It says nothing when the scan finds none or
+// more, when it runs out of files or time, or outside a git work tree, and
+// never fails the edit.
 func alsoOccurs(c *scheme.Call, o Options, pin guard.RepoPin, abs, shown, next string, edits []edit, list bool, sites [][]span) string {
 	var queries []*alsoQuery
 	for i, e := range edits {
@@ -123,28 +143,42 @@ func alsoOccurs(c *scheme.Call, o Options, pin guard.RepoPin, abs, shown, next s
 	defer cancel()
 	s := &alsoScan{c: c, o: o, pin: pin, deny: denylist(o), ctx: ctx, queries: queries, seen: map[string]bool{}}
 	s.read, _ = c.In.Lookup("fs-read")
+	tracked, ok := s.tracked()
+	rel, err := filepath.Rel(o.Root, abs)
+	if !ok || err != nil || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
 	// The edited file as it now is, then its folder, where a sibling is most
-	// likely, then the rest of the repository.
-	s.seen[abs] = true
-	s.files++
-	s.search(abs, shown, []byte(next), true)
-	if rel, err := filepath.Rel(o.Root, abs); err == nil && !strings.HasPrefix(rel, "..") {
-		s.folder(filepath.Dir(abs))
-		s.walk()
+	// likely, then the rest of what git tracks, in its order.
+	if tracked[rel] {
+		s.seen[rel] = true
+		s.files++
+		s.search(abs, shown, []byte(next), true)
+	}
+	dir := filepath.ToSlash(filepath.Dir(rel))
+	for _, pass := range []func(string) bool{
+		func(f string) bool { return filepath.ToSlash(filepath.Dir(f)) == dir },
+		func(string) bool { return true },
+	} {
+		for _, f := range s.order {
+			if s.finished() {
+				break
+			}
+			if pass(f) {
+				s.candidate(f)
+			}
+		}
+	}
+	if s.exhausted {
+		return ""
 	}
 	var lines []string
 	for _, q := range queries {
-		if len(q.found) == 0 {
+		if len(q.found) == 0 || q.total > alsoShown {
 			continue
 		}
-		more := ""
-		switch rest := q.total - alsoShown; {
-		case rest > 0 && (q.total >= alsoCountCap || s.exhausted):
-			more = fmt.Sprintf(" (and %d or more)", rest)
-		case rest > 0:
-			more = fmt.Sprintf(" (and %d more)", rest)
-		}
-		lines = append(lines, fmt.Sprintf("%sthe replaced text also occurs at: %s%s; check whether the same change applies there", q.label, strings.Join(q.found[:min(alsoShown, len(q.found))], ", "), more))
+		lines = append(lines, fmt.Sprintf("%sthe replaced text also occurs at: %s; check whether the same change applies there", q.label, strings.Join(q.found, ", ")))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -158,6 +192,7 @@ type alsoScan struct {
 	read      *scheme.Prim
 	ctx       context.Context
 	queries   []*alsoQuery
+	order     []string // the tracked source files, relative to the root, as git lists them
 	seen      map[string]bool
 	files     int
 	exhausted bool // the file or time limit stopped the scan
@@ -181,73 +216,53 @@ func (s *alsoScan) finished() bool {
 	return true
 }
 
-// folder searches the source files directly in dir.
-func (s *alsoScan) folder(dir string) {
-	entries, err := os.ReadDir(dir)
+// tracked lists the files git tracks that may hold source a change belongs in:
+// source files (isSourceFile) outside hidden folders and alsoSkipped, in the
+// order git lists them, and the whole set of what git tracks; ok is false
+// outside a git work tree, or when git cannot say in time.
+func (s *alsoScan) tracked() (map[string]bool, bool) {
+	if !isGitWorkTree(s.o.Root) {
+		return nil, false
+	}
+	out, err := runGitLimit(s.ctx, s.o, 32<<20, "ls-files", "-z")
 	if err != nil {
-		return
+		return nil, false
 	}
-	for _, e := range entries {
-		if s.finished() {
-			return
+	all := map[string]bool{}
+	for _, f := range strings.Split(out, "\x00") {
+		if f == "" {
+			continue
 		}
-		s.candidate(filepath.Join(dir, e.Name()), e)
+		all[f] = true
+		parts := strings.Split(f, "/")
+		skip := !isSourceFile(f)
+		for _, part := range parts {
+			skip = skip || strings.HasPrefix(part, ".") || slices.Contains(alsoSkipped, part)
+		}
+		if !skip {
+			s.order = append(s.order, f)
+		}
 	}
+	return all, true
 }
 
-// walk searches the repository's source files, but for hidden entries,
-// vendored code and installed packages: filepath.WalkDir in path order, which
-// searchFilesWith cannot cut short or keep out of a directory.
-func (s *alsoScan) walk() {
-	_ = filepath.WalkDir(s.o.Root, func(path string, d fs.DirEntry, err error) error {
-		if s.finished() {
-			return filepath.SkipAll
-		}
-		if err != nil {
-			if d != nil && d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		name := d.Name()
-		if path != s.o.Root && strings.HasPrefix(name, ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			if name == "vendor" || name == "node_modules" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		s.candidate(path, d)
-		return nil
-	})
-}
-
-// candidate searches the file at path if it is a source file of a size
-// worth reading: not a link, not hidden, not binary.
-func (s *alsoScan) candidate(path string, d fs.DirEntry) {
-	name := d.Name()
-	if strings.HasPrefix(name, ".") || d.IsDir() || !d.Type().IsRegular() || !isSourceFile(name) || s.seen[path] {
+// candidate searches the tracked file rel if it is a regular file of a size
+// worth reading, not binary.
+func (s *alsoScan) candidate(rel string) {
+	if s.seen[rel] {
 		return
 	}
-	s.seen[path] = true
+	s.seen[rel] = true
 	s.files++
-	if info, err := d.Info(); err != nil || info.Size() > alsoMaxFile {
+	path := filepath.Join(s.o.Root, filepath.FromSlash(rel))
+	if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() || info.Size() > alsoMaxFile {
 		return
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
-	rel, err := filepath.Rel(s.o.Root, path)
-	if err != nil {
-		return
-	}
-	s.search(path, filepath.ToSlash(rel), data, false)
+	s.search(path, rel, data, false)
 }
 
 // search looks for the queries in one file's text, and notes where they
@@ -288,8 +303,8 @@ func (s *alsoScan) search(path, shown string, data []byte, own bool) {
 			if len(q.found) < alsoShown {
 				q.found = append(q.found, fmt.Sprintf("%s:%d", shown, i+1))
 			}
-			if q.total >= alsoCountCap {
-				q.done = true
+			if q.total > alsoShown {
+				q.done = true // too many to name: no note
 				break
 			}
 		}
