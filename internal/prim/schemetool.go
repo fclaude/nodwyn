@@ -89,6 +89,9 @@ func runSchemeTool(parent context.Context, in *scheme.Interp, code string) (sche
 	}
 	ctx, cancel := context.WithTimeout(parent, schemeToolBudget)
 	defer cancel()
+	// What a program computes with is whole: shell-exec shows the model a view
+	// of a long output (shellview.go), not a program that splits and filters it.
+	ctx = context.WithValue(ctx, nestedKey{}, true)
 	var last scheme.Value = scheme.Void
 	for _, f := range forms {
 		v, err := in.Eval(ctx, f, env)

@@ -19,10 +19,11 @@ import (
 )
 
 func shellExec(o Options) *scheme.Prim {
+	files := &outputFiles{}
 	return &scheme.Prim{
 		Name: "shell-exec",
 		Meta: scheme.Meta{
-			Doc: "Run a program with arguments in the repository root (no shell: pass arguments as a list). Returns an alist with status, stdout and stderr; output past the cap keeps its first and last halves, and a command that runs past the time limit is stopped and returns what it printed, with a status that says it timed out. A bash -c command line runs with pipefail, so a pipeline's status is that of its last command that failed. Whatever the program leaves running in the background is stopped when it ends; a program that keeps running goes to shell-start. A python -c program takes newlines, not ;, before a compound statement (class, def, if, for): write several lines, or python - with a heredoc in bash -c. A result carries a note when the command exited 141 (output cut by a downstream command such as head) or read a file and printed nothing (a range past the end of the file).",
+			Doc: "Run a program with arguments in the repository root (no shell: pass arguments as a list). Returns an alist with status, stdout and stderr. A stream of more than 8 KiB or 150 lines is shown as a view: its first 20 lines, a marker that says which lines are not shown, and its last 50 lines (at most 6 KiB, a line cut at 300 characters); the whole stream is saved in a file under $TMPDIR/out/, whose path the marker gives, to read a range of with sed -n 'A,Bp' or search with grep -n. There is no need to pipe a command through tail or head to keep its output short; a pipe through them still works. A command that reads a file (cat, head, tail, nl, sed -n) is not shown as a view: it prints what it was asked for, and past 256 KiB keeps its first and last halves. A command that runs past the time limit is stopped and returns what it printed, with a status that says it timed out. A bash -c command line runs with pipefail, so a pipeline's status is that of its last command that failed. Whatever the program leaves running in the background is stopped when it ends; a program that keeps running goes to shell-start. A python -c program takes newlines, not ;, before a compound statement (class, def, if, for): write several lines, or python - with a heredoc in bash -c. A result carries a note when the command exited 141 (output cut by a downstream command such as head) or read a file and printed nothing (a range past the end of the file).",
 			Params: []scheme.Param{
 				{Name: "cmd", Type: "string", Doc: "one program name or path, without its arguments", Role: "argv"},
 				{Name: "args", Type: "list", Doc: "list of argument strings", Role: "argv"},
@@ -53,9 +54,24 @@ func shellExec(o Options) *scheme.Prim {
 			cmd.WaitDelay = 5 * time.Second
 			var stdout, stderr bytes.Buffer
 			out, errOut := &capped{buf: &stdout, n: o.MaxOutput, tail: o.MaxOutput / 2}, &capped{buf: &stderr, n: o.MaxOutput, tail: o.MaxOutput / 2}
-			runErr := runStopping(cmd, out, errOut)
+			// A long stream is shown as a view with a file behind it, unless
+			// there is nowhere to keep the file, the command asks for a range of
+			// a file, or a program is computing with the output.
+			var outTap, errTap *outputTap
+			var outW, errW io.Writer = out, errOut
+			if o.Scratch != "" && directCall(c.Ctx) && !readLike(cmdName, args) {
+				call := &callFiles{}
+				outTap = newOutputTap(out, files, call, o.Scratch, "stdout")
+				errTap = newOutputTap(errOut, files, call, o.Scratch, "stderr")
+				outW, errW = outTap, errTap
+			}
+			runErr := runStopping(cmd, outW, errW)
 			out.finish()
 			errOut.finish()
+			if outTap != nil {
+				outTap.finish()
+				errTap.finish()
+			}
 			status := scheme.Int(0)
 			if c.Ctx.Err() != nil {
 				return scheme.Value{}, c.Ctx.Err() // aborted by the user or the loop
@@ -84,12 +100,28 @@ func shellExec(o Options) *scheme.Prim {
 			default:
 				return scheme.Value{}, runErr
 			}
+			printed := stdout.Len() + stderr.Len()
+			outText, errText := stdout.String(), stderr.String()
+			if outTap != nil {
+				// One view may take viewBudget; two share it, so the result stays
+				// under the window's cut.
+				budget := viewBudget
+				if outTap.viewable() && errTap.viewable() {
+					budget /= 2
+				}
+				if v, ok := outTap.view(budget); ok {
+					outText = v
+				}
+				if v, ok := errTap.view(budget); ok {
+					errText = v
+				}
+			}
 			fields := []scheme.Value{
 				scheme.Cons(scheme.Str("status"), status),
-				scheme.Cons(scheme.Str("stdout"), scheme.Str(stdout.String())),
-				scheme.Cons(scheme.Str("stderr"), scheme.Str(stderr.String())),
+				scheme.Cons(scheme.Str("stdout"), scheme.Str(outText)),
+				scheme.Cons(scheme.Str("stderr"), scheme.Str(errText)),
 			}
-			if note := shellNote(cmdName, args, status, stdout.Len()+stderr.Len()); note != "" {
+			if note := shellNote(cmdName, args, status, printed); note != "" {
 				fields = append(fields, scheme.Cons(scheme.Str("note"), scheme.Str(note)))
 			}
 			return scheme.List(fields...), nil
@@ -328,6 +360,13 @@ func byteCount(n int) string {
 
 var readLikeRE = regexp.MustCompile(`(^|[\s;&|(])(cat|head|tail|nl|sed\s+-n)\b`)
 
+// readLike is whether a command line reads part of a file, or limits its own
+// output: cat, head, tail, nl, sed -n. Whoever asks for a range of a file
+// wants that range, and a pipe into head or tail has made the output short.
+func readLike(cmd string, args []string) bool {
+	return readLikeRE.MatchString(cmd + " " + strings.Join(args, " "))
+}
+
 // shellNote says what a result's bare numbers do not. Exit 141 is SIGPIPE: a
 // downstream command (head) stopped reading, so there may be more output; on
 // the benchmark's matplotlib-25960 `grep ... | head -n 100` ended 141 and the
@@ -341,7 +380,7 @@ func shellNote(cmd string, args []string, status scheme.Value, printed int) stri
 	}
 	if printed == 0 && status.Kind == scheme.KInt && status.I == 0 {
 		line := cmd + " " + strings.Join(args, " ")
-		if readLikeRE.MatchString(line) && !strings.Contains(line, ">") {
+		if readLike(cmd, args) && !strings.Contains(line, ">") {
 			return "exit 0 with no output: a command that reads a file printed nothing, so its range may lie past the end of the file (wc -l FILE counts the lines) or the file is empty"
 		}
 	}
