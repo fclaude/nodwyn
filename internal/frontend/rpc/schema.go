@@ -73,6 +73,8 @@ func contracts() map[string]methodContract {
 		"notes.read":                   {notesParams{}, notesResult{}},
 		"index.status":                 {notesParams{}, core.IndexInfo{}},
 		"index.forget":                 {notesParams{}, struct{}{}},
+		"trust.read":                   {trustParams{}, trustState{}},
+		"trust.set":                    {trustSetParams{}, trustState{}},
 		"session.notes.write":          {notesWriteParams{}, inspectionStarted{}},
 		"models.status":                {struct{}{}, []modelStatus{}},
 		"models.offered":               {offeredParams{}, []string{}},

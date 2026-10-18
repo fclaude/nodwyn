@@ -635,7 +635,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 		access := b.access(req.Method, c)
 		// A setup action a device takes renews its touch, and is said in
 		// the audit (Options.Audit), whether it worked or not.
-		audited := access == granted && current.Name != "" && b.tierOf(req.Method) == tierSetup
+		audited := access == granted && current.Name != "" && b.tierOf(req.Method) >= tierSetup
 		if audited {
 			b.touch(current.Hash)
 		}
@@ -763,11 +763,12 @@ type caller struct {
 type tier int
 
 const (
-	tierNone   tier = iota // no browser
-	tierRead               // every console, a read-only one too
-	tierAnswer             // every paired device: answers and steers
-	tierPerson             // the person's device: this computer's choices
-	tierSetup              // the person's device after a touch: setup and secrets
+	tierNone    tier = iota // no browser
+	tierRead                // every console, a read-only one too
+	tierAnswer              // every paired device: answers and steers
+	tierPerson              // the person's device: this computer's choices
+	tierSetup               // the person's device after a touch: setup and secrets
+	tierPasskey             // the same, and no one else: not this computer's cookie
 )
 
 // tierOf places a method. Only operations with a complete browser view join
@@ -796,8 +797,15 @@ func (b *bridge) tierOf(method string) tier {
 	// nobody watching (ADR 49). A key the model asks for (session.secret)
 	// and the keychain's passphrase are secrets the person types, and the
 	// passphrase is its own proof. The folder last picked only remembers.
-	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "startup.read":
+	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "startup.read", "trust.read":
 		return tierPerson
+	// Trusting a project lets its Scheme run as the person: it needs the
+	// passkey, though this computer's own console may do the rest of setup,
+	// since the cookie of that console goes to every server on loopback,
+	// a task's dev server among them (ADR 30, amended 2026-10-16; ADR 45,
+	// amended 2026-10-17). `nodwyn trust` is this computer's way.
+	case "trust.set":
+		return tierPasskey
 	// A log is the record of what a session did, devices included (ADR 39).
 	case "session.delete", "session.binding.create", "session.policy.write", "keychain.create", "keychain.passphrase", "settings.control.write", "settings.docs.write", "settings.write",
 		"settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test",
@@ -840,6 +848,14 @@ func (b *bridge) access(method string, c caller) access {
 		return granted
 	case t == tierNone || b.readOnly:
 		return refused
+	case t == tierPasskey:
+		switch {
+		case !c.person:
+			return refused
+		case c.touched:
+			return granted
+		}
+		return needsTouch
 	case c.local || t == tierAnswer:
 		return granted
 	case !c.person:

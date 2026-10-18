@@ -88,3 +88,48 @@ path resolves to. Naming a link to a credential file in `index-grep` is now a
 refusal, as naming the file is. The regressions are
 `TestDenylistFollowsLinksAndIgnoresCase` and the symlinked image in
 `TestDocExportRunsPandocWithFixedArguments`.
+
+## Amendment 2026-10-17: a device signed in with a passkey reviews and grants trust
+
+Decision 1 left trust to `nodwyn trust` at the computer's terminal, and the
+console offered no grant. On a computer nobody sits at (ADR 30, amended
+2026-10-17) that meant an SSH session for every project. Two methods now do
+what the command does, for one kind of console:
+
+- `trust.read {repo}` returns the review `nodwyn trust` prints: whether the
+  project has `.nodwyn/init.scm` or `allow.toml`, whether the record trusts
+  their current revision, the revision, and both files' text whole. A pair
+  with a file over 256 KiB is not shown, and `reviewable` is false: trust is a
+  review of exactly what will run, so what cannot be read whole here is not
+  offered for trust here.
+- `trust.set {repo, revision}` grants the revision (empty revokes) through
+  `config.TrustProject`, which recomputes it from the files and refuses unless
+  they are still exactly what was read. The review is the page the person
+  reads; the grant names that revision and nothing else.
+
+Who may call them, and why this is no weaker than the terminal. The files'
+author is whoever can commit to the repository, so a grant is code running
+as the person. `trust.set` is the **passkey's alone**: the bridge offers it
+only to a device whose person is signed in with a passkey and has touched
+it, and not to this computer's own console, whose cookie the browser sends
+to every server on loopback (ADR 30, amended 2026-10-16), a task's dev
+server among them. A device paired by invitation is refused, by the bridge
+and by the daemon. `trust.read` is offered to this computer's console and
+the person's devices; the console says where an untrusted project is
+reviewed (`nodwyn trust --repo PATH`) when it cannot grant. Both name a
+folder nodwyn works in (a workspace or a task's root, and not one a task may
+not use as root), as `versions.list` does. The record is the same file, in
+the config directory the guard keeps from a task's tools, and no Scheme
+primitive writes it. The console shows the files as text, never markup. A
+grant is said in the console's log with the passkey that touched it. As
+before, a running task keeps what it loaded: it must be started again.
+
+The statement in `docs/protocol.md` and `docs/browser.md` that no RPC method
+or console button grants trust is replaced accordingly. Not changed: trust
+decides about the two files, not the code they load, as Decision 3 says.
+Checks: `TestProjectTrustIsReviewedAndGrantedByRevision` (the revision read,
+refused when stale or changed, a paired device and an unknown folder
+refused, a large pair not shown), the bridge's tier test, and the `remote`
+browser check, where a device that only answers is shown nothing, and the
+laptop reads the files, trusts the revision it read and revokes after a
+confirm.

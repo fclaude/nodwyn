@@ -1105,7 +1105,15 @@ mount authority.
 Repository init and approvals load only when `trusted-projects.json` in the user
 configuration directory grants their current combined revision. Otherwise ordinary
 startup skips both and emits a note; reload refuses. The CLI `nodwyn trust` owns
-the explicit review/accept/revoke flow; no RPC method grants this trust. Policy
+the explicit review/accept/revoke flow, and `trust.read {repo}` and
+`trust.set {repo, revision}` do the same for a console of a person signed in
+with a passkey (ADR 45, amended 2026-10-17): `trust.read` returns `{repo,
+present, trusted, revision, init, allow, reviewable}`, the files' text whole
+(`reviewable` false, and no text, when either is over 256 KiB), for a folder
+nodwyn works in; `trust.set` grants the revision read, refused if the files
+changed since (empty `revision` revokes) and to a paired device, and returns
+the same state. The bridge offers `trust.set` only to a device signed in with
+a passkey, after a touch of it, never to this computer's console. Policy
 editor saves do not grant it implicitly. A running session keeps its already loaded
 code and grants until restarted. The optimiser keeps a changed init pending review.
 

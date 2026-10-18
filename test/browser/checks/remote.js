@@ -239,10 +239,49 @@ check(async () => {
   assert.match(desktopEntry(), /by = "laptop"/, "the desktop was not let in by the laptop");
   assert.doesNotMatch(desktopEntry(), /passkey = /, "the desktop has a passkey without making one");
   assert.strictEqual(await desktop.$("#new-task-model-model"), null, "a device that only answers is offered a model picker");
+  // A project's startup files are not offered to a device that only
+  // answers: not their state, and not trusting them (ADR 45, amended
+  // 2026-10-17). The folder has some, written by whoever can commit to it.
+  fs.mkdirSync(`${root}/work/.nodwyn`, { recursive: true });
+  fs.writeFileSync(`${root}/work/.nodwyn/init.scm`, '(display "from the project")\n');
+  fs.writeFileSync(`${root}/work/.nodwyn/allow.toml`, "");
+  await desktop.evaluate(() => (location.hash = "#/workspaces"));
+  await desktop.waitForSelector(`.ws-row:has(span.mono[title="${root}/work"])`);
+  assert.strictEqual(await desktop.locator("#trust-review-open").count(), 0, "a device that only answers is offered the review of startup files");
+  assert.strictEqual(await desktop.locator(".ws-startup").innerText(), "", "a device that only answers is told the state of startup files");
   await desktop.evaluate(() => (location.hash = "#/settings/keys"));
   await desktop.click("#devices-sign-in");
   await until("the desktop signed in with the passkey", () => /passkey = "laptop"/.test(desktopEntry()));
   await desktop.evaluate(() => (location.hash = "#/"));
   await desktop.waitForSelector("#new-task-model-model", { timeout: 10000 });
   step("a device that only answered signs in with the passkey from Settings, and chooses a task's model");
+
+  // The laptop reviews the folder's startup files, whole, and trusts the
+  // revision it read. The project's own words are text, never markup.
+  await desk.evaluate(() => (location.hash = "#/workspaces"));
+  await desk.waitForSelector(`.ws-row:has(span.mono[title="${root}/work"]) #trust-review-open`);
+  await shows(desk, ".ws-startup", "are not trusted: tasks here start without them");
+  await desk.click("#trust-review-open");
+  await desk.waitForSelector("#trust-review");
+  await shows(desk, "#trust-review", '(display "from the project")', ".nodwyn/allow.toml", "written by whoever can commit to it");
+  const shown = await desk.locator("#trust-review .mono").last().innerText();
+  const revision = shown.trim();
+  assert.match(revision, /^[0-9a-f]{64}$/, `the revision shown: ${shown}`);
+  await desk.screenshot({ path: `${out}/trust-review.png` });
+  const trustFile = `${root}/config/nodwyn/trusted-projects.json`;
+  assert.ok(!fs.existsSync(trustFile) || !fs.readFileSync(trustFile, "utf8").includes(`${root}/work`), "the project was trusted before it was accepted");
+  await desk.click("#trust-accept");
+  await until("the project trusted", () => fs.existsSync(trustFile) && fs.readFileSync(trustFile, "utf8").includes(revision));
+  assert.deepStrictEqual(deskSent.of("trust.set"), [{ repo: `${root}/work`, revision }], "the revision sent is the one shown");
+  await until("the page says the project is trusted", async () => (await desk.locator(".ws-startup").innerText()).includes("are trusted"));
+  // Revoking asks first.
+  await desk.click("#trust-review-open");
+  await desk.click("#trust-review-open");
+  await desk.waitForSelector("#trust-review");
+  await desk.click("#trust-review button:text-is('Revoke trust')");
+  assert.strictEqual(deskSent.of("trust.set").length, 1, "Revoke trust revoked before it was confirmed");
+  await desk.click("#trust-review button:text-is('Revoke trust')");
+  await until("the trust revoked", () => !fs.readFileSync(trustFile, "utf8").includes(revision));
+  assert.deepStrictEqual(deskSent.of("trust.set").at(-1), { repo: `${root}/work`, revision: "" });
+  step("the laptop reviews a project's startup files, trusts the revision it read, and revokes it after a confirm");
 });

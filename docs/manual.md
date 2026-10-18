@@ -2770,8 +2770,11 @@ lists and revokes devices on the server; Settings removes a lost phone's
 passkey. A provider's OAuth sign-in works from your laptop too: the provider's
 page ends on an address that does not load there, and pasting that address
 into the card nodwyn shows (**Finish**) completes it. `nodwyn trust` and the
-command line's `credential add --oauth2` still need the server
-([the browser view](browser.md), "Other devices").
+command line's `credential add --oauth2` still need the server; a
+project's startup files are reviewed and trusted from Workspaces on a device
+signed in with the passkey (**Review…**), which shows both files whole and
+trusts the revision it showed ([the browser view](browser.md), "Other
+devices").
 
 To have the keychain open by itself after a restart, give the daemon's unit
 its passphrase as a systemd credential (opt-in; ADR 5, amended 2026-10-17):

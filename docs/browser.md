@@ -322,9 +322,16 @@ upload URL rules are unchanged.
 **Project startup.** The console opens an untrusted project's tasks with the default
 loop, skipping its init and approval files and showing a note. Review and accept
 them using `nodwyn trust --repo PATH` from this computer's terminal. A changed
-revision needs review again before reload/resume. There is no console grant-trust
-button or remote grant-trust API. Existing tasks must be restarted after revocation
-to discard their loaded code and grants.
+revision needs review again before reload/resume. A device signed in with a
+passkey (Other devices, below) can do it from Workspaces: each folder with startup
+files says whether they are trusted, and **Review…** shows both files whole with
+their revision; **Trust this revision** sends that revision, after a touch of the
+passkey, and the daemon refuses it if the files changed since; **Revoke trust**
+asks first. Files too large to read whole are not offered. This computer's own
+console and a device paired by invitation can read the state but not grant it
+(this computer's cookie goes to every server on loopback, a task's dev server
+among them): `nodwyn trust` is the way there. Existing tasks must be restarted
+after a grant or a revocation, to load or discard their code and grants.
 
 **The model picker.** Under the message box of the New task window, and under
 a conversation's, a **Model** and an **Effort** select. Both list the models

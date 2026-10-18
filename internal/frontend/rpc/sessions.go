@@ -248,6 +248,8 @@ var methodTable = map[string]handler{
 	"notes.read":                   (*server).notesRead,
 	"index.status":                 (*server).indexStatus,
 	"index.forget":                 (*server).indexStatus,
+	"trust.read":                   (*server).trustMethod,
+	"trust.set":                    (*server).trustMethod,
 	"session.notes.write":          (*server).notesWrite,
 	"models.status":                (*server).modelsStatus,
 	"models.offered":               (*server).modelsOffered,

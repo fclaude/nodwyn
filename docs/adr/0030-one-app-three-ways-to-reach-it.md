@@ -584,8 +584,8 @@ and serving a held certificate with the CA unreachable.
 
 **The keychain can open at boot** from a systemd credential holding its
 passphrase, opt-in (ADR 5, amended 2026-10-17), with what that does and does
-not protect said there. Not built: reviewing project trust in the console (`nodwyn
-trust` stays the terminal's). A schedule that waits for the keychain says so
+not protect said there. A project's startup files are reviewed and trusted from
+the person's device, the passkey's alone (ADR 45, amended 2026-10-17). A schedule that waits for the keychain says so
 on Home and, with the daemon's notices on, on the desktop (ADR 53 §11).
 
 Checks: `internal/frontend/web` (`TestAPasskeyPairsThePersonsDevices` with a

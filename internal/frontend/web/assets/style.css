@@ -1174,3 +1174,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .reply-opts .model-picker { width: 100%; }
   .mp-details { width: 100%; }
 }
+
+.ws-startup { display: block; }
+.ws-review { display: grid; gap: 12px; margin-top: 10px; }
+.ws-file { max-height: 280px; overflow: auto; margin: 6px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; }
