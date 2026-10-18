@@ -39,7 +39,8 @@ it can see the thing but not change it.
 | Resume a stored session | yes, the sidebar | yes, the chooser (paged, typing filters it) or `--resume` | yes, `--resume` | — |
 | Switch between open tasks | yes, the sidebar; several open at once | one session per process; quit and choose again | one session | — |
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
-| Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu); Home’s cards pause and run now; paired devices can pause or run now | not built | not built | not built |
+| Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu): set times on chosen weekdays, an interval within hours of the day, monthly dates or weekday, once, a first minute and a last day; the daemon's sentence, next times and zone name; Home’s cards pause and run now; paired devices can pause or run now | not built, and it does not show a `session.schedule` record or a run's marker either | not built | not built |
+| A schedule's recent runs: when, how each ended or why it was skipped, cost (`history` in `schedule.read`, ADR 49 amended 2026-10-17) | yes, **Recent runs** in a task's **Schedule…** | not built | — | `replay` shows the records |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | daemon mode detaches and the turn goes on; local mode aborts it | aborts it | — |

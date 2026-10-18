@@ -111,14 +111,21 @@ button is disabled and says why. **Schedule…** in a task's **⋯** menu, with 
 saved definition and controls; **Remove schedule** asks first. The dialog is
 titled **Schedule** here and on Home: scheduling has that one name, and
 **Repeat** is only the field for how often.
-`schedule.next` supplies the preview, which reads as "Next: tomorrow 9:30 AM,
-then every day" on the schedule's own wall clock (the browser's zone does not
-move it); the full list, ISO times with the daemon’s local offset, is its
-tooltip. The dialog shows the status, the message and that line, with **Close**
-at its top right and the edit form folded behind **Edit**. Schedule creation and
+**Repeat** chooses the form of the rule (at set times, every few minutes or
+hours, monthly, once); days of the week are chips, times of day a list with
+**Add a time**, and **Starts** and **Last day** bound it. The page works out no
+times: `schedule.next` returns the rule's sentence and the next times as the
+daemon's labels ("Tuesdays and Thursdays at 15:00", "Next: Tue 20 Oct 15:00,
+then Thu 22 Oct 15:00", on the daemon's wall clock, which the browser's zone
+does not move), and its refusal of a rule shows in the same place. The five
+labels, with the daemon's zone name, are the line's tooltip. The dialog shows
+the status and zone, the sentence, the message, that line and **Recent runs**
+(the daemon's `history`: when, what came of it, cost), with **Close** at its
+top right and the edit form folded behind **Edit**; the transcript shows a
+`session.schedule` record by its `words`. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,
 as do edits and removal. Runs discard Don’t ask and use normal approvals.
-Home lists next times and paused schedules, each card with Pause or Resume and
+Home lists each schedule's sentence and next time, or Paused, each card with Pause or Resume and
 Run now. The daemon coalesces missed times,
 records skips and closes idle scheduled sessions after 15 minutes; see the
 manual and ADR 49 for log-lock deferral and startup requirements.

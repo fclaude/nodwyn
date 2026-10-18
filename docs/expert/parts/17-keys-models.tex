@@ -696,7 +696,14 @@ migration limits (ADR 45).
 
 \paragraph{Scheduler ownership and context (\adr{49}).}
 The daemon holds a data-directory flock and checks civil-time occurrences
-on startup and every 30 seconds. The log is the authority: session.schedule
+on startup and every 30 seconds. A definition's rule (once; set times or an
+interval within a daily window; weekdays, dates or the nth weekday of a month;
+a first minute and a last day) is stepped through day by day in civil time;
+the five repeats from before rules are read as the rules they meant, so old
+logs run at the same times. The daemon writes the rule's sentence into each
+session.schedule record and answers schedule.read with the sentence, labelled
+next times, its named zone and the latest twenty times, each with its outcome
+and cost, folded into the log index beside the schedule. The log is the authority: session.schedule
 holds the latest definition, schedule.run claims a due interval and pins its
 spend base, and schedule.skip consumes a skipped interval. Manual runs consume
 no automatic time. Pausing preserves progress; resuming sets it to now.

@@ -974,6 +974,43 @@
       ],
       "type": "object"
     },
+    "core.ScheduleEntry": {
+      "properties": {
+        "cost": {
+          "type": "number"
+        },
+        "due": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "manual": {
+          "type": "boolean"
+        },
+        "missed": {
+          "type": "integer"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "string"
+        },
+        "started": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "due",
+        "started"
+      ],
+      "type": "object"
+    },
     "core.SessionMark": {
       "properties": {
         "seq": {
@@ -2644,12 +2681,23 @@
         },
         "repeat": {
           "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schedule.Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "words": {
+          "type": "string"
         }
       },
       "required": [
         "message",
-        "repeat",
-        "at",
         "cost",
         "paused",
         "actor",
@@ -8689,6 +8737,51 @@
       ],
       "type": "object"
     },
+    "rpc.scheduleHistory": {
+      "properties": {
+        "cost": {
+          "type": "number"
+        },
+        "due": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "manual": {
+          "type": "boolean"
+        },
+        "missed": {
+          "type": "integer"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "string"
+        },
+        "started": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "what": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "due",
+        "started",
+        "when",
+        "what"
+      ],
+      "type": "object"
+    },
     "rpc.schedulePauseParams": {
       "properties": {
         "id": {
@@ -8733,6 +8826,16 @@
         },
         "repeat": {
           "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schedule.Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -8757,6 +8860,15 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/rpc.scheduleHistory"
+          },
+          "type": [
+            "array",
+            "null"
           ]
         },
         "last_run": {
@@ -8789,8 +8901,30 @@
             "null"
           ]
         },
+        "next_words": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schedule.Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "scheduler": {
           "type": "boolean"
+        },
+        "sentence": {
+          "type": "string"
         },
         "sequence": {
           "minimum": 0,
@@ -8804,6 +8938,7 @@
         "sequence",
         "cursor",
         "next",
+        "next_words",
         "timezone",
         "archived",
         "scheduler"
@@ -9625,15 +9760,80 @@
         },
         "repeat": {
           "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schedule.Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "message",
-        "repeat",
-        "at",
         "cost",
         "paused"
       ],
+      "type": "object"
+    },
+    "schedule.Rule": {
+      "properties": {
+        "at": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "between": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "dates": {
+          "items": {
+            "type": "integer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "days": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "every": {
+          "type": "integer"
+        },
+        "from": {
+          "type": "string"
+        },
+        "nth": {
+          "type": "integer"
+        },
+        "once": {
+          "type": "string"
+        },
+        "until": {
+          "type": "string"
+        }
+      },
+      "required": [],
       "type": "object"
     },
     "sessionEvent": {

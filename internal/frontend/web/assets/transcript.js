@@ -604,7 +604,9 @@ export class Transcript {
         this.audit(p.server ? `Judge: ${p.server}${p.model ? ` · ${p.model}` : ""}${p.host ? ` at ${p.host}` : ""}` : "No judge: you answer the commands");
         break;
       case "session.schedule":
-        this.audit(p.removed ? "Schedule removed" : `Schedule: ${p.repeat} from ${p.at}${p.paused ? " · paused" : ""} · $${p.cost || 0} per run (0 means none)`, p);
+        // The daemon writes the timetable in words into the record; a record
+        // from before it did has its repeat and first time.
+        this.audit(p.removed ? "Schedule removed" : `Schedule: ${p.words || `${p.repeat} from ${p.at}`}${p.paused ? " · paused" : ""}${p.cost ? ` · up to $${p.cost} a run` : ""}`, p);
         break;
       case "schedule.run":
         this.end();

@@ -1128,21 +1128,56 @@ reading old run previews or replaying the whole log.
 
 ## Scheduled tasks (ADR 49)
 
-- `schedule.next {message,repeat,at,cost,paused}` is read-only. `repeat` is
-  `once`, `hourly`, `daily`, `weekdays` or `weekly`; `at` is the daemon’s local
-  civil minute (`YYYY-MM-DDTHH:MM`); `cost` is dollars per run, 0 for none.
-  It validates the definition and returns up to five `next` ISO times with
-  offsets and a `timezone` label. Missing summer-time minutes advance to the
-  next valid minute; repeated minutes use their first occurrence.
+- A definition is `{message,rule,cost,paused}`: `cost` is dollars per run, 0
+  for none. `rule` says when, in the daemon's local civil time:
+  - `{once:"YYYY-MM-DDTHH:MM"}` runs once, and has nothing else;
+  - otherwise the times of a day are `at` (up to 48 `"HH:MM"`) or `every`
+    minutes (5 to 1440), counted from `between[0]` (midnight without it)
+    through `between[1]` inclusive, which must end after it starts on the
+    same day;
+  - the days are every day, the weekdays in `days` (`mon` … `sun`), the
+    `dates` of each month (1–31; a month without one has no run), or the
+    `nth` weekday of the month (1–5, -1 the last) of the one weekday in
+    `days`; `days` and `dates` do not combine;
+  - `from` is the first minute it may run (the daemon fills in now when it
+    is missing) and `until` its last day (`YYYY-MM-DD`), optional.
+  The daemon keeps a rule in its normal form (days in the week's order,
+  times and dates sorted, each once). A definition from before rules has
+  `{repeat,at}` instead (`once`, `hourly`, `daily`, `weekdays` or `weekly`
+  from a local minute); it still validates and runs at the same times, read
+  as a rule (hourly is every 60 minutes between the minute's first and last
+  hour of each day, weekly the first time's weekday). A definition has a
+  rule or a repeat, not both.
+- `schedule.next {message,rule,cost,paused}` (or `{…,repeat,at,…}`) is
+  read-only. It validates the definition and returns its normal `rule`,
+  `sentence` (the rule in words, such as "Every 30 minutes from 09:00 to
+  18:00 on weekdays" or "Tuesdays and Thursdays at 15:00", with ", starting
+  …" when the first day is after today and ", until …"), up to five `next`
+  ISO times with offsets, `next_words` (the same times as labels such as
+  "Tue 20 Oct 15:00", the year added when it is not this one) and
+  `timezone`, the zone's name (TZ, or where `/etc/localtime` points; never
+  "Local"). Missing summer-time minutes advance to the next valid minute,
+  several becoming one; repeated minutes use their first occurrence.
 - `schedule.read {id}` returns `definition` when present, its log `sequence`,
-  automatic `cursor`, optional `last_run` and `last_skip`, plus `next`,
-  `timezone`, `archived` and `scheduler` (whether this daemon owns the lock).
-  `session.list` includes the same `schedule` view for scheduled tasks.
-- `schedule.set {id,message,repeat,at,cost,paused}` writes `session.schedule`.
-  Defaults are cost 0 and paused false; message, repeat and at must validate.
-  `{id,remove:true}` removes the schedule while retaining its chat. Keeping
-  at/repeat preserves the consumed cursor; retiming starts a new series.
-  Resuming a paused definition sets its cursor to now.
+  automatic `cursor`, optional `last_run` and `last_skip`, plus `rule`,
+  `sentence`, `next`, `next_words`, `timezone`, `archived`, `scheduler`
+  (whether this daemon owns the lock) and `history`: the latest twenty
+  scheduled times, newest first, each with `seq` (its `schedule.run` or
+  `schedule.skip`), `due`, `started`, `missed`, `manual`, `skipped` (the
+  reason, for a time not run), `outcome` (the run's turn's `turn.end`
+  outcome, empty until it ends), `cost` (its known requests' cost, a
+  person's follow-ups included), `when` (a label of its start) and `what`
+  ("Finished", "Failed", "Stopped at the spend limit", "Running", "Did not
+  finish", "Skipped: …", with "(Run now)" or "(late, standing for N missed
+  times)"). `session.list` includes the same `schedule` view for scheduled
+  tasks.
+- `schedule.set {id,message,rule,cost,paused}` (or `repeat` and `at`) writes
+  `session.schedule`, with `words`, the sentence when it was written.
+  Defaults are cost 0 and paused false; the definition must validate.
+  `{id,remove:true}` removes the schedule while retaining its chat. A
+  definition whose rule is the same as before (in normal form) preserves the
+  consumed cursor; a new timing starts after now, so times before the change
+  are not run late. Resuming a paused definition sets its cursor to now.
 - `schedule.pause {id,paused}` preserves its definition and records the change.
   Archive records a paused definition before archiving; Unarchive leaves it
   paused. A closed scheduled task can still run automatically.
@@ -1167,8 +1202,9 @@ file or repository configuration is read. The index is only a derived view.
 
 Log payloads (see the generated schema for full shapes):
 
-- `session.schedule`: message/repeat/at/cost/paused, actor, removed, after
-  (preserved consumed cursor, or now on resume).
+- `session.schedule`: message/rule (or repeat/at)/cost/paused, actor,
+  removed, after (preserved consumed cursor, or now on resume or a new
+  timing), words (the rule's sentence when written).
 - `schedule.run`: due, through (latest coalesced occurrence), started, missed,
   manual, actor, cost, spend_before (lifetime model/judge cost before this run).
   Manual runs have a zero through and do not move the automatic cursor.

@@ -56,7 +56,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/budget` | one turn's budgets and checkpoints | `budget.go` |
 | `internal/extract` | attachments: text by file type, images checked but never read as text | `extract.go`, `image.go` |
 | `internal/memory`, `internal/retrieval` | what a task remembers of its history (a card for each turn, an episode for each compaction note), and the words-only ranking `index-search` uses over the repository, the conversation and earlier tasks ([docs/memory.md](memory.md)) | `memory/card.go`; `retrieval/index.go` |
-| `internal/schedule` | the civil-time repeats of scheduled tasks; it owns no timers or files ([ADR 49](adr/0049-scheduled-tasks.md)) | `schedule.go` |
+| `internal/schedule` | the civil-time rules of scheduled tasks and the words they are said in; it owns no timers or files ([ADR 49](adr/0049-scheduled-tasks.md)) | `schedule.go` |
 | `internal/catalogue` | what providers publish about their models (context, effort, price), as models.dev collects it ([ADR 41](adr/0041-model-providers-and-efforts.md)) | `catalogue.go`, `modelsdev.go` |
 | `internal/termemu`, `internal/frontend/termvt` | the terminal primitives' emulator seam, and the Charm emulator behind it, kept under `frontend` by the boundary lint ([ADR 48](adr/0048-experimental-terminal.md)) | `termemu.go`; `termvt.go` |
 | `internal/policyfile` | atomic writes of the policy files the console edits | `update.go` |
@@ -2201,21 +2201,47 @@ On Home, describe the task and choose its folder, model, and, under
 **Options**, its worktree, helpers and turn limits, as usual. **Options ›
 Schedule…** opens **Schedule**, whether or not anything is typed yet: the
 message for each run is a required field there, started from what the box
-holds. Choose, under **Repeat**, Once, Every hour, Every day, Weekdays or Every
-week, its first
-local date and minute, and its dollar spend limit per run (0 means none).
-The preview comes from the daemon and shows its local times and offsets.
+holds. Under **Repeat**, choose when it runs:
+
+- **At set times**: one or more times of day, on the days of the week you
+  pick (none picked is every day): "Tuesdays and Thursdays at 15:00".
+- **Every few minutes or hours**: from 5 minutes to 24 hours, counted from
+  midnight, or from the start of **Only between** two times of day, on the
+  days you pick: "Every 30 minutes from 09:00 to 18:00 on weekdays". Every 45
+  minutes from 09:00 runs at 09:00, 09:45, 10:30 and so on, and starts again
+  at 09:00 the next day.
+- **Monthly**: at set times on dates of the month ("1, 15"; a month without
+  the 31st has no run that day) or on a weekday of the month (the first
+  Monday, the last Friday).
+- **Once**: a date and minute.
+
+**Starts** is the first minute it may run (empty: now), and **Last day** its
+last day, if it has one. Times are this computer's, and the zone is named in
+the dialog (America/Los_Angeles, not "Local"). Set the dollar spend limit per
+run (0 means none). The daemon says the rule back in words ("Every 30 minutes
+from 09:00 to 18:00 on weekdays") with the next times, and refuses what a
+schedule cannot be (an interval under 5 minutes, hours that end before they
+start) before anything is saved. A new schedule's first run is its first time
+after now, so try one with **Run now**.
 Saving opens the task immediately; its message is sent when due. Scheduled
 tasks appear on Home with their next time or Paused, and a card has **Pause
 schedule** (or **Resume schedule**) and **Run now**; Home says "Nothing
 scheduled." when there is none.
 
 On an existing task, **Schedule…** in its **⋯** menu adds a schedule, or
-shows its message, when it runs next and its last skip, and lets you save changes
-(behind **Edit**), pause, resume, run now or remove it (after a confirm). Run now also works while paused and leaves the automatic
-next time unchanged. Resuming a paused schedule starts after now, without
-catching up the paused interval. Retiming starts the new series; changing
-only its message or spend preserves the times already handled. Removing a
+shows the rule in words, its message, when it runs next and its **Recent
+runs**, and lets you save changes (behind **Edit**), pause, resume, run now or
+remove it (after a confirm). Recent runs lists the latest 20 scheduled times,
+newest first: when each started, how it ended (Finished, Failed, Stopped at
+the spend limit, Running, Run now, late for missed times) or why it was
+skipped, and what it cost with its follow-ups. Run now also works while
+paused and leaves the automatic next time unchanged. Resuming a paused
+schedule starts after now, without catching up the paused interval. A new
+timing starts after now, so the times before the change are not run late;
+changing only its message or spend, or writing the same timing another way,
+preserves the times already handled. A schedule made before rules (Every
+hour, Every day, Weekdays, Every week) runs at the same times as before and
+opens in the editor as the rule it always was. Removing a
 schedule keeps the chat. Close frees the task but leaves its schedule enabled;
 Archive pauses it, and Unarchive leaves it paused. Delete removes both.
 

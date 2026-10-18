@@ -1,6 +1,6 @@
 // Home: start anything, and see what needs you across every task.
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, toastError, basename } from "./dom.js";
-import { newSchedule, scheduleTime, scheduleActions } from "./schedule.js";
+import { newSchedule, nextLine, scheduleTime, scheduleActions } from "./schedule.js";
 import { summary } from "./prompts.js";
 import { keychainForm } from "./setup.js";
 import { firstModel } from "./models.js";
@@ -281,7 +281,7 @@ export function renderHome(root, ctx) {
         toast(error.message);
       }
     };
-    schedules.append(h("article", { class: "card" }, h("a", { href: `#/task/${item.id}` }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.definition.paused ? "Paused" : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending"), h("div", { class: "row-actions" }, ...scheduleActions(conn, s.definition, item.archived, update))));
+    schedules.append(h("article", { class: "card" }, h("a", { href: `#/task/${item.id}` }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.sentence || s.definition.repeat), h("p", { class: "hint", title: s.timezone }, s.definition.paused ? "Paused" : s.next_words ? nextLine(s) : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending"), h("div", { class: "row-actions" }, ...scheduleActions(conn, s.definition, item.archived, update))));
   }
   if (!schedules.querySelector("article")) schedules.append(h("p", { class: "empty-note" }, "Nothing scheduled."));
   const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, schedules, done));

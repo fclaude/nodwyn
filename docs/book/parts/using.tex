@@ -378,7 +378,7 @@ time; expand one to load its conversation, or retry if a read failed. Old runs
 keep their own renderer and do not change the current task's model or prompts.
 Tasks without run records retain their whole conversation. The inspectors
 label their latest-run scope; Statistics and Changes still cover the whole
-task. Scheduling is not built yet (\adr{49}). A read-style tool wrapper that runs a shell
+task. A read-style tool wrapper that runs a shell
 command keeps the guard's recorded, redacted command on its call row;
 loading continues through that decision to the rest of the history.
 
@@ -1008,13 +1008,22 @@ reconciliation; permissions are never silently merged (\adr{45}).
 \paragraph{Scheduled tasks (\adr{49}).}
 Home's \textbf{Options}, beside Attach, hold \textbf{Schedule\ldots}, which turns
 the request into a schedule with the same folder or worktree, model, helpers,
-judge and Limits choice, and asks for the message in its own form. Choose once,
-hourly, daily, weekdays or weekly, a first local minute and a dollar spend
-limit per run (0 means none). The daemon supplies the next-time preview.
+judge and Limits choice, and asks for the message in its own form. Under
+\textbf{Repeat}, choose set times of day on chosen weekdays (``Tuesdays and
+Thursdays at 15:00''), an interval of 5 minutes to 24 hours, optionally only
+between two times (``Every 30 minutes from 09:00 to 18:00 on weekdays''),
+monthly dates or a weekday of the month, or once; \textbf{Starts} and
+\textbf{Last day} bound it, and a dollar spend limit per run (0 means none)
+caps each run. The daemon says the rule back in words with its next times,
+in this computer's named zone, and refuses what a schedule cannot be before it
+is saved. A new schedule first runs at its first time after now. The task's
+\textbf{Schedule\ldots} also lists recent runs: when, how each ended or why
+it was skipped, and its cost.
 The task opens immediately, without sending until due. On a task,
 \textbf{Schedule\ldots} in its menu adds a schedule, or edits,
 pauses, resumes, runs now or removes it. Run now leaves the automatic time
-unchanged; resuming skips the paused interval. Home lists scheduled tasks.
+unchanged; resuming skips the paused interval, and a new timing starts after
+now. Schedules made before rules keep their times. Home lists scheduled tasks.
 Close keeps the schedule; Archive pauses it; Unarchive leaves it paused;
 Delete removes it with the chat. Devices can pause and run now; other changes
 stay on this computer.
