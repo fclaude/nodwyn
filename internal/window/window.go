@@ -346,7 +346,13 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 			}
 		case log.KindGatePlan:
 			var p log.GatePlan
-			if ev.Decode(&p) == nil && p.Plan != "" {
+			switch {
+			case ev.Decode(&p) != nil || p.Plan == "":
+			case p.Hidden:
+				// Recorded for the core and the person, not shown to the
+				// model, and in place of any plan before it.
+				plan, marks, markedBy, held = "", nil, "", nil
+			default:
 				plan, marks, markedBy = p.Plan, p.Marks, p.Noul // the gate's plan for the current task (P5)
 				if pol.InConversation {
 					// A user message, like the harness's, so it is never

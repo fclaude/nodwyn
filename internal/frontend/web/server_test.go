@@ -659,6 +659,15 @@ func TestRemoteDevicesPairByInvitationAndCannotWidenPolicy(t *testing.T) {
 			t.Fatalf("%s: %v before a touch, %v after", method, s.b.access(method, person), s.b.access(method, touched))
 		}
 	}
+	// Trusting a project's startup code needs the passkey itself: not this
+	// computer's cookie, which a task's own dev server on loopback may hold.
+	if s.b.access("trust.set", caller{local: true}) != refused || s.b.access("trust.set", device) != refused ||
+		s.b.access("trust.set", person) != needsTouch || s.b.access("trust.set", touched) != granted {
+		t.Fatal("trust.set is not the passkey's alone")
+	}
+	if s.b.access("trust.read", caller{local: true}) != granted || s.b.access("trust.read", person) != granted || s.b.access("trust.read", device) != refused {
+		t.Fatal("trust.read is not offered to this computer and the person's device")
+	}
 	if s.b.access("session.eval", touched) != refused {
 		t.Fatal("a touched device may evaluate Scheme")
 	}
@@ -1131,7 +1140,9 @@ func TestEveryAdvertisedMethodIsClassifiedByTheBridge(t *testing.T) {
 	// What the console never calls: a run is the terminal's (nodwyn run),
 	// :eval is line mode's, and a file attached from a page goes through
 	// POST /attach, which stages it, never through a path the page names.
-	terminalOnly := []string{"run.start", "run.info", "run.stop", "run.resume", "session.eval", "session.attach"}
+	// trust.set is the passkey's alone: this computer's console does not make
+	// it (ADR 45, amended 2026-10-17); `nodwyn trust` is this computer's way.
+	terminalOnly := []string{"run.start", "run.info", "run.stop", "run.resume", "session.eval", "session.attach", "trust.set"}
 	b := &bridge{}
 	for _, method := range hello.Methods {
 		switch allowed := b.allowed(method, caller{local: true}); {

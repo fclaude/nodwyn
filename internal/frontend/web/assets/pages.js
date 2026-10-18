@@ -9,6 +9,8 @@ import { renderCredentials } from "./credentials.js";
 let editing = ""; // the folder whose editor is open
 let addingWorkspace = false; // the editor for a folder not on the list yet is open
 let removing = ""; // the folder whose forgetting waits for confirmation
+let reviewing = ""; // the folder whose startup files are open for review
+let revoking = ""; // the folder whose trust waits to be revoked
 export function renderWorkspaces(root, ctx) {
   const { desk, navigate, conn } = ctx;
   const counts = new Map();
@@ -58,6 +60,7 @@ export function renderWorkspaces(root, ctx) {
         ws ? h("span", {}, ws.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the rest." : "Not a git repository: nodwyn keeps the previous version of a file before it changes it.") : null,
         ws?.earlier_tasks ? h("span", { class: "ws-earlier" }, "The model may search the earlier tasks here.") : null,
         indexLine(folder),
+        startupLine(folder),
         h("span", { class: "ws-count" }, count ? `${count.tasks} task${count.tasks === 1 ? "" : "s"} · ${ago(count.last)}` : "No tasks yet"),
       ),
       h("div", { class: "end" }, actions),
@@ -86,6 +89,57 @@ export function renderWorkspaces(root, ctx) {
       line.replaceChildren(`Search index: ${info.files} files · ${sizeOf(info.bytes)}${info.updated ? ` · updated ${ago(info.updated)}` : ""}${info.trees > 1 ? ` · ${info.trees} working trees` : ""}`, forget || "");
     }).catch(() => {});
     return line;
+  };
+  // startupLine says whether the folder's .nodwyn/init.scm and allow.toml are
+  // trusted (ADR 45), read after the row is drawn. Their author is whoever
+  // can commit to the repository, so the page shows them whole and trusting
+  // names the revision shown; only a device signed in with a passkey is
+  // offered it, after a touch of the passkey, and this computer's console
+  // says where it is done (nodwyn trust).
+  const startupLine = (folder) => {
+    const line = h("span", { class: "ws-startup" });
+    if (!conn.has("trust.read")) return line;
+    conn.call("trust.read", { repo: folder }).then((state) => {
+      if (!state.present) return;
+      const words = state.trusted ? "Startup files (.nodwyn/init.scm and allow.toml) are trusted." : "Startup files (.nodwyn/init.scm and allow.toml) are not trusted: tasks here start without them.";
+      const open = reviewing === folder;
+      const parts = [words, " "];
+      if (conn.has("trust.set")) parts.push(h("button", { type: "button", class: "btn small ghost", id: "trust-review-open", onclick: () => { reviewing = open ? "" : folder; revoking = ""; redraw(); } }, open ? "Hide" : "Review…"));
+      else parts.push(h("span", { class: "hint" }, "Review them with nodwyn trust --repo on the computer nodwyn runs on."));
+      line.replaceChildren(...parts);
+      if (open && conn.has("trust.set")) line.append(trustPanel(folder, state));
+    }).catch(() => {});
+    return line;
+  };
+  const trustPanel = (folder, state) => {
+    const act = async (revision, said) => {
+      try {
+        await conn.call("trust.set", { repo: folder, revision });
+        toast(said);
+      } catch (e) {
+        toast(e.message);
+      }
+      revoking = "";
+      redraw();
+    };
+    const file = (name, text) => h("div", { class: "stack-md" }, h("strong", { class: "mono" }, name), text === null ? h("p", { class: "hint" }, "Absent.") : h("pre", { class: "mono ws-file" }, text));
+    return h(
+      "div",
+      { class: "box ws-review", id: "trust-review" },
+      h("p", {}, "Trusting lets this project's Scheme run as you and use its standing approvals. Read what follows: it is the project's own, written by whoever can commit to it. Any change to either file needs another review; other code these load or run is not covered."),
+      state.reviewable
+        ? [file(".nodwyn/init.scm", state.init), file(".nodwyn/allow.toml", state.allow)]
+        : h("p", { class: "error" }, "These files are too large to read whole here. Review them with nodwyn trust on the computer nodwyn runs on."),
+      h("p", { class: "hint" }, "Revision ", h("span", { class: "mono" }, state.revision)),
+      h(
+        "div",
+        { class: "row-actions" },
+        state.reviewable && !state.trusted ? h("button", { type: "button", class: "btn accent", id: "trust-accept", onclick: () => act(state.revision, "Trusted. Tasks already open here keep what they loaded: start them again.") }, "Trust this revision") : null,
+        state.trusted
+          ? removal({ label: "Revoke trust", consequence: "Revoke trust? Tasks started or resumed here then skip these files.", asking: revoking === folder, ask: () => { revoking = folder; redraw(); }, cancel: () => { revoking = ""; redraw(); }, run: () => act("", "Trust revoked. Tasks already open here keep what they loaded: start them again.") })
+          : null,
+      ),
+    );
   };
   // editor names a folder and the folders outside it its tasks may use;
   // with no folder it adds one, and asks for its path first.

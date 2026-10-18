@@ -54,6 +54,9 @@ var commands = map[string]func(*cli) error{
 	"startup":    (*cli).startup,
 	"repl":       (*cli).repl,
 	"eval":       (*cli).eval,
+	"outline":    (*cli).outline,
+	"symbol":     (*cli).symbol,
+	"tests-for":  (*cli).testsFor,
 }
 
 func newCLI(args []string) *cli {

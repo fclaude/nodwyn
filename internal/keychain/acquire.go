@@ -19,6 +19,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/scheme"
@@ -261,6 +262,21 @@ func (st *Store) Reauthorize(ctx context.Context, id string, open func(string) e
 	})
 }
 
+// finishKey is the context key under which a caller asks for a way to finish
+// an authorization from a pasted address (WithFinish).
+type finishKey struct{}
+
+// WithFinish returns a context for AddOAuth2 or Reauthorize whose
+// authorization hands hook a function that finishes it from the address the
+// browser ended on, as its listener would have been told it (ADR 24, amended
+// 2026-10-17): for a console on another computer than the one nodwyn runs on,
+// whose browser cannot reach the listener. The function is valid until the
+// authorization ends, and refuses an address that is not this
+// authorization's own redirect.
+func WithFinish(ctx context.Context, hook func(finish func(pasted string) error)) context.Context {
+	return context.WithValue(ctx, finishKey{}, hook)
+}
+
 // authorize runs Authorization Code with PKCE (RFC 7636) for t: a verifier
 // and a state nonce, a listener on 127.0.0.1 at a random port that serves
 // only /callback and answers one request, the authorization URL handed to
@@ -301,14 +317,12 @@ func (st *Store) authorize(ctx context.Context, t tokenSet, open func(string) er
 	plan, sentID := t.Provider == "openai", t.ClientID
 	registering := plan && sentID == "dynamic_agent_client"
 	done := make(chan result, 1)
-	mux := http.NewServeMux()
-	mux.HandleFunc(callback, func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		var res result
+	var answered atomic.Bool
+	// receive judges the redirect's query, by the listener's handler or by
+	// an address pasted in (finish, below): the same checks either way. over
+	// says the flow already had its answer.
+	receive := func(q url.Values) (res result, over bool) {
 		switch {
-		case r.Method != http.MethodGet:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
 		case q.Get("state") != state:
 			res.err = errors.New("the redirect's state does not match this authorization; nothing was stored")
 		case q.Get("error") != "":
@@ -327,9 +341,22 @@ func (st *Store) authorize(ctx context.Context, t tokenSet, open func(string) er
 				}
 			}
 		}
-		select {
-		case done <- res:
-		default: // a second request after the first: the flow is over
+		// The first answer ends the flow, whether or not it has been read
+		// yet: a second one finds it over.
+		if answered.Swap(true) {
+			return res, true
+		}
+		done <- res
+		return res, false
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc(callback, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		res, over := receive(r.URL.Query())
+		if over {
 			http.Error(w, "this authorization is already over", http.StatusGone)
 			return
 		}
@@ -341,6 +368,27 @@ func (st *Store) authorize(ctx context.Context, t tokenSet, open func(string) er
 		}
 		fmt.Fprintf(w, "<!doctype html><title>nodwyn</title><p>%s</p>", html.EscapeString(msg))
 	})
+	// finish takes the address a browser ended on when the provider sent it
+	// back to a listener it could not reach (this one is on the computer
+	// nodwyn runs on, and the browser may be on another). Only this flow's
+	// own redirect address is taken, and what it carries goes through the
+	// checks the listener's handler makes, so a pasted address is no more
+	// trusted than a redirect; the code in it is useless without the
+	// verifier, which stays here.
+	if hook, ok := ctx.Value(finishKey{}).(func(func(string) error)); ok {
+		hook(func(pasted string) error {
+			u, err := url.Parse(strings.TrimSpace(pasted))
+			if err != nil || u.Scheme != "http" || u.Host != ln.Addr().String() || u.Path != callback || u.User != nil {
+				return fmt.Errorf("keychain: that is not the address the provider sent the browser back to (it starts %s)", redirect)
+			}
+			if res, over := receive(u.Query()); over {
+				return errors.New("keychain: this authorization is already over")
+			} else if res.err != nil {
+				return fmt.Errorf("keychain: %w", res.err)
+			}
+			return nil
+		})
+	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	defer srv.Close()

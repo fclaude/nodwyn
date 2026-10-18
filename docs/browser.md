@@ -332,9 +332,16 @@ upload URL rules are unchanged.
 **Project startup.** The console opens an untrusted project's tasks with the default
 loop, skipping its init and approval files and showing a note. Review and accept
 them using `nodwyn trust --repo PATH` from this computer's terminal. A changed
-revision needs review again before reload/resume. There is no console grant-trust
-button or remote grant-trust API. Existing tasks must be restarted after revocation
-to discard their loaded code and grants.
+revision needs review again before reload/resume. A device signed in with a
+passkey (Other devices, below) can do it from Workspaces: each folder with startup
+files says whether they are trusted, and **Review…** shows both files whole with
+their revision; **Trust this revision** sends that revision, after a touch of the
+passkey, and the daemon refuses it if the files changed since; **Revoke trust**
+asks first. Files too large to read whole are not offered. This computer's own
+console and a device paired by invitation can read the state but not grant it
+(this computer's cookie goes to every server on loopback, a task's dev server
+among them): `nodwyn trust` is the way there. Existing tasks must be restarted
+after a grant or a revocation, to load or discard their code and grants.
 
 **The model picker.** Under the message box of the New task window, and under
 a conversation's, a **Model** and an **Effort** select. Both list the models
@@ -665,6 +672,7 @@ changes nothing.
 ```sh
 nodwyn ui --listen 127.0.0.1:7777 --name https://desk.example.net   # behind your proxy that ends TLS
 nodwyn ui --listen 0.0.0.0:7777 --name desk.example.net:7777 --tls-cert cert.pem --tls-key key.pem
+nodwyn ui --acme nodwyn.example.net --acme-accept-terms   # the console gets its own certificate, on :443
 nodwyn ui --listen 100.101.102.103:7777          # a VPN address, plain http: devices only answer
 nodwyn devices invite                            # an invitation for another device
 nodwyn devices                                   # list paired devices
@@ -723,7 +731,11 @@ front of the console sends the bare name and an `https://` origin, which
 name, marks the device cookie Secure, and still speaks http to the proxy. A
 refused origin is answered with the one expected. `--tls-cert` and
 `--tls-key` are read again when either file changes, so a renewed certificate
-is served without a restart. Every answer from a device is recorded as the
+is served without a restart. `--acme NAME` gets the certificate itself from an
+ACME CA such as Let's Encrypt (it serves https on :443 for that name, keeps
+its certificates in `acme/` of the config directory and renews them; the CA's
+terms are accepted with `--acme-accept-terms`, and `--acme-directory` and
+`--acme-email` name another CA and an address for its notices). Every answer from a device is recorded as the
 bridge's kernel identity followed by `via web:NAME`, and `passkey:NAME` for
 the person's device.
 

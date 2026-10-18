@@ -321,6 +321,42 @@ func TestExpectationLinesOfWantsAndPhraseChecks(t *testing.T) {
 
 // A line's string literals are Go's "..." and `...` and Python's also '...',
 // as written; a rune, a comment and a literal that does not close are none.
+// The expectations of test files of other languages and names are read too
+// (ADR 32, amended 2026-10-16): Django's tests.py, Jest's x.test.js,
+// Rust's assert_eq!, and a const expected.
+func TestRemovedExpectationsOfOtherLanguages(t *testing.T) {
+	head := map[string]string{
+		"tests/forms/tests.py": "class T(TestCase):\n    def test_a(self):\n        self.assertEqual(f(1), 'one')\n",
+		"web/cart.test.js":     "test('adds', () => {\n  const expected = 'two';\n  expect(add(1, 1)).toBe(2); // sum\n});\n",
+		"src/lib.rs":           "pub fn f() {}\n",
+		"tests/it.rs":          "#[test]\nfn adds() {\n    assert_eq!(add(1, 1), 2);\n}\n",
+		"docs/tests/readme.md": "assert x == 1\n",
+		"src/main.js":          "expect(1).toBe(1)\n",
+	}
+	now := map[string]string{
+		"tests/forms/tests.py": "class T(TestCase):\n    def test_a(self):\n        self.assertEqual(f(1), 'uno')\n",
+		"web/cart.test.js":     "test('adds', () => {\n  const expected = 'three';\n  expect(add(1, 1)).toBe(3); // sum\n});\n",
+		"src/lib.rs":           "pub fn f() {}\n",
+		"tests/it.rs":          "#[test]\nfn adds() {\n    assert_eq!(add(1, 1), 3);\n}\n",
+		"docs/tests/readme.md": "assert x == 2\n",
+		"src/main.js":          "expect(1).toBe(2)\n",
+	}
+	var got []string
+	for _, l := range removedExpectations(fakeChange(head, now)) {
+		got = append(got, fmt.Sprintf("%s:%d %s", l.path, l.line, l.text))
+	}
+	want := []string{
+		"tests/forms/tests.py:3 self.assertEqual(f(1), 'one')",
+		"tests/it.rs:3 assert_eq!(add(1, 1), 2);",
+		"web/cart.test.js:2 const expected = 'two';",
+		"web/cart.test.js:3 expect(add(1, 1)).toBe(2); // sum",
+	}
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("expectations %q, want %q", got, want)
+	}
+}
+
 func TestStringLiterals(t *testing.T) {
 	if got := stringLiterals("a_test.go", `f("a\"b", `+"`c`"+`, '"', 'x') // "z"`); !reflect.DeepEqual(got, []string{`a\"b`, "c"}) {
 		t.Errorf("Go literals: %q", got)

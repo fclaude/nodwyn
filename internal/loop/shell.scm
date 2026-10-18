@@ -28,15 +28,24 @@
                        (substring s (- n shell-tail-chars) n)))))
 
 ;; A shell-exec result's text, or #f when the text is not one.
+;;
+;; The result's note (exit 141 with a downstream head; a read that printed
+;; nothing) was left out of this text until 2026-10-17, so the model never
+;; read it: only the log and the clients showed it. A lean session reads it on
+;; a line of its own after the output; a full session's text is what it was.
 (define (shell-plain raw)
   (let ((v (guard (e (else #f)) (json-parse raw))))
     (and (pair? v) (assoc-ref v "status" #f)
          (let ((out (format "~a" (assoc-ref v "stdout" "")))
-               (err (format "~a" (assoc-ref v "stderr" ""))))
-           (string-append (let ((st (assoc-ref v "status" "")))
-                            (if (integer? st) (format "exit ~a" st) (format "~a" st)))
-                          (if (equal? out "") "" (string-append "\n" (shell-clip out)))
-                          (if (equal? err "") "" (string-append "\n[stderr]\n" (shell-clip err))))))))
+               (err (format "~a" (assoc-ref v "stderr" "")))
+               (note (format "~a" (assoc-ref v "note" ""))))
+           (let ((text (string-append (let ((st (assoc-ref v "status" "")))
+                                        (if (integer? st) (format "exit ~a" st) (format "~a" st)))
+                                      (if (equal? out "") "" (string-append "\n" (shell-clip out)))
+                                      (if (equal? err "") "" (string-append "\n[stderr]\n" (shell-clip err))))))
+             (if (and lean-prompt (not (equal? note "")))
+                 (string-append text (if (string-suffix? "\n" text) "" "\n") "[note] " note)
+                 text))))))
 
 ;; Where needle first occurs in s, or #f.
 (define (shell-find s needle)

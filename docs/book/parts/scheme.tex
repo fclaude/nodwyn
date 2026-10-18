@@ -585,12 +585,15 @@ These exist only in a session.
 Primitive & What it does \\
 \midrule
 \endhead
-\code{(fs-read path [start [count]])} & a whole file (at most 1\,MiB), or \code{count} lines (default 200) from line \code{start} under a \code{[lines A-B of N]} header \\
+\code{(fs-read path [start [count]])} & a whole file (at most 1\,MiB), or \code{count} lines (default 200) from line \code{start} under a \code{[lines A-B of N]} header; in the lean profile a fourth argument, \code{symbol}, reads one definition \\
 \code{(fs-write path content)} & create or replace a file; irreversible, its diff logged and shown at any confirm \\
 \code{(fs-edit path old new [replace\_all])} & replace exactly one occurrence of \code{old}, or with \code{\#t} every one; irreversible; a credential in the file is matched as the \code{[REDACTED \textit{class}]} placeholder the model reads, and the placeholder in \code{new} keeps it (\adr{43}) \\
 \code{(fs-edit path "" "" \#f edits)} & several such changes to one file, in order, from a list of objects with \code{old}, \code{new} and \code{replace\_all}; nothing is written unless all apply (\adr{38}) \\
 \code{(fs-list path)} & a directory's names, sorted; directories end in \code{/} \\
 \code{(fs-find path glob)} & file names under a directory matching a glob, at most 500 \\
+\code{(outline path)} & the shape of a source file without its text: its classes, functions, methods and variables, nested, each with the lines it spans, its signature and the first line of its documentation (lean profile only; \adr{32}) \\
+\code{(tests-for path)} & the test files that exercise a source file, the rarest names it shares counting most, and the command that runs each (lean profile only; \adr{32}) \\
+\code{(scheme code)} & run a small Scheme program that calls the other tools as procedures, to do several reads, searches, edits or commands in one call; every tool it calls goes through the guard as a call of its own does (lean profile only; \adr{32}) \\
 \code{(index-grep path pattern [glob [context]])} & search contents with an RE2 regular expression, walked and matched in Go \\
 \code{(index-search query scope [limit [path]])} & search by words, best match first: \code{scope} \code{"repo"} ranks chunks of the files git lists from an index kept in nodwyn's data directory, read again through \code{fs-read}; \code{"conversation"} the session's messages, replies, calls and results, those the window elided or folded included, read from the log; \code{"earlier"} the project's other tasks, when the person allows it (\adr{50}); events are shown under the turns that hold them, each turn in a line from its card (\adr{51}) \\
 \code{(index-update [path])} & bring the repository's index up to date, or add a directory git ignores, and say what it holds (\adr{50}) \\
@@ -600,7 +603,7 @@ Primitive & What it does \\
 \code{(check-without cmd args)} & run a check again with each part of the change taken out in turn, putting each back; a part the check still passes without is one it does not test \\
 \code{(change-removals request)} & what the change takes away that its check cannot show: the definitions gone from their package, and the cases, assertions, \code{want} values and phrase checks of existing tests removed or rewritten \\
 \code{(edit-support lines request reply)} & read the reply to the question on an edited test against the request: for each line, whether the reply quotes a sentence of the request that shares a distinctive word with it \\
-\code{(original-tests paths)} & run the Go tests of the test files the change edited as the last commit had them, against the change, and name the ones that fail \\
+\code{(original-tests cmd args paths)} & run the check again with the test files the change edited as the last commit had them (any language, named from the run's output), and name the tests that fail there and pass on the last commit \\
 \code{(change-claims request runs edits declared)} & the lines the change adds to documents and comments that state what nothing in the turn showed: a run's result or figures, an amendment date, a paragraph pasted twice, entries added by hand to a generated file \\
 \code{(change-dropped-conditions request)} & the operands of an old \code{\&\&} or \code{||}, and the guards, that a rewritten Go function no longer checks \\
 \code{(read-data text)} & every datum in \code{text} as data, unevaluated: the forms, strings, symbols and numbers it holds; an error names where \code{text} stops being readable. A plan written as forms is read with it \\
@@ -671,7 +674,14 @@ how to split it. Otherwise:
     \code{TMPDIR} set to the session's scratch directory. Nothing else
     reaches it, so a secret in \nodwyn's environment does not.
   \item Standard output and standard error are each capped at 256\,KiB,
-    past which the text ends with \code{[output truncated at 256 KiB]}.
+    keeping the first and the last half with a line between them that
+    counts what was left out. In a lean session, on the model's own call, a
+    stream of more than 8\,KiB or 150 lines is shown instead as a view: its first 20 lines, a
+    marker where the others are (\code{[... lines 21-310 of 330 not shown;
+    full output is saved at \$TMPDIR/out/7.stdout: ...]}), and its last 50,
+    at most 6\,KiB; the whole stream is in that file for \code{sed -n} or
+    \code{grep -n}. A command that reads a file (\code{cat}, \code{head},
+    \code{tail}, \code{nl}, \code{sed -n}) keeps the cap above.
   \item It has its own process group. A cancellation or the timeout
     (\code{shell\_timeout} in the \code{[loop]} table of
     \file{config.toml}, 10 minutes by default) kills the whole group, not

@@ -526,7 +526,9 @@ carries the run's plan, and so does a chat's turn after one that did not
 finish (its `turn.end` `outcome` other than `completed`): its `gate.plan`
 has `noul` `carried`, the same `plan`, and `marks`, the `plan.step` marks of
 the earlier turns, the latest per step in step order; the turn's own marks come after it, as
-`plan.step`, and a front-end shows both ([runs](runs.md)).
+`plan.step`, and a front-end shows both ([runs](runs.md)). A `gate.plan` with `hidden`
+true was recorded and not shown to the model: the lean profile's one-line plan
+(ADR 32, amended 2026-10-17); a front-end shows it to the person as any other.
 
 `Prompt.Egress` names an OAuth2 credential's granted `Scopes` with its class
 and destination, and a proposed `Prompt.Binding` row pins them. A
@@ -773,6 +775,7 @@ with.
 | `credentials.bind` | `{"id","dest","methods","position"}` | The list; one exact binding row per method, with an OAuth2 credential's granted scopes |
 | `credentials.unbind` | `{"id","dest","positions","scopes"?}` | The list; takes back the binding row the list shows for that host, positions and scopes, whatever its methods, leaving every other byte of `bindings.toml`; refused, with the file unchanged, for a row it cannot cut out of the text (edit the file) |
 | `credentials.remove` | `{"id","revoke"?}` | `{revoked, list}`; `revoke` asks an OAuth2 provider to revoke the tokens first; the class's rows leave `bindings.toml` with it, unless another credential still has the class |
+| `credentials.authorize.finish` | `{"id","url"}` | `{id, class, provider, url, state}` |
 | `credentials.authorize` | `{"id"}`, or `{"provider","client_id","class"?,"client_secret"?,"scopes"?,"auth_url"?,"token_url"?,"revoke_url"?}` | `{id, class, provider, url, state:"waiting"}` |
 
 Each entry of `credentials` is `{id, class, kind, created, used_by,
@@ -787,6 +790,16 @@ is now. `missing` lists the classes a model, an MCP server or the judge is
 configured to send that the keychain does not hold. No result carries a value or a token. A class is letters,
 digits, dots, dashes or underscores (at most 64), and adding a second
 credential of a class is refused.
+
+`credentials.authorize.finish {id, url}` finishes a waiting authorization
+from the address a browser ended on when it could not reach the listener
+(a console on another computer than the daemon's, ADR 24 amended
+2026-10-17). It accepts only that authorization's own redirect address and
+checks its query as the listener does; a refusal leaves the authorization
+waiting. It answers the authorization's `authorizationInfo` (state
+`waiting` until the code is exchanged; `credentials.list` reports the
+outcome). Refused to a paired device, and offered to the person's device
+after a touch of its passkey.
 
 `credentials.authorize` starts Authorization Code with PKCE (ADR 24 §2) and
 answers as soon as the provider's consent page exists: `url` is for the
@@ -1094,7 +1107,15 @@ mount authority.
 Repository init and approvals load only when `trusted-projects.json` in the user
 configuration directory grants their current combined revision. Otherwise ordinary
 startup skips both and emits a note; reload refuses. The CLI `nodwyn trust` owns
-the explicit review/accept/revoke flow; no RPC method grants this trust. Policy
+the explicit review/accept/revoke flow, and `trust.read {repo}` and
+`trust.set {repo, revision}` do the same for a console of a person signed in
+with a passkey (ADR 45, amended 2026-10-17): `trust.read` returns `{repo,
+present, trusted, revision, init, allow, reviewable}`, the files' text whole
+(`reviewable` false, and no text, when either is over 256 KiB), for a folder
+nodwyn works in; `trust.set` grants the revision read, refused if the files
+changed since (empty `revision` revokes) and to a paired device, and returns
+the same state. The bridge offers `trust.set` only to a device signed in with
+a passkey, after a touch of it, never to this computer's console. Policy
 editor saves do not grant it implicitly. A running session keeps its already loaded
 code and grants until restarted. The optimiser keeps a changed init pending review.
 

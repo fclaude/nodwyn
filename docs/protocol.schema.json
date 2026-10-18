@@ -1961,6 +1961,9 @@
     },
     "log.GatePlan": {
       "properties": {
+        "hidden": {
+          "type": "boolean"
+        },
         "marks": {
           "items": {
             "$ref": "#/$defs/log.PlanStep"
@@ -3617,6 +3620,9 @@
           "$ref": "#/$defs/request.credentials.authorize"
         },
         {
+          "$ref": "#/$defs/request.credentials.authorize.finish"
+        },
+        {
           "$ref": "#/$defs/request.credentials.bind"
         },
         {
@@ -3842,6 +3848,12 @@
           "$ref": "#/$defs/request.startup.set"
         },
         {
+          "$ref": "#/$defs/request.trust.read"
+        },
+        {
+          "$ref": "#/$defs/request.trust.set"
+        },
+        {
           "$ref": "#/$defs/request.versions.diff"
         },
         {
@@ -4007,6 +4019,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.credentialAuthorizeParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.credentials.authorize.finish": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "credentials.authorize.finish"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.credentialFinishParams"
             }
           ],
           "unevaluatedProperties": false
@@ -6353,6 +6396,68 @@
       ],
       "type": "object"
     },
+    "request.trust.read": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "trust.read"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.trustParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.trust.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "trust.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.trustSetParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.versions.diff": {
       "properties": {
         "id": {
@@ -6946,6 +7051,9 @@
     "result.credentials.authorize": {
       "$ref": "#/$defs/rpc.authorizationInfo"
     },
+    "result.credentials.authorize.finish": {
+      "$ref": "#/$defs/rpc.authorizationInfo"
+    },
     "result.credentials.bind": {
       "$ref": "#/$defs/rpc.credentialsResult"
     },
@@ -7239,6 +7347,12 @@
     },
     "result.startup.set": {
       "$ref": "#/$defs/rpc.startupState"
+    },
+    "result.trust.read": {
+      "$ref": "#/$defs/rpc.trustState"
+    },
+    "result.trust.set": {
+      "$ref": "#/$defs/rpc.trustState"
     },
     "result.versions.diff": {
       "$ref": "#/$defs/rpc.versionDiffResult"
@@ -7689,6 +7803,21 @@
         "dest",
         "methods",
         "position"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialFinishParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "url"
       ],
       "type": "object"
     },
@@ -10021,6 +10150,80 @@
         "detail",
         "model",
         "ms"
+      ],
+      "type": "object"
+    },
+    "rpc.trustParams": {
+      "properties": {
+        "repo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo"
+      ],
+      "type": "object"
+    },
+    "rpc.trustSetParams": {
+      "properties": {
+        "repo": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "rpc.trustState": {
+      "properties": {
+        "allow": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "init": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "present": {
+          "type": "boolean"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "reviewable": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "trusted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repo",
+        "present",
+        "trusted",
+        "init",
+        "allow",
+        "reviewable"
       ],
       "type": "object"
     },

@@ -26,6 +26,23 @@
 ;;
 ;; A project may redefine any of these, or plan-gate itself.
 
+;; The lean ladder (2026-10-16): the plan gate of a required turn (a run's) is
+;; skipped. The core wants a plan recorded before anything irreversible, so
+;; plan-minimal-text is recorded as the plan, with no explorer, no planner and
+;; no judge, and the model plans for itself. dsl23 spent 31% of a task's cost
+;; on the explorer (1,081 requests in 121 tasks) and the planner (245); Pi, which
+;; has neither, resolved 104 and 106 of the 121 against dsl23's 98 and 98.
+(define plan-minimal #t)
+(define plan-minimal-text "1. Make the change the request calls for, check it with the project's own tests, and report what you changed.")
+;; The one-line plan is recorded and not shown to the model (2026-10-17): every
+;; lean request carried "Plan for the current task (work through it, and the
+;; harness marks a step done ... mark one with plan-step ... write the plan
+;; again)" over it, though plan-step and plan-write are not offered. The person
+;; still sees it, and the core still finds a plan recorded before anything
+;; irreversible (ADR 32, amended 2026-10-17).
+(define lean-plan-hidden #t)
+(define (plan-hidden? text) (and lean-plan-hidden (equal? text plan-minimal-text)))
+
 (define plan-needed-threshold 0.5) ; the judge's "needs a plan" probability at which a request gets one
 (define plan-accept-score 0.7)     ; the normalised score at which a plan is accepted
 (define plan-max-revisions 3)      ; revisions after the first draft (SPEC: at most 3)
@@ -375,7 +392,8 @@
 ;; numbers and the window shows what is done.
 (define (plan-carry run)
   (record-plan (list (cons 'decision "carried") (cons 'plan (assoc-ref run 'plan))
-                     (cons 'marks (assoc-ref run 'marks '())))))
+                     (cons 'marks (assoc-ref run 'marks '()))
+                     (cons 'hidden (plan-hidden? (assoc-ref run 'plan))))))
 
 ;; The plan a turn that did not finish left with a step unmarked, or #f.
 (define (plan-left)
@@ -386,6 +404,8 @@
   (set! sub-agent-seen #f) ; nothing an unfinished exploring left is kept
   (let ((judged (plan-judge?)))
     (cond ((plan-recorded?) #f) ; this turn has its plan already
+          ((and plan-minimal (plan-required?) (not (run-plan)))
+           (record-plan (list (cons 'decision "required") (cons 'plan plan-minimal-text) (cons 'hidden lean-plan-hidden))))
           ((plan-required?)
            (let ((run (run-plan)))
              (if (and run (assoc-ref run 'next #f))

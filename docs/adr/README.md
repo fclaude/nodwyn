@@ -41,7 +41,7 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0029](./0029-optional-tool-parameters.md) — Optional tool parameters
 - [0030](./0030-one-app-three-ways-to-reach-it.md) — One app, three ways to reach it: desktop, browser, phone (amended: a computer nobody sits at, where devices pair by invitation and the person signs in with a passkey)
 - [0031](./0031-renamed-to-nodwyn.md) — The project is renamed nodwyn
-- [0032](./0032-working-habits.md) — The default loop works the way pil did
+- [0032](./0032-working-habits.md) — The default loop works the way pil did (amended 2026-10-17: a lean profile for sessions nobody approves, and a full one)
 - [0033](./0033-go-126-base.md) — Go 1.26 is the base
 - [0034](./0034-sessions-in-git-worktrees.md) — Sessions in git worktrees (partly implemented: a session in a worktree from the console)
 - [0035](./0035-chat-is-the-way-to-work.md) — A chat is the way to work, and it asks less (amends 17, 18, 30)

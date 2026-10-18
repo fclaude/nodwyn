@@ -84,7 +84,7 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 		return err
 	}
 	base := "http://" + listener.Addr().String()
-	if remote.listen != "" || len(remote.hosts) > 0 {
+	if remote.shared() {
 		shared, options, err := remote.listener(paths, webui.Options{Socket: socket, PairingCode: code})
 		if err != nil {
 			return err

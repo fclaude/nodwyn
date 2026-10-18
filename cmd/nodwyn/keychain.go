@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -159,8 +160,38 @@ func readPassphraseFrom(tty *os.File, out io.Writer, prompt string) ([]byte, err
 	return secret, err
 }
 
+// credentialName is the name of the systemd credential the keychain's
+// passphrase is read from: LoadCredentialEncrypted=nodwyn-keychain:FILE (or
+// LoadCredential=, SetCredential=) in the daemon's unit puts it in the
+// directory $CREDENTIALS_DIRECTORY names, for that service alone.
+const credentialName = "nodwyn-keychain"
+
+// credentialPassphrase reads the passphrase from the credential, one
+// trailing newline removed (`systemd-creds encrypt` keeps the one `echo`
+// wrote), and says where it came from. It reads a file the service manager
+// made, never an environment variable or an argument, which other processes
+// can read (ADR 5): the directory is the unit's, mode 0700, in a memory file
+// system, and the file is 0400.
+func credentialPassphrase() (pass []byte, from string, ok bool) {
+	dir := os.Getenv("CREDENTIALS_DIRECTORY")
+	if dir == "" || !filepath.IsAbs(dir) {
+		return nil, "", false
+	}
+	file := filepath.Join(dir, credentialName)
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return nil, "", false
+	}
+	raw = bytes.TrimSuffix(bytes.TrimSuffix(raw, []byte("\n")), []byte("\r"))
+	if len(raw) == 0 {
+		return nil, "", false
+	}
+	return raw, "the credential " + credentialName, true
+}
+
 // openKeychain opens the store if one exists: at once if it has no
-// passphrase; else if stdin is a terminal, or, with controllingTTY, when
+// passphrase; else with the passphrase in the systemd credential
+// nodwyn-keychain; else if stdin is a terminal, or, with controllingTTY, when
 // the process has a controlling terminal (/dev/tty) — as ssh and sudo ask —
 // so a session whose input is a script can still be unlocked by the person
 // who started it.
@@ -174,6 +205,20 @@ func openKeychain(paths config.Paths, controllingTTY bool) (*keychain.Store, bin
 		return opened(paths, store)
 	} else if !errors.Is(err, keychain.ErrNeedsPassphrase) {
 		return nil, binding.Table{}, err
+	}
+	// A service manager can hand the daemon the passphrase as a credential
+	// (ADR 5, amended 2026-10-17): a daemon nobody sits at has no terminal.
+	if pass, from, ok := credentialPassphrase(); ok {
+		store, err := keychain.Open(paths.Keychain, pass)
+		clear(pass)
+		if err == nil {
+			return opened(paths, store)
+		}
+		// Not fatal: a service that exits here would be started again by its
+		// manager at once, again and again; locked, it can be unlocked from a
+		// console, which a crash loop could not.
+		fmt.Fprintf(os.Stderr, "keychain: %s does not open it (%v); starting without credentials: unlock it from the console\n", from, err)
+		return nil, binding.Table{}, nil
 	}
 	tty, out := os.Stdin, io.Writer(os.Stderr)
 	if !term.IsTerminal(int(tty.Fd())) {

@@ -75,6 +75,10 @@ func (MetaPolicy) Check(_ context.Context, p *scheme.Prim, _ []scheme.Value) Dec
 type RepoPin struct {
 	Root    string // absolute, cleaned
 	Scratch string // the session's scratch directory; "" for none
+	// Temp is the system's /tmp, resolved, which a lean session nobody
+	// approves may use as it uses the scratch directory (TempDir); "" for
+	// none, the default.
+	Temp string
 	// Mounts are the workspace's folders outside the root (ADR 22 §1),
 	// reached by absolute path. A read-only mount refuses every write.
 	Mounts []Mount
@@ -104,8 +108,14 @@ func (r RepoPin) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) D
 			// nodwyn's 107 attempts, though the prompts name $TMPDIR (ADR
 			// 17, amended 2026-10-10). The refusal says where the file goes,
 			// as the prompts write it.
+			if r.Temp != "" {
+				// The lean profile's model read the denial as a sandbox's wall
+				// and checked $TMPDIR on its next call 15 times of 19, whatever
+				// it said: say what was refused, and that nothing was done.
+				return Decision{Verdict: Deny, Reason: "path " + raw + " is outside the repository, $TMPDIR and /tmp, so the call was refused and nothing was done"}
+			}
 			if r.Scratch != "" && filepath.IsAbs(raw) {
-				where += "; a throwaway file goes in the scratch directory, written as $TMPDIR/" + filepath.Base(raw)
+				where += "; a throwaway file goes in the scratch directory, written as $TMPDIR/" + filepath.Base(raw) + ", which is " + filepath.Join(r.Scratch, filepath.Base(raw))
 			}
 			return Decision{Verdict: Deny, Reason: "path " + raw + " is outside " + where}
 		}
@@ -165,6 +175,9 @@ func (r RepoPin) Resolve(raw string) string {
 		return abs
 	}
 	if r.Scratch != "" && filepath.IsAbs(raw) && within(resolved, resolveExisting(r.Scratch)) {
+		return abs
+	}
+	if filepath.IsAbs(raw) && InTemp(r.Temp, r.Scratch, raw) {
 		return abs
 	}
 	if filepath.IsAbs(raw) && r.mountOf(raw) != nil {
@@ -308,6 +321,7 @@ func (d PathDenylist) credentialName(base string) string {
 type ArgvTrigger struct {
 	Root     string
 	Scratch  string   // the session's scratch directory, which is not "outside"
+	Temp     string   // the system's /tmp, resolved, for a lean session nobody approves (TempDir); "" for none
 	Network  []string // program names
 	Patterns []string // substrings of the joined command line
 }
@@ -362,7 +376,7 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			return
 		}
 		path := argumentPath(a.spelled(tok), a.Root, false)
-		if path == "" || a.inScratch(path) || (ok != nil && ok(path)) {
+		if path == "" || a.inScratch(path) || InTemp(a.Temp, a.Scratch, path) || (ok != nil && ok(path)) {
 			return
 		}
 		reasons = append(reasons, "command line names a path outside the repository: "+path)
@@ -406,11 +420,18 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			outside(tok, nil)
 		}
 	}
+	// Where nobody could approve a path outside (a lean session nobody
+	// approves, which may use /tmp), it is refused outright, and the refusal
+	// says what was refused and that nothing ran: a confirmation nobody
+	// answers read to the model as a sandbox's wall.
+	if a.Temp != "" && len(flagged) > 0 {
+		return Decision{Verdict: Deny, Reason: "the command line names " + strings.Join(flagged, ", ") + ", outside the repository, $TMPDIR and /tmp, so it was refused and nothing of it ran", Detail: line}
+	}
 	// Models write throwaway files to /tmp by habit: the refusal says where
 	// they go, as the prompts write it.
 	for _, p := range flagged {
 		if a.Scratch != "" && (p == "/tmp" || strings.HasPrefix(p, "/tmp/")) {
-			reasons = append(reasons, "a throwaway file goes in the scratch directory, written as $TMPDIR/"+filepath.Base(p))
+			reasons = append(reasons, "a throwaway file goes in the scratch directory, written as $TMPDIR/"+filepath.Base(p)+", which is "+filepath.Join(a.Scratch, filepath.Base(p)))
 			break
 		}
 	}
@@ -452,6 +473,49 @@ func (a ArgvTrigger) spelled(tok string) string {
 		parts[i] = word
 	}
 	return strings.Join(parts, "=")
+}
+
+// TempDir is the system's /tmp with its links resolved (/private/tmp on
+// macOS), or "" when there is none: the directory a lean session nobody
+// approves may write to and read from as it does its scratch directory. Its
+// model wrote throwaway scripts to /tmp in 10 to 22% of sessions, each refusal
+// cost 2.2 calls, and the files never reach the repository's diff (ADR 32,
+// amended 2026-10-17).
+func TempDir() string {
+	real, err := filepath.EvalSymlinks("/tmp")
+	if err != nil {
+		return ""
+	}
+	if st, err := os.Stat(real); err != nil || !st.IsDir() {
+		return ""
+	}
+	return real
+}
+
+// InTemp reports whether path, absolute and without a parent component, lies
+// in temp (TempDir) once its links are resolved, and is neither another
+// session's scratch directory nor a file named as a credential is (the
+// denylist's names, DefaultDenylist). scratch is the session's own scratch
+// directory, which may be in temp. "" for temp allows nothing.
+func InTemp(temp, scratch, path string) bool {
+	if temp == "" || !filepath.IsAbs(path) || slices.Contains(strings.Split(path, string(filepath.Separator)), "..") {
+		return false
+	}
+	resolved := resolveExisting(filepath.Clean(path))
+	if !within(resolved, temp) {
+		return false
+	}
+	if scratch != "" && within(resolved, resolveExisting(scratch)) {
+		return true
+	}
+	rel, err := filepath.Rel(temp, resolved)
+	if err != nil {
+		return false
+	}
+	if first := strings.Split(rel, string(filepath.Separator))[0]; strings.HasPrefix(first, "nodwyn-scratch-") {
+		return false
+	}
+	return DefaultDenylist().credentialName(filepath.Base(resolved)) == "" && DefaultDenylist().credentialName(filepath.Base(path)) == ""
 }
 
 func (a ArgvTrigger) inScratch(path string) bool {

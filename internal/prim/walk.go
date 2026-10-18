@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -19,6 +20,20 @@ import (
 // matches (see compileGlob); limit bounds the candidates, 0 for no bound.
 // A path that is a file is returned as itself.
 func searchFiles(ctx context.Context, root, path, glob string, limit int) ([]string, error) {
+	return searchFilesWith(ctx, root, path, glob, limit, nil)
+}
+
+// isSourceFile is whether a file's extension is one of a programming
+// language's (expectationLanguages) or a build or configuration file a code
+// search is most often after.
+func isSourceFile(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return slices.Contains(expectationLanguages, ext) || slices.Contains([]string{".cfg", ".toml", ".ini", ".yml", ".yaml", ".mod", ".gradle", ".pyi", ".pyx"}, ext)
+}
+
+// searchFilesWith is searchFiles with a further test every candidate must
+// pass (nil for none).
+func searchFilesWith(ctx context.Context, root, path, glob string, limit int, keep func(name string) bool) ([]string, error) {
 	st, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
@@ -57,6 +72,9 @@ func searchFiles(ctx context.Context, root, path, glob string, limit int) ([]str
 			return nil
 		}
 		if match != nil && !globMatches(match, root, path, name) {
+			return nil
+		}
+		if keep != nil && !keep(name) {
 			return nil
 		}
 		count++

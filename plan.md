@@ -38,7 +38,14 @@ stood until 2026-10-02 is `git show 2f4394f^:plan.md`.
   line mode use the daemon (ADR 30); schedules run on rules said in the
   daemon's words, with their recent runs (ADR 49), and become workflows
   (ADR 53), whose first slice has the daemon start at login and say on the
-  desktop when a task needs an answer.
+  desktop when a task needs an answer. For a server nobody sits at (ADR
+  30, amended): devices pair by invitation, with no code, and stay signed
+  in while they are used, and the person signs in with a passkey, makes
+  this computer's choices from any device and changes setup after a touch;
+  the console can get its own certificate (`--acme`); the keychain can open
+  at boot from a systemd credential (ADR 5); a provider's sign-in finishes
+  from a pasted address (ADR 24); and a project's startup files are
+  reviewed and trusted from a device signed in with the passkey (ADR 45).
 
 ## Next
 
@@ -48,14 +55,15 @@ it is built.
 1. **Always on, from anywhere (ADR 30, 52).** nodwyn runs on a server that
    is always on, and the person uses it from whatever computer or phone is
    at hand. A review on 2026-10-17 found the daemon, the bridge and the
-   scheduler fit that, and the trust model did not: it assumes someone sits
-   at the computer nodwyn runs on. In order:
-   1. *Land the work in flight.* The console reconnects by itself, with
-      backoff, and the bridge pings open sockets (branch
-      `claude/great-burnell-d486ca`, not committed when this was written).
-      Devices pair by invitation and sign in with a passkey, stay signed in
-      while they are used, and are asked for a passkey only for setup: an
-      amendment to ADR 30, being built on `claude/brave-shaw-0dcead`.
+   scheduler fit that, and the trust model did not, since it assumed someone
+   sits at the computer nodwyn runs on; ADR 30's amendment "a computer
+   nobody sits at" answered that the same day. In order:
+   1. *Try it where it is meant to run.* None of it has run on such a
+      server yet. Not tried: a certificate from a real CA (`--acme` was
+      tested against a fake one), the keychain's TPM-sealed credential (a
+      system service; the user unit's form was tried), a phone adding the
+      console to its Home Screen and showing its notice, and whether an
+      iPhone's Home Screen app has to sign in again (ADR 52).
    2. *Notices while the app is closed (ADR 52, §6).* Web Push: the bridge
       sends the fixed notice, encrypted, through the push service of the
       phone's browser, with its keys in the keychain and a subscription per
@@ -81,10 +89,9 @@ it is built.
       and an SSH login may see different `XDG_RUNTIME_DIR`s, and a time zone
       for schedules other than the host's (`time.Local`, now named).
 
-   Also found by the review: session logs grow without bound, and open
-   tasks without a schedule never close; an OAuth2 sign-in needs a browser
-   on the host, since its callback listens on the host's loopback; project
-   trust is granted only by `nodwyn trust` on the host.
+   Also found by the review, and open: session logs grow without bound,
+   and open tasks without a schedule never close; `nodwyn trust` and
+   `credential add --oauth2` on the command line still need the server.
 2. **Worktrees (ADR 34).** `nodwyn worktree list` and `remove`; `--worktree`
    and `--worktree-base` for line mode and `nodwyn run`, with `worktree` on
    `run.start`; the repository behind a worktree made by hand (the common
@@ -111,7 +118,11 @@ it is built.
    residual L1 leaves, which feeds the decision with binding and never
    decides alone (SPEC.md). Until it exists the text layers are L1 alone.
 
-Smaller gaps, in no order: MCP's own authorization discovery and dynamic
+Smaller gaps, in no order: `TestTheSchemeToolDoesNotGoRoundTheGuard`
+(`internal/core`) fails on main when run on its own (2026-10-17), since its
+probe under `/tmp` is made: an unattended lean session may now write to
+`/tmp` (aaa0a76), so either the probe or that rule needs another look, and
+`validate` passed past it; MCP's own authorization discovery and dynamic
 client registration (ADR 24); Google Docs beyond creating one (ADR 22, W5);
 `AGENTS.md` files below the root (ADR 36); whether syntax and lint checks
 belong in `.nodwyn/allow.toml`, so that a `node --check` need not ask. Dated:

@@ -9,11 +9,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
@@ -31,13 +35,25 @@ func (n *names) Set(v string) error { *n = append(*n, v); return nil }
 type remoteFlags struct {
 	listen, cert, key string
 	hosts             names
+	// acme, with the options that go with it, has the console get its own
+	// certificate for that name (ADR 30, amended 2026-10-17).
+	acme, acmeEmail, acmeDirectory string
+	acmeAccept                     bool
 }
+
+// shared reports whether the flags make the console reachable from other
+// machines.
+func (r *remoteFlags) shared() bool { return r.listen != "" || len(r.hosts) > 0 || r.acme != "" }
 
 func (r *remoteFlags) register(flags *flag.FlagSet) {
 	flags.StringVar(&r.listen, "listen", "", "also serve other machines at this address, e.g. a tailnet IP:7777 (devices pair by name)")
 	flags.Var(&r.hosts, "name", "another host:port this console answers to, such as a tailnet name (repeatable); https://NAME when a proxy ends TLS in front of it (tailscale serve)")
 	flags.StringVar(&r.cert, "tls-cert", "", "serve https with this certificate (with --tls-key)")
 	flags.StringVar(&r.key, "tls-key", "", "the certificate's private key")
+	flags.StringVar(&r.acme, "acme", "", "get a certificate for this host name from an ACME CA (Let's Encrypt) and serve https on :443 with it; the internet must reach port 443 (with --acme-accept-terms)")
+	flags.BoolVar(&r.acmeAccept, "acme-accept-terms", false, "accept the ACME CA's terms of service, which --acme needs")
+	flags.StringVar(&r.acmeEmail, "acme-email", "", "an address the CA may write to about the certificate (optional)")
+	flags.StringVar(&r.acmeDirectory, "acme-directory", "", "the CA's ACME directory URL (default: Let's Encrypt's; a staging or private CA's goes here)")
 }
 
 // listener opens the console's listener: loopback on a random port, or the
@@ -45,6 +61,24 @@ func (r *remoteFlags) register(flags *flag.FlagSet) {
 func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.Listener, webui.Options, error) {
 	if (r.cert == "") != (r.key == "") {
 		return nil, options, fmt.Errorf("--tls-cert and --tls-key go together")
+	}
+	if r.acme != "" {
+		switch {
+		case r.cert != "":
+			return nil, options, fmt.Errorf("--acme gets its own certificate: leave out --tls-cert and --tls-key")
+		case !r.acmeAccept:
+			return nil, options, fmt.Errorf("--acme asks a CA for a certificate, which takes its terms of service: read them (Let's Encrypt's are at https://letsencrypt.org/repository/) and pass --acme-accept-terms")
+		case strings.ContainsAny(r.acme, ":/") || net.ParseIP(r.acme) != nil || !strings.Contains(r.acme, "."):
+			return nil, options, fmt.Errorf("--acme takes a host name, such as nodwyn.example.net, which the internet reaches at this computer's port 443: not %q", r.acme)
+		}
+		// Port 443 is where the CA's check (TLS-ALPN-01) arrives, and where
+		// a browser goes without a port, so the name needs none.
+		if r.listen == "" {
+			r.listen = ":443"
+		}
+		if !slices.Contains(r.hosts, r.acme) {
+			r.hosts = append(r.hosts, r.acme)
+		}
 	}
 	address := "127.0.0.1:0"
 	if r.listen != "" {
@@ -67,6 +101,15 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 	if err != nil {
 		return nil, options, err
 	}
+	if r.acme != "" {
+		config, err := acmeConfig(r.acme, r.acmeEmail, r.acmeDirectory, filepath.Join(paths.ConfigDir, "acme"))
+		if err != nil {
+			listener.Close()
+			return nil, options, err
+		}
+		listener = tls.NewListener(listener, config)
+		options.TLS = true
+	}
 	if r.cert != "" {
 		certificate, err := certificateFiles(r.cert, r.key)
 		if err != nil {
@@ -77,7 +120,7 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 		options.TLS = true
 	}
 	options.Hosts = r.hosts
-	if r.listen != "" || len(r.hosts) > 0 {
+	if r.shared() {
 		options.Devices = webui.OpenDevices(devicesFile(paths))
 		options.Audit = os.Stderr
 		fmt.Fprintln(os.Stderr, "Other devices pair with an invitation: nodwyn devices invite prints one.")
@@ -92,6 +135,32 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 		}
 	}
 	return listener, options, nil
+}
+
+// acmeConfig is the TLS configuration of a console that gets its own
+// certificate for name from an ACME CA (autocert): TLS-ALPN-01 answered on
+// the same port, so nothing else listens, and the certificates and the
+// account's key kept in cacheDir, a private directory of the config
+// directory that a task's file tools never reach. Only name is answered: a
+// hello for another name asks the CA for nothing. A certificate is renewed
+// by itself when it has 30 days left, and one in the cache is served with no
+// word to the CA.
+func acmeConfig(name, email, directory, cacheDir string) (*tls.Config, error) {
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		return nil, err
+	}
+	m := &autocert.Manager{
+		Prompt:     autocert.AcceptTOS, // --acme-accept-terms was passed
+		Cache:      autocert.DirCache(cacheDir),
+		HostPolicy: autocert.HostWhitelist(name),
+		Email:      email,
+	}
+	if directory != "" {
+		m.Client = &acme.Client{DirectoryURL: directory}
+	}
+	config := m.TLSConfig()
+	config.MinVersion = tls.VersionTLS12
+	return config, nil
 }
 
 // certificateFiles serves the certificate in certFile and keyFile, read again
