@@ -41,11 +41,11 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0029](./0029-optional-tool-parameters.md) — Optional tool parameters
 - [0030](./0030-one-app-three-ways-to-reach-it.md) — One app, three ways to reach it: desktop, browser, phone (amended: a computer nobody sits at, where devices pair by invitation and the person signs in with a passkey)
 - [0031](./0031-renamed-to-nodwyn.md) — The project is renamed nodwyn
-- [0032](./0032-working-habits.md) — The default loop works the way pil did (amended 2026-10-17: a lean profile for sessions nobody approves, and a full one; 2026-10-18: this repository's completeness rules in its own init.scm)
+- [0032](./0032-working-habits.md) — The default loop works the way pil did (amended 2026-10-17: a lean profile for sessions nobody approves, and a full one; 2026-10-18: the lean prompt carries AGENTS.md, and this repository's completeness rules are in its own init.scm)
 - [0033](./0033-go-126-base.md) — Go 1.26 is the base
 - [0034](./0034-sessions-in-git-worktrees.md) — Sessions in git worktrees (partly implemented: a session in a worktree from the console)
 - [0035](./0035-chat-is-the-way-to-work.md) — A chat is the way to work, and it asks less (amends 17, 18, 30)
-- [0036](./0036-agents-md-in-the-system-prompt.md) — A repository's AGENTS.md joins the system prompt
+- [0036](./0036-agents-md-in-the-system-prompt.md) — A repository's AGENTS.md joins the system prompt (amended: the lean prompt carries it too)
 - [0037](./0037-validate-before-done.md) — Work on nodwyn is validated before it is called done
 - [0038](./0038-several-edits-in-one-call.md) — fs-edit takes several edits to one file in one call
 - [0039](./0039-named-archived-deleted-tasks.md) — Tasks are named, archived and deleted, and listed by folder (amends 2)

@@ -2913,8 +2913,8 @@ and validated, which ADR 36 put in every prompt with no setting to turn it
 off; a coding agent that reads `AGENTS.md` is what the convention expects.
 nodwyn's own file adds 10,340 characters, about 2,600 tokens, to a lean
 prompt of about 650 characters; a repository without the file pays nothing.
-Its effect is being measured on commit-bench, where a task such as 6e18b7ba
-is nodwyn's own repository at an older commit.
+Its effect was measured on commit-bench, where a task such as 6e18b7ba is
+nodwyn's own repository at an older commit.
 
 **Not carried**: the project notes (`(project-notes-section)`). They are the
 agent's own notes from earlier sessions, which the full prompts call leads to
@@ -2923,6 +2923,14 @@ not been measured; a project that wants them appends the section in its
 `init.scm`. Also unchanged: the cap's last line says to read the rest of a
 long file with `fs-read`, which the lean profile does not offer; the model
 reads it through `shell-exec`.
+
+**Measured** (2026-10-18, Muse, the 64 commit-bench jobs of experiment E
+below): with `AGENTS.md` in its prompt the lean profile resolved 59 of 64,
+and of its patches 92% had a test, 62% a document and 50% an ADR change, at
+38.5 model calls a task. That is within the noise of the landed lean build
+(88%, 61% and 47% of its 96 patches): commit-bench's task text already sends
+the model to `AGENTS.md`, so the prompt mostly carries what the model would
+have read. The section stays for the reason above, not for a measured gain.
 
 ## Amendment 2026-10-18: this repository's completeness rules are its own (experiment E)
 
@@ -2995,8 +3003,10 @@ parent's init.scm (or an init.scm of its own where the parent has none) and
 keeps both out of git's view, so neither the model's `git diff` nor the patch
 holds them.
 
-**To be measured** (experiment E): the lean profile with the check against
-the lean profile without it, the same build, tasks and model: how often the
-patches carry a test, a document, an ADR change and the regenerated
-catalogue, the reviews' scores, cost and calls per task, how often the check
-is said, and what the model does after it.
+**Measured** (experiment E, 2026-10-18, Muse, 64 commit-bench jobs): the
+lean profile with the check resolved 64 of 64, and of its patches 94% had a
+test, 77% a document and 67% an ADR change, against 88%, 61% and 47% of the
+landed lean build's 96 patches. The blind reviews scored them 71.0 against
+66.9, higher on 6 of the 9 tasks reviewed. Not yet counted from the same
+runs: the regenerated catalogue, cost and calls per task, how often the
+check was said and what the model did after it.
