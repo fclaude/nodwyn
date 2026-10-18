@@ -324,18 +324,29 @@ var methodTable = map[string]handler{
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if req.Method == "hello" {
 		var p helloParams
-		if err := params(req.Params, &p, "protocol", "via"); err != nil {
+		if err := params(req.Params, &p, "protocol", "via", "passkey"); err != nil {
 			return nil, err
 		}
 		if p.Protocol != ProtocolVersion {
 			return nil, failure(-32001, "Unsupported protocol version")
+		}
+		if p.Passkey != "" && (p.Via == "" || !passkeyName.MatchString(p.Passkey)) {
+			return nil, failure(-32602, "passkey names the passkey of a device given by via, such as laptop")
 		}
 		if p.Via != "" {
 			if client.ready || !viaName.MatchString(p.Via) {
 				return nil, failure(-32602, "via must be a short name such as web:phone, given once")
 			}
 			client.actor += " via " + p.Via
-			client.device = true
+			// A device whose person proved themself with a passkey makes this
+			// computer's choices (ADR 30, amended 2026-10-17). The claim needs
+			// no proof here: a same-user client that claims nothing at all
+			// already has every method, so it raises nobody above that.
+			if p.Passkey != "" {
+				client.actor += " passkey:" + p.Passkey
+			} else {
+				client.device = true
+			}
 		}
 		client.ready = true
 		return helloResult{ProtocolVersion, s.options.Version, methods, client.actor}, nil
@@ -354,6 +365,10 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 
 // viaName is what a relaying client may claim: a short lower-case label.
 var viaName = regexp.MustCompile(`^[a-z][a-z0-9]*:[a-z0-9][a-z0-9._-]{0,31}$`)
+
+// passkeyName is a passkey's name, which is the name of the device that
+// registered it.
+var passkeyName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,31}$`)
 
 // store reads session logs from disk, for the methods that answer about
 // sessions this daemon does not have open.

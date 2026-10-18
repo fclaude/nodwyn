@@ -20,8 +20,8 @@ nodwyn ui
 The console does not start or resume runs. It shows a run started here,
 and its Stop ends it; a message afterwards goes on with the task as a chat.
 `run.start` and `run.resume` with `auto_approve`, `judge` or `unattended`
-are refused to an actor relayed from a paired device
-([browser view](browser.md)).
+are refused to an actor relayed from a paired device, and no browser's
+bridge relays a run method ([browser view](browser.md)).
 
 A run's writes in its folder go ahead without asking, as every session's
 do (`[approval] writes`, ADR 35). A supervised run's other confirms are

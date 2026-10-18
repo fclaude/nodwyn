@@ -46,11 +46,13 @@ type clientReply struct {
 
 // Dial connects to the daemon's socket and checks that it speaks
 // ProtocolVersion.
-func Dial(ctx context.Context, socket string) (*Client, error) { return DialAs(ctx, socket, "") }
+func Dial(ctx context.Context, socket string) (*Client, error) { return DialAs(ctx, socket, "", "") }
 
 // DialAs is Dial for a client relaying for a named screen: via (such as
 // "web:phone") is recorded after this process's identity in every answer.
-func DialAs(ctx context.Context, socket, via string) (*Client, error) {
+// passkey, with via, names the passkey that screen's person proved themself
+// with, which lifts a paired device's limits (ADR 30, amended 2026-10-17).
+func DialAs(ctx context.Context, socket, via, passkey string) (*Client, error) {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	if err != nil {
 		return nil, err
@@ -58,7 +60,7 @@ func DialAs(ctx context.Context, socket, via string) (*Client, error) {
 	c := &Client{conn: conn, waiting: map[uint64]chan clientReply{}, events: make(chan ClientEvent, 256), done: make(chan struct{})}
 	go c.read()
 	var hello helloResult
-	if err := c.Call(ctx, "hello", helloParams{Protocol: ProtocolVersion, Via: via}, &hello); err != nil {
+	if err := c.Call(ctx, "hello", helloParams{Protocol: ProtocolVersion, Via: via, Passkey: passkey}, &hello); err != nil {
 		c.Close()
 		return nil, err
 	}

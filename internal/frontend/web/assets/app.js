@@ -1,7 +1,8 @@
 // Entry point: pairing, the connection, the router and the shell. Views are
 // redrawn from the desk's state; the task view keeps its own conversation.
 import { $, h, icon, toastError } from "./dom.js";
-import { Connection, pair, takeTicket } from "./connection.js";
+import { Connection, pair, takeTicket, takeInvite } from "./connection.js";
+import { pairing, passkeysHere, register, assert, confirmTouch } from "./passkey.js";
 import { Desk } from "./desk.js";
 import { renderSidebar } from "./sidebar.js";
 import { renderHome } from "./home.js";
@@ -57,17 +58,19 @@ function gate(content) {
   $("gate").hidden = false;
   $("shell").hidden = true;
 }
-const local = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
-function showPairing(message = "") {
+// invited is an invitation that came in the address bar, for the pairing
+// page; way is how the bridge said this browser can pair (passkey.js).
+let invited = "";
+let way = null;
+async function showPairing(message = "") {
+  way ||= await pairing();
+  if (way.shared) return showInvitation(message);
   const input = h("input", { class: "input", id: "pair-code", type: "password", autocomplete: "off", spellcheck: false, required: true });
-  // Browsers compile a pattern with the v flag, where a hyphen in a class
-  // must be escaped: unescaped, the pattern is ignored.
-  const device = h("input", { class: "input", id: "pair-device", autocomplete: "off", spellcheck: false, required: !local, pattern: "[a-z0-9][a-z0-9._\\-]{0,31}", placeholder: "for example phone" });
   const error = h("p", { class: "error", role: "alert" }, message);
   gate([
     h("div", { class: "brand" }, "nodwyn", h("span", {}, ".")),
     h("h1", {}, "Connect this browser"),
-    h("p", {}, local ? "Paste the pairing code nodwyn printed where it was started. The code stays between this browser and your computer and is never added to a task." : "Paste the pairing code nodwyn printed on its computer, and name this device. Every answer you give from here is recorded with that name."),
+    h("p", {}, "Paste the pairing code nodwyn printed where it was started. The code stays between this browser and your computer and is never added to a task."),
     h(
       "form",
       {
@@ -77,7 +80,7 @@ function showPairing(message = "") {
           input.value = "";
           error.textContent = "";
           try {
-            await pair(local ? { code } : { code, device: device.value.trim().toLowerCase() });
+            await pair({ code });
             conn.connect();
           } catch (e) {
             error.textContent = e.message || "Pairing failed. Copy the code again from where nodwyn is running.";
@@ -85,12 +88,65 @@ function showPairing(message = "") {
         },
       },
       h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), input),
-      local ? null : h("div", { class: "field" }, h("label", { for: "pair-device" }, "This device's name"), device, h("p", { class: "hint" }, "Lower-case letters, digits, dots or dashes. It stays paired until revoked on the computer.")),
       h("button", { type: "submit", class: "btn accent big" }, "Connect"),
     ),
     error,
   ]);
   input.focus();
+}
+
+// showInvitation pairs a browser with a console other machines reach (ADR
+// 30, amended 2026-10-17): with an invitation, which over https also makes
+// a passkey on this device, or with a passkey made on another.
+function showInvitation(message) {
+  const usePasskeys = way.passkey && passkeysHere();
+  const invite = h("input", { class: "input", id: "pair-invite", autocomplete: "off", spellcheck: false, value: invited, placeholder: "xxxx-xxxx-xxxx-xxxx-xxxx" });
+  // Browsers compile a pattern with the v flag, where a hyphen in a class
+  // must be escaped: unescaped, the pattern is ignored.
+  const device = h("input", { class: "input", id: "pair-device", autocomplete: "off", spellcheck: false, required: true, pattern: "[a-z0-9][a-z0-9._\\-]{0,31}", placeholder: "for example phone" });
+  const error = h("p", { class: "error", role: "alert" }, message);
+  const name = () => device.value.trim().toLowerCase();
+  const attempt = async (work) => {
+    error.textContent = "";
+    if (!device.reportValidity()) return;
+    try {
+      await work();
+      invited = "";
+      conn.connect();
+    } catch (e) {
+      error.textContent = e.message || "Pairing failed.";
+    }
+  };
+  // An invitation that may register a passkey does so here; a plain one
+  // pairs a device that answers.
+  const join = (passkey) =>
+    attempt(async () => {
+      if (!invite.value.trim()) throw new Error("Enter the invitation.");
+      if (!passkey) return pair({ invite: invite.value.trim(), device: name() });
+      try {
+        await register(invite.value.trim(), name());
+      } catch (e) {
+        if (!/without a passkey/.test(e.message)) throw e;
+        await pair({ invite: invite.value.trim(), device: name() });
+      }
+    });
+  gate([
+    h("div", { class: "brand" }, "nodwyn", h("span", {}, ".")),
+    h("h1", {}, "Connect this device"),
+    h("p", {}, "Name this device: every answer you give from here is recorded with that name. Then enter the invitation that ", h("span", { class: "mono" }, "nodwyn devices invite"), " printed on nodwyn's computer, or that a device already paired made in Settings › Keys & devices."),
+    h(
+      "form",
+      { onsubmit: (event) => (event.preventDefault(), join(usePasskeys)) },
+      h("div", { class: "field" }, h("label", { for: "pair-device" }, "This device's name"), device, h("p", { class: "hint" }, "Lower-case letters, digits, dots or dashes.")),
+      h("div", { class: "field" }, h("label", { for: "pair-invite" }, "Invitation"), invite, h("p", { class: "hint" }, usePasskeys ? "It makes a passkey on this device, which signs in your other devices too; the device can then change nodwyn's setup after a touch of it." : "It is good once, for ten minutes.")),
+      h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn accent big" }, usePasskeys ? "Connect and make a passkey" : "Connect"), usePasskeys ? h("button", { type: "button", class: "btn ghost", onclick: () => join(false) }, "Connect without a passkey") : null),
+    ),
+    usePasskeys && way.passkeys
+      ? h("div", { class: "stack-md" }, h("p", {}, "Made a passkey on another device already? Sign in with it, with no invitation."), h("button", { type: "button", class: "btn", id: "pair-passkey", onclick: () => attempt(() => assert(name())) }, "Sign in with a passkey"))
+      : null,
+    error,
+  ]);
+  device.focus();
 }
 function showDown(detail) {
   gate([
@@ -388,9 +444,14 @@ document.addEventListener("visibilitychange", () => {
 // Wails can install the native bridge after the first console render.
 window.addEventListener("nodwyn-desktop-ready", () => render(true));
 
+// A setup change from the person's device asks for a touch of the passkey.
+conn.confirmTouch = confirmTouch;
+
 // A launch ticket (from nodwyn app or nodwyn ui) pairs this browser without a
-// typed code. It is used once, and removed from the address bar first.
+// typed code. It is used once, and removed from the address bar first. An
+// invitation's link fills in the pairing page.
 (async () => {
+  invited = takeInvite();
   const ticket = takeTicket();
   if (ticket) {
     try {

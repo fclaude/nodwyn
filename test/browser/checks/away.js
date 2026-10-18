@@ -15,11 +15,11 @@ check(async () => {
   await page.goto(url); await ready(page);
 
   // Home: the keys are locked and the model needs one, so the schedule's
-  // next run would be skipped; the callout and the card say so.
+  // next run waits for the unlock; the callout and the card say so.
   const card = () => page.textContent('[aria-label="Scheduled tasks"] article');
   await page.waitForSelector('[aria-label="Scheduled tasks"] article');
-  assert.ok((await page.textContent('#schedules-held')).includes('scheduled runs are skipped until you unlock them'), 'Home does not say the scheduled runs are held');
-  assert.ok((await card()).includes('Every day at 09:00, starting Fri 16 Oct 2099') && (await card()).includes('Skipped while your keys are locked'), `the card does not say it is held: ${await card()}`);
+  assert.ok((await page.textContent('#schedules-held')).includes('scheduled runs wait until you unlock them'), 'Home does not say the scheduled runs are held');
+  assert.ok((await card()).includes('Every day at 09:00, starting Fri 16 Oct 2099') && (await card()).includes('Waiting for the keychain'), `the card does not say it is held: ${await card()}`);
   assert.strictEqual(await page.$eval('[aria-label="Scheduled tasks"] article .hint.warn', (el) => getComputedStyle(el).color !== getComputedStyle(el.previousElementSibling).color), true, 'the held line looks like any other');
   await page.screenshot({ path: `${out}/away-locked.png` });
   step("Home says locked keys hold back the scheduled run");
@@ -29,7 +29,7 @@ check(async () => {
   await page.click('.home-col .callout button[type=submit]');
   await until('the unlock request', () => sent.of('keychain.unlock').length === 1);
   await until('the card says when it runs', async () => (await card()).includes('Next: Fri 16 Oct 2099 09:00'), async () => card());
-  assert.ok(!(await card()).includes('Skipped while') && !(await page.$('#schedules-held')), 'Home still says the run is held');
+  assert.ok(!(await card()).includes('Waiting for the keychain') && !(await page.$('#schedules-held')), 'Home still says the run is held');
   step("unlocked on Home, the run is no longer held");
 
   // Settings › General: the login item, off, turned on and off at once.

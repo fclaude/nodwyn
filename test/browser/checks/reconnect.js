@@ -31,22 +31,33 @@ check(async () => {
     return daemon;
   };
   let daemon = await startDaemon();
-  // The console is started again on the port it had, as a service would
-  // be, so the pages' addresses still reach it; the first port is one the
-  // system picked, tried again in the rare case something took it meanwhile.
-  let port, ui, code;
+  // Two consoles, each started again on the port it had, as a service
+  // would be, so the pages' addresses still reach them: one other machines
+  // reach, which the phone pairs with by invitation, and this computer's on
+  // loopback alone, which takes the pairing code (one other machines reach
+  // takes none, ADR 30, amended 2026-10-17). The first port is one the
+  // system picked, tried again in the rare case something took it meanwhile;
+  // the loopback console keeps its own (console-port).
+  let port, ui, local, localURL, code;
   const startUI = async () => {
     ui = start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--name", `desk.test:${port}`, "--no-open"], { env });
-    [code] = await line(ui, /Pairing code[^:]*: (\S+)/, "stderr");
+    await line(ui, /(Browser view)/, "stderr");
   };
-  for (let attempt = 1; !code; attempt++) {
+  const startLocal = async () => {
+    local = start(process.env.NODWYN, ["ui", "--no-open"], { env });
+    [localURL, code] = await line(local, /Browser view: (\S+)[\s\S]*Pairing code[^:]*: (\S+)/, "stderr");
+  };
+  for (let attempt = 1, started = false; !started; attempt++) {
     port = await freePort();
     try {
       await startUI();
+      started = true;
     } catch (e) {
       if (attempt === 3 || !/address already in use/.test(ui.stderrText)) throw e;
     }
   }
+  await startLocal();
+  const invite = () => /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env }).toString())[1];
   const stop = async (kid) => {
     kid.kill("SIGTERM");
     await kid.exited;
@@ -86,7 +97,7 @@ check(async () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
     assert.strictEqual(await sockets(page), made, `${what} tried to connect again`);
-    assert.ok(await page.isVisible("#pair-code"), `${what} left the pairing form`);
+    assert.ok(await page.isVisible("#pair-code, #pair-invite"), `${what} left the pairing form`);
   };
 
   const phoneContext = await counted({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
@@ -95,7 +106,7 @@ check(async () => {
   // An unpaired browser learns it is one when its socket is refused.
   expectError(/^WebSocket connection to 'ws:\/\/desk\.test:\d+\/socket' failed: .*403$/);
   await phone.goto(`http://desk.test:${port}/`);
-  await phone.fill("#pair-code", code);
+  await phone.fill("#pair-invite", invite());
   await phone.fill("#pair-device", "phone");
   await phone.click("button[type=submit]");
   await ready(phone);
@@ -126,26 +137,27 @@ check(async () => {
   const computerContext = await counted({ viewport: { width: 1280, height: 900 } });
   const computer = watch(await computerContext.newPage(), "computer");
   expectError(/^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/socket' failed: .*403$/);
-  await computer.goto(`http://127.0.0.1:${port}/`);
+  await computer.goto(`${localURL}/`);
   await computer.fill("#pair-code", code);
   await computer.click("button[type=submit]");
   await ready(computer);
   step("this computer's browser is paired too");
 
-  // nodwyn ui stops and starts again. The phone's pairing outlives it; this
-  // computer's was for the run that stopped.
+  // Both consoles stop and start again. The phone's pairing outlives its;
+  // this computer's was for the run that stopped.
   await pause(phone);
   await pause(computer);
   made = await sockets(phone);
   const asked = { open: sent.of("session.open").length, send: sent.of("session.send").length, subscribe: sent.of("session.subscribe").length, reads: reads() };
   await stop(ui);
+  await stop(local);
   await phone.waitForSelector("#offline:not([hidden])");
   await shows(phone, "#offline", "Disconnected; nothing that was on its way is sent again. Trying again in 1 s.", "Reconnect now");
   assert.ok(await phone.isVisible(".transcript"), "the phone's task left the page while it was disconnected");
   await phone.screenshot({ path: `${out}/phone-disconnected.png` });
   step("the phone says it lost its connection and when it tries again");
-  code = "";
   await startUI();
+  await startLocal();
   // The network coming back ends the wait at once: the phone's clock has
   // not moved.
   await phone.evaluate(() => window.dispatchEvent(new Event("online")));

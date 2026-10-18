@@ -8,6 +8,10 @@ type helloParams struct {
 	// phone behind the browser bridge (ADR 30). It is appended to the kernel
 	// identity as a claim and never replaces it.
 	Via string `json:"via,omitempty"`
+	// Passkey names the passkey a relayed device's person proved themself
+	// with (ADR 30, amended 2026-10-17). With it, the device is not limited
+	// as a paired device is; it is recorded after via, as passkey:NAME.
+	Passkey string `json:"passkey,omitempty"`
 }
 type helloResult struct {
 	Protocol int      `json:"protocol"`

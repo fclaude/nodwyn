@@ -76,8 +76,9 @@ Connections › Credentials manages the keys themselves: what the keychain
 holds, where each may be sent and what uses it; adding a key and allowing it
 for a host, replacing a rotated one, connecting an OAuth2 account, and
 removing or revoking one ([browser.md](browser.md), "Credentials"). Settings,
-keychain and credential changes are available only to a console on this
-computer, never to a paired remote device.
+keychain and credential changes are available to a console on this
+computer, and to another device only when the person signed it in with a
+passkey and touches it ([browser.md](browser.md), "Other devices").
 
 ## The macOS app
 

@@ -289,7 +289,7 @@ export function renderHome(root, ctx) {
   // run: said once here, where the schedules are, and unlocked above. This
   // part of Home is drawn again when the list changes; the top is not while
   // a passphrase is being typed.
-  else if ([...desk.sessions.values()].some((item) => item.schedule?.held && !item.archived)) schedules.querySelector("h2").after(h("p", { class: "hint warn", id: "schedules-held" }, "Your keys are locked, so scheduled runs are skipped until you unlock them."));
+  else if ([...desk.sessions.values()].some((item) => item.schedule?.held && !item.archived)) schedules.querySelector("h2").after(h("p", { class: "hint warn", id: "schedules-held" }, "Your keys are locked, so scheduled runs wait until you unlock them, and then run once, late."));
   const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, schedules, done));
   // The ask being typed survives updates: while focus is in the top half,
   // only the lists below are replaced. This is decided before the composer

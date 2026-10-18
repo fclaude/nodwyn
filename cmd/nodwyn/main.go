@@ -45,8 +45,10 @@ commands:
                        with no window open (a systemd user unit, a launchd agent)
   app [--browser]      nodwyn as one program: a window, and a daemon if none runs
   ui [--socket PATH]    interactive browser view (optional --read-only)
-  ui --listen ADDR     also serve other machines; devices pair by name
+  ui --listen ADDR     also serve other machines; devices pair with an invitation
   devices [revoke NAME] list or revoke browsers paired from other machines
+  devices invite       print a one-time invitation for another device (over https
+                       it also registers a passkey there)
   tui [--socket PATH]   interactive terminal client, over the daemon (starts one if none runs)
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
