@@ -922,7 +922,7 @@ strings (§1.1):
 | `working-rules` | how to work, added to both system prompts (§9.6): shell command lines, programs that keep running or may hang (`shell-start`), the project's environment, reading with the file tools, calls that do not depend on each other in one reply, a plan as a first guess, the check loop, following the request's conclusion, widening in general form, whole test modules (and code a browser runs checked by the project's browser checks; a build or a syntax check is not a check that it works), comparing failures with the unchanged code only when tests fail, on a copy of the last commit and never with `git stash`, finding regressions file by file, keeping what a later session would need in the project notes (`project-notes-save`) |
 | `(git-rule)` | in both system prompts after `working-rules`, only where `git-diff` is offered: look at the change with `git-status` and `git-diff` before finishing; it holds nothing it does not use |
 | `(worktree-section)` | in both system prompts after `(git-rule)`, only in a session given a git worktree of its own (`(worktree)` is not `#f`, ADR 34): the folder is a worktree made for the session, on its branch, from its base, of the repository at its path; other sessions may work in other worktrees of it at the same time, so work only here and leave other branches alone; the changes reach the repository only through the branch, which the answer names; before landing it says to run `validate` first, only where the session has a tool of that name (nodwyn's own repository does, most do not). It also says never to use `git stash` there, since every worktree shares one stash, and to compare with the unchanged code on a copy of the last commit (`git archive HEAD \| tar -x -C "$TMPDIR/base"`) instead. `""` in any other session, so their prompts are unchanged (ADR 32, amended 2026-10-03) |
-| `(project-instructions-section)` | in both system prompts after the workspace's folders and before the project notes: the repository's `AGENTS.md` under a heading that says to follow it where it applies and the request where they differ, or `""` without one. Read when the session starts, so an edit to the file shows in the next session (ADR 36) |
+| `(project-instructions-section)` | in both system prompts after the workspace's folders and before the project notes, and at the end of the lean one, after its fixed sentences (§9.8; ADR 32, amended 2026-10-18): the repository's `AGENTS.md` under a heading that says to follow it where it applies and the request where they differ, or `""` without one. Read when the session starts, so an edit to the file shows in the next session (ADR 36) |
 
 ```scheme
 (define base-system-prompt system-prompt)      ; keep the default to extend it
@@ -1335,7 +1335,9 @@ is the loop measured on the 121 clean SWE-bench Verified tasks, and it is
 what a session nobody approves runs: a system prompt of about 90 tokens
 (`lean-system-prompt`: who and where, unattended, one phrase per tool of
 `lean-tools`, throwaway files in `$TMPDIR` or `/tmp`, one sentence on the work
-and one on the answer); the control model offered `shell-exec` and `fs-edit`
+and one on the answer, then the repository's `AGENTS.md` when it has one, by
+`(project-instructions-section)`, but not the project notes); the control
+model offered `shell-exec` and `fs-edit`
 alone (`lean-tools`); a run's plan the one line `plan-minimal-text`, with no
 explorer, planner or judge (`plan-minimal`), recorded hidden, so the model is
 shown no plan and the run's turn prompt does not speak of one

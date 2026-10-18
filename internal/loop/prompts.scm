@@ -57,8 +57,14 @@
 ;; and a nudge that moved behaviour from 3% to 61% (git log -S) moved the
 ;; score not at all, at 13% more cost. A sentence about a tool is said only
 ;; when the tool is offered (ADR 32, amended 2026-10-17).
+;; The repository's AGENTS.md comes last, as in the full prompts (ADR 36): it
+;; is the repository's word, not the harness's, so it is carried in every
+;; profile (ADR 32, amended 2026-10-18), after the fixed sentences so they stay
+;; the cached prefix. Their lines end in a newline, so the section's first one
+;; is dropped. The agent's own notes (project-notes-section) are not carried.
 (define (lean-system-prompt repo)
-  (let ((has (lambda (t) (and (member t lean-tools) #t))))
+  (let ((has (lambda (t) (and (member t lean-tools) #t)))
+        (agents (project-instructions-section)))
     (string-append
      "You are a coding agent working in the repository at " repo ", unattended: nobody approves or answers your calls.\n"
      (lean-tool-sentence)
@@ -67,7 +73,8 @@
      (if (has "outline") "outline lists a file's classes and functions with their line ranges and fs-read with symbol reads one of them (Class.method), so a large file need not be read whole; tests-for names the test files that exercise a source file and how to run them.\n" "")
      (if (has "scheme") "The scheme tool runs a small Scheme program that calls the other tools as procedures: use it to read, search or run several things in one call and keep only what matters of the results.\n" "")
      "Do what the request asks, then check it by running something that exercises the change.\n"
-     "When you are done, say what you changed, what you ran and what it showed, and anything you could not check.\n")))
+     "When you are done, say what you changed, what you ran and what it showed, and anything you could not check.\n"
+     (if (string-prefix? "\n" agents) (substring agents 1) agents))))
 
 ;; Two of its rules come from the jev-key console change (ADR 32, amended
 ;; 2026-10-02): its replies called the work done on a syntax check of a page

@@ -2885,3 +2885,41 @@ its 34 sessions reached shell-exec's limit. This build, without the project
 tools, is not measured yet; both changes apply to the 121 SWE-bench tasks as
 well, where a check piped into `tail` past ten minutes and a pattern in
 `/tmp` can show them.
+
+## Amendment 2026-10-18: the lean prompt carries the repository's AGENTS.md
+
+ADR 36 says a repository's root `AGENTS.md` rides in the system prompt, and
+the manual said both system prompts carry it. Since the lean ladder's third
+rung (2026-10-16) the lean prompt is a third one, `lean-system-prompt`, and it
+never called `(project-instructions-section)`: an unattended lean session, the
+default for `nodwyn run` with `--yolo`, `--unattended` or `--judge`, had none
+of the repository's instructions in its prompt, and learned of them only if
+it read the file itself. Nothing decided that; the amendments of 2026-10-17
+do not mention the file.
+
+**Decision:** the lean prompt ends with `(project-instructions-section)`, the
+same heading and text as the full prompts, after its last fixed sentence, so
+the fixed part stays the provider's cached prefix and a repository without
+the file gets the lean prompt byte for byte as before. The section's first
+newline is dropped, since the lean prompt's lines already end in one. The
+32 KiB cap, the redaction and the reading rules are the primitive's and
+apply as in the full prompts; a project that redefines the section to `""`
+gets the fixed lean prompt. The full profile's prompts are unchanged.
+
+Why: the bar of 2026-10-17, that every sentence must earn its place in the
+measurements, is for what the harness adds. `AGENTS.md` is the repository
+speaking, its maintainers' rules for how a change there is built, tested
+and validated, which ADR 36 put in every prompt with no setting to turn it
+off; a coding agent that reads `AGENTS.md` is what the convention expects.
+nodwyn's own file adds 10,340 characters, about 2,600 tokens, to a lean
+prompt of about 650 characters; a repository without the file pays nothing.
+Its effect is being measured on commit-bench, where a task such as 6e18b7ba
+is nodwyn's own repository at an older commit.
+
+**Not carried**: the project notes (`(project-notes-section)`). They are the
+agent's own notes from earlier sessions, which the full prompts call leads to
+check, not the maintainers' word, and whether they help a lean session has
+not been measured; a project that wants them appends the section in its
+`init.scm`. Also unchanged: the cap's last line says to read the rest of a
+long file with `fs-read`, which the lean profile does not offer; the model
+reads it through `shell-exec`.

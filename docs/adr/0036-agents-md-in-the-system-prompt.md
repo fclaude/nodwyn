@@ -56,3 +56,16 @@ code.
   validated (the Go checks, the protocol schema, the browser checks for the
   console, the prompt tests), and the rules that the failures seen in its
   sessions' logs call for.
+
+## Amendment 2026-10-18: the lean prompt carries it too
+
+The lean profile (ADR 32, amended 2026-10-17) brought a third system prompt,
+`lean-system-prompt`, which a session nobody approves runs by default, and it
+did not call `(project-instructions-section)`: until 2026-10-18 no lean
+session had the repository's `AGENTS.md` in its prompt. It now
+ends with the same section, under the same heading, after its last fixed
+sentence, so the fixed part stays one prefix for the provider's cache and a
+repository without the file gets the lean prompt unchanged. The cap, the
+redaction, the reading rules and a project's redefinition of the section
+apply as above. The lean prompt still has no project notes: those are the
+agent's own, not the maintainers' word (ADR 32, amended 2026-10-18).
