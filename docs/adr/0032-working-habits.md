@@ -2379,3 +2379,400 @@ code and documents that cited it now cite this one.
   explorer went to 8 rounds (3e91d63) and back to 16 (be6a8f2) when a blind
   review scored the 8-round builds lower; the amendment of 2026-10-15 ("a
   shorter explorer for qwen") made it 8 again.
+
+## Amendment 2026-10-16: the original tests in any language, and what eight SWE-bench misses showed
+
+dsl23 on SWE-bench Verified's 121 clean tasks (Muse, effort low) resolved 98
+against Pi's 104; eight tasks Pi resolved and dsl23 did not were read one by
+one. The second replicate then showed most of them were not stable: dsl23
+resolved four of the eight, and Pi missed three that it had resolved. Two
+held (django-15916, django-16877), the rest were the loop's own gaps, each
+with a task it cost in at least one run. The loop's guards for them were Go's
+alone: `original-tests` ran Go tests and said in the log that it ran no other.
+
+- **`original-tests` takes the check, not a language** (`internal/prim/original.go`).
+  The evidence loop gives it the program and arguments of the passing run that
+  runs the edited test files (`original-check`; a run that names none of them,
+  or none that passed, is not repeated, and the log says so). The test files
+  the turn edited are written as HEAD has them and the ones it made are taken
+  away, the check runs, every file goes back to its bytes and its time (a
+  bytecode cache keyed on a source's time and size must not take one version
+  for the other); if it fails, it runs once more with every changed file as
+  HEAD had it, and only a test that fails with the originals and not there is
+  named. Names come from the output (pytest, unittest and Django, `go test`,
+  cargo, jest, vitest, rspec: `failureIDs`); a failure whose output names no
+  test is told by its exit status. The Go overlay is gone. pytest-5787 and
+  scikit-learn-13124 rewrote an existing test, in Python.
+- **A run that failed is held against the last commit** (`regression-failures`,
+  `finish-regressed-tests-message`): the same command, no file put back, and
+  with every changed file as HEAD had it; the tests that fail only with the
+  change are named. psf-requests-2931 broke an existing test, ran the whole
+  file, and put 81 failures down to the environment, its own among them.
+- **A run's output is read in every ecosystem** (`passing-lines`,
+  `failing-output?`, `failure-line-name`): "3 passed", "OK", "test result:
+  ok.", "1 failed", "FAILED (failures=1)", cargo's, jest's and rspec's lines.
+  Until now only Go's and validate's counted, so a Python run piped through
+  `tail` was no run that passed.
+- **The plan's run and check match by what they run** (`plan-language-ran?`):
+  flags, numbers and launchers do not count, so `-v 1` against `-v 2`, or
+  `python -m pytest x` against `pytest x`, are the same run. The review said a
+  check "has not passed since your last edit" for the first on two tasks.
+- **A task template's fields are not names the plan must hold**
+  (`request-names`): the key of a "- key: value" line (`instance_id`,
+  `base_commit`), a product's name (`SWE-bench`), and a name with a version
+  inside (a platform string). The planner was asked again for them on all
+  eight tasks reviewed.
+- **The expectation question reads more test files** (`expectationTest`):
+  tests by name or folder, in Go, Python, JavaScript and TypeScript, Ruby,
+  Rust, Java, Kotlin, C#, PHP; `expect(`, `assert_eq!`, `assertEquals(` as
+  well as Go's and Python's assertions. Django's `tests.py` was not read.
+- **The harness never measures a path outside the repository** (`repo-relative?`):
+  `edit-sizes` called `git-diff` on the path of a write the guard was about
+  to refuse, the guard refused the harness's own call, which a strategy cannot
+  catch, and django-11400 ended with `denied: path /tmp/check_order.py` at its
+  first write to /tmp after a run (one of 121 tasks).
+- **A habit line**: before finishing, say the request's title as a claim and
+  check its smallest form (django-15916, where the probe printed `Base2:
+  False` for the plain ModelForm and the run moved on).
+- **The plan prompt's example is Python's and says a test's run is the
+  repository's own command.**
+
+Not built, and why: `change-dropped-conditions` stays Go's, since it reads Go
+syntax; the explorer is not given `git log` (one task, a new primitive and the
+documents that come with it; the failed-run point above covers requests-2931
+from the other side); and the plan-form changes proposed for django-11400 and
+django-14534 (Pi missed both in the second replicate, so they are not shown to
+be the loop's). The bridge drops new test files from the submitted patch for
+both harnesses (django-16877: a new file at the path the hidden test creates
+makes the evaluation's `git apply` fail), in `swebench_nibb_bridge.py`, not
+here.
+
+## Amendment 2026-10-17: the default loop has a lean profile and a full one
+
+The working habits above were measured on a benchmark, and the same benchmark
+now says most of what the loop adds around the model does not pay. On
+SWE-bench Verified's 121 clean tasks (Muse, effort low, replicates of each
+arm), the loop of dsl23, with these habits, the explorer and the planner,
+resolved 98 and 98; Pi, which has none of them and four tools, resolved 104,
+106 and 103. The lean ladder took the loop apart one rung at a time, each
+rung a switch in the Scheme files, and measured what each cost:
+
+- **`plan-minimal`**: a run records the one line `plan-minimal-text` and neither
+  explores nor plans. The explorer and the planner were 31% of a task's cost
+  (1,081 requests in 121 tasks for the first, 245 for the second).
+- **`lean-quiet`**: nothing the harness says while the model works or as it
+  ends: no finish review, no reminders, no question on an edited test, no hint
+  on failures the unchanged code has. Of dsl23's 4,385 requests in 121 tasks,
+  707 came after the finish review began, 17% of its cost. A turn that changed
+  nothing is still told so once (`lean-empty-reminders`): shell2 on
+  matplotlib-25960 ended its turn with no edit and no patch.
+- **`lean-prompt`, `lean-tools`**: a system prompt of about 250 tokens where
+  dsl23's is 12,240 characters, and the tools the control model is
+  offered named in a list. Pi's first request is 2.2k tokens against nodwyn's
+  15.7k. Last, `lean-tools` went from six tools to two: on the 121 tasks with
+  two replicates each, `shell-exec` and `fs-edit` alone resolved 103 and 102
+  where `fs-read`, `fs-list`, `index-grep`, `fs-edit`, `fs-write` and
+  `shell-exec` resolved 102 and 101 (Pi 104, 106, 103), at about 20% lower
+  cost per task: the model reads with `sed` ranges, and its tool results total
+  32,600 characters a session against 51,500. `fs-write` added to the pair was
+  called 5 times in 242 sessions, and the code index (`outline`, `tests-for`
+  and the commands of the binary, `lean-cli`) in about 13%, neither with an
+  effect on the score.
+- **Tools that say what to do** (from six readers' pass over 136 transcripts):
+  an `fs-edit` error echoes a valid call, names every line an ambiguous `old`
+  occurs on and says where a longer one stops matching; its answer counts the
+  lines added and removed (a swapped line was "no change"); `fs-write` says how
+  many lines it wrote and warns when most of a file went (one run's rewrite
+  dropped 117 of 426 lines and the ImportError showed three calls later);
+  `index-grep` searches a large tree's source files instead of refusing it (33
+  of 748 calls in the transcripts); `shell-exec` notes exit 141 (matplotlib-25960:
+  `grep ... | head` ended 141 and was not noticed) and a read that printed
+  nothing (django-14534: a `sed -n` range past the end of the file cost four
+  calls of 20); the denial of a `/tmp` path gives the scratch directory's own
+  path. The reading nudge counts a `shell-exec` call that only reads
+  (`lean-shell-look`): shell2 made 21 read-only calls on matplotlib-25960, was
+  never nudged, and ended with no edit.
+- **Experiments, offered to no one by default**: the `scheme` tool, a program
+  that calls the other tools as procedures through the guard; `outline` and
+  `tests-for`, with `fs-read`'s `symbol`; and `lean-cli`, the same index as
+  commands of the binary run through `shell-exec`.
+
+**Decision.** The lean loop becomes the default of an unattended session, and
+the loop before it stays, as the default of one a person is in. `[loop]
+profile` in `config.toml` is `"auto"` (the default), `"lean"` or `"full"`;
+`NODWYN_PROFILE`, when it is not empty, overrides it, for a test or one run.
+`auto` is lean when nobody approves the session's calls (`(unattended?)`:
+`--yolo`, a run's `auto_approve`, judge or unattended) and full when a person
+does. The lean prompt says "You work unattended: nobody approves or watches
+your calls", which is false in a session a person answers, and everything
+above was measured on runs nobody watched; the interactive loop is neither
+shorter for its person nor better for it, as far as anyone has measured.
+The profile is resolved when the session starts and fixed with its prompt and
+tools (ADR 9); a resumed session resolves it again. The person chooses it, in
+`config.toml` or the environment: a repository cannot, since nothing in the
+repository is read for it. Its `init.scm`, which loads only after the person
+trusted that revision (ADR 45), may redefine the switches below as it may
+redefine any prompt, and has no more authority for it than for that.
+
+The Scheme files keep the lean values, since lean is what the binary does by
+default, and `internal/loop/full.scm` is evaluated after them and before
+`.nodwyn/init.scm` when the profile is full, so a project's `init.scm` has the
+last word under either and can mix the two switch by switch:
+
+```scheme
+(define lean-prompt #f)
+(define plan-minimal #f)
+(define lean-quiet #f)
+(define finish-reminders 2)
+(define finish-review-limit 2)
+(define lean-empty-reminders 0)
+(define lean-shell-look #f)
+```
+
+The three numbers are computed from `lean-quiet` when `strategy.scm` loads, so
+setting `lean-quiet` alone does not bring them back. In the Go host
+`prim.Options.Lean` carries the tool surface the same way: only a lean session
+registers `scheme`, `outline` and `tests-for`, gives `fs-read` its `symbol`
+parameter, counts the lines an edit added and removed, has `fs-write` say what
+it wrote, lets `index-grep` search source files alone in a tree of more
+than 3000, gives `fs-edit` its `line`, its closest text and its note of other
+copies, and `shell-exec` its view of a long stream and its saved files. A full session's catalogue, tool schemas and answers are the ones
+it had. `TestFullProfileTurnsOffEverySwitchTheDefaultsTurnOn` fails when a
+switch named `lean-...` is added to the defaults and not to `full.scm`, and the
+tests of `internal/core`, `internal/frontend/...` and the rest that were
+written against the previous loop run it (`test/fakes/home` sets
+`NODWYN_PROFILE=full` for them); origin/main's own test files pass unchanged
+against it.
+
+**Tools that name the occurrence, show the closest text and keep long output
+(lean profile alone).** On 484 shell-only SWE-bench sessions (Muse, a small
+cheap model; `shell-exec` and `fs-edit`) the tools' answers cost the model
+calls it did not need to make. `prim.Options.Lean` carries the changes, so a
+full session's tools, schemas and answers are origin/main's, and `lean-prompt`
+carries the one in the shell habit:
+
+- *`fs-edit` names no tool.* Of 73 `fs-edit` errors in the two-tool arms, 24
+  were "old text not found" whose generic variant ended "read the region again
+  with fs-read" (and one more "read them with fs-read and copy them exactly"),
+  though `fs-read` is not offered; the model switched to `sed -n` and
+  recovered in 3.9 calls on average (1.6 in the six-tool arm). A miss now
+  shows the closest text: the file line that shares most words with old's first
+  line (at least two words and half of old's; of equal lines the one whose next
+  lines resemble old's more, then the first), with the lines around it, five in
+  all, numbered, bounded by `editHintBytes`; or says that no line resembles it
+  and the text may be in another file.
+- *`fs-edit` takes a `line`.* Another 23 errors were "old text occurs N times"
+  (counts like 33 and 40) with no way to say which, though the model knew the
+  line from `grep -n`. `line` (1-based; also in each edit of `edits`, where it
+  counts the text the edits before it leave) chooses among the occurrences:
+  the one that holds the line, else the nearest, the earlier on a tie. It is
+  ignored for an old that occurs once and with `replace_all`, and it is the
+  last parameter, so a positional `(fs-edit path "" "" #f edits)` keeps its
+  meaning. The ambiguity error says "pass line to choose one, or replace_all".
+- *`fs-edit` says where the replaced text also occurs.* django-16938 needs the
+  identical change at `django/core/serializers/xml_serializer.py:158` as at
+  `python.py`, and every failing session edited one and never saw the other.
+  After a successful edit without `replace_all` of at least two non-blank lines
+  or 40 non-space characters, the answer ends `the replaced text also occurs
+  at: path:line, … (and N more); check whether the same change applies there`,
+  at most three named: "occurs", not "edit", since the same text is not always
+  the same fault. The search takes the edited file as it now is, its folder,
+  then the repository's source files in path order, skipping hidden entries,
+  `vendor`, `node_modules`, binary files and files over 1 MiB, at most 5,000
+  files and 400 ms; when it runs out it says what it had found. The edit's own
+  new text is left out (an insertion after an anchor holds the old text),
+  tracked through the edits of a list. A file is named only if the model's own
+  read of it would be allowed: the credential denylist and the guard,
+  including a checker of the user's, for each file that matches (a nested
+  `fs-read`, as `index-grep` does).
+- *`shell-exec` shows a long stream as a view with a file behind it.* In the
+  same sessions 84% of test runs were piped to `| tail -N` or `| head -N`, and
+  in 30% of the runs that executed (362 of 1,208) the output then showed no
+  verdict: Django's parallel runner prints only "Destroying test database ..."
+  lines at the end, and the model ran the suite again with other flags, a call
+  and minutes each. The lines were never lost to the tool, only to the pipe.
+  The principle is a pager's: a long output is not poured into the model's
+  context and is not trimmed by the model; the tool shows a bounded view and a
+  handle to the rest. On the model's own call, a stream (stdout and stderr
+  judged apart) of more than 8 KiB or 150 lines is returned as its first 20
+  lines, a marker line where the others are, and its last 50: at most 6 KiB, a
+  line cut at 300 characters, two views sharing the 6 KiB. The marker names the
+  missing lines and the file: `[... lines 21-310 of 330 not shown; full output
+  is saved at $TMPDIR/out/7.stdout: sed -n '21,120p' $TMPDIR/out/7.stdout shows
+  a range, grep -n PATTERN $TMPDIR/out/7.stdout searches it ...]`.
+- *The saved files.* `<scratch>/out/N.stdout` or `N.stderr`, N being 1, 2, 3
+  ... for the session, shared by a call's two streams and taken only by a call
+  that needs one (a counter under a mutex, files made with `O_EXCL`, so
+  primitives that share a scratch directory do not overwrite one another). A
+  file is made when the stream passes a threshold and holds the whole stream up
+  to 8 MiB, written from a tee in front of the existing 256 KiB `capped`
+  writer, which keeps its behaviour, so what it drops from the middle is on
+  disk; a file that stopped says so, with its last line. Without a scratch
+  directory there is no handle and nothing changes. `$TMPDIR/out/N.stdout` is
+  read with `sed -n` or `grep -n` without a question: the scratch directory is
+  not outside the repository to the argv trigger, as a test shows through the
+  guard's checkers, with `$TMPDIR` written by the shell and as an argument of a
+  command without a shell (which the host expands).
+- *What the view leaves alone.* A command line that reads a file or limits its
+  own output (`readLikeRE`: `cat`, `head`, `tail`, `nl`, `sed -n`, anywhere in
+  the line) is not shown as a view: whoever asks for a range of a file wants
+  that range, and a pipe through `tail` or `head` works exactly as it did;
+  nothing of the model's command is rewritten or inspected. Only the model's
+  own call gets a view: a program of the `scheme` tool (whose point is to split
+  and filter the whole result), a strategy and the person's own call get the
+  stream as before. A view is under what the window cuts (a result over
+  `max_result_tokens`, 3,072 tokens by default, 9 KiB, is shown head and tail),
+  as a test shows through the window's own `Build`, for the JSON the tool
+  returns and for the plain text the shell habit gives it, which clips at 7,700
+  characters.
+- *The note reaches the model.* `shell.scm`'s `shell-plain` rendered a result
+  from `status`, `stdout` and `stderr` alone, so the `note` field (exit 141,
+  and a read that printed nothing, both added above) was in the log and the
+  clients and never in what the model read: matplotlib-25960's `grep ... | head`
+  and django-14534's `sed -n` past the end of the file had the notes in their
+  results all along. With `lean-prompt` on, the note follows the output on a
+  line of its own, `[note] ...`; with it off the text is what it was. No new
+  switch, so `full.scm` is unchanged. The saved-file handle is in the stream's
+  own text, not in the note, so it reaches the model whatever the rendering.
+
+**Kept in both profiles**, because each is an improvement that origin/main's
+tests do not contradict: the finish review that runs the original tests in
+any language and reads a run's output in every ecosystem (the amendment of
+2026-10-16), the plan language's matching of a run by what it runs, the
+request-name filters, the expectation question's wider reading of test files,
+`repo-relative?`, the guard's scratch-directory path, `fs-edit`'s and
+`shell-exec`'s clearer errors and notes, and the working rule on the request's
+title. The one test of origin/main they supersede is
+`TestOriginalTestsAreRunForGoOnly`, whose Go-only behaviour that amendment
+removed.
+
+**Not built.** The lean tool list hides what a project adds: its own tools
+(`register-tool` in `init.scm`, such as this repository's `validate`), MCP
+tools and the delegate tool are not among `lean-tools`, and a project adds
+them with `(define lean-tools (append lean-tools '("validate")))`; the
+measurement had none. The profile is not a setting of the console. Lean was
+measured on Python repositories, on one benchmark and one model family;
+`auto` keeps it away from sessions a person is in until a measurement says it
+does no harm there, and `profile = "lean"` is the way to try it.
+
+Also not built, of the tools above: stripping a trailing `| tail -N` from the
+model's command and returning the last N lines exactly, and a scanner for test
+runners' verdict lines (unittest, pytest, go test, cargo, jest) to quote in a
+note. The owner rejected rewriting the model's command; the view gives the same
+lines and a handle without reading the command, and a test of a Django-style
+run (the verdict, then twenty "Destroying test database" lines) finds its
+verdict among the last 50 lines. `recall` still renders a shell result
+without its note.
+
+## Amendment 2026-10-17: the lean profile says only what it must
+
+The owner's aim for the lean profile is to be as generic as possible, to lean
+on the model as much as possible and to give it useful tools and nothing else:
+every sentence the harness adds must have earned its place in the
+measurements, and none of the behavioural nudges has (FINDINGS-0a9f700.md,
+"Full 121-task passes"; tool-review-2-2026-10-17.md; the readers of the
+afternoon of 2026-10-17). What the evidence says:
+
+- Two tools, `shell-exec` and `fs-edit`, resolve as many tasks as six, at
+  about 20% lower cost. The old shell2 build, which never sent the model a
+  harness message, resolved 103 and 102; the builds with the read-streak
+  reminder, the no-change reminder and the profile resolved 99 and 99 (A) and
+  101 and 99 (B). The readers put every single loss down to variance, but the
+  arms with nudges sit about three tasks lower over two replicates each.
+- The read-streak reminder: of 47 firings read, about 8 weakly helped, 20 were
+  neutral, 15 false alarms, and up to 4 possibly hurt; it tells the model to
+  use `plan-write`, which the lean profile does not offer.
+- Every lean request carried the plan block, "Plan for the current task (work
+  through it, and the harness marks a step done ... mark one with plan-step ...
+  write the plan again)", over a one-line plan; `plan-step` and `plan-write`
+  are not offered.
+- The environment hint was added in 99% of sessions and plausibly mattered in
+  2 or 3 of 20, about half a call per task; Pi has none.
+- Of the prompt's instructions, "act rather than announce" led to a
+  placeholder edit before any reading, "nothing unrelated" was never cited,
+  "finish with a short report: how you checked it" was followed but invites
+  overclaiming, and "check with the project's own tests" is a useful detector.
+  Prompt sentences change behaviour strongly (`git log -S` from 3% of sessions
+  to 61%) and the score not at all, at 13% more cost.
+- `fs-edit`: the recurring miss is a literal backslash-n in `old` (5 sessions,
+  3 or 4 calls each, `fs-edit` given up for a Python script); errors named
+  `fs-read`; the note of other copies was right once in 8; the closest text
+  showed the right lines 3 times of 4; `line` was used 4 times in 242 sessions.
+- A write to `/tmp/x` was refused in 10 to 22% of sessions, 2.2 calls each;
+  the model checked `$TMPDIR` on its next call 15 times of 19 whatever the
+  refusal said, and read it as a sandbox's wall.
+- `shell-exec`: 80% of test runs are piped through `tail` or `head`; the view
+  with a saved file fires rarely and is never read back, but costs nothing.
+
+**Decision**, for the lean profile alone; `full.scm` turns every new switch
+off, so a full session is origin/main's, as origin/main's own test files show
+when laid over the branch and run with `NODWYN_PROFILE=full`:
+
+1. *The system prompt* (`lean-system-prompt`) is about 90 tokens: who and
+   where, that nobody approves or answers the calls, one phrase per tool of
+   `lean-tools` (so a project that adds `fs-read` is told of it), paths and
+   throwaway files (`$TMPDIR` or `/tmp`), "Do what the request asks, then
+   check it by running something that exercises the change", and "When you
+   are done, say what you changed, what you ran and what it showed, and
+   anything you could not check". The sentences on `outline`, `tests-for`,
+   `scheme` and the code-index commands stay, said only when those are
+   offered.
+2. *No plan is shown* (`lean-plan-hidden`). `gate.plan` gains `hidden`: the
+   one-line plan is recorded, so the core still finds a plan before anything
+   irreversible and the person sees it, and the window shows the model none,
+   where it is recorded, carried to a run's later turn and brought back after
+   a compaction. The run's turn prompt says nothing of the plan's steps.
+3. *Harness messages*: no reading reminder (`lean-no-read-reminder`), no
+   environment hint (`lean-no-envhint`); the no-change reminder is kept, once,
+   in general words: "No file has changed. If the request needs a change, make
+   it; if it does not, say what you ran that shows the code already does what
+   is asked." (`finish-no-change-lean-message`, under `lean-quiet`). The
+   empty-reply message is unchanged.
+4. *`shell-exec`* describes itself in a few generic sentences: the program and
+   its arguments, `bash -c` for shell syntax, status, stdout and stderr, a long
+   stream shown as its first and last lines with the whole in a file whose path
+   the marker gives, the time limit. The python -c advice and the sentence on
+   `tail` and `head` go; the view, the saved files and the visible notes stay.
+5. *`/tmp`* is a scratch directory too for a lean session nobody approves. The
+   core gives such a session `prim.Options.Temp`, `/tmp` with its links
+   resolved (`guard.TempDir`, `/private/tmp` on macOS), and the repository pin
+   and the argv trigger allow a path in it as they allow the scratch
+   directory: written, read and run. The change is narrow. It is made only for
+   the lean profile and only when nobody approves the calls (a person still
+   decides about `/tmp` in any other session); a path is judged with its links
+   resolved and without a parent component, so a link out of `/tmp` or
+   `/tmp/../etc` is outside; another session's scratch directory under `/tmp`
+   (`nodwyn-scratch-*`) is outside; a file with a credential's name (the
+   denylist's globs) is outside; nothing else outside the repository is
+   allowed, and the repository's protected paths are judged as before, by
+   checkers this does not touch. Where `Temp` is set nobody could approve a
+   path outside, so the argv trigger refuses one outright instead of asking,
+   and the refusal names it and says nothing ran ("the command line names
+   /etc/hosts, outside the repository, $TMPDIR and /tmp, so it was refused and
+   nothing of it ran"); the pin's says the call was refused and nothing was
+   done. The files never reach the repository's diff. The guard's tests cover
+   the allowed and the refused cases, and the exfiltration suite passes.
+6. *`fs-edit`*: its schema is path, old, new, replace_all and edits again, in
+   both profiles (`line` goes, with its code); no error names a tool; an `old`
+   that matches nowhere as written but holds `\n`, `\t` or `\"` sequences, and
+   matches exactly once with one level of escaping undone, is applied so, with
+   `new` unescaped the same way, and the answer says "old held literal \n
+   sequences; they were matched as real newlines"; the closest text is shown
+   only at a resemblance of 0.5 or more (the cases the tests show score 0.57
+   and up; a line that shares two of old's words among four others, 0.44, is
+   not), otherwise the error says there is no close match; the note of other
+   copies is given only for an `old` of two lines or 40 non-space characters
+   that is not all import lines or decorators, looks only in the files git
+   tracks, outside `build`, `dist`, `vendor` and `node_modules`, and says
+   nothing when it finds more than three other places, runs out of files or
+   time, or the repository is no git work tree.
+
+**Not built here**: the run that measures it. The plan is SWE-bench Verified's
+121 tasks, Muse at low effort, through the same bridge: the revamp four
+replicates, and the old shell2 build two more so that both have four (the
+difference's noise is about 1.2 tasks); measured are the tasks resolved, cost
+and calls per task, and the mechanisms (scratch refusals, `fs-edit` misses and
+their recovery, escape repairs, notes of other copies, test runs piped through
+`tail`, no-change reminders, empty patches); then Qwen on the nine
+commit-bench tasks after the shell2 build's nine. `recall` still renders a
+shell result without its note.

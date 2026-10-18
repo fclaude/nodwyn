@@ -2,6 +2,7 @@ package core
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -137,10 +138,53 @@ func TestTheReviewIsQuietWhenTheOriginalTestsPass(t *testing.T) {
 	}
 }
 
-// A turn that edits a test of another language is not asked: only Go's
-// tests are run against the change, and the log says so, rather than a
-// silent nothing.
-func TestOriginalTestsAreRunForGoOnly(t *testing.T) {
+// Any language's tests are run against the change: the check the turn passed
+// is run again with the edited test file as the last commit had it, and the
+// test it names is read from the output. SWE-bench's pytest-5787 and
+// scikit-learn-13124 rewrote an existing test in Python and the review asked
+// nothing, since the run was Go's alone (ADR 32, amended 2026-10-16). Here a
+// unittest run, as the turn's own, passes on the rewritten test.
+func TestOriginalTestsAreRunForPython(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is not installed")
+	}
+	repo := gitWorkTree(t)
+	commitFiles(t, repo, map[string]string{
+		"calc.py":      "def one():\n    return 1\n",
+		"test_calc.py": "import unittest\nfrom calc import one\n\n\nclass CalcTest(unittest.TestCase):\n    def test_one(self):\n        self.assertEqual(one(), 1)\n",
+	})
+	r := unattendedRigIn(t, repo,
+		write("w", "calc.py", "def one():\n    return 2\n"),
+		write("t", "test_calc.py", "import unittest\nfrom calc import one\n\n\nclass CalcTest(unittest.TestCase):\n    def test_one(self):\n        self.assertEqual(one(), 2)\n"),
+		shellArgs("r", "python3", "-m", "unittest", "test_calc"),
+		fake.Turn{Content: "done"},                       // the review: test_one fails as the last commit had it
+		fake.Turn{Content: "The request changes one()."}, // and ends
+	)
+	if e := r.turn("make one return 2"); e != "" {
+		t.Fatal(e)
+	}
+	if got := r.results()["r"]; got != "" {
+		t.Fatalf("the turn's own run failed: %s", got)
+	}
+	var msg string
+	for i := range r.srv.Requests {
+		if m := lastMessage(r, i); strings.Contains(m, originalTestsHead) {
+			msg = m
+		}
+	}
+	if !strings.Contains(msg, originalTestsHead+"test_one (test_calc.CalcTest.test_one) (test_calc.py).") {
+		t.Fatalf("the review does not name the original test: %q", msg)
+	}
+	if got, _ := os.ReadFile(filepath.Join(r.repo, "test_calc.py")); !strings.Contains(string(got), "one(), 2") {
+		t.Errorf("the test file was not left as the model made it:\n%s", got)
+	}
+}
+
+// With no run that passed and ran the edited test file there is nothing to
+// repeat: the review asks nothing, and the log says so, rather than a silent
+// nothing.
+func TestOriginalTestsAreNotRunWithoutACheckThatRunsThem(t *testing.T) {
 	t.Parallel()
 	repo := gitWorkTree(t)
 	commitFiles(t, repo, map[string]string{
@@ -150,7 +194,7 @@ func TestOriginalTestsAreRunForGoOnly(t *testing.T) {
 	r := unattendedRigIn(t, repo,
 		write("w", "calc.py", "def one():\n    return 2\n"),
 		write("t", "test_calc.py", "def test_one():\n    assert one() == 2\n"),
-		shell("r", "true # pytest"),
+		shell("r", "true # go test ./other/"),
 		fake.Turn{Content: "done"},                       // the review names the removed assertion
 		fake.Turn{Content: "The request changes one()."}, // and ends
 	)
@@ -158,11 +202,11 @@ func TestOriginalTestsAreRunForGoOnly(t *testing.T) {
 		t.Fatal(e)
 	}
 	if n := requestsMention(r, "original tests fail"); n != 0 {
-		t.Fatalf("%d requests named original tests of a language that is not run", n)
+		t.Fatalf("%d requests named original tests with no check to run them", n)
 	}
 	var noted bool
 	for _, n := range r.notes() {
-		noted = noted || strings.Contains(n, "original-tests: not run, it runs Go tests only")
+		noted = noted || strings.Contains(n, "original-tests: not run, no run that passed since the last edit runs the test files you edited")
 	}
 	if !noted {
 		t.Errorf("the log does not say the original tests were not run: %q", r.notes())
@@ -380,6 +424,133 @@ func TestBroadestPassingPicksTheRunThatRunsTheMostOfTheChange(t *testing.T) {
 		}
 		if got := v.String(); got != want {
 			t.Errorf("%s = %s, want %s", src, got, want)
+		}
+	}
+}
+
+// The loop reads a run's output for passing tests and failing ones in every
+// ecosystem, not Go's alone: a Python run piped through tail was no run that
+// passed because only go test's lines counted (ADR 32, amended 2026-10-16).
+func TestRunOutputIsReadForEveryEcosystem(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true)
+	for src, want := range map[string]string{
+		// passing lines
+		`(length (passing-lines "collected 5 items\n..... [100%]\n===== 5 passed in 0.12s ====="))`: `1`,
+		`(length (passing-lines "5 passed, 1 warning in 0.12s"))`:                                   `1`,
+		`(length (passing-lines "Ran 3 tests in 0.001s\n\nOK"))`:                                    `1`,
+		`(length (passing-lines "test result: ok. 4 passed; 0 failed; 0 ignored"))`:                 `1`,
+		`(length (passing-lines "Tests:       3 passed, 3 total"))`:                                 `1`,
+		`(length (passing-lines "3 examples, 0 failures"))`:                                         `1`,
+		`(length (passing-lines "--- PASS: TestX (0.00s)\nok  \texample.com/m\t0.01s"))`:            `2`,
+		`(length (passing-lines "2 failed, 3 passed in 0.5s"))`:                                     `0`,
+		`(length (passing-lines "nothing to see"))`:                                                 `0`,
+		// failing output
+		`(failing-output? "FAILED tests/test_a.py::test_x - assert 1 == 2\n1 failed, 4 passed in 0.3s")`: `#t`,
+		`(failing-output? "========= 1 failed, 4 passed in 0.3s =========")`:                             `#t`,
+		`(failing-output? "1 error in 0.10s")`:                                                           `#t`,
+		`(failing-output? "Ran 3 tests in 0.001s\n\nFAILED (failures=1)")`:                               `#t`,
+		`(failing-output? "ERROR: test_one (test_calc.CalcTest)")`:                                       `#t`,
+		`(failing-output? "test result: FAILED. 1 passed; 1 failed")`:                                    `#t`,
+		`(failing-output? "2 examples, 2 failures")`:                                                     `#t`,
+		`(failing-output? "5 passed in 0.12s")`:                                                          `#f`,
+		`(failing-output? "Ran 3 tests in 0.001s\n\nOK")`:                                                `#f`,
+		// failures named
+		`(failure-names "FAILED tests/test_a.py::test_x - why\nFAIL: test_one (test_calc.CalcTest.test_one)")`: `("tests/test_a.py::test_x" "test_one (test_calc.CalcTest.test_one)")`,
+		`(failure-names "test calc::subs ... FAILED\nrspec ./spec/calc_spec.rb:12 # Calc adds")`:               `("calc::subs" "./spec/calc_spec.rb:12")`,
+		`(failure-names "  ● Calc › adds two numbers")`:                                                        `("Calc › adds two numbers")`,
+	} {
+		v, err := r.s.Eval(t.Context(), src)
+		if err != nil {
+			t.Fatal(src, err)
+		}
+		if got := v.String(); got != want {
+			t.Errorf("%s = %s, want %s", src, got, want)
+		}
+	}
+}
+
+// The plan's command and the run the turn made are the same run when they
+// differ in flags and launcher: the review said a check "has not passed since
+// your last edit" for `-v 1` against `-v 2` (pytest-5787, ADR 32, amended
+// 2026-10-16).
+func TestThePlansRunIsMatchedByWhatItRuns(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true)
+	for src, want := range map[string]string{
+		`(plan-language-ran? "pytest -v 1 testing/test_reports.py::test_a" "pytest -v 2 testing/test_reports.py::test_a")`:         `#t`,
+		`(plan-language-ran? "python -m pytest testing/test_reports.py::test_a -rA" "pytest testing/test_reports.py::test_a")`:     `#t`,
+		`(plan-language-ran? "pytest testing/test_reports.py::test_a testing/test_b.py" "pytest testing/test_reports.py::test_a")`: `#t`,
+		`(plan-language-ran? "pytest testing/test_reports.py::test_b" "pytest testing/test_reports.py::test_a")`:                   `#f`,
+		`(plan-language-ran? "go test ./internal/prim/ -count=1" "go test ./internal/prim/")`:                                      `#t`,
+		`(plan-language-ran? "go test ./internal/loop/" "go test ./internal/prim/")`:                                               `#f`,
+		`(plan-language-ran? "make validate" "make validate")`:                                                                     `#t`,
+		`(plan-language-ran? "pytest" "pytest")`:                                                                                   `#t`,
+		`(plan-language-ran? "pytest tests/" "go test ./...")`:                                                                     `#f`,
+		`(plan-language-ran? "anything" "")`:                                                                                       `#f`,
+	} {
+		v, err := r.s.Eval(t.Context(), src)
+		if err != nil {
+			t.Fatal(src, err)
+		}
+		if got := v.String(); got != want {
+			t.Errorf("%s = %s, want %s", src, got, want)
+		}
+	}
+}
+
+// A write outside the repository, after the turn has run something, is a
+// refused call the model reads, not the end of the turn. The harness measured
+// the size of the change an edit call would write (edit-sizes) with its own
+// git-diff of the path, and the guard denied that call, which a strategy
+// cannot catch: SWE-bench's django-11400 ended with `[turn.end] error: denied:
+// path /tmp/check_order.py is outside the repository` at its first write to
+// /tmp after a run (ADR 32, amended 2026-10-16).
+func TestAWriteOutsideTheRepositoryAfterARunIsARefusedCall(t *testing.T) {
+	t.Parallel()
+	const changed = "package calc\n\nfunc evalOr(p string) string { return p }\n\nfunc Root(p string) string { return evalOr(p) + \"x\" }\n"
+	r := unattendedRigIn(t, goRepo(t),
+		shell("a", "true # go test ./calc/"),
+		write("t", "/tmp/nodwyn-outside-check.py", "print(1)\n"),
+		write("w", "calc/calc.go", changed),
+		shellArgs("b", "bash", "-c", "grep -q 'evalOr(p) + \"x\"' calc/calc.go # go test ./calc/"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "Root adds the x; the check covers it."},
+	)
+	if e := r.turn("make Root add an x to its path"); strings.Contains(e, "denied") {
+		t.Fatalf("the turn ended on the refused write: %s", e)
+	}
+	if got := r.results()["t"]; !strings.Contains(got, "is outside the repository") {
+		t.Fatalf("the model was not told the write is outside the repository: %q", got)
+	}
+}
+
+// A run that failed is held against the last commit: the same command with
+// every changed file as it was names the tests the change broke. Here the
+// reworded error breaks the test that pins it, the turn's run shows it
+// failing, and the model puts the failure down to the environment, as it did
+// on psf-requests-2931 (ADR 32, amended 2026-10-16).
+func TestTheReviewNamesWhatTheChangeBrokeAfterAFailedRun(t *testing.T) {
+	t.Parallel()
+	r := unattendedRigIn(t, msgModule(t, msgTest),
+		write("w", "calc/calc.go", rewordedMsg),
+		shellArgs("r", "go", "test", "./calc/"),
+		fake.Turn{Content: "done"},                                     // told the last run failed
+		fake.Turn{Content: "That failure comes from the environment."}, // the review names TestMsg
+		fake.Turn{Content: "I append to the phrase instead."},
+	)
+	if e := r.turn("add the response's Content-Type to the error"); e != "" {
+		t.Fatal(e)
+	}
+	var msg string
+	for i := range r.srv.Requests {
+		if m := lastMessage(r, i); strings.Contains(m, "pass on the last commit") {
+			msg = m
+		}
+	}
+	for _, want := range []string{"Your last test run failed, and these tests pass on the last commit: TestMsg.", "your change breaks them", "say which sentence of the request requires it"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the review lacks %q: %q", want, msg)
 		}
 	}
 }

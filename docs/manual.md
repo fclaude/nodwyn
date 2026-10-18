@@ -197,7 +197,15 @@ out, as the `fs-read` that brings them back. The cap follows the window:
 3,072 tokens by default, a 48th of the high water once the window grows
 with a large context (16,128 at a 1M one, at most 16,384), unless you set
 it. An `fs-edit` answers with the lines it changed, numbered as the file
-now reads them.
+now reads them. In a lean session ([unattended runs](#unattended-runs)) it
+also says, when the text it replaced (two lines or 40 characters or more, and
+not only import lines or decorators) occurs in one to three other places of
+the source git tracks, where, as `path:line`: the same text is not always the
+same fault, but a change that belongs in one place often belongs in the
+others. In a lean session, too, an edit whose text matches nowhere is answered
+with the lines of the file closest to it when some are close, and one written
+with literal `\n` sequences where newlines were meant is made as meant, and
+says so.
 
 ### Where each phase lives
 
@@ -368,7 +376,23 @@ never reloads by itself, since a reload loses the replies being written.
 running in the background when it ends (SIGTERM, then SIGKILL two seconds
 later): a server started with `&` does not outlive the call. A `bash -c`
 command line runs with `pipefail`, so `make test | tail -n 40` reports the
-tests' failure rather than `tail`'s success. For a server, a watcher or a
+tests' failure rather than `tail`'s success. In a lean session
+([unattended runs](#unattended-runs)) a long output is not poured into the
+model's context: when the model runs a command and a stream passes 8 KiB or
+150 lines, it reads that stream's first 20 lines, a marker saying which lines
+are not shown, and its last 50, and the whole stream is saved under the
+session's scratch directory (`$TMPDIR/out/N.stdout`, and `N.stderr` for
+errors; removed when the session closes) for the model to read a range of
+with `sed -n` or search with `grep -n`, without a question. A command that
+reads a file (`cat`, `head`, `tail`, `nl`, `sed -n`) is shown as it prints, up
+to 256 KiB, so is a person's own command, and so is a program's of the
+`scheme` tool, which computes with the whole of it; a full session's output
+is cut at 256 KiB alone. A lean session's model also reads the result's note
+(exit 141 after a `head`; a read that printed nothing) after the output, as
+`[note] …`. A lean session nobody approves may also write to and read
+from `/tmp` (the files never reach the repository's diff); a command that
+names a path outside the repository, `$TMPDIR` and `/tmp` is refused, and the
+model is told nothing of it ran. For a server, a watcher or a
 program to talk to, the model has `shell-start` (asks, like `shell-exec`),
 `shell-read` to see new output (optionally waiting up to 60 s),
 `shell-send` to type into it (asks every time: typing into a shell is running
@@ -726,11 +750,34 @@ does not offer declines.
 
 ### Unattended runs
 
+What nodwyn does with nobody watching depends on the loop's profile.
+`[loop] profile` in `config.toml` is `"auto"` unless you set it: the **lean**
+loop when nobody approves the session's calls (`nodwyn run --yolo`, `--judge`,
+`--unattended`, a run's `auto_approve`), the **full** loop when you do. `"lean"`
+or `"full"` chooses either way for every session, and the environment variable
+`NODWYN_PROFILE`, when it is not empty, overrides the file for the sessions
+started in it (`NODWYN_PROFILE=full nodwyn run ...` for one run). Settings does
+not offer it. The lean loop is the one measured on the 121 clean SWE-bench
+Verified tasks, and since 2026-10-17 it says even less: a system prompt of
+about 90 tokens (who and where, that nobody approves or answers the calls, the
+tools, where throwaway files go, one sentence on the work and one on the
+answer), the model offered `shell-exec` and `fs-edit` alone (the repository's
+own tools, MCP tools and the other built-ins are not offered unless the
+project adds them to `lean-tools`), a run's plan one line, with no explorer or
+planner, recorded for you and not shown to the model, and nothing said to the
+model while it works or as it ends: no finish review, no reminders to test or
+to stop reading, no hints, and a turn that changed nothing told so once. On
+those tasks the loop before that change resolved as many as the same loop with six tools and as Pi, for about a fifth
+less cost per task (ADR 32, amended 2026-10-17). A chat in a session nobody
+approves is still reviewed when it ends, since a person reads its answer. The
+rest of this section describes the full loop. A project's `.nodwyn/init.scm`
+can mix the two, switch by switch ([docs/scheme.md](scheme.md) §9.8).
+
 `nodwyn run --yolo` answers a run's ordinary confirms with yes, so a
 benchmark harness or a test rig never stops to ask. (Line mode's `--yolo` is
 not this: it turns on the task's Don't ask, "Standing approvals" below, and
 the task stays one a person answers, whose security confirms and
-checkpoints ask and whose prompts are a chat's.) With nobody watching, nodwyn's defaults also
+checkpoints ask and whose prompts are a chat's.) In the full loop, with nobody watching, nodwyn's defaults also
 change (docs/scheme.md §9): the system prompt is how to work rather than
 what to tell an approver, and a turn ends on evidence — a change, and a test
 run after it that did not fail — with an honest way out when the tests cannot
@@ -1226,7 +1273,9 @@ say when the model stops with work left. It can reach a keyed judge or model
 API with `(credential class)` and `http-request`. It cannot run a call the
 model did not make, loosen the guard, or keep a turn going past a budget or a
 progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
-(§9.1), and so is the plan gate with its thresholds (§9.5).
+(§9.1), and so is the plan gate with its thresholds (§9.5). The default loop's
+lean and full profiles are a handful of definitions that `init.scm` loads
+after ("Unattended runs" above, §9.8).
 
 Long work is compacted on its own just under the window's high water: the
 model writes a handover note and goes on from it, in that turn and the next

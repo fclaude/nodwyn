@@ -270,6 +270,18 @@ hard limit for one run (kept on resume).
 An unattended run's soft checkpoint goes on to the hard limit, as for the
 other budgets.
 
+The default loop has two profiles. A session nobody approves (`--yolo`,
+`--judge`, `--unattended`, a run's `auto_approve`) runs the lean one: a short
+system prompt, `shell-exec` and `fs-edit` alone, no explorer or planner, and
+nothing said to the model while it works. A session you answer runs the full one.
+
+```toml
+[loop]
+profile = "auto"   # or "lean" or "full" for every session; NODWYN_PROFILE overrides it
+```
+
+See [the manual](docs/manual.md#unattended-runs) and `docs/scheme.md` §9.8.
+
 ### Local daemon
 
 `nodwyn daemon` serves a versioned local session protocol over a private Unix

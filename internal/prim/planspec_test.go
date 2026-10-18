@@ -29,6 +29,17 @@ func TestRequestNamesAreTheNamesARequestGives(t *testing.T) {
 	}
 }
 
+// The harness around a request and the environment it reports give names the
+// change does not produce: a task template's fields, its product's name and a
+// platform string. Backquoted, a key is still asked for.
+func TestRequestNamesLeaveOutATemplatesFieldsAndAPlatformString(t *testing.T) {
+	got := requestNames("You are solving one SWE-bench Verified task.\n\nTarget:\n- instance_id: pytest-dev__pytest-5787\n- repository: pytest-dev/pytest\n- base_commit: abc\n\nIssue:\nThe serializer drops the chain. System: Darwin-18.2.0-x86_64-i386-64bit, compiler clang-1000.11.45.5. Fix `base_commit` handling in report_to_serializable.")
+	want := []string{"pytest-dev", "base_commit", "report_to_serializable"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("requestNames = %q, want %q", got, want)
+	}
+}
+
 // A name is found whole and in any case: session-id is in "Session-Id:" and
 // in a quoted "session-id", not in X-Session-Id.
 func TestHasNameFindsWholeNames(t *testing.T) {

@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 284 of 611 tracked Go files: every non-test Go file, 68,683 of 131,273 Go source lines (52.3\% by lines). It also includes all 36 tracked Scheme files (5,888 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 293 of 635 tracked Go files: every non-test Go file, 71,367 of 137,295 Go source lines (52.0\% by lines). It also includes all 37 tracked Scheme files (6,256 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -49,6 +49,8 @@ This is the checked-in policy discussed in Chapter~\ref{chap:repo-customisation}
 \sourcefile{dev/git.scm}{Scheme}
 
 \sourcefile{dev/repo.scm}{Scheme}
+
+\sourcefile{internal/loop/full.scm}{Scheme}
 
 \sourcefile{internal/loop/planspec.scm}{Scheme}
 
@@ -109,6 +111,8 @@ Begin with \src{cmd/nodwyn/main.go} and its command dispatch. The mode files ass
 \sourcefile{cmd/nodwyn/chat.go}{Go}
 
 \sourcefile{cmd/nodwyn/cli.go}{Go}
+
+\sourcefile{cmd/nodwyn/codeindex.go}{Go}
 
 \sourcefile{cmd/nodwyn/credential.go}{Go}
 
@@ -326,9 +330,17 @@ Read registration and checker assembly in \src{internal/prim/prim.go}, then choo
 
 \sourcefile{internal/prim/claims.go}{Go}
 
+\sourcefile{internal/prim/codeindex_cli.go}{Go}
+
 \sourcefile{internal/prim/diff.go}{Go}
 
 \sourcefile{internal/prim/docs.go}{Go}
+
+\sourcefile{internal/prim/editalso.go}{Go}
+
+\sourcefile{internal/prim/editclosest.go}{Go}
+
+\sourcefile{internal/prim/editescape.go}{Go}
 
 \sourcefile{internal/prim/editregions.go}{Go}
 
@@ -352,6 +364,8 @@ Read registration and checker assembly in \src{internal/prim/prim.go}, then choo
 
 \sourcefile{internal/prim/original.go}{Go}
 
+\sourcefile{internal/prim/outline.go}{Go}
+
 \sourcefile{internal/prim/planspec.go}{Go}
 
 \sourcefile{internal/prim/policy.go}{Go}
@@ -364,11 +378,17 @@ Read registration and checker assembly in \src{internal/prim/prim.go}, then choo
 
 \sourcefile{internal/prim/repoindex.go}{Go}
 
+\sourcefile{internal/prim/schemetool.go}{Go}
+
 \sourcefile{internal/prim/shell.go}{Go}
+
+\sourcefile{internal/prim/shellview.go}{Go}
 
 \sourcefile{internal/prim/support.go}{Go}
 
 \sourcefile{internal/prim/term.go}{Go}
+
+\sourcefile{internal/prim/testsfor.go}{Go}
 
 \sourcefile{internal/prim/versions.go}{Go}
 

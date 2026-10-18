@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -379,12 +380,29 @@ type checkRun struct {
 // deadline if that comes first, and says its exit status and what it
 // printed.
 func runCheck(parent context.Context, o Options, name string, args []string, deadline time.Time) (checkRun, error) {
+	var stdout, stderr checkOutput
+	status, err := execCheck(parent, o, name, args, deadline, &stdout, &stderr)
+	if err != nil {
+		return checkRun{}, err
+	}
+	return checkRun{status: status, output: sha256.Sum256(append(stdout.sum(), stderr.sum()...))}, nil
+}
+
+// execCheck runs the check with the environment shell-exec gives it, the
+// session's scratch directory as TMPDIR and the whole process group stopped
+// when it ends or the deadline comes, and says its exit status. A check that
+// exits with a status is not an error; one that could not start, or was
+// stopped, is.
+func execCheck(parent context.Context, o Options, name string, args []string, deadline time.Time, stdout, stderr io.Writer) (int, error) {
 	timeout := o.ShellTimeout
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
 	if left := time.Until(deadline); left < timeout {
 		timeout = left
+	}
+	if timeout <= 0 {
+		return 0, errors.New("out of time")
 	}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
@@ -397,26 +415,24 @@ func runCheck(parent context.Context, o Options, name string, args []string, dea
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 5 * time.Second
-	var stdout, stderr checkOutput
-	err := runStopping(cmd, &stdout, &stderr)
+	err := runStopping(cmd, stdout, stderr)
 	if parent.Err() != nil {
-		return checkRun{}, parent.Err()
+		return 0, parent.Err()
 	}
 	if ctx.Err() != nil {
-		return checkRun{}, fmt.Errorf("timed out after %s", timeout)
+		return 0, fmt.Errorf("timed out after %s", timeout)
 	}
-	run := checkRun{output: sha256.Sum256(append(stdout.sum(), stderr.sum()...))}
 	var exitErr *exec.ExitError
 	switch {
 	case err == nil:
-		return run, nil
+		return 0, nil
 	case errors.As(err, &exitErr):
-		if run.status = exitErr.ExitCode(); run.status < 0 {
-			run.status = 128
+		if status := exitErr.ExitCode(); status >= 0 {
+			return status, nil
 		}
-		return run, nil
+		return 128, nil
 	}
-	return checkRun{}, err
+	return 0, err
 }
 
 // checkNoise is what differs between two runs of the same code, masked

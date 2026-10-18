@@ -1946,6 +1946,9 @@
     },
     "log.GatePlan": {
       "properties": {
+        "hidden": {
+          "type": "boolean"
+        },
         "marks": {
           "items": {
             "$ref": "#/$defs/log.PlanStep"
