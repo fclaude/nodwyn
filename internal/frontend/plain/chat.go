@@ -9,31 +9,56 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
 	"github.com/fclaude/nodwyn/internal/budget"
-	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // Chat is the line-mode agent front-end: one goroutine reads the user's
-// lines and the session's events in turn. While a turn runs, the user's
-// only input is the answer to a confirm prompt; Interrupt (Ctrl-C) aborts
-// the turn.
+// lines and the task's events in turn. While a turn runs, the user's only
+// input is the answer to a confirm prompt; Interrupt (Ctrl-C) aborts the
+// turn. The task is open in the daemon (ADR 30, amended 2026-10-17), so
+// every client and the scheduler reach it while line mode shows it.
 type Chat struct {
-	Session      *core.Session
+	// Client is a connection to the daemon, and ID the task open there:
+	// every operation is a call on Client, and the task's events come on it.
+	Client       *rpc.Client
+	ID           string
 	In           io.Reader
 	Out          io.Writer
 	ShowThinking bool
-	// ReplayHistory displays restored history before reading input.
+	// ReplayHistory displays the stored conversation before reading input.
 	ReplayHistory bool
-	replayedSeq   uint64
+	// NoConfirm answers every confirm and budget checkpoint with no, without
+	// reading a line (--no-confirm), so a script's next line is never taken
+	// for an answer.
+	NoConfirm bool
 	// Interrupt receives a value per Ctrl-C; nil disables.
 	Interrupt <-chan struct{}
+
+	ctx   context.Context
+	tools []llm.Tool
+	// queue holds the task's events as relay keeps them, and lost says why
+	// the connection ended; gone is set once line mode has seen that, and
+	// closed once another client closed the task.
+	mu      sync.Mutex
+	queue   []rpc.ClientEvent
+	lost    error
+	arrived chan struct{}
+	gone    bool
+	closed  bool
+	// following is true while a turn this front-end started runs, when
+	// Ctrl-C aborts it rather than ending line mode.
+	following atomic.Bool
 
 	lines         *lineReader
 	lastWasStream bool
@@ -44,26 +69,43 @@ type Chat struct {
 	}
 }
 
-// Run drives the session until :q or EOF.
+// Following reports whether a turn this front-end started is running, so
+// that Ctrl-C aborts it; otherwise Ctrl-C ends line mode.
+func (c *Chat) Following() bool { return c.following.Load() }
+
+// Run drives the task until :q or EOF, or until the daemon closes it.
 func (c *Chat) Run(ctx context.Context) error {
+	c.ctx = ctx
 	c.Out = TerminalText(c.Out)
 	c.lines = newLineReader(c.In, c.Out)
-	c.banner()
+	info, err := c.info()
+	if err != nil {
+		return err
+	}
+	c.tools = info.Tools
+	c.banner(info)
+	history, pending, err := c.subscribe()
+	if err != nil {
+		return err
+	}
+	c.relay()
 	if c.ReplayHistory {
 		// The whole conversation, from the log: a resumed session holds
 		// only its end (ADR 49 §10).
-		history, err := c.Session.History()
-		if err != nil {
-			return err
-		}
 		Replay(history, c.Out, c.ShowThinking)
-		if len(history) > 0 {
-			c.replayedSeq = history[len(history)-1].Seq
+	} else {
+		// What the task recorded as it opened, as it would have been shown
+		// live: a note from its init.scm, a server it could not start.
+		for _, ev := range history {
+			c.receive(rpc.ClientEvent{ID: c.ID, Kind: string(ev.Kind), Seq: ev.Seq, Payload: ev.Payload})
 		}
 	}
-	// Drain whatever the session emitted before we attached (session.start).
+	// A question the task was already waiting on when line mode came.
+	for _, ev := range pending {
+		c.receive(ev)
+	}
 	c.drainIdle()
-	for {
+	for !c.ended() {
 		fmt.Fprintln(c.Out)
 		line, ok := c.lines.read("you> ")
 		if !ok {
@@ -71,68 +113,130 @@ func (c *Chat) Run(ctx context.Context) error {
 			return nil
 		}
 		line = strings.TrimSpace(line)
-		if line == "" {
+		// What happened while the line was typed: a turn another client or
+		// the scheduler started.
+		c.drainIdle()
+		if c.ended() || line == "" {
 			continue
 		}
 		if strings.HasPrefix(line, ":") {
-			if quit := c.command(ctx, line); quit {
+			if quit := c.command(line); quit {
 				return nil
 			}
 			continue
 		}
-		if err := c.Session.Send(line); err != nil {
+		if err := c.call("session.send", map[string]any{"text": line}, nil); err != nil {
 			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
 			continue
 		}
-		c.follow(ctx)
+		c.follow()
 	}
+	if c.closed {
+		return errors.New("the task was closed by another client")
+	}
+	return fmt.Errorf("lost the daemon: %w", c.lostWhy())
 }
 
-func (c *Chat) banner() {
-	s := c.Session
-	names := make([]string, 0, len(s.Tools()))
-	for _, t := range s.Tools() {
+// ended reports that no more events will come: the connection ended or the
+// task was closed elsewhere.
+func (c *Chat) ended() bool { return c.closed || c.gone }
+
+func (c *Chat) banner(info rpc.SessionDetails) {
+	names := make([]string, 0, len(info.Tools))
+	for _, t := range info.Tools {
 		names = append(names, t.Name)
 	}
-	fmt.Fprintf(c.Out, "nodwyn session %s\nrepo  %s\ntools %s\n:h for commands\n", s.ID(), s.Repo(), strings.Join(names, " "))
+	fmt.Fprintf(c.Out, "nodwyn session %s\nrepo  %s\ntools %s\n:h for commands\n", info.ID, info.Repo, strings.Join(names, " "))
 }
 
-// drainIdle consumes buffered events without blocking.
+// drainIdle shows the events already here without blocking.
 func (c *Chat) drainIdle() {
-	for {
-		select {
-		case ev, ok := <-c.Session.Events():
-			if !ok {
-				return
-			}
-			if ev.Seq == 0 || ev.Seq > c.replayedSeq {
-				c.show(ev)
-			}
-		default:
+	for !c.ended() {
+		ev, ok, gone := c.take()
+		if !ok {
+			c.gone = gone
 			return
 		}
+		c.receive(ev)
 	}
 }
 
-// follow renders events until the turn ends.
-func (c *Chat) follow(ctx context.Context) {
-	for {
+// follow renders events until the turn ends: at the idle after its
+// turn.end, which every turn records before it is idle. An idle without one
+// ends a turn another client or the schedule started, which ended as this
+// one was sent.
+func (c *Chat) follow() {
+	c.following.Store(true)
+	defer c.following.Store(false)
+	done := c.ctx.Done()
+	// heard stops the turn on a Ctrl-C, or once the front-end's context has
+	// ended; with wait it waits for one of them or for an event to come.
+	heard := func(wait <-chan struct{}) {
 		select {
-		case <-ctx.Done():
-			c.Session.Abort()
+		case <-done:
+			c.abort()
+			done = nil
 		case <-c.Interrupt:
 			fmt.Fprintln(c.Out, "\n[aborting]")
-			c.Session.Abort()
-		case ev, ok := <-c.Session.Events():
-			if !ok {
-				return
-			}
-			c.show(ev)
-			if ev.Kind == event.Status && ev.Payload.(event.StatusInfo).State == "idle" {
+			c.abort()
+		case <-wait:
+		}
+	}
+	ended := false
+	for !c.ended() {
+		ev, ok, gone := c.take()
+		if gone {
+			c.gone = true
+			return
+		}
+		if !ok {
+			heard(c.arrived)
+			continue
+		}
+		// Between events, however fast they come, a Ctrl-C is heard.
+		heard(closedChannel)
+		switch c.receive(ev) {
+		case string(log.KindTurnEnd):
+			ended = true
+		case event.Status:
+			if ended {
 				return
 			}
 		}
 	}
+}
+
+// closedChannel is always ready, for a wait that does not wait.
+var closedChannel = func() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}()
+
+// receive shows one of the daemon's events and says which it was: the kind
+// of a shown one, event.Status only for the idle that ends a turn.
+func (c *Chat) receive(e rpc.ClientEvent) string {
+	if e.ID != c.ID {
+		return ""
+	}
+	if e.Kind == "session.closed" {
+		c.closed = true
+		fmt.Fprintln(c.Out, "\n[the task was closed by another client]")
+		return e.Kind
+	}
+	ev, ok, err := decode(e.Kind, e.Seq, e.Payload)
+	if err != nil {
+		fmt.Fprintln(c.Out, "error:", err)
+		return ""
+	}
+	if !ok {
+		return ""
+	}
+	c.show(ev)
+	if ev.Kind == event.Status && ev.Payload.(event.StatusInfo).State != "idle" {
+		return ""
+	}
+	return ev.Kind
 }
 
 // writeStream renders one streamed fragment. Thinking lines are prefixed
@@ -267,6 +371,16 @@ func (c *Chat) show(ev event.Event) {
 		endStream()
 		p := ev.Payload.(log.ApprovalChange)
 		fmt.Fprintln(c.Out, ApprovalSummary(p))
+	case string(log.KindUserMsg):
+		// The person typed their own message; one shown here came from
+		// another client or the schedule, while line mode waited.
+		if !c.following.Load() {
+			endStream()
+			fmt.Fprintf(c.Out, "\nyou> %s\n", ev.Payload.(log.UserMsg).Text)
+		}
+	case string(log.KindScheduleRun):
+		endStream()
+		fmt.Fprintln(c.Out, ScheduleRunLine(ev.Payload.(log.ScheduleRun)))
 	case string(log.KindNote):
 		endStream()
 		fmt.Fprintf(c.Out, "note: %s\n", ev.Payload.(log.Note).Text)
@@ -291,6 +405,15 @@ func (c *Chat) show(ev event.Event) {
 			fmt.Fprintln(c.Out, line)
 		}
 	}
+}
+
+// ScheduleRunLine is the line a transcript shows as a scheduled run of the
+// task starts (ADR 49): the message that follows is the schedule's.
+func ScheduleRunLine(p log.ScheduleRun) string {
+	if p.Manual {
+		return "── a scheduled run, started by hand ──"
+	}
+	return "── a scheduled run, due " + p.Due.Local().Format("2006-01-02 15:04") + " ──"
 }
 
 // callLine is a call's arguments as line mode shows them: in words for the
@@ -384,35 +507,46 @@ func (c *Chat) confirm(p event.Confirm) {
 		fmt.Fprintln(c.Out, indent(p.Prompt.Detail, "  "))
 	}
 	options := p.Prompt.ApprovalOptions()
-	line, ok := c.lines.answer(approvalQuestion(options))
+	line, ok := c.ask(approvalQuestion(options))
 	if !ok {
 		line = "n"
 	}
 	// The wider answers are the explicit scope operations the TUI uses, only
 	// for what the guard offered; anything else, however typed, declines.
+	// The daemon records who answered: this connection's person.
 	var err error
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes":
-		err = c.Session.AnswerFrom(p.ID, "y", "terminal")
+		err = c.answer(p.ID, "y")
 	case "b":
 		if err = offered(options.Binding); err == nil {
-			err = c.Session.CreateBinding(p.ID, "terminal")
+			err = c.call("session.binding.create", map[string]any{"prompt_id": p.ID}, nil)
 		}
 	case "a":
 		if err = offered(options.Session); err == nil {
-			err = c.Session.CreateApproval(p.ID, "session", "terminal")
+			err = c.call("session.approval.create", map[string]any{"prompt_id": p.ID, "scope": "session"}, nil)
 		}
 	case "t":
 		if err = offered(options.Turn); err == nil {
-			err = c.Session.CreateApproval(p.ID, "turn", "terminal")
+			err = c.call("session.approval.create", map[string]any{"prompt_id": p.ID, "scope": "turn"}, nil)
 		}
 	default:
-		err = c.Session.AnswerFrom(p.ID, "n", "terminal")
+		err = c.answer(p.ID, "n")
 	}
 	if err != nil {
 		fmt.Fprintf(c.Out, "approval: %s\n", err)
-		_ = c.Session.AnswerFrom(p.ID, "n", "terminal")
+		_ = c.answer(p.ID, "n")
 	}
+}
+
+// ask reads the answer to a question, or with NoConfirm gives no without
+// reading, saying so where the answer would have been typed.
+func (c *Chat) ask(question string) (string, bool) {
+	if c.NoConfirm {
+		fmt.Fprintln(c.Out, question+"n (--no-confirm)")
+		return "n", true
+	}
+	return c.lines.answer(question)
 }
 
 // offered is the error for a wider answer the prompt did not offer, nil when
@@ -450,13 +584,13 @@ func (c *Chat) secretInput(p event.SecretPrompt) {
 	if !ok {
 		line = ""
 	}
-	_ = c.Session.SecretReply(p.ID, []byte(line))
+	_ = c.call("session.secret", map[string]any{"prompt_id": p.ID, "secret": line}, nil)
 	if line == "" {
 		fmt.Fprintln(c.Out, "cancelled")
 	}
 }
 
-func (c *Chat) command(ctx context.Context, line string) (quit bool) {
+func (c *Chat) command(line string) (quit bool) {
 	fields := strings.Fields(line)
 	switch fields[0] {
 	case ":q", ":quit", ":exit":
@@ -481,7 +615,7 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 		}
 		// The durable log, as the TUI's :log reads it, so a resumed session
 		// shows the events of the runs before this one too.
-		history, err := c.Session.History()
+		history, err := c.history()
 		if err != nil {
 			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
 			return false
@@ -490,7 +624,7 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 			fmt.Fprintf(c.Out, "%5d %-15s %s\n", ev.Seq, ev.Kind, trim(string(ev.Payload), 120))
 		}
 	case ":tools":
-		for _, t := range c.Session.Tools() {
+		for _, t := range c.tools {
 			fmt.Fprintf(c.Out, "%-12s %s\n", t.Name, t.Description)
 		}
 	case ":eval":
@@ -499,16 +633,21 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 		// the log shows what ran; following its events shows a prompt it
 		// raises (credential-register's masked input, a confirm) and answers
 		// it instead of waiting for a reply read only afterwards.
-		if err := c.Session.StartEval(src, "line"); err != nil {
+		if err := c.call("session.eval", map[string]any{"source": src}, nil); err != nil {
 			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
 		} else {
-			c.follow(ctx)
+			c.follow()
 		}
 	case ":allow":
-		for _, a := range c.Session.Allowed() {
+		info, err := c.info()
+		if err != nil {
+			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
+			return false
+		}
+		for _, a := range info.Commands {
 			fmt.Fprintln(c.Out, "command", a)
 		}
-		for _, a := range c.Session.AllowedWrites() {
+		for _, a := range info.Writes {
 			fmt.Fprintln(c.Out, "write  ", a)
 		}
 	case ":thinking":
@@ -715,11 +854,18 @@ func (c *Chat) choice(ev event.Choice) {
 		fmt.Fprintf(c.Out, "  %-6s %s: %s\n", o.Key, o.Label, o.Detail)
 	}
 	for {
+		if c.NoConfirm {
+			// None of its answers only declines, and each is saved for every
+			// task: stop the turn, as when nobody is left to answer.
+			fmt.Fprintln(c.Out, "[--no-confirm: none of these answers only declines; the turn stops]")
+			c.abort()
+			return
+		}
 		line, ok := c.lines.answer("[" + strings.Join(keys, "/") + "] ")
 		if !ok {
-			// Nobody is left to answer, and the session closes only when
-			// the turn waiting on this answer has ended: stop the turn.
-			c.Session.Abort()
+			// Nobody is left to answer, and the task closes only when the
+			// turn waiting on this answer has ended: stop the turn.
+			c.abort()
 			return
 		}
 		line = strings.TrimSpace(line)
@@ -727,7 +873,7 @@ func (c *Chat) choice(ev event.Choice) {
 			fmt.Fprintf(c.Out, "answer one of %s\n", strings.Join(keys, ", "))
 			continue
 		}
-		if err := c.Session.AnswerFrom(ev.ID, line, "terminal"); err != nil {
+		if err := c.answer(ev.ID, line); err != nil {
 			fmt.Fprintln(c.Out, err)
 		}
 		return
@@ -760,7 +906,7 @@ func (c *Chat) checkpoint(ev event.Checkpoint) {
 		fmt.Fprintf(c.Out, "  commands: %s\n", strings.Join(p.State.Commands, "; "))
 	}
 	for {
-		line, ok := c.lines.answer("continue? [y=double soft/N/absolute soft limit] ")
+		line, ok := c.ask("continue? [y=double soft/N/absolute soft limit] ")
 		if !ok {
 			line = "n"
 		}
@@ -768,7 +914,7 @@ func (c *Chat) checkpoint(ev event.Checkpoint) {
 			fmt.Fprintln(c.Out, err)
 			continue
 		}
-		if err := c.Session.AnswerFrom(ev.ID, line, "terminal"); err != nil {
+		if err := c.answer(ev.ID, line); err != nil {
 			fmt.Fprintln(c.Out, err)
 		}
 		return

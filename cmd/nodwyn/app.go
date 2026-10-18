@@ -116,8 +116,8 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 }
 
 // ensureDaemon attaches to a daemon that answers on socket, or starts one
-// in this process, for nodwyn app and nodwyn tui (command, which its
-// messages begin with). A socket file nobody listens on (the connection is
+// in this process, for nodwyn app, nodwyn tui and line mode (command, which
+// its messages begin with). A socket file nobody listens on (the connection is
 // refused) is left by a crash, and is removed. A daemon that listens but
 // cannot be used (an older protocol, a hello it refuses, a slow answer) is
 // still running its tasks and schedules: its socket stays, and the command

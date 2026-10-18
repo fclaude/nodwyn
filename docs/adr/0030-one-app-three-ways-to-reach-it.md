@@ -315,3 +315,66 @@ than a hundred records with its second hundred twice and its first not at
 all. The test of a whole history ran only in local mode.
 ADR 34's note that the TUI's local mode opens a worktree without the task-root
 refusal no longer applies.
+
+## Amendment 2026-10-17: line mode talks to the daemon too
+
+The amendment above left line mode in its own process, for the per-run
+flags the daemon had no form for. While line mode had a task open it held
+the task's log, so a scheduled run of that task could not start and could
+not record its skip, and no other client could open it. Line mode is now a
+client of the daemon like the others, and each of those flags was decided
+without changing the protocol:
+
+- **`nodwyn chat` uses the daemon on the default socket, and starts one in
+  its own process when none answers**, through the same `ensureDaemon` as
+  `nodwyn app` and the TUI, saying on its error output which it did. A
+  daemon it started ends with it, as the TUI's does. It unlocks a locked
+  keychain over the socket (`keychain.unlock`) as the TUI does: from its
+  terminal, or under a script from the controlling terminal with
+  `--keychain-tty`; `--no-keychain` does not ask.
+- **Quitting closes the task line mode opened**, as quitting always did, so
+  a script's run of `nodwyn chat` still ends its task, its log released. A
+  task another client already had open (`--resume` of one open in the
+  console) is left open there.
+- **`--model`** names a configured model (`session.open`'s `name`) or a
+  model on `[control]`'s server (`server` and `model`); with `--resume` it
+  moves the task (`session.model.set`). **`--url` is refused**: a server no
+  configuration names would be one the daemon reaches for a client,
+  where every other model a task talks to is one a person set up (ADR 40).
+- **`--budget-*` and `--max-tool-calls` are refused**, saying which
+  `[budget]` key to set. A task's turn limits are the configuration's, or
+  none (ADR 49), whichever client opened it; limits for one task would be a
+  new `session.open` option, a mode the console and the TUI do not have.
+  `nodwyn run` keeps a run's own deadline and spend limit.
+- **`--no-confirm` is line mode's**: it answers each confirm and budget
+  checkpoint no as it arrives, without reading a line, so a script's next
+  line is never taken for an answer. The task in the daemon is an ordinary
+  one, which a scheduled run needs (`scheduledApproval` refuses a session
+  whose confirms core answers), and the answers are recorded as this
+  person's. A question with set answers (uploads to Google Docs) has none
+  that only declines, each being saved for every task, so it stops the
+  turn, as when the input ends at it.
+- **`--yolo` is the task's Don't ask** (`session.approve_all`), so it needs
+  `[approval] dont_ask`, as the console's switch does, and is refused in the
+  daemon's words without it. It is no longer an unattended session: security
+  confirms and checkpoints ask, the prompts are a chat's, and nothing is put
+  back on a hard stop; `nodwyn run --yolo` is the unattended one. With
+  `--no-confirm` too, what still asks is declined, which is what `--yolo`
+  answered before. The two used to be refused together. Line mode turns the
+  switch off when it leaves a task it did not open.
+
+Line mode's input is read in turn with the task's events, as before, since
+a masked secret and a confirm read the same terminal: a turn another client
+or the schedule starts while it waits for a line is shown when the next line
+is read, with the message that started it. Its events are held as they come,
+any number, since the connection's own queue closes when full. A turn ends
+at the idle after its `turn.end`, so an idle of a turn that ended as line
+mode sent its message does not end the wait for its own.
+
+Found on the way: line mode and its tests now reach the daemon on the
+standard socket under `XDG_RUNTIME_DIR`, which the selfcheck and the CLI
+tests did not isolate, though they isolated configuration and data; a run
+of either while `nodwyn app` was open would have used the person's daemon,
+its configuration and its keys. The selfcheck and `cmd/nodwyn`'s tests set
+their own, and line mode refuses a daemon whose tasks are not in its data
+directory, closing the task it opened there before any model is asked.

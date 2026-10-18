@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -35,16 +36,44 @@ func TestCLIHelper(t *testing.T) {
 	t.Fatal("missing CLI arguments")
 }
 
+// lineEnv is the environment of a command a test runs in dir: its config,
+// data and runtime directories are dir's, so line mode starts a daemon of its
+// own there, on a socket path short enough to bind.
+func lineEnv(t *testing.T, dir string) []string {
+	t.Helper()
+	run, err := os.MkdirTemp("/tmp", "nodwyn-run-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(run) })
+	return append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"), "XDG_RUNTIME_DIR="+run)
+}
+
+// writeConfig writes dir's config.toml.
+func writeConfig(t *testing.T, dir, conf string) {
+	t.Helper()
+	must.MkdirAll(t, filepath.Join(dir, "config", "nodwyn"), 0o700)
+	must.WriteFile(t, filepath.Join(dir, "config", "nodwyn", "config.toml"), []byte(conf), 0o600)
+}
+
+// controlOn is a config.toml whose [control] model is model on the fake
+// Ollama at url.
+func controlOn(url, model string) string {
+	return "[control]\nprovider = \"ollama\"\nurl = \"" + url + "\"\nmodel = \"" + model + "\"\n"
+}
+
 func TestCLIResume(t *testing.T) {
 	srv := fake.New(fake.Turn{Content: "original answer"}, fake.Turn{Content: "continued answer"})
 	defer srv.Close()
 	dir := t.TempDir()
 	repo := t.TempDir()
+	writeConfig(t, dir, controlOn(srv.URL, "test-model"))
+	env := lineEnv(t, dir)
 	run := func(input string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--"}, args...)...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+		cmd.Env = env
 		cmd.Stdin = strings.NewReader(input)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -52,7 +81,7 @@ func TestCLIResume(t *testing.T) {
 		}
 		return string(out)
 	}
-	flags := []string{"--url", srv.URL, "--model", "test-model", "--no-keychain", "--no-confirm"}
+	flags := []string{"--no-keychain", "--no-confirm"}
 	run("first ask\n:q\n", append(flags, "--repo", repo)...)
 	// Test subprocess adds its PASS line after main returns.
 	ids := strings.Fields(run("", "sessions", "--ids"))
@@ -76,12 +105,10 @@ func TestCLIBudgetCheckpoint(t *testing.T) {
 	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}}, fake.Turn{Content: "finished"})
 	defer srv.Close()
 	dir := t.TempDir()
-	configDir := filepath.Join(dir, "config", "nodwyn")
-	os.MkdirAll(configDir, 0700)
-	os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("[budget]\ntool_calls_soft=1\ntool_calls_hard=3\n"), 0600)
-	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--url", srv.URL, "--model", "test-model", "--no-keychain", "--budget-wall", "2h", "--budget-actions", "10")
+	writeConfig(t, dir, controlOn(srv.URL, "test-model")+"[budget]\ntool_calls_soft=1\ntool_calls_hard=3\n")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--no-keychain", "--repo", t.TempDir())
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+	cmd.Env = lineEnv(t, dir)
 	cmd.Stdin = strings.NewReader("list twice\n4\n3\n:q\n")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -104,16 +131,10 @@ func TestCLIStartsWithAnAnthropicControlModel(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "config", "nodwyn"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	conf := "[control]\nprovider = \"anthropic\"\nurl = \"" + server.URL + "\"\nmodel = \"claude-test\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "config", "nodwyn", "config.toml"), []byte(conf), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeConfig(t, dir, "[control]\nprovider = \"anthropic\"\nurl = \""+server.URL+"\"\nmodel = \"claude-test\"\n")
 	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--no-keychain", "--no-confirm", "--repo", t.TempDir())
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+	cmd.Env = lineEnv(t, dir)
 	cmd.Stdin = strings.NewReader(":q\n")
 	out, _ := cmd.CombinedOutput()
 	if strings.Contains(string(out), "unreachable") || !strings.Contains(string(out), "control model: "+server.URL+" claude-test (anthropic)") {

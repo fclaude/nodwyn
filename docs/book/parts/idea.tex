@@ -361,9 +361,8 @@ task and the plan with the call.
 \section{You}
 
 You reach a session through a front-end, and every front-end talks to the
-same core. The line-mode front-end runs the session in its own process.
-Otherwise a daemon owns the sessions, the full-screen terminal client's too,
-and serves a JSON-RPC protocol on a Unix socket readable only by you; every
+same core. A daemon owns the sessions, every front-end's, line mode's and
+the full-screen terminal client's too, and serves a JSON-RPC protocol on a Unix socket readable only by you; every
 answer to a prompt is recorded with the kernel's identity of the process that
 sent it. The browser console is a bridge from that socket to a page on the
 loopback address, paired by a code or a one-time ticket; \code{nodwyn app}

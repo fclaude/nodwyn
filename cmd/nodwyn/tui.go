@@ -17,8 +17,8 @@ import (
 	"golang.org/x/term"
 )
 
-// runTUI shows the terminal client over the daemon, as every client but
-// line mode is (ADR 30, amended 2026-10-17): the one answering on the
+// runTUI shows the terminal client over the daemon, as every client is
+// (ADR 30, amended 2026-10-17): the one answering on the
 // socket, or one this process starts when none answers, as nodwyn app
 // starts one.
 func runTUI(paths config.Paths, args []string) error {

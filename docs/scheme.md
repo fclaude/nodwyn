@@ -586,8 +586,8 @@ of cut replies and the evidence loop for unattended turns (all below, and in
 | `(window-limits)` | The window's sizes, in tokens as the window estimates them: an alist of `high-water` (past it older context is trimmed), `low-water` (what trimming goes down to), `ceiling` (the most a request with headroom may carry: the control model's context less the reply cap, or the high water when nothing is known above it), `max-result-tokens` (a longer tool result is shortened) and `output-reserve` (the default reply cap). The water marks grow with a large context unless config.toml sets them, and shrink to fit a small one whether set or not (manual, "Choosing models"). Compaction's default threshold is read from it (§9.2). |
 | `(context-tokens)` `(context-tokens result)` | The size of the context the next `model-turn` would send, in the units of `(window-limits)`, before any trimming. Unlike a reply's `prompt-tokens` it counts as the window does, whatever the server's tokenizer, and includes the tool results added since the last request. Compaction measures it (§9.2). With a tool result (its seq, or the id of the call it answers, as for `fold-result`), only the part from that result to the end: what a server with a prompt cache reads again when the result is folded, since the prompt before it is unchanged. `#f` when the window does not show the result (a narrowed context or a compaction left it out). `hygiene.scm` weighs its folds with it (§9.6). |
 
-When nobody reviews the work as it happens — `(unattended?)` (`--yolo`, a
-run's `auto_approve`, `--judge`, `--unattended`) or a supervised run's turn
+When nobody reviews the work as it happens — `(unattended?)` (`nodwyn run`'s
+`--yolo`, a run's `auto_approve`, `--judge`, `--unattended`) or a supervised run's turn
 (`plan-required?`) — the
 default `agent-turn` ends a turn on evidence, not on the model's word
 (`evidence-loop`): a reply that stops before anything changed, or with a
@@ -834,7 +834,7 @@ call starts the count again, and so does the reminder; 0 turns it off.
 
 | | |
 |---|---|
-| `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`). `[approval]` (ADR 35) does not make it true: a chat whose commands the judge answers still has a person to ask |
+| `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`nodwyn run --yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`). `[approval]` (ADR 35) does not make it true: a chat whose commands the judge answers still has a person to ask |
 
 A reply's `done` is `"length"` when the model reached the output cap (the
 model's reply cap: its `max_output`, else the longest reply its provider publishes (at most a quarter of its context), else `window.output_reserve`, at most a quarter of a context too small for the window and that reply); the core notes it in the log. What to do is the
@@ -1093,8 +1093,8 @@ refusals, judges' verdicts, sub-agents, notes) within
 `optimize-session-chars` per session and `optimize-total-chars` in all, and
 hands them to a sub-agent labelled `optimizer`. That agent may read the
 repository and write only under `.nodwyn/`, a protected path, so every write
-asks the user and shows the diff; a session nobody approves (`--yolo`,
-`--judge`, an unattended run) refuses those writes, so `/optimize` needs a
+asks the user and shows the diff; a session nobody approves (`nodwyn run`'s
+`--yolo` or `--judge`, an unattended run) refuses those writes, so `/optimize` needs a
 person at the prompt. A changed project init is kept pending review with
 `nodwyn trust`; the new code has not run. Once trusted, reload or resume to use it.
 For an explicitly authorised init, reload still applies immediately; an ordinary

@@ -2,7 +2,6 @@ package plain
 
 import (
 	"bytes"
-	"context"
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/log"
 	"strings"
@@ -156,7 +155,7 @@ func TestLogCommandRefusesABadCount(t *testing.T) {
 	c := &Chat{Out: &out}
 	for _, line := range []string{":log -1", ":log x", ":log 0"} {
 		out.Reset()
-		if quit := c.command(context.Background(), line); quit || !strings.Contains(out.String(), "usage: :log") {
+		if quit := c.command(line); quit || !strings.Contains(out.String(), "usage: :log") {
 			t.Errorf("%s: %q", line, out.String())
 		}
 	}

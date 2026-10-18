@@ -8,8 +8,10 @@
 #      test/fakes/ollama/serve: building nodwyn costs nothing and needs no
 #      key, no passphrase and no other machine;
 #   5. replay its own log.
-# The candidate runs on a temporary config and session store, so the user's
-# config, keychain and sessions are neither read nor written.
+# The candidate runs on a temporary config, session store and runtime
+# directory, so the user's config, keychain and sessions are neither read nor
+# written, and line mode starts a daemon of its own instead of reaching the
+# user's on the standard socket.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CAND=${1:-bin/nodwyn}
@@ -32,8 +34,8 @@ done
 MODEL_URL=$(awk '$1 == "MODEL" { print $2; exit }' "$TMP/model")
 test -n "$MODEL_URL" || { echo "selfcheck: the fake model did not start"; exit 1; }
 
-export XDG_CONFIG_HOME=$TMP/config XDG_DATA_HOME=$TMP/data
-mkdir -p "$XDG_CONFIG_HOME/nodwyn"
+export XDG_CONFIG_HOME=$TMP/config XDG_DATA_HOME=$TMP/data XDG_RUNTIME_DIR=$TMP/run
+mkdir -p "$XDG_CONFIG_HOME/nodwyn" "$XDG_RUNTIME_DIR"
 printf '[control]\nprovider = "ollama"\nurl = "%s"\nmodel = "fake"\n' "$MODEL_URL" >"$XDG_CONFIG_HOME/nodwyn/config.toml"
 
 echo "selfcheck: $CAND ($("$CAND" version))"

@@ -474,7 +474,8 @@ with it off, and it is never written to configuration. Turning it on is
 refused while Settings does not offer it (`approval.dont_ask`, off by
 default), to an actor relayed `via` a paired device, which may only turn it
 off, and to a session whose confirmations are not asked of a person
-(`--yolo`, a judge, `--no-confirm`, an unattended run). Each switch is an
+(a run's `auto_approve` or judge, an unattended run). Line mode's `--yolo`
+is this switch, turned on as its task opens. Each switch is an
 `approval.change` with `kind: "all"`, `scope: "session"`, `prefix: "*"` and,
 when it is turned off, `off: true`; when it answered an ask that was
 waiting, it carries that ask's `prompt_id`, as every log event that

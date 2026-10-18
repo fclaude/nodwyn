@@ -1,21 +1,17 @@
 package plain
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/fclaude/nodwyn/internal/binding"
-	"github.com/fclaude/nodwyn/internal/config"
-	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 	"github.com/fclaude/nodwyn/internal/guard"
-	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -42,44 +38,26 @@ func TestApprovalQuestionListsWhatTheGuardOffers(t *testing.T) {
 	}
 }
 
-// A wider answer is the explicit scope operation, attributed to the
-// terminal, not a loose answer line: the approval record names its actor.
+// A wider answer is the explicit scope operation, attributed to whoever
+// answered, not a loose answer line: the approval record names the person
+// at this connection, as the daemon knows them.
 func TestLineModeWiderApprovalIsAnAttributedScope(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "work")
-	if err := os.MkdirAll(filepath.Join(repo, "notes"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	srv := fake.NewT(t,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "notes/a.txt", "content": "a"}}}},
 		fake.Turn{Content: "done"})
-	defer srv.Close()
-	cfg := config.Default()
-	cfg.Approval.Writes = config.ApproveAsk
-	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
-	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
-	s, err := core.New(core.Options{Config: cfg, Repo: repo, Paths: paths, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: &bytes.Buffer{}})
-	if err != nil {
+	o := testOptions(t, srv.URL)
+	must.MkdirAll(t, filepath.Join(o.Repo, "notes"), 0o755)
+	client, _ := testDaemon(t, o)
+	id := openTask(t, client, o.Repo)
+	out := runChat(t, &Chat{Client: client, ID: id, In: strings.NewReader("write a note\na\n")})
+	var info rpc.SessionDetails
+	if err := client.Call(context.Background(), "session.info", map[string]any{"id": id}, &info); err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
-	var out bytes.Buffer
-	chat := &Chat{Session: s, In: strings.NewReader("write a note\na\n"), Out: &out}
-	done := make(chan error, 1)
-	go func() { done <- chat.Run(context.Background()) }()
-	select {
-	case <-done:
-	case <-time.After(20 * time.Second):
-		t.Fatalf("line mode did not finish:\n%s", out.String())
+	if got := strings.Join(info.Writes, ","); got != "notes/" {
+		t.Fatalf("standing writes %q:\n%s", got, out)
 	}
-	if got := strings.Join(s.AllowedWrites(), ","); got != "notes/" {
-		t.Fatalf("standing writes %q:\n%s", got, out.String())
-	}
-	history, err := s.History()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, ev := range history {
+	for _, ev := range history(t, client, id) {
 		if ev.Kind != log.KindApprovalChange {
 			continue
 		}
@@ -87,7 +65,7 @@ func TestLineModeWiderApprovalIsAnAttributedScope(t *testing.T) {
 		if err := json.Unmarshal(ev.Payload, &change); err != nil {
 			t.Fatal(err)
 		}
-		if change.Actor != "terminal" || change.Scope != "session" {
+		if !strings.HasPrefix(change.Actor, "unix:uid=") || change.Scope != "session" {
 			t.Fatalf("approval record %+v", change)
 		}
 		return

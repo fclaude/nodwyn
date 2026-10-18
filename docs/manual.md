@@ -289,15 +289,19 @@ the TUI, the console and a paired phone):
 Flags go before the command (`nodwyn --show-thinking replay ID`); a command
 refuses the ones it does not read, and a command with flags of its own, such
 as `tui` or `run`, takes them after its name. `--plain` is an old flag that
-does nothing. The flags are `--repo DIR`, `--resume ID` (go on with a session; it keeps its
-repository unless `--repo` is given), `--model`, `--url`, `--show-thinking`, `--no-confirm`
-(every confirm is a no — for scripts and CI), `--yolo` (every ordinary
-confirm is a yes — for work nobody is watching), `--no-keychain`,
-`--keychain-tty` (ask for the keychain passphrase on the terminal even when
-input is a script; a keychain without one opens without asking),
-`--max-tool-calls N` (hard call override), `--budget-wall 2h`,
-`--budget-tokens N`, `--budget-actions N` and `--budget-cost USD` (a spend
-limit for the session). The `[budget]` settings and
+does nothing. The flags are `--repo DIR`, `--resume ID` (go on with a task;
+it keeps its folder, and a `--repo` beside it must name that folder),
+`--model NAME` (a `[models.NAME]`, or a model on `[control]`'s server),
+`--show-thinking`, `--no-confirm` (every confirm and budget checkpoint is a
+no, answered without reading a line, so a script's next line stays its next
+message — for scripts and CI), `--yolo` (turns on the task's Don't ask,
+"Standing approvals" below, which Settings must offer), `--no-keychain`
+(leave the daemon's keychain locked) and `--keychain-tty` (ask for the
+daemon's keychain passphrase on the terminal even when input is a script).
+`--url`, `--max-tool-calls` and the `--budget-*` flags, which set a server
+or limits for one session while line mode ran it itself, are refused, each
+saying where its setting is now: a task in the daemon has config.toml's
+servers and `[budget]` limits, whichever client opened it. The `[budget]` settings and
 checkpoint behavior are described in the README. Defaults stop a turn at 500
 calls, 4h wall time, 10M model tokens (each request's prompt and reply, a
 prompt token read from the provider's cache counted as a tenth) or 200
@@ -336,14 +340,19 @@ Line mode is one client of several: `nodwyn tui` is a full-screen terminal
 client ([the TUI](tui.md)), `nodwyn app` and `nodwyn ui` show the console in
 a window or a browser ([the app](app.md), [the browser view](browser.md)),
 and `nodwyn run` carries a task to its end with no conversation, a batch
-tool for scripts and benchmarks ([runs](runs.md)). All of them but line mode
-reach tasks through a daemon, so a task open in one is open in the others
-and runs on its schedule. `nodwyn tui`, like `nodwyn app`, uses the daemon
-that is running or starts one in its own process; quitting it detaches, or
-ends the tasks when its process serves them, and `:close` closes a task.
-Line mode still runs its task in its own process, and while it has a task
-open no other client can open it and its schedule is skipped ([the
-clients](clients.md), "Line mode and the daemon"). Everywhere else a task is
+tool for scripts and benchmarks ([runs](runs.md)). All of them reach tasks
+through a daemon, so a task open in one is open in the others and runs on
+its schedule. Line mode, `nodwyn tui` and `nodwyn app` use the daemon that
+is running, or start one in their own process (line mode says which on its
+error output), and a daemon a process started ends its tasks when that
+process quits. Quitting line mode closes the task it opened, as it always
+has, and leaves open one another client had open; quitting the TUI
+detaches, and `:close` closes. A message or a scheduled run that another
+client starts while line mode waits for a line is shown when the next line
+is read. A script that sets `XDG_CONFIG_HOME` or `XDG_DATA_HOME` sets
+`XDG_RUNTIME_DIR` too: line mode refuses a daemon that keeps its tasks in
+another data directory, since that daemon's configuration chose its models
+and keys. Everywhere else a task is
 a chat: a request that takes long is a message like any other.
 [The clients](clients.md) lists what each of them can do, and what is
 still built in one and not another.
@@ -661,9 +670,10 @@ dont_ask = false    # the default: no task offers "Don't ask" ("Standing approva
   content that looks like a credential, a command built from tool output,
   a request carrying a credential and an upload.
 
-`[approval]` is for sessions a person answers. `--no-confirm`, `--yolo` and
-`nodwyn run`'s flags decide the confirms of theirs, below; `writes` applies to
-every session. A prompt looks like this (a write, with `writes = "ask"`):
+`[approval]` is for sessions a person answers. Line mode's `--no-confirm`
+answers its prompts no, its `--yolo` turns on Don't ask, and `nodwyn run`'s
+flags decide the confirms of a run, below; `writes` applies to every
+session. A prompt looks like this (a write, with `writes = "ask"`):
 
 ```
 ─── confirm: fs-edit ("internal/x.go" "old…" "new…")
@@ -712,8 +722,11 @@ does not offer declines.
 
 ### Unattended runs
 
-`--yolo` answers ordinary confirms with yes, so a benchmark harness or a
-test rig never stops to ask. With nobody watching, nodwyn's defaults also
+`nodwyn run --yolo` answers a run's ordinary confirms with yes, so a
+benchmark harness or a test rig never stops to ask. (Line mode's `--yolo` is
+not this: it turns on the task's Don't ask, "Standing approvals" below, and
+the task stays one a person answers, whose security confirms and
+checkpoints ask and whose prompts are a chat's.) With nobody watching, nodwyn's defaults also
 change (docs/scheme.md §9): the system prompt is how to work rather than
 what to tell an approver, and a turn ends on evidence — a change, and a test
 run after it that did not fail — with an honest way out when the tests cannot
@@ -770,7 +783,8 @@ overrule its refusals. Still denied, exactly as with a human at the prompt:
   person at the prompt.
 
 Budgets are what stop a runaway turn when nobody is watching, so set
-`--max-tool-calls`, `--budget-wall` and `--budget-actions` for the job. A turn
+`[budget]`'s limits, and the run's `--budget-wall` and `--max-turns`, for the
+job. A turn
 that one of them, or the progress guard, stops is not left one edit past its
 tests: each time a test run passes after the turn changed something, nodwyn
 keeps the changes as they are, and on the stop it puts the files back to that
@@ -830,7 +844,9 @@ stops the questions for one task: its ordinary writes and commands are
 approved without asking until you uncheck it or the task closes. Protected
 paths and writes that look like a key still ask, and nothing the guard
 refuses is allowed. No Scheme can turn it on, a repository's `init.scm`
-included, and it is never saved: a resumed task asks again. Since writes in
+included, and it is never saved: a resumed task asks again. Line mode's
+`--yolo` turns it on as its task opens, and off again when it leaves a task
+another client has open. Since writes in
 the folder already go ahead by default (`[approval]`, "Confirms" above), it
 matters most for commands: while it is on, the judge is not asked.
 
@@ -1273,9 +1289,11 @@ nodwyn keychain passphrase              # set or change it (asks for the current
 nodwyn keychain passphrase --remove     # leave it without one (not recommended)
 ```
 
-A passphrase is asked for when a line-mode session or a daemon starts, at the
-terminal; the app's console asks for it instead, and so does the TUI, at its
-start, for the daemon it uses when that daemon's keychain is locked. On Home, a locked keychain
+A passphrase is asked for when a daemon starts, at the terminal; the app's
+console asks for it instead, and so do the TUI and line mode, at their
+start, for the daemon they use when that daemon's keychain is locked (line
+mode whose input is a script asks on the terminal only with
+`--keychain-tty`). On Home, a locked keychain
 opens its unlock form and focuses the masked password field. Startup refreshes
 keep that field and anything already typed in it, rather than moving typing
 into chat; a failed unlock returns focus there for another attempt.
@@ -2169,7 +2187,7 @@ off unless you set it. It counts the known cost of the whole task, every
 turn and a resumed session's history included: a checkpoint asks past
 `cost_soft`, and at `cost_hard` the task stops until you raise it. A request
 whose cost nobody knows is not counted, and a note says so the first time.
-The README has the details; `--budget-cost USD` sets it for one session or
+The README has the details; `nodwyn run --budget-cost USD` sets it for one
 run.
 
 The console's right panel keeps a compact summary above its content:
