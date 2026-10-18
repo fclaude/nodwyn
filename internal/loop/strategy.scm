@@ -103,13 +103,18 @@
               (ask-stopping)
               (cons (cons 'tool-calls kept) reply))))))
 
+(define (lean-args args)
+  (if (and lean-prompt (null? args))
+      (list "control" (list (cons 'tools lean-tools)))
+      args))
+
 (define (ask-model-with args)
-  (let again ((reply (apply model-turn args)) (left output-cut-retries))
+  (let again ((reply (apply model-turn (lean-args args))) (left output-cut-retries))
     (if (and (equal? (assoc-ref reply 'done "") "length")
              (null? (assoc-ref reply 'tool-calls '()))
              (> left 0))
         (begin (add-message output-cut-message)
-               (again (apply model-turn args) (- left 1)))
+               (again (apply model-turn (lean-args args)) (- left 1)))
         (begin (set! last-reasoning (assoc-ref reply 'reasoning-tokens 0))
                reply))))
 
@@ -197,7 +202,27 @@
   '("fs-read" "fs-list" "fs-find" "index-grep" "read-definition" "git-status" "git-diff"
     "index-search" "recall"))
 
-(define (look-call? call) (member (assoc-ref call 'name) look-tools))
+;; A shell-exec call that only looks too: it reads, searches or lists, and
+;; writes, runs and changes nothing. On the benchmark's matplotlib-25960 the
+;; shell2 arm (shell-exec and fs-edit only) made 21 read-only calls and ended
+;; its turn with no edit: the nudge above counted rounds of the dedicated
+;; read tools only, so grep, sed -n and cat through the shell never added up
+;; (ADR 32, amended 2026-10-17).
+(define shell-look-words '("grep " "rg " "find " "ls " "ls\n" "cat " "head " "tail " "sed -n" "wc " "nl " "which " "git log" "git show" "git diff" "git status" "git blame" "git grep" "tree "))
+(define shell-act-words '(">" "sed -i" "tee " "python" "pytest" "make " "pip " "conda " "npm " "git checkout" "git stash" "git apply" "git reset" "git commit" "rm " "mv " "cp " "mkdir " "chmod " "patch " "perl "))
+
+(define (shell-look? call)
+  (and (equal? (assoc-ref call 'name) "shell-exec")
+       (let ((line (command-line call)))
+         (and (not (string-empty? line))
+              (let any ((ws shell-look-words)) (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws)))))
+              (not (let any ((ws shell-act-words)) (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws))))))))))
+
+;; lean-shell-look is on in the lean profile and off in the full one, which
+;; counted the read tools alone (full.scm; docs/scheme.md §9.8).
+(define lean-shell-look #t)
+
+(define (look-call? call) (or (member (assoc-ref call 'name) look-tools) (and lean-shell-look (shell-look? call))))
 
 ;; Rounds in a row that only look, after which the model is told to write
 ;; down what it found and answer or plan (reading-reminder-message). A chat
@@ -214,13 +239,18 @@
 ;; rounds in a row (2 to 3 calls a round; longest runs 7 and 5), claude-sonnet
 ;; once. Add a row when a family's logs show 12 is wrong for it.
 (define reading-reminder-after '((default . 12)))
+;; The lean profile has no reading reminder (2026-10-17): of 47 firings read,
+;; about 8 weakly helped, 20 changed nothing, 15 were false alarms and up to 4
+;; may have hurt, and it told the model to use plan-write, which the lean
+;; profile does not offer (ADR 32, amended 2026-10-17).
+(define lean-no-read-reminder #t)
 
 ;; The rounds in a row that only looked, counting this round's calls: when
 ;; they reach reading-reminder-after the reminder is added, after the
 ;; calls are answered, and the count starts again.
 (define (reading-rounds calls reading)
   (stall-check calls)
-  (let ((after (tuned reading-reminder-after)))
+  (let ((after (if lean-no-read-reminder 0 (tuned reading-reminder-after))))
     (cond ((or (<= after 0) (pair? (filter (lambda (c) (not (look-call? c))) calls))) 0)
           ((< (+ reading 1) after) (+ reading 1))
           (else (add-message (if (reviewed?)
@@ -250,7 +280,17 @@
 ;; through the shell included, and files new since the turn began that git
 ;; does not track get finish-new-files-message once: a stray script or
 ;; backup would end up in the change.
-(define finish-reminders 2)
+;; The lean ladder, rung 2 (2026-10-16): lean-quiet drops what the harness says
+;; to the model while it works and as it ends: the finish review, its
+;; reminders, the question on an edited test, the hint on failures the
+;; unchanged code has. It keeps what keeps a run safe (the guard, the budget,
+;; the progress guard, the context window). Of dsl23's 4,385 requests in 121
+;; tasks, 707 came after the finish review began, and 17% of its cost.
+(define lean-quiet #t)
+(define finish-reminders (if lean-quiet 0 2))
+;; Even then a turn that changed nothing is told so once: shell2 on
+;; matplotlib-25960 ended its turn with no edit and no patch.
+(define lean-empty-reminders (if lean-quiet 1 0))
 (define unrunnable-after 6) ; failed test commands in a row before the way out is offered
 
 ;; The finish review (finish-review-points) is made once a turn, and at most
@@ -262,7 +302,7 @@
 ;; ((reviewed?)) has none of the limit; the count is the session's, and a
 ;; resumed run starts it again (ADR 32, amended 2026-10-16: commit-bench
 ;; spent 9-38% of its runs' tokens in the closing rounds).
-(define finish-review-limit 2)
+(define finish-review-limit (if lean-quiet 0 2))
 (define finish-reviews 0)
 
 (define (finish-review-due?)
@@ -427,6 +467,17 @@
   (let any ((exts '(".md" ".tex" ".rst" ".adoc")))
     (and (pair? exts) (or (string-suffix? (car exts) path) (any (cdr exts))))))
 
+;; Whether a path (repo-path of a call's) is one inside the repository: a
+;; path left absolute or climbing out of it names a file the guard refuses the
+;; model, and refuses the harness too, whose own call on it is a denial no
+;; strategy can catch, which ends the turn (SWE-bench's django-11400, a write
+;; to /tmp after a run; ADR 32, amended 2026-10-16). The harness reads and
+;; measures only paths this accepts.
+(define (repo-relative? path)
+  (and (not (string-empty? path))
+       (not (string-prefix? "/" path))
+       (not (member ".." (string-split path "/")))))
+
 (define (repo-path call)
   (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
          (p (if (pair? a) (format "~a" (assoc-ref a "path" "")) ""))
@@ -525,20 +576,50 @@
         (string-append (format "~a" (assoc-ref v "stdout" "")) "\n" (format "~a" (assoc-ref v "stderr" "")))
         "")))
 
-;; The lines of a run's output that show tests passing: go test's "--- PASS:
-;; TestX" and "ok  <tab>package", and validate's summary.
+;; The number before a word in a run's summary line, "3 passed, 1 failed in
+;; 0.4s" (pytest) or "Tests: 3 passed, 4 total" (jest): 3 for "passed"; #f
+;; when the line has none.
+(define (summary-count line word)
+  (let walk ((ts (string-split line " ")))
+    (cond ((or (null? ts) (null? (cdr ts))) #f)
+          ((and (string->number (car ts))
+                (equal? (let ((w (cadr ts))) (if (string-suffix? "," w) (substring w 0 (- (string-length w) 1)) w)) word))
+           (string->number (car ts)))
+          (else (walk (cdr ts))))))
+
+(define (summary-counts? line words)
+  (let any ((ws words))
+    (and (pair? ws) (let ((n (summary-count line (car ws)))) (or (and n (> n 0)) (any (cdr ws)))))))
+
+;; The lines of a run's output that show tests passing, whatever the
+;; language: go test's "--- PASS: TestX" and "ok  <tab>package", pytest's
+;; and jest's "3 passed", unittest's and Django's "OK", cargo's "test result:
+;; ok.", rspec's "3 examples, 0 failures", and validate's summary (ADR 32,
+;; amended 2026-10-16: only Go's and validate's were read, so a Python run
+;; piped through tail was no run that passed).
 (define (passing-lines output)
-  (filter (lambda (l) (or (string-contains? l "--- PASS: ") (string-prefix? "ok  \t" l) (string-prefix? "validate: PASS" l)))
+  (filter (lambda (l)
+            (let ((t (string-trim l)))
+              (or (string-contains? l "--- PASS: ") (string-prefix? "ok  \t" l) (string-prefix? "validate: PASS" l)
+                  (and (summary-count t "passed") (> (summary-count t "passed") 0) (not (summary-counts? t '("failed" "failures" "error" "errors"))))
+                  (equal? t "OK") (string-prefix? "OK (" t)
+                  (string-prefix? "test result: ok." t)
+                  (and (string-contains? t " 0 failures") (or (string-contains? t " examples,") (string-contains? t " example,"))))))
           (string-split output "\n")))
 
-;; Whether a run's output shows a failure: go test's "--- FAIL" and "FAIL"
-;; lines, a package that did not build or start, a panic, validate's FAIL.
+;; Whether a run's output shows a failure, whatever the language: go test's
+;; "--- FAIL" and "FAIL" lines, a package that did not build or start, a
+;; panic, validate's FAIL; pytest's and jest's "1 failed" or "1 error",
+;; unittest's "FAILED (failures=1)", "FAIL:" and "ERROR:" lines, cargo's
+;; "test result: FAILED", rspec's "2 failures".
 (define (failing-output? output)
   (let any ((ls (string-split output "\n")))
     (and (pair? ls)
          (let ((l (string-trim (car ls))))
            (or (string-prefix? "--- FAIL" l) (string-prefix? "FAIL" l) (string-prefix? "panic: " l)
                (string-prefix? "validate: FAIL" l) (string-contains? l "[build failed]") (string-contains? l "[setup failed]")
+               (string-prefix? "ERROR: " l) (string-prefix? "test result: FAILED" l)
+               (summary-counts? l '("failed" "failures" "error" "errors"))
                (any (cdr ls)))))))
 
 ;; A run that passed, as the plan's evidence keeps it: (line . shown), its
@@ -563,9 +644,9 @@
 
 ;; The failures a test run's output reports: Go's "--- FAIL: TestX (0.00s)"
 ;; (a sub-test as TestX/case) and "FAIL<tab>package<tab>0.3s" (a package, as
-;; "package <path>"), pytest's "FAILED path::test - why" and unittest's
-;; "FAIL: test (module.Class)" and "ERROR: ...", each once, in the order the
-;; output gives them. They are what the loop compares across runs: the tests
+;; "package <path>"), pytest's "FAILED path::test - why", unittest's
+;; "FAIL: test (module.Class)" and "ERROR: ...", cargo's, jest's and rspec's,
+;; each once, in the order the output gives them. They are what the loop compares across runs: the tests
 ;; the unchanged code fails are not the change's (failures-known?). Other
 ;; output gives none, and the comparison is not made.
 (define (failure-line-name l)
@@ -582,6 +663,13 @@
            (let ((rest (string-trim (substring l 6 (string-length l))))) (and (not (string-empty? rest)) rest)))
           ((string-prefix? "ERROR: " l)
            (let ((rest (string-trim (substring l 7 (string-length l))))) (and (not (string-empty? rest)) rest)))
+          ;; cargo's "test calc::subs ... FAILED", jest's "● suite › case",
+          ;; rspec's "rspec ./spec/calc_spec.rb:12 # description".
+          ((and (string-prefix? "test " l) (string-suffix? " ... FAILED" l))
+           (first-word (substring l 5 (string-length l))))
+          ((and (string-prefix? "● " l) (string-contains? l " › "))
+           (string-trim (substring l 2 (string-length l))))
+          ((string-prefix? "rspec ./" l) (first-word (substring l 6 (string-length l))))
           (else #f))))
 
 (define (failure-names output)
@@ -904,7 +992,7 @@
                  (cond ((null? ps) (reverse out))
                        ((or (member (car ps) told) (member (car ps) out)) (keep (cdr ps) out))
                        (else (keep (cdr ps) (cons (car ps) out)))))))
-    (if (or turn-stopping (null? fresh) (not (host-primitive? "change-removals")))
+    (if (or lean-quiet turn-stopping (null? fresh) (not (host-primitive? "change-removals")))
         (cons '() '())
         (let* ((removed (guard (e (else (log-note (string-append "change-removals failed: " (format "~a" (assoc-ref e 'message ""))))
                                         '()))
@@ -1029,29 +1117,100 @@
                (let ((s (command-reach (car cs) dirs)))
                  (if (> s score) (best (cdr cs) (car cs) s) (best (cdr cs) top score))))))))
 
+;; The program and arguments a shell-exec call ran, as the primitives that run
+;; a check again take them: (cmd . args), or #f.
+(define (call-argv call)
+  (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+         (cmd (if (pair? a) (format "~a" (assoc-ref a "cmd" "")) "")))
+    (and (not (string-empty? cmd))
+         (cons cmd (let ((l (assoc-ref a "args" '()))) (if (list? l) (map (lambda (x) (format "~a" x)) l) '()))))))
+
+;; The words of a test file's path that a command naming the file would
+;; contain: the path, its name without the extension, and the folders above
+;; it that say little ("tests", "src") left out. Short ones are no mark.
+(define generic-test-folders '("test" "tests" "testing" "__tests__" "spec" "src" "lib" "internal" "pkg" "cmd"))
+
+(define (test-path-words path)
+  (let* ((parts (string-split path "/"))
+         (base (if (null? parts) path (car (reverse parts))))
+         (stem (car (string-split base ".")))
+         (folders (if (or (null? parts) (null? (cdr parts))) '() (reverse (cdr (reverse parts))))))
+    (filter (lambda (w) (and (>= (string-length w) 4) (not (member w generic-test-folders))))
+            (cons path (cons stem folders)))))
+
+;; Whether a passing run runs the test files in paths: it is a test run, and it
+;; either names one of them (its path, its name, a folder it is in) or is not
+;; narrowed to anything (`pytest`, `go test ./...`, `make test`).
+(define (run-covers-tests? call paths)
+  (and (test-call? call)
+       (let ((line (command-line call)))
+         (or (string-contains? line "./...")
+             (whole-check? call)
+             (let any ((ps paths))
+               (and (pair? ps)
+                    (or (let word ((ws (test-path-words (car ps))))
+                          (and (pair? ws) (or (string-contains? line (car ws)) (word (cdr ws)))))
+                        (any (cdr ps)))))))))
+
+;; The passing call to run again with the edited test files as the last
+;; commit had them: one that runs them, the newest, a run not narrowed to
+;; some tests before one that is. calls: the passing calls since the last
+;; edit, newest first.
+(define (original-check calls paths)
+  (let ((covering (filter (lambda (c) (run-covers-tests? c paths)) calls)))
+    (cond ((null? covering) #f)
+          (else (let ((wide (filter (lambda (c) (not (narrowed-run? c))) covering)))
+                  (car (if (pair? wide) wide covering)))))))
+
 ;; The existing tests of the test files the turn edited that fail when those
-;; files are as the last commit had them (original-tests), as a list of
-;; alists of path and tests. The turn's own tests are not among them (the
-;; last commit does not declare them), and a language other than Go has no
-;; run: the log says so, and the earlier lines of the finish review stay.
-(define (original-test-failures touched)
-  (let* ((paths (let keep ((ps touched) (out '()))
-                  (cond ((null? ps) (reverse out))
-                        ((and (test-file-path? (car ps)) (not (member (car ps) out))) (keep (cdr ps) (cons (car ps) out)))
-                        (else (keep (cdr ps) out)))))
-         (go (filter (lambda (p) (string-suffix? "_test.go" p)) paths)))
+;; files are as the last commit had them, with the check the turn passed
+;; (original-tests), as a list of alists of path and tests. The turn's own
+;; tests are not among them (its new test files are taken away, and the edited
+;; files are the last commit's). It runs the check the turn itself passed, so
+;; it works for any language whose runs print their failures (ADR 32,
+;; amended 2026-10-16: until then it ran Go's tests alone, and the Python
+;; tasks that rewrote an existing test were asked nothing). passing-all: the
+;; calls that passed since the last edit, newest first. Without a passing run
+;; that covers the edited test files, the log says so and the earlier lines
+;; of the finish review stay.
+(define (original-test-failures touched passing-all)
+  (let ((paths (let keep ((ps touched) (out '()))
+                 (cond ((null? ps) (reverse out))
+                       ((and (test-file-path? (car ps)) (not (member (car ps) out))) (keep (cdr ps) (cons (car ps) out)))
+                       (else (keep (cdr ps) out))))))
     (cond ((null? paths) '())
-          ((null? go)
-           (log-note "original-tests: not run, it runs Go tests only")
-           '())
           ((not (host-primitive? "original-tests")) '())
           (else
-           (let ((result (guard (e (else (log-note (string-append "original-tests failed: " (format "~a" (assoc-ref e 'message ""))))
-                                           '()))
-                           (original-tests go))))
-             (when (pair? (assoc-ref result "unrun" '()))
-               (log-note (string-append "original-tests: did not run in " (string-join (assoc-ref result "unrun" '()) ", "))))
-             (assoc-ref result "failures" '()))))))
+           (let* ((call (original-check passing-all paths))
+                  (argv (and call (call-argv call))))
+             (cond ((not argv)
+                    (log-note "original-tests: not run, no run that passed since the last edit runs the test files you edited")
+                    '())
+                   (else
+                    (let ((result (guard (e (else (log-note (string-append "original-tests failed: " (format "~a" (assoc-ref e 'message ""))))
+                                                    '()))
+                                    (original-tests (car argv) (cdr argv) paths))))
+                      (for-each (lambda (why) (log-note (string-append "original-tests: " (format "~a" why))))
+                                (assoc-ref result "unrun" '()))
+                      (assoc-ref result "failures" '())))))))))
+
+;; The tests a test run that failed shows failing that the last commit does
+;; not fail (original-tests with no edited file: the same command, with every
+;; changed file as the last commit had it), as a list of names. On SWE-bench's
+;; psf-requests-2931 the change broke an existing test, the model ran the
+;; whole file, saw 81 failures it put down to the environment (an HTTP test
+;; server), and one of them was its own (ADR 32, amended 2026-10-16).
+(define (regression-failures call)
+  (let ((argv (call-argv call)))
+    (if (not argv)
+        '()
+        (let ((result (guard (e (else (log-note (string-append "original-tests failed: " (format "~a" (assoc-ref e 'message ""))))
+                                        '()))
+                        (original-tests (car argv) (cdr argv) '()))))
+          (for-each (lambda (why) (log-note (string-append "original-tests: " (format "~a" why))))
+                    (assoc-ref result "unrun" '()))
+          (let walk ((fs (assoc-ref result "failures" '())) (out '()))
+            (if (null? fs) (reverse out) (walk (cdr fs) (append (reverse (assoc-ref (car fs) "tests" '())) out))))))))
 
 ;; The finish review asks for a test only a few times: at most
 ;; finish-ask-limit items of a kind are named, and an item named in one
@@ -1110,7 +1269,7 @@
 ;; or figures, an amendment date, a paragraph pasted twice, entries added by
 ;; hand to a generated file.
 ;; And it names the existing tests the turn edited that fail when their files
-;; are as the last commit had them (original-test-failures, in Go): what a
+;; are as the last commit had them (original-test-failures): what a
 ;; grader runs, and what a rewritten want string hides (5040f9fe).
 ;; The tests it asks for are bounded: the parts the check passed without, the
 ;; plan's test steps and the dropped conditions are each named at most
@@ -1120,7 +1279,7 @@
 ;; point, with a coverage run its message asked for, took 62 of the run's 167
 ;; calls and 1.12M of its 2.38M cost-eq, in tests for branches of the change
 ;; and the model's own defensive code (ADR 32, amended 2026-10-16).
-(define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits made touched asked-edits)
+(define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits made touched asked-edits passing-all failing-call)
   (let* ((plan (if (and plan-language (pair? plan-spec))
                    (let ((check (plan-language-check passed)))
                      (plan-language-mark (cadr check))
@@ -1154,7 +1313,8 @@
                                          (and (pair? as) (or (and (eq? (car (car as)) 'ok) (edit-same-row? l (cdr (car as)))) (any (cdr as))))))))
                             current)
                     '()))
-         (original (original-test-failures touched))
+         (original (if quiet (original-test-failures touched passing-all) '()))
+         (regressed (if (and (not quiet) failing-call) (regression-failures failing-call) '()))
          (dropped (car (finish-ask dropped-key
                                    (if (and quiet (host-primitive? "change-dropped-conditions"))
                                        (guard (e (else (log-note (string-append "change-dropped-conditions failed: " (format "~a" (assoc-ref e 'message ""))))
@@ -1174,6 +1334,7 @@
             (if (pair? defs) (list (finish-removed-definitions-message defs)) '())
             (if (pair? lines) (list (finish-removed-expectations-message lines)) '())
             (if (and (pair? original) (null? unsupported)) (list (finish-original-tests-message original)) '())
+            (if (pair? regressed) (list (finish-regressed-tests-message regressed)) '())
             (if (pair? dropped) (list (finish-dropped-conditions-message dropped)) '())
             (if (pair? claims) (list (finish-unshown-claims-message claims)) '()))))
 
@@ -1365,7 +1526,7 @@
 ;; test has run, and each measure is a git call.
 (define (edit-sizes calls)
   (map (lambda (c) (cons (repo-path c) (diff-size (repo-path c))))
-       (filter (lambda (c) (and (edit-call? c) (not (scratch-name c)) (not (doc-path? (repo-path c))))) calls)))
+       (filter (lambda (c) (and (edit-call? c) (not (scratch-name c)) (repo-relative? (repo-path c)) (not (doc-path? (repo-path c))))) calls)))
 
 ;; Whether an edit call, made when the file's changes were sizes (edit-sizes),
 ;; left the file closer to the last commit: the model took a part of its own
@@ -1408,7 +1569,7 @@
   (let ((before (git-state)) (passing #f) (passing-all '()) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
         (passed '()) (review-made #f) (shown '()) (hand-edits '()) (tests-edited '()) (tests-told '()) (edit-asked '())
         (validate-made '()) (validate-print #f) (tool-before #f) (exited #f)
-        (base-fails '()) (last-fails '()) (hinted '()) (sizes '()) (shrank #f))
+        (base-fails '()) (last-fails '()) (hinted '()) (sizes '()) (shrank #f) (failing-call #f))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
@@ -1495,16 +1656,17 @@
                                       (set! base-fails (names-union names base-fails)))
                                     (cond ((equal? now-outcome 'failed)
                                            (set! last-fails names)
+                                           (set! failing-call (and (not validating) (test-call? c) c))
                                            ;; The baseline run is the unchanged code's own: it
                                            ;; is not told that it failed there before.
-                                           (when (and (not baseline) (failures-known? names base-fails request written))
+                                           (when (and (not lean-quiet) (not baseline) (failures-known? names base-fails request written))
                                              (let ((known (car (failure-split names base-fails request written))))
                                                (unless (equal? known hinted)
                                                  (set! hinted known)
                                                  (fold-result (assoc-ref c0 'id)
                                                               (string-append (format "~a" (assoc-ref r0 'value ""))
                                                                              (failure-known-hint known)))))))
-                                          ((equal? now-outcome 'passed) (set! last-fails '()))))))))
+                                          ((equal? now-outcome 'passed) (set! last-fails '()) (set! failing-call #f))))))))
                        (let ((entry (shown-entry c0 c r0 r)))
                          (set! shown (shown-add shown entry))
                          (when entry (set! hand-edits (hand-edits-ran hand-edits (car entry)))))
@@ -1516,6 +1678,7 @@
                        (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)) (not (doc-path? (repo-path c))))
                          (set! passing #f)
                          (set! passing-all '())
+                         (set! failing-call #f)
                          (set! ran '())
                          (set! started-ids '())
                          (set! started-calls '())
@@ -1605,11 +1768,15 @@
                                 edited))
                    (gap (cond ((or turn-stopping review-made) #f)
                               ((and (not changed) (not excused) (not (and unchanged-told tested)))
-                               (if (reviewed?) finish-no-change-reviewed-message finish-no-change-message))
+                               (cond (lean-quiet finish-no-change-lean-message)
+                                     ((reviewed?) finish-no-change-reviewed-message)
+                                     (else finish-no-change-message)))
                               ((and changed (not tested) (not offered)) finish-untested-message)
                               ((and changed failing-msg) failing-msg)
                               (else #f))))
-              (cond ((and gap (< reminders finish-reminders))
+              (cond ((and gap (< reminders (if (member gap (list finish-no-change-message finish-no-change-reviewed-message finish-no-change-lean-message))
+                                                 (max finish-reminders lean-empty-reminders)
+                                                 finish-reminders)))
                      (add-message gap)
                      ;; A run the model was told failed is not told again
                      ;; until an edit: it may answer that the tests fail on the
@@ -1639,7 +1806,7 @@
                                     (or (and passing (whole-check? passing)) (whole-check-passed? passed))
                                     passed shown hand-edits validate-made
                                     (append written (map git-state-path new-lines))
-                                    edit-asked)))
+                                    edit-asked passing-all (and (equal? outcome 'failed) failing-call))))
                        (and (pair? points)
                             (begin (add-message (finish-review-message points))
                                    (finish-review-counted!)

@@ -110,6 +110,7 @@
        (let* ((left (guard (e (else #f)) (unfinished-plan)))
               (plan (if left (format "~a" (assoc-ref left 'plan "")) "")))
          (and (not (string-empty? (string-trim plan)))
+              (not (plan-hidden? plan)) ; carried again, hidden, instead
               (compact-plan-message plan (assoc-ref left 'marks '()))))))
 
 ;; Compact now: #t once the turn continues in the narrowed context, #f if no

@@ -6,7 +6,68 @@
 ;; person is there to answer what asks, unattended-system-prompt when nobody
 ;; is ((unattended?): --yolo, and a run's auto_approve, judge or unattended).
 (define (system-prompt repo)
-  (if (unattended?) (unattended-system-prompt repo) (interactive-system-prompt repo)))
+  (cond (lean-prompt (lean-system-prompt repo))
+        ((unattended?) (unattended-system-prompt repo))
+        (else (interactive-system-prompt repo))))
+
+;; The lean ladder, rung 3 (2026-10-16): a system prompt of about 250 tokens
+;; where dsl23's is about 3,000 (12,240 characters), and six tools where it
+;; offers nineteen. Pi's is 2,811 characters and four tools, and its first
+;; request is 2.2k tokens against nodwyn's 15.7k.
+;; The tools are shell-exec and fs-edit alone (2026-10-17). On the 121 clean
+;; SWE-bench Verified tasks, two replicates each, that set resolved 103 and 102
+;; where the six tools fs-read fs-list index-grep fs-edit fs-write shell-exec
+;; resolved 102 and 101 (Pi 104, 106, 103) at about 20% lower cost per task:
+;; the model reads with sed ranges, and its tool results total 32,600
+;; characters a session against 51,500. fs-write added to the pair was called
+;; 5 times in 242 sessions, and the code index (outline, tests-for, the
+;; commands below) in about 13%, neither with an effect on the score.
+(define lean-prompt #t)
+(define lean-tools '("shell-exec" "fs-edit"))
+;; The leanest way to offer the code index (lean7): commands of the binary, run
+;; through shell-exec, so the tool list and every request's schemas stay as
+;; they were and the prompt gains one sentence.
+(define lean-cli #f)
+(define lean-cli-name "nodwyn")
+;; What the lean prompt says of each tool lean-tools may name, in one phrase; a
+;; tool not listed is named alone, and outline, tests-for and scheme have a
+;; sentence of their own below.
+(define prompt-tool-phrases
+  '(("shell-exec" . "shell-exec runs a program (cmd and args, no shell; use bash with args [\"-c\", \"...\"] for pipes, redirects or several commands)")
+    ("fs-edit" . "fs-edit replaces exact text in a file")
+    ("fs-read" . "fs-read reads a file, or a range of its lines")
+    ("fs-write" . "fs-write writes a whole file")
+    ("index-grep" . "index-grep searches the contents of files")
+    ("fs-find" . "fs-find finds files by name")
+    ("fs-list" . "fs-list lists a directory")
+    ("git-diff" . "git-diff shows the repository's changes")
+    ("git-status" . "git-status lists the changed files")))
+
+;; The tools of lean-tools, in its order, one phrase each.
+(define (lean-tool-sentence)
+  (string-append "Your tools: "
+                 (string-join (map (lambda (t) (assoc-ref prompt-tool-phrases t t)) lean-tools) "; ")
+                 "."))
+
+;; The lean prompt (2026-10-17): who and where, the tools, where throwaway
+;; files go, one sentence on the work and one on the answer, about 90 tokens.
+;; Every sentence the harness adds has to earn its place in the measurements,
+;; and none of the behavioural ones had: "act rather than announce" led to a
+;; placeholder edit before any reading, "nothing unrelated" was never cited,
+;; and a nudge that moved behaviour from 3% to 61% (git log -S) moved the
+;; score not at all, at 13% more cost. A sentence about a tool is said only
+;; when the tool is offered (ADR 32, amended 2026-10-17).
+(define (lean-system-prompt repo)
+  (let ((has (lambda (t) (and (member t lean-tools) #t))))
+    (string-append
+     "You are a coding agent working in the repository at " repo ", unattended: nobody approves or answers your calls.\n"
+     (lean-tool-sentence)
+     " Paths are relative to the repository root; throwaway files go in $TMPDIR or /tmp.\n"
+     (if (and lean-cli (has "shell-exec")) (string-append "Three commands of " lean-cli-name " show a repository's structure; run them with shell-exec: `" lean-cli-name " outline FILE` lists a file's classes and functions with their line ranges, `" lean-cli-name " symbol FILE Class.method` prints one definition with line numbers, `" lean-cli-name " tests-for FILE` lists the test files that exercise a source file and how to run them. Use them instead of reading a large file whole.\n") "")
+     (if (has "outline") "outline lists a file's classes and functions with their line ranges and fs-read with symbol reads one of them (Class.method), so a large file need not be read whole; tests-for names the test files that exercise a source file and how to run them.\n" "")
+     (if (has "scheme") "The scheme tool runs a small Scheme program that calls the other tools as procedures: use it to read, search or run several things in one call and keep only what matters of the results.\n" "")
+     "Do what the request asks, then check it by running something that exercises the change.\n"
+     "When you are done, say what you changed, what you ran and what it showed, and anything you could not check.\n")))
 
 ;; Two of its rules come from the jev-key console change (ADR 32, amended
 ;; 2026-10-02): its replies called the work done on a syntax check of a page
@@ -288,6 +349,12 @@
    ;; request asks for (ADR 32, amended 2026-10-16, the original tests).
    "\n- When an existing test fails after your change, decide which side is wrong before you edit either. The old expectation stands unless the request names the new behaviour for that input or case: otherwise change the code, not the test. Never add a conditional skip or exception to production code (least of all in a guard or denylist) to make an old test pass unless the request asks for it; if the test's setup contradicts what the request names, fix the setup (a fixture is setup; its assertions are not). A branch the request asks for gets a test for each side of it; a branch you add for any other reason is not tested into place: delete it."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
+   ;; django-15916 (SWE-bench, dsl23): the title says a ModelForm's
+   ;; Meta.formfield_callback is ignored; the run fixed modelform_factory,
+   ;; the call the body's example makes, its own probe printed `Base2:
+   ;; False` for the plain ModelForm, and it moved on (ADR 32, amended
+   ;; 2026-10-16).
+   "\n- Before you finish, say the request's title or first sentence as a claim about the behaviour (\"X is ignored when Y\") and check the smallest form of that claim on your change: the plain case, without the helper or the call the example used. A fix that makes the example work can leave the claim false."
    ;; The jev-key console change (ADR 32, amended 2026-10-02): Go tests and
    ;; node --check passed in every round while the page went blank on a
    ;; click; the repository's browser check for that page, once run and
@@ -370,6 +437,10 @@
 ;; ((reviewed?)): the request may ask for no change yet.
 (define finish-no-change-reviewed-message
   "No file has changed yet. Make the change in the repository before finishing, unless the request asks for no change yet (to propose something first and wait for review, or to answer a question): then say so in your report and finish, since a person reads it before anything else happens.")
+;; The lean profile's (lean-quiet), said once (2026-10-17): generic, and with
+;; no instruction on how to show that the code already does what is asked.
+(define finish-no-change-lean-message
+  "No file has changed. If the request needs a change, make it; if it does not, say what you ran that shows the code already does what is asked.")
 (define finish-untested-message
   "You changed files after your last test run. Run the tests that cover what you changed, and a check of the behaviour you fixed or added, then finish.")
 ;; A run with failures counted as a run (shell.scm), so a turn could end with
@@ -522,6 +593,17 @@
                      failures)
                 "; ")
    ". Either your change is wrong (change the code, appending to what a test pins rather than rewording it); or the request names the new result for that input or case (a rule stated in general words does not cover an input it does not name), and the test's assertion changes: say which sentence of the request requires it; or the request contradicts the test's setup (a fixture): then change the setup, not its assertions, and say which sentence of the request requires it."))
+
+;; The tests a run of the turn's that failed shows failing, and the last
+;; commit passes (strategy.scm, regression-failures), a point of the finish
+;; review. On psf-requests-2931 the change broke an existing test, the whole
+;; file's run failed 81 tests the model put down to the environment, and the
+;; one that was its own went with them (ADR 32, amended 2026-10-16).
+(define (finish-regressed-tests-message names)
+  (string-append
+   "Your last test run failed, and these tests pass on the last commit: "
+   (string-join (map (lambda (n) (format "~a" n)) names) ", ")
+   ". The same command was run again with every file you changed as the last commit had it, and they passed there: your change breaks them, whatever the other failures of that run are. Either your change is wrong (change the code, and run them again); or the request changes what they check: say which sentence of the request requires it."))
 
 ;; The same lines, said as the edit that changes them is made rather than at
 ;; the finish (strategy.scm, test-edit-nudge), once for each test file. At the
@@ -707,6 +789,18 @@
 ;; The plan is the run's: a later turn carries it, with the steps marked so
 ;; far (plan.scm).
 (define (run-turn-prompt task complete-line turn max-turns)
+  (if lean-plan-hidden
+      ;; No plan is shown to the model (plan.scm, lean-plan-hidden), so the turn
+      ;; is not told to work through one.
+      (string-append
+       "Run task:\n" task
+       "\n\nIf the entire task is complete, put " complete-line
+       " alone on the final line. Do not claim completion while work remains. This is turn "
+       (number->string turn) " of at most " (number->string max-turns) ".")
+      (run-turn-prompt-planned task complete-line turn max-turns)))
+
+;; A run's turn under a plan the model is shown.
+(define (run-turn-prompt-planned task complete-line turn max-turns)
   (string-append
    "Run task:\n" task
    "\n\nWork on the plan's next unmarked step; the harness marks a step done when it sees its evidence, so mark one with plan-step only to skip it, saying why. Then report progress for review. The plan carries over to the run's next turn, with your marks; if it no longer fits, mark the steps that do not apply skipped, saying why, and once every step is marked the next turn plans again. If the entire task is complete, put "

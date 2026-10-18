@@ -96,7 +96,7 @@ func (l *Loop) install() error {
 		{
 			Name: "record-plan",
 			Meta: scheme.Meta{
-				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded, required or carried), plan, score, revisions, reason, and marks, the steps of the plan already marked, each an alist of step, state and note, as run-plan and unfinished-plan give them (a run's later turn, and the turn after one that did not finish, carry a plan with them). The window shows a recorded plan, and the marks it carries, to the model for the rest of the turn.",
+				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded, required or carried), plan, score, revisions, reason, and marks, the steps of the plan already marked, each an alist of step, state and note, as run-plan and unfinished-plan give them (a run's later turn, and the turn after one that did not finish, carry a plan with them), and hidden. The window shows a recorded plan, and the marks it carries, to the model for the rest of the turn, unless hidden is #t: then the plan is recorded, and shown to the person, but the model is shown none.",
 				Params: []scheme.Param{{Name: "outcome", Type: "alist", Doc: "the gate's decision and plan"}},
 				Hidden: true,
 				Origin: "builtin",
@@ -554,6 +554,9 @@ func (l *Loop) recordPlan(c *scheme.Call) (scheme.Value, error) {
 	}
 	if v, ok := lookup(outcome, "revisions"); ok && v.Kind == scheme.KInt {
 		gp.Revisions = int(v.I)
+	}
+	if v, ok := lookup(outcome, "hidden"); ok && scheme.Equal(v, scheme.True) {
+		gp.Hidden = true
 	}
 	if v, ok := lookup(outcome, "marks"); ok {
 		marks, err := planMarks(v, len(gp.Steps()))

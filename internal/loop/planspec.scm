@@ -1,13 +1,17 @@
 ;; A plan as data (ADR 32, amended 2026-10-16). The planner writes its plan
 ;; as Scheme forms, one per step, instead of sentences:
 ;;
-;;   (change "src/flags.go" "parseFlags" "accept --verbose and set Verbose")
-;;   (test "src/flags_test.go" "TestVerboseFlag" "--verbose sets Verbose"
-;;         (fails-today "the flag is unknown") (run "go test ./src -run TestVerboseFlag"))
+;;   (change "src/flags.py" "parse_flags" "accept --verbose and set verbose")
+;;   (test "tests/test_flags.py" "test_verbose_flag" "--verbose sets verbose"
+;;         (fails-today "the flag is unknown") (run "pytest tests/test_flags.py -k test_verbose_flag"))
 ;;   (docs "README.md" "the flags section lists --verbose")
-;;   (names "--verbose" "Verbose")
-;;   (assumes "-q wins when both flags are given" "TestFlagsLastWins expects the same")
-;;   (check "go test ./...")
+;;   (names "--verbose" "verbose")
+;;   (assumes "-q wins when both flags are given" "test_flags_last_wins expects the same")
+;;   (check "pytest")
+;;
+;; The example is Python's, and the form is the same in any language: the
+;; test's run is the repository's own command for it (go test ./src -run
+;; TestVerboseFlag, pytest tests/test_x.py::test_y, npm test -- x.test.js).
 ;;
 ;; so what a plan says is a set of things the harness can look for: the
 ;; files a step changes, the test it adds and the command that runs it, the
@@ -81,6 +85,34 @@
     ;; its change.
     (or (equal? a b) (and (not (string-empty? a)) (string-prefix? dir b)))))
 
+;; Words of a test command that name the program or the way it is run, not
+;; what it runs.
+(define plan-run-launchers
+  '("python" "python3" "uv" "run" "poetry" "env" "bash" "sh" "-c" "pytest" "unittest" "tox" "nox" "go" "test"
+    "cargo" "npm" "yarn" "pnpm" "make" "jest" "vitest" "mocha" "rspec" "rake" "mvn" "gradle" "gradlew" "dotnet"
+    "phpunit" "mix" "swift" "ctest" "runtests.py" "runtests"))
+
+;; What a command runs: its words but for flags, numbers (a flag's value, `-v
+;; 2`) and launchers, so `pytest -v 1 tests/test_a.py::test_x` and `python -m
+;; pytest tests/test_a.py::test_x -rA` run the same thing.
+(define (plan-run-targets line)
+  (filter (lambda (w) (and (not (string-empty? w)) (not (string-prefix? "-" w)) (not (string->number w)) (not (member w plan-run-launchers))))
+          (string-split line " ")))
+
+;; Whether a command line the turn ran is the run the plan names: it contains
+;; it, or it is a test run of everything the plan's command runs, whatever
+;; flags either has. On SWE-bench (pytest-5787, sklearn-13124) the review said
+;; the plan's check "has not passed since your last edit" for a run that
+;; differed in `-v 1` against `-v 2`, and the model ran it again (ADR 32,
+;; amended 2026-10-16).
+(define (plan-language-ran? line run)
+  (and (not (string-empty? run))
+       (or (string-contains? line run)
+           (let ((want (plan-run-targets run)))
+             (and (pair? want)
+                  (let ((have (plan-run-targets line)))
+                    (let all ((ws want)) (or (null? ws) (and (member (car ws) have) (all (cdr ws)))))))))))
+
 ;; The package directory of a Go test file ("internal/log" for
 ;; internal/log/log_test.go, "" at the root), or #f for another file.
 (define (plan-language-go-test-dir path)
@@ -108,14 +140,14 @@
           (else (walk (cdr parts) (cons (car parts) above))))))
 
 (define (plan-language-file? path)
-  (and (not (string-empty? path))
+  (and (repo-relative? path)
        (guard (e (else #f)) (fs-read path) #t)))
 
 ;; Whether a test step's test is where the step says: its name in its file,
 ;; or, for a scenario file, the file.
 (define (plan-language-test-present? st)
   (let ((path (assoc-ref st 'path "")) (name (assoc-ref st 'name "")))
-    (or (string-contains? (guard (e (else "")) (format "~a" (fs-read path))) name)
+    (or (and (repo-relative? path) (string-contains? (guard (e (else "")) (format "~a" (fs-read path))) name))
         (and (plan-language-scenario-dir path)
              (or (plan-language-file? path)
                  (let any ((ps plan-language-edited))
@@ -148,7 +180,7 @@
       (and (pair? ps)
            (let ((line (car (car ps))) (shown (cdr (car ps))))
              (or (and (or (and (not (string-empty? name)) (string-contains? line name))
-                          (and (not (string-empty? run)) (string-contains? line run)))
+                          (plan-language-ran? line run))
                       (or (not dir)
                           (and (not (string-empty? name)) (string-contains? shown (string-append "--- PASS: " name)))
                           (plan-language-package-ok? shown dir)))
@@ -197,7 +229,7 @@
                                 (when new
                                   (let ((note (plan-language-test-note st)))
                                     (when note (set! notes (cons note notes)))))))
-                             ((and (equal? kind "Check") (not (string-empty? run)) (string-contains? line run))
+                             ((and (equal? kind "Check") (plan-language-ran? line run))
                               (plan-language-mark-one (plan-language-at st i) "evidence: the check passed"))))
                      (mark (cdr ss) (+ i 1))))
                  (when (pair? notes)
@@ -322,12 +354,13 @@
    ;; c80b38ac; ADR 32, amended 2026-10-15).
    "\nWhen a step changes an existing condition, it names each part of the old condition and says whether that part stays."
    "\nFor each rule the request states, the test steps list its cases: one per clause, and for a range, an overlap or an edge one per position (inside, crossing the start, crossing the end, equal, empty)."
+   "\nA test's run is the repository's own command for it, in its language (go test ./src -run TestVerboseFlag, pytest tests/test_x.py::test_y, npm test -- x.test.js)."
    "\nFor example:"
-   "\n(change \"src/flags.go\" \"parseFlags\" \"accept --verbose and set Verbose\")"
-   "\n(test \"src/flags_test.go\" \"TestVerboseFlag\" \"--verbose sets Verbose and -q does not\" (fails-today \"the flag is unknown\") (run \"go test ./src -run TestVerboseFlag\"))"
+   "\n(change \"src/flags.py\" \"parse_flags\" \"accept --verbose and set verbose\")"
+   "\n(test \"tests/test_flags.py\" \"test_verbose_flag\" \"--verbose sets verbose and -q does not\" (fails-today \"the flag is unknown\") (run \"pytest tests/test_flags.py -k test_verbose_flag\"))"
    "\n(docs \"README.md\" \"the flags section lists --verbose\")"
-   "\n(names \"--verbose\" \"Verbose\")"
-   "\n(check \"go test ./...\")"))
+   "\n(names \"--verbose\" \"verbose\")"
+   "\n(check \"pytest\")"))
 
 ;; The planner's request for a plan, and for a better one.
 (define plan-language-base-draft plan-draft-prompt)
@@ -621,7 +654,7 @@
 (define (plan-language-passed? passed what)
   (let any ((ps passed))
     (and (pair? ps)
-         (or (and (not (string-empty? what)) (string-contains? (car (car ps)) what))
+         (or (plan-language-ran? (car (car ps)) what)
              (any (cdr ps))))))
 
 (define (plan-language-whole? passed) (whole-check-passed? passed))

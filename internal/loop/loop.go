@@ -55,6 +55,14 @@ type Host interface {
 	Emit(ev event.Event)
 }
 
+// The profiles of the default loop (ADR 32, amended 2026-10-17). Lean is the
+// loop as plan.scm, prompts.scm and strategy.scm define it. Full evaluates
+// full.scm after them, which turns off what the lean ladder turned on.
+const (
+	ProfileLean = "lean"
+	ProfileFull = "full"
+)
+
 // Config bounds the loop.
 type Config struct {
 	Window window.Policy // when and how older context is elided
@@ -81,6 +89,8 @@ type Config struct {
 	// Root is the workspace root, under which attached images are stored
 	// (.nodwyn/attachments); a request reads them from there.
 	Root string
+	// Profile is ProfileLean or ProfileFull; empty is lean.
+	Profile string
 }
 
 // ControlModel is the registry name of the [control] model.
@@ -157,6 +167,13 @@ var defaultPlanGate string
 //go:embed planspec.scm
 var defaultPlanLanguage string
 
+// full.scm: the switches the lean ladder turned on, turned off (ADR 32,
+// amended 2026-10-17). Evaluated after every default when the profile is
+// full, and so before .nodwyn/init.scm.
+//
+//go:embed full.scm
+var fullProfile string
+
 // The working habits (ADR 32), loaded after the defaults they wrap, in this
 // order: shell.scm wraps run-calls and fold-result innermost, hygiene.scm
 // also wraps model-turn, readdef.scm feeds hygiene.scm's reads, and
@@ -221,6 +238,15 @@ func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
 	// rendered the result as plain text, and stay.
 	if _, err := interp.EvalString(harness, defaultPlanLanguage); err != nil {
 		return nil, fmt.Errorf("loop: default plan language: %w", err)
+	}
+	switch cfg.Profile {
+	case "", ProfileLean:
+	case ProfileFull:
+		if _, err := interp.EvalString(harness, fullProfile); err != nil {
+			return nil, fmt.Errorf("loop: full profile: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("loop: unknown profile %q", cfg.Profile)
 	}
 	return l, nil
 }

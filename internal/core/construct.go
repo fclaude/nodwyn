@@ -90,6 +90,15 @@ type Options struct {
 	Worktree bool
 }
 
+// unattended is whether nobody approves this session's calls: it answers
+// ordinary confirms itself (--yolo, a run's auto_approve, judged approval),
+// or nobody is there at all. (unattended?) tells the same to Scheme, and the
+// default loop's profile follows it unless config.toml or the environment
+// choose (config.Loop.ResolveProfile).
+func (o Options) unattended() bool {
+	return o.AutoApprove || o.JudgeApprove || o.Unattended
+}
+
 // New assembles a session, loads initialization under the guard, freezes the
 // loop's tool list, and records session.start.
 func New(o Options) (*Session, error) {
@@ -274,6 +283,12 @@ func (s *Session) primitiveOptions() prim.Options {
 	o := s.opts
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
+	po.Lean = s.profile == config.ProfileLean
+	if po.Lean && o.unattended() {
+		// A lean session nobody approves may use /tmp as its scratch
+		// directory (ADR 32, amended 2026-10-17).
+		po.Temp = guard.TempDir()
+	}
 	po.Scratch = s.scratch
 	po.Private = privateDirs(o.Paths)
 	po.Procs = s.procs
@@ -442,6 +457,12 @@ func (s *Session) loadInit() error {
 // replays evaluations or approvals from the conversation log.
 func (s *Session) initialize() (err error) {
 	o := s.opts
+	// The default loop's profile is fixed with the session, as its prompt and
+	// its tools are (ADR 9). A resumed session resolves it again, from the
+	// configuration, the environment and the way it is resumed.
+	if s.profile, err = o.Config.Loop.ResolveProfile(os.Getenv(config.ProfileEnv), o.unattended()); err != nil {
+		return fmt.Errorf("core: %w", err)
+	}
 	s.procs = prim.NewProcs()
 	if o.Config.Experimental.Terminal {
 		s.terms = prim.NewTerms()
@@ -525,6 +546,7 @@ func (s *Session) initialize() (err error) {
 		RequestTimeout: requestTimeout,
 		Root:           o.Repo,
 		Delegates:      s.delegates,
+		Profile:        s.profile,
 	})
 	if err != nil {
 		return err

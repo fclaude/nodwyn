@@ -341,23 +341,58 @@ func squashName(s string) string {
 	return b.String()
 }
 
+// expectationLanguages are the extensions of the test files whose removed
+// expectations are read. The lines are read by shape (a case of a table, an
+// assertion, a want assigned a literal), not by a parser, so a language that
+// writes them so is read alike (ADR 32, amended 2026-10-16: until then Go's
+// and Python's alone, and only the test_x.py and x_test.py names; Django's
+// tests.py, Jest's x.test.js and Rust's tests were not).
+var expectationLanguages = []string{".go", ".py", ".js", ".jsx", ".mjs", ".ts", ".tsx", ".rb", ".rs", ".java", ".kt", ".scala", ".cs", ".php", ".swift", ".ex", ".exs", ".c", ".cc", ".cpp", ".h"}
+
 // expectationTest is whether rel is a test file whose removed expectations
-// are read: Go's x_test.go, Python's test_x.py and x_test.py.
+// are read: a test file by its name (x_test.go, test_x.py, x.test.js,
+// x.spec.ts, tests.py) or its folder (test, tests, __tests__), in a language
+// of expectationLanguages.
 func expectationTest(rel string) bool {
-	base := filepath.Base(rel)
-	return strings.HasSuffix(base, "_test.go") ||
-		strings.HasSuffix(base, ".py") && (strings.HasPrefix(base, "test_") || strings.HasSuffix(base, "_test.py"))
+	if !slices.Contains(expectationLanguages, strings.ToLower(filepath.Ext(rel))) {
+		return false
+	}
+	return testPath(rel) || filepath.Base(rel) == "tests.py"
+}
+
+// hashComments is whether a language starts a comment with #.
+func hashComments(rel string) bool {
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".py", ".rb", ".ex", ".exs":
+		return true
+	}
+	return false
+}
+
+// singleQuoteStrings is whether 'x' is a string, not a character or a
+// lifetime, in a language.
+func singleQuoteStrings(rel string) bool {
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".py", ".rb", ".js", ".jsx", ".mjs", ".ts", ".tsx", ".php", ".ex", ".exs":
+		return true
+	}
+	return false
 }
 
 var (
-	goAssertRE   = regexp.MustCompile(`\b(assert|require)\.[A-Z]\w*\(`)
-	pyAssertRE   = regexp.MustCompile(`^assert\b|\bself\.assert[A-Z]\w*\(|\bpytest\.raises\b|\.assert_\w+\(`)
-	literalLeads = regexp.MustCompile("[\"'`]|\\b\\d|\\b(true|false|nil|None|True|False)\\b")
+	goAssertRE = regexp.MustCompile(`\b(assert|require)\.[A-Z]\w*\(`)
+	pyAssertRE = regexp.MustCompile(`^assert\b|\bself\.assert[A-Z]\w*\(|\bpytest\.raises\b|\.assert_\w+\(`)
+	// otherAssertRE is the assertions of the other ecosystems: Jest's and
+	// RSpec's expect(...), Rust's assert!, assert_eq! and assert_ne!, JUnit's
+	// and xUnit's assertEquals( and Assert.Equal(, Ruby's assert_equal and
+	// RSpec's should / is_expected.
+	otherAssertRE = regexp.MustCompile(`\bexpect\(|\bassert\w*!?\(|\bAssert\.\w+\(|\bis_expected\b|\.should\b|\bassert_\w+\s`)
+	literalLeads  = regexp.MustCompile("[\"'`]|\\b\\d|\\b(true|false|nil|None|True|False)\\b")
 	// wantAssignRE is an assignment to a variable a test names for what it
 	// expects: want, expect, expected, and wantErr, expectedMsg, want_err
 	// and the like. Its group is what is assigned; `want == x` is no
 	// assignment.
-	wantAssignRE = regexp.MustCompile(`^(?:var\s+)?(?:want|expect|expected)(?:[A-Z_0-9]\w*)?(?:\s+[\w.*\[\]]+)?\s*:?=\s*([^=].*)$`)
+	wantAssignRE = regexp.MustCompile(`^(?:(?:var|let|const|val|final)\s+)?(?:want|expect|expected)(?:[A-Z_0-9]\w*)?(?:\s+[\w.*\[\]]+)?\s*:?=\s*([^=].*)$`)
 	// literalStart is what a literal value, or a list or map of them, opens
 	// with; the assigned text must also hold a literal, so a `want := []string{`
 	// that opens a table is left to the cases inside it.
@@ -387,6 +422,8 @@ func expectationLine(rel, line string) bool {
 		return false
 	case strings.HasSuffix(rel, ".py") && pyAssertRE.MatchString(code), strings.HasSuffix(rel, ".go") && goAssertRE.MatchString(code):
 		return true
+	case !strings.HasSuffix(rel, ".py") && !strings.HasSuffix(rel, ".go") && otherAssertRE.MatchString(code):
+		return true
 	case strings.HasSuffix(rel, ".go") && stringCheckRE.MatchString(code) && !strings.HasPrefix(code, "case ") && len(nonEmpty(stringLiterals(rel, code))) > 0:
 		return true // a case of a switch picks the expectation; the want it sets is the expectation
 	}
@@ -404,7 +441,7 @@ func expectationLine(rel, line string) bool {
 // not close on the line is left out.
 func stringLiterals(rel, line string) []string {
 	code := codePart(rel, line)
-	python := strings.HasSuffix(rel, ".py")
+	single := singleQuoteStrings(rel)
 	var out []string
 	for i := 0; i < len(code); i++ {
 		q := code[i]
@@ -421,7 +458,7 @@ func stringLiterals(rel, line string) []string {
 		if j >= len(code) {
 			break
 		}
-		if q != '\'' || python {
+		if q != '\'' || single {
 			out = append(out, code[i+1:j])
 		}
 		i = j
@@ -470,7 +507,7 @@ func kept(lits []string, added [][]string) bool {
 // a marker inside quotes left alone.
 func codePart(rel, line string) string {
 	marker := "//"
-	if strings.HasSuffix(rel, ".py") {
+	if hashComments(rel) {
 		marker = "#"
 	}
 	var quote byte
@@ -634,7 +671,7 @@ func changeRemovalsPrim(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "change-removals",
 		Meta: scheme.Meta{
-			Doc:    "What the uncommitted change takes away that its own check cannot show: an alist of definitions, the top-level definitions (Go functions, methods as Type.Method, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, names request gives left out, at most " + fmt.Sprint(removalsMaxDefs) + ", each an alist of path, name, kind and line (at HEAD); and expectations, the lines of existing tests (x_test.go, test_x.py, x_test.py) that state an expectation (a case of a table: a line ending in a comma that holds a literal; an assertion that carries one: testify's assert and require, Python's assert; a literal assigned to want, expect, expected or a name that starts with one (wantErr, expected_msg); or, in Go, a strings or bytes check (Contains, ContainsAny, HasPrefix, HasSuffix, EqualFold) of a string literal) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, or whose string literals all stand on one line it adds (a case moved into another shape), at most " + fmt.Sprint(removalsMaxLines) + ", each an alist of path, line (at HEAD), text and new (the line the change puts in its place: of the lines its change block adds, the one that shares most of its words with this one, if it shares half of them, each used once; the empty string for none). Hidden; registered in a git work tree. The evidence loop reads it before an unattended turn ends on a passing check (ADR 32, amended 2026-10-15).",
+			Doc:    "What the uncommitted change takes away that its own check cannot show: an alist of definitions, the top-level definitions (Go functions, methods as Type.Method, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, names request gives left out, at most " + fmt.Sprint(removalsMaxDefs) + ", each an alist of path, name, kind and line (at HEAD); and expectations, the lines of existing tests (test files by name or folder: x_test.go, test_x.py, tests.py, x.test.js, x.spec.ts, anything under test, tests or __tests__, in Go, Python, JavaScript and TypeScript, Ruby, Rust, Java, Kotlin, C#, PHP and others) that state an expectation (a case of a table: a line ending in a comma that holds a literal; an assertion that carries one: testify's assert and require, Python's assert, expect(, assert_eq!, assertEquals(; a literal assigned to want, expect, expected or a name that starts with one (wantErr, expected_msg); or, in Go, a strings or bytes check (Contains, ContainsAny, HasPrefix, HasSuffix, EqualFold) of a string literal) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, or whose string literals all stand on one line it adds (a case moved into another shape), at most " + fmt.Sprint(removalsMaxLines) + ", each an alist of path, line (at HEAD), text and new (the line the change puts in its place: of the lines its change block adds, the one that shares most of its words with this one, if it shares half of them, each used once; the empty string for none). Hidden; registered in a git work tree. The evidence loop reads it before an unattended turn ends on a passing check (ADR 32, amended 2026-10-15).",
 			Params: []scheme.Param{{Name: "request", Type: "string", Doc: "the request: a name it gives is not counted as removed"}},
 			Host:   true,
 			Hidden: true,

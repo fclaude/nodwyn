@@ -59,6 +59,17 @@ var (
 	markerRE  = regexp.MustCompile(`^[A-Z][A-Z0-9_]*(\.[A-Za-z0-9]+)?$`)
 	brandRE   = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
 	versionRE = regexp.MustCompile(`^v?\d+([._-]\d+)*$`)
+	// Three more that are no names the change produces, from the harness
+	// around a request or the environment it reports: a name with a version
+	// inside (clang-1000.11.45.5, Darwin-18.2.0-x86_64: a platform string); a
+	// product's name, capitals then a lower-case word (SWE-bench); and the
+	// key of a "- key: value" line (instance_id, base_commit: the fields a
+	// task template fills in). On SWE-bench's 121 tasks the planner was asked
+	// for them again in every one of eight reviewed (ADR 32, amended
+	// 2026-10-16).
+	inlineVersionRE = regexp.MustCompile(`\d+\.\d+`)
+	acronymBrandRE  = regexp.MustCompile(`^[A-Z]{2,}-[a-z]+$`)
+	fieldKeyRE      = regexp.MustCompile(`(?m)^\s*[-*]\s+([A-Za-z][A-Za-z0-9_]*):`)
 )
 
 // requestNames is the names a request gives that read as code: spans in
@@ -66,10 +77,15 @@ var (
 // dot inside, or a small letter first and a capital after it (session-id,
 // cache_key, response.output_item.done, readResponses). Not a link, an issue
 // number, a version, a word in capitals (markerRE) or a capitalised one
-// without a separator (brandRE).
+// without a separator (brandRE), a platform string, a product's name or a
+// task template's field key.
 func requestNames(text string) []string {
 	var out []string
 	seen := map[string]bool{}
+	fields := map[string]bool{}
+	for _, m := range fieldKeyRE.FindAllStringSubmatch(text, -1) {
+		fields[m[1]] = true
+	}
 	for _, m := range requestNameRE.FindAllStringSubmatch(linkRE.ReplaceAllString(text, " "), -1) {
 		s := strings.TrimSpace(m[1])
 		if s == "" {
@@ -77,7 +93,8 @@ func requestNames(text string) []string {
 		}
 		if s == "" || strings.ContainsAny(s, " \t") || strings.Contains(s, "://") || strings.HasPrefix(s, "www.") ||
 			issueRefRE.MatchString(s) || versionRE.MatchString(s) || s == "e.g" || s == "i.e" ||
-			markerRE.MatchString(s) || brandRE.MatchString(s) {
+			markerRE.MatchString(s) || brandRE.MatchString(s) || acronymBrandRE.MatchString(s) || inlineVersionRE.MatchString(s) ||
+			(m[1] == "" && fields[s]) {
 			continue
 		}
 		if !seen[s] {

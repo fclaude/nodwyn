@@ -224,6 +224,17 @@ the rounds that only read and search (\code{reading-rounds}): after twelve,
 the model is told to write down what it found, as a plan or, when a person
 reads the answer, as the answer to a question.
 
+That is the \emph{full} profile of the default loop. The \emph{lean} profile,
+which a session nobody approves runs unless \code{[loop] profile} or
+\code{NODWYN\_PROFILE} says otherwise (\adr{32}), is the loop the SWE-bench runs
+measured: a system prompt of about 250 tokens, the control model offered
+\code{shell-exec} and \code{fs-edit} alone, a run's plan the one line
+\code{plan-minimal-text} with no explorer or planner, and nothing said to the
+model while it works or as it ends. The Scheme files define the lean values
+and \file{full.scm} sets the full ones over them, before \file{.nodwyn/init.scm}
+loads, so a project mixes the two by redefining the same names
+(\file{docs/scheme.md} \S9.8).
+
 \begin{scm}
 (define (nodwyn-turn request)
   (when (plan-required?) (plan-gate request))
