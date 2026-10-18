@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/schedule"
 	"github.com/fclaude/nodwyn/internal/window"
 )
 
@@ -21,6 +22,17 @@ type ScheduleInfo struct {
 	LastRun    *log.ScheduleRun     `json:"last_run,omitempty"`
 	LastSkip   *log.ScheduleSkip    `json:"last_skip,omitempty"`
 	History    []ScheduleEntry      `json:"history,omitempty"`
+	Today      ScheduleDay          `json:"today"`
+}
+
+// ScheduleDay is what the schedule's runs started on Day (the daemon's local
+// date, YYYY-MM-DD) came to: how many there were and what they cost, their
+// follow-ups included, as far as known. A daily spend limit is checked
+// against it, so a run every few minutes needs no walk through the log.
+type ScheduleDay struct {
+	Day  string  `json:"day,omitempty"`
+	Runs int     `json:"runs,omitempty"`
+	Cost float64 `json:"cost,omitempty"`
 }
 
 // ScheduleEntry is one scheduled time as the schedule's history shows it: a
@@ -64,6 +76,9 @@ func (s *ScheduleInfo) observe(ev log.Event) {
 	if cost, ok := knownCost(ev); ok {
 		if run := s.latestRun(); run != nil {
 			run.Cost += cost
+			if run.Started.In(time.Local).Format(schedule.DateLayout) == s.Today.Day {
+				s.Today.Cost += cost
+			}
 		}
 	}
 	switch ev.Kind {
@@ -90,6 +105,10 @@ func (s *ScheduleInfo) observe(ev log.Event) {
 				s.Cursor = p.Through
 			}
 			s.add(ScheduleEntry{Seq: ev.Seq, Due: p.Due, Started: p.Started, Missed: p.Missed, Manual: p.Manual})
+			if day := p.Started.In(time.Local).Format(schedule.DateLayout); day != s.Today.Day {
+				s.Today = ScheduleDay{Day: day}
+			}
+			s.Today.Runs++
 		}
 	case log.KindScheduleSkip:
 		var p log.ScheduleSkip

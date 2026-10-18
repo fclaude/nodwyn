@@ -9,6 +9,7 @@ import { renderHome } from "./home.js";
 import { ConversationSearchView, ConversationContextView } from "./search.js";
 import { TaskView } from "./task.js";
 import { renderWorkspaces, renderConnections } from "./pages.js";
+import { renderWorkflows } from "./workflows.js";
 import { renderSettings, applyTheme, storedTheme, applyThinking, storedThinking } from "./settings.js";
 
 applyTheme(storedTheme());
@@ -34,7 +35,7 @@ function parse() {
   if (parts[0] === "search" && parts[1]) return { name: "search", id: decodeURIComponent(parts[1]), query: query.get("q") || "", scope: query.get("scope") || "project" };
   if (parts[0] === "history" && parts[1] && parts[2]) return { name: "history", id: decodeURIComponent(parts[1]), seq: Number(parts[2]), search: query.get("search") || "", query: query.get("q") || "", scope: query.get("scope") || "project" };
   if (parts[0] === "task" && parts[1]) return { name: "task", id: decodeURIComponent(parts[1]), review: parts[2] === "review" };
-  if (["settings", "workspaces", "connections"].includes(parts[0])) return { name: parts[0], tab: parts[1] };
+  if (["settings", "workspaces", "connections", "workflows"].includes(parts[0])) return { name: parts[0], tab: parts[1] };
   return { name: "home" };
 }
 function navigate(hash) {
@@ -300,6 +301,11 @@ function draw(routeChanged, what) {
     if (route.name === "settings") renderSettings(view, { ...ctx, tab: route.tab });
     else if (route.name === "workspaces") renderWorkspaces(view, ctx);
     else if (route.name === "connections") renderConnections(view, { ...ctx, tab: route.tab });
+    else if (route.name === "workflows") renderWorkflows(view, ctx);
+  } else if (route.name === "workflows") {
+    // Its rows follow the list: a run starting, ending or skipped changes
+    // what they say.
+    renderWorkflows(view, ctx);
   } else if (route.name === "settings" && (!what || what === "setup" || what === "models")) {
     // Settings holds fields being typed into: a task's progress elsewhere
     // does not redraw it.

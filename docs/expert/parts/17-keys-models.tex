@@ -703,7 +703,9 @@ the five repeats from before rules are read as the rules they meant, so old
 logs run at the same times. The daemon writes the rule's sentence into each
 session.schedule record and answers schedule.read with the sentence, labelled
 next times, its named zone and the latest twenty times, each with its outcome
-and cost, folded into the log index beside the schedule. The log is the authority: session.schedule
+and cost, folded into the log index beside the schedule, with the day's runs
+and cost (\texttt{today}) that a daily spend limit is checked against; once
+reached, one schedule.skip stands for the rest of the day's automatic times. The log is the authority: session.schedule
 holds the latest definition, schedule.run claims a due interval and pins its
 spend base, and schedule.skip consumes a skipped interval. Manual runs consume
 no automatic time. Pausing preserves progress; resuming sets it to now.

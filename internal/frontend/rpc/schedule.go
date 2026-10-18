@@ -25,6 +25,7 @@ type scheduleSetParams struct {
 	At      string         `json:"at,omitempty"`
 	Rule    *schedule.Rule `json:"rule,omitempty"`
 	Cost    float64        `json:"cost,omitempty"`
+	DayCost float64        `json:"day_cost,omitempty"`
 	Paused  bool           `json:"paused,omitempty"`
 	Remove  bool           `json:"remove,omitempty"`
 }
@@ -155,6 +156,9 @@ func (s *server) scheduleState(id string) (scheduleState, error) {
 	}
 	now := time.Now()
 	result := scheduleState{ScheduleInfo: state, Next: []time.Time{}, NextWords: []string{}, Timezone: zoneName(), Archived: info.Archived, Scheduler: s.schedulerLock != nil}
+	if result.Today.Day != now.Format(schedule.DateLayout) {
+		result.Today = core.ScheduleDay{}
+	}
 	if d := state.Definition; d != nil && d.Definition.Validate() == nil {
 		shown := preview(d.Definition, state.Cursor, now)
 		result.Rule, result.Sentence = shown.Rule, shown.Sentence
@@ -213,14 +217,14 @@ func (s *server) setSchedule(req request, client *peer) (any, *rpcError) {
 		return nil, why
 	}
 	var p scheduleSetParams
-	if err := params(req.Params, &p, "id", "message", "repeat", "at", "rule", "cost", "paused", "remove"); err != nil {
+	if err := params(req.Params, &p, "id", "message", "repeat", "at", "rule", "cost", "day_cost", "paused", "remove"); err != nil {
 		return nil, err
 	}
 	if p.ID == "" {
 		return nil, failure(-32602, "id is required")
 	}
 	now := time.Now()
-	definition := schedule.Definition{Message: p.Message, Repeat: p.Repeat, At: p.At, Rule: p.Rule, Cost: p.Cost, Paused: p.Paused}
+	definition := schedule.Definition{Message: p.Message, Repeat: p.Repeat, At: p.At, Rule: p.Rule, Cost: p.Cost, DayCost: p.DayCost, Paused: p.Paused}
 	if !p.Remove {
 		if err := settle(&definition, now); err != nil {
 			return nil, failure(-32602, err.Error())
@@ -403,6 +407,18 @@ func (s *server) scheduleTick(now time.Time) {
 		}
 		if !def.Paused && !info.Archived {
 			due, through, missed := def.Definition.Due(state.Cursor, now, time.Local)
+			if !due.IsZero() && spentToday(def.Definition, state, now) {
+				// The rest of the day's times are skipped in one record, so
+				// a run every few minutes does not leave one for each.
+				day := now.In(time.Local)
+				end := time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, time.Local).Add(-time.Second)
+				_, last, rest := def.Definition.Due(state.Cursor, end, time.Local)
+				skip := log.ScheduleSkip{Due: due, Through: last, Started: now, Missed: rest, Reason: fmt.Sprintf("the daily spend limit of $%g is reached; runs go on tomorrow", def.DayCost)}
+				if s.recordSkip(info.ID, skip) != nil {
+					s.scheduleSkips[info.ID] = deferredSkip{state.Sequence, skip}
+				}
+				due = time.Time{}
+			}
 			if !due.IsZero() {
 				run := log.ScheduleRun{Due: due, Through: through, Started: now, Missed: missed, Cost: def.Cost, Actor: "scheduler"}
 				// A locked keychain holds the time instead of skipping it:
@@ -461,6 +477,12 @@ func (s *server) recordSkip(id string, rec log.ScheduleSkip) error {
 		return err
 	}
 	return s.store().SkipSchedule(id, rec)
+}
+
+// spentToday says the schedule's runs started today have reached its daily
+// spend limit. Run now is a person's choice and is not held to it.
+func spentToday(d schedule.Definition, state core.ScheduleInfo, now time.Time) bool {
+	return d.DayCost > 0 && state.Today.Day == now.In(time.Local).Format(schedule.DateLayout) && state.Today.Cost >= d.DayCost
 }
 
 // executeSchedule sends def's message as a run, unless the schedule changed
@@ -557,7 +579,7 @@ func settle(d *schedule.Definition, now time.Time) error {
 
 func (s *server) nextSchedule(req request, _ *peer) (any, *rpcError) {
 	var d schedule.Definition
-	if err := params(req.Params, &d, "message", "repeat", "at", "rule", "cost", "paused"); err != nil {
+	if err := params(req.Params, &d, "message", "repeat", "at", "rule", "cost", "day_cost", "paused"); err != nil {
 		return nil, err
 	}
 	now := time.Now()
