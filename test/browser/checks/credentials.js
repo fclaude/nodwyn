@@ -7,7 +7,7 @@
 // without a passphrase is open without anyone unlocking it.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, runtimeDir, launch, watch, requests, step, ready, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, step, ready, until, check } = require("../lib");
 const env = { ...process.env };
 const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
 check(async () => {
@@ -184,6 +184,52 @@ check(async () => {
   assert.deepStrictEqual(sent.of("credentials.bind"), [{ id: bound.id, dest: "api.example.com", methods: ["GET", "POST"], position: "header:Authorization:Bearer" }]);
   step("account allowed for a host, with its scopes");
   await page.screenshot({ path: `${out}/credentials-oauth.png`, fullPage: true });
+
+  // Used from another computer than the one nodwyn runs on, the browser
+  // cannot reach the listener the provider redirects to: it ends on an
+  // address that does not load, and pasting that address finishes the
+  // sign-in (ADR 24, amended 2026-10-17). The redirect is refused here, as
+  // such a browser's would be, and its address kept.
+  let ended = "";
+  await context.route(/^http:\/\/127\.0\.0\.1:\d+\/authorize\?/, async (route) => {
+    // Stopped at the provider's redirect, which the browser would follow to
+    // the listener.
+    const answer = await route.fetch({ maxRedirects: 0 });
+    ended = answer.headers().location || "";
+    return route.abort();
+  });
+  await page.click("button:has-text('Connect an account')");
+  await page.click(".card button.chip:has-text('custom')");
+  await page.fill("#oauth-auth", authURL);
+  await page.fill("#oauth-token", tokenURL);
+  await page.fill("#oauth-revoke", revokeURL);
+  await page.fill("#oauth-client", "demo-client");
+  await page.fill("#oauth-scopes", "files.read");
+  await page.fill("#oauth-class", "drive2");
+  const away = context.waitForEvent("page");
+  await page.click("button:has-text('Continue to the provider')");
+  const lost = await away;
+  await until("the provider's redirect to the listener", () => ended !== "", 10000);
+  await lost.close();
+  await context.unrouteAll();
+  const field = ".auth-card input.input";
+  await page.waitForSelector(field);
+  // An address that is not this sign-in's own is refused, and the card stays.
+  await page.fill(field, "http://127.0.0.1:1/callback?code=x&state=y");
+  await page.click(".auth-card button:text-is('Finish')");
+  await page.waitForSelector(".auth-card >> text=not the address");
+  assert.ok(await page.isVisible(field), "a refused address ended the sign-in");
+  // The address typed survives the page's polling.
+  await page.waitForTimeout(1800);
+  assert.strictEqual(await page.inputValue(field), "http://127.0.0.1:1/callback?code=x&state=y", "a redraw emptied the pasted address");
+  await page.fill(field, ended);
+  await page.click(".auth-card button:text-is('Finish')");
+  await page.waitForSelector(".cred-detail strong:has-text('drive2')", { timeout: 10000 });
+  const finishes = sent.of("credentials.authorize.finish");
+  assert.strictEqual(finishes.length, 2, "the two pasted addresses were not both sent");
+  assert.strictEqual(finishes[1].url, ended);
+  assert.ok(!(await page.content()).includes(new URL(ended).searchParams.get("code") + "&"), "the authorization code is on the page");
+  step("a sign-in finished from the address the browser ended on");
 
   // Taking back a host narrows where the key may go, and is the safe
   // direction: Remove on its row asks first, and only the confirm sends

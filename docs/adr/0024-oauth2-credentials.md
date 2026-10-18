@@ -312,3 +312,34 @@ stayed and applied to the next credential that took the class.
   another credential still has the class (a keychain made before a class named
   one credential). The console's confirm says so.
 
+
+## Amendment 2026-10-17: a sign-in finishes from a pasted address
+
+The provider sends the browser back to `http://127.0.0.1:PORT/callback`, a
+listener of the computer nodwyn runs on (§2). A console used from another
+computer, which is what a server nobody sits at is for (ADR 30, amended
+2026-10-17), ends on an address that does not load there, so the sign-in
+waited its five minutes and failed.
+
+`credentials.authorize.finish {id, url}` takes the address the browser ended
+on. The waiting authorization offers it a function through the context
+(`keychain.WithFinish`), which accepts only that authorization's own
+redirect (`http`, the listener's host and port, its callback path, no user
+part) and passes the query through the checks the listener's handler makes
+(state, the provider's error, a code, OpenAI's client id), once: the first
+answer, from either, ends the flow, and a second finds it over. An address
+that is not the flow's own is refused and the flow goes on, so a mistyped
+one is pasted again; one with another state ends it with nothing stored, as
+a forged redirect to the listener does. Nothing weakens: the code in the
+address is useless without the PKCE verifier, which stays in the daemon, and
+the address is never logged or sent back. The call is setup, so from a
+paired device it takes a touch of the passkey (ADR 30, amended 2026-10-17).
+
+The console's waiting card has the field: "Using nodwyn from another
+computer? ... paste it here", with Finish; what was typed survives the
+card's redraws. Not built: a device-code flow (RFC 8628), whose support
+differs by provider; the command line's `nodwyn credential add --oauth2`
+still needs a browser on the computer it runs on.
+Checks: `TestOAuth2FinishesFromAPastedAddress`,
+`TestCredentialsAuthorizeFinishesFromAPastedAddress` and the `credentials`
+browser check, whose browser is stopped at the provider's redirect.

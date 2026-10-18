@@ -107,7 +107,7 @@ export async function renderCredentials(body, ctx, redraw) {
           canEdit ? h("button", { type: "button", class: "btn small", style: "margin-left:auto", onclick: () => { adding = "key"; addingPanel = ""; draft = { class: m.class }; redraw(); } }, "Add it") : null,
         ),
       ),
-      ...list.authorizations.filter((a) => !dismissed.has(a.id)).map((a) => authorizationCard(a, redraw)),
+      ...list.authorizations.filter((a) => !dismissed.has(a.id)).map((a) => authorizationCard(a, ctx, redraw)),
       otherCreds.length
         ? h("div", { class: "list" }, otherCreds.map((c) => row(c, redraw, (id) => open("", id))))
         : h("div", { class: "callout plain" }, "No other keys yet. A key you add here, or with a model or an MCP server, is kept in the keychain and goes only where you allow it."),
@@ -562,14 +562,52 @@ async function authorize(ctx, params, redraw) {
   }
 }
 
-function authorizationCard(a, redraw) {
-  if (a.state === "waiting")
+// pasted is the address typed into each waiting authorization's field, which
+// the page keeps through the redraws its polling makes; pasting says what the
+// daemon answered to the last one.
+const pasted = new Map();
+const pasteNote = new Map();
+
+// finishFrom sends the address pasted for authorization a (ADR 24, amended
+// 2026-10-17): when the person's browser is on another computer than the
+// one nodwyn runs on, the provider sends it back to a loopback address that
+// browser cannot reach, and the address it ends on finishes the sign-in.
+async function finishFrom(a, ctx, redraw) {
+  const url = (pasted.get(a.id) || "").trim();
+  if (!url) return;
+  try {
+    await ctx.conn.call("credentials.authorize.finish", { id: a.id, url });
+    pasted.delete(a.id);
+    pasteNote.set(a.id, "Address taken: nodwyn is finishing the sign-in.");
+  } catch (e) {
+    pasteNote.set(a.id, e.message);
+  }
+  redraw();
+}
+
+function authorizationCard(a, ctx, redraw) {
+  if (a.state === "waiting") {
+    const field = ctx.conn.has("credentials.authorize.finish")
+      ? h(
+          "div",
+          { class: "stack-md" },
+          h("label", { for: `auth-paste-${a.id}` }, "Using nodwyn from another computer? The provider's page ends on an address that does not load. Copy it from the address bar and paste it here."),
+          h(
+            "div",
+            { class: "row-actions" },
+            h("input", { class: "input", id: `auth-paste-${a.id}`, autocomplete: "off", spellcheck: false, placeholder: "http://127.0.0.1:…/callback?code=…", value: pasted.get(a.id) || "", oninput: (event) => pasted.set(a.id, event.target.value) }),
+            h("button", { type: "button", class: "btn small", id: `auth-finish-${a.id}`, onclick: () => finishFrom(a, ctx, redraw) }, "Finish"),
+          ),
+          pasteNote.has(a.id) ? h("p", { class: "hint", role: "status" }, pasteNote.get(a.id)) : null,
+        )
+      : null;
     return h(
       "div",
       { class: "callout plain auth-card" },
       h("span", { class: "run-dot", style: "margin-top:6px" }),
-      h("div", { style: "display:flex;flex-direction:column;gap:8px" }, h("div", {}, h("strong", {}, `Waiting for ${a.provider} `), `to send you back with ${a.class}. Agree on the provider's page; nodwyn waits up to five minutes.`), h("div", { class: "row-actions" }, h("a", { class: "btn small", href: a.url, target: "_blank", rel: "noopener" }, `Open ${a.provider}'s page`))),
+      h("div", { style: "display:flex;flex-direction:column;gap:8px" }, h("div", {}, h("strong", {}, `Waiting for ${a.provider} `), `to send you back with ${a.class}. Agree on the provider's page; nodwyn waits up to five minutes.`), h("div", { class: "row-actions" }, h("a", { class: "btn small", href: a.url, target: "_blank", rel: "noopener" }, `Open ${a.provider}'s page`)), field),
     );
+  }
   if (a.state === "failed")
     return h(
       "div",

@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/binding"
@@ -161,6 +162,8 @@ func (s *server) credentialsMethod(req request, _ *peer) (any, *rpcError) {
 		return s.credentials(), nil
 	case "credentials.authorize":
 		return s.authorize(req)
+	case "credentials.authorize.finish":
+		return s.finishAuthorization(req)
 	}
 	store := s.options.Keychain
 	if store == nil {
@@ -486,6 +489,9 @@ type authorization struct {
 	info   authorizationInfo
 	cancel context.CancelFunc
 	ended  time.Time
+	// finish takes the address a browser ended on (credentials.authorize.finish),
+	// set once the flow has its listener; nil until then.
+	finish atomic.Pointer[func(string) error]
 }
 
 // authorizationsKept is how long a finished authorization stays listed.
@@ -588,6 +594,11 @@ func (s *server) authorize(req request) (any, *rpcError) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	// The flow hands over a way to finish it from a pasted address, for a
+	// console whose browser cannot reach the listener (ADR 24, amended
+	// 2026-10-17).
+	var registered *authorization
+	ctx = keychain.WithFinish(ctx, func(finish func(string) error) { registered.finish.Store(&finish) })
 	consent := make(chan string, 1)
 	early := make(chan error, 1)
 	key := info.ID
@@ -597,7 +608,7 @@ func (s *server) authorize(req request) (any, *rpcError) {
 	if s.authorizations == nil {
 		s.authorizations = map[string]*authorization{}
 	}
-	registered := &authorization{info: info, cancel: cancel}
+	registered = &authorization{info: info, cancel: cancel}
 	s.authorizations[key] = registered
 	go func() {
 		id, err := run(ctx, func(url string) error {
@@ -641,4 +652,35 @@ func (s *server) authorize(req request) (any, *rpcError) {
 		registered.info.URL = url
 	}
 	return registered.info, nil
+}
+
+type credentialFinishParams struct {
+	ID  string `json:"id"`
+	URL string `json:"url"`
+}
+
+// finishAuthorization takes the address the person's browser ended on, when
+// the provider sent it back to the listener of the computer nodwyn runs on
+// and the browser was on another (credentials.authorize.finish). The flow
+// checks it as it checks the listener's redirect, and a refusal leaves the
+// authorization waiting, so a mistyped address can be pasted again. The
+// address carries the authorization code, which is useless without the
+// verifier that stays in the daemon; it is never logged.
+func (s *server) finishAuthorization(req request) (any, *rpcError) {
+	var p credentialFinishParams
+	if err := params(req.Params, &p, "id", "url"); err != nil {
+		return nil, err
+	}
+	a, ok := s.authorizations[p.ID]
+	if !ok || !a.ended.IsZero() {
+		return nil, failure(-32000, "That authorization is not waiting any more: start it again")
+	}
+	finish := a.finish.Load()
+	if finish == nil {
+		return nil, failure(-32000, "That authorization is not ready for an address yet: try again in a moment")
+	}
+	if err := (*finish)(p.URL); err != nil {
+		return nil, failure(-32000, strings.TrimPrefix(err.Error(), "keychain: "))
+	}
+	return a.info, nil
 }

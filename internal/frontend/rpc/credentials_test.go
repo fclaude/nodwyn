@@ -435,3 +435,54 @@ func TestCredentialsCanBeUnboundAndTheirRowsGoWithThem(t *testing.T) {
 		t.Fatalf("the next credential of the class inherited %+v", list.Credentials[0].Bindings)
 	}
 }
+
+// A sign-in is finished from the address the person's browser ended on when
+// it is not on the computer nodwyn runs on, so it cannot reach the listener
+// the provider redirects to (ADR 24, amended 2026-10-17): an address that
+// is not the flow's own is refused and the flow goes on, the right one
+// finishes it, and a second finds it over.
+func TestCredentialsAuthorizeFinishesFromAPastedAddress(t *testing.T) {
+	provider := fakeoauth.New("console-client")
+	defer provider.Close()
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("keychain.create", map[string]any{"no_passphrase": true})
+	var started authorizationInfo
+	json.Unmarshal(c.ok("credentials.authorize", map[string]any{"provider": "custom", "class": "drive", "client_id": provider.ClientID,
+		"auth_url": provider.AuthURL(), "token_url": provider.TokenURL(), "scopes": []string{"files"}}), &started)
+	// The browser stops at the provider's redirect to the loopback listener.
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Get(started.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	ended := resp.Header.Get("Location")
+	if !strings.HasPrefix(ended, "http://127.0.0.1:") {
+		t.Fatalf("redirect %q", ended)
+	}
+	if r := c.call("credentials.authorize.finish", map[string]any{"id": started.ID, "url": "http://127.0.0.1:1/callback?code=x&state=y"}); r.Error == nil || !strings.Contains(r.Error.Message, "not the address") {
+		t.Fatalf("another address: %+v", r.Error)
+	}
+	if r := c.call("credentials.authorize.finish", map[string]any{"id": "auth-nope", "url": ended}); r.Error == nil || !strings.Contains(r.Error.Message, "not waiting") {
+		t.Fatalf("another authorization: %+v", r.Error)
+	}
+	if r := c.call("credentials.authorize.finish", map[string]any{"id": started.ID, "url": ended, "extra": 1}); r.Error == nil {
+		t.Fatal("an unknown field was taken")
+	}
+	c.ok("credentials.authorize.finish", map[string]any{"id": started.ID, "url": ended})
+	list := waitAuthorization(t, c, started.ID)
+	if len(list.Credentials) != 1 || list.Credentials[0].Class != "drive" || provider.Exchanges() != 1 {
+		t.Fatalf("authorized: %+v, %d exchanges", list, provider.Exchanges())
+	}
+	if r := c.call("credentials.authorize.finish", map[string]any{"id": started.ID, "url": ended}); r.Error == nil {
+		t.Fatal("a finished authorization took a second address")
+	}
+	for _, r := range c.observed {
+		if strings.Contains(string(r.Result), "code=") {
+			t.Fatalf("an authorization code came back: %s", r.Result)
+		}
+	}
+}

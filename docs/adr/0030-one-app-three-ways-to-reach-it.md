@@ -558,13 +558,12 @@ not a person, so any process on an enrolled laptop, a coding agent or a
 package's install script, would speak for it; the Origin check binds only
 browsers. A VPN stays an extra layer in front of the console.
 
-Not built: pasting an OAuth provider's redirect address into the console (a
-sign-in to a provider still needs a browser on the computer nodwyn runs on,
-ADR 24); a console that installs as an app (a manifest); built-in ACME
+A provider's OAuth sign-in finishes from a pasted address (ADR 24, amended
+2026-10-17). Not built: built-in ACME
 certificates (`--acme`); unlocking the keychain at boot from a systemd
 credential sealed to a TPM; reviewing project trust in the console (`nodwyn
-trust` stays the terminal's); a notification for a schedule that waits for
-the keychain (Home says it).
+trust` stays the terminal's). A schedule that waits for the keychain says so
+on Home and, with the daemon's notices on, on the desktop (ADR 53 §11).
 
 Checks: `internal/frontend/web` (`TestAPasskeyPairsThePersonsDevices` with a
 software authenticator, the wrong origin, RP ID, unverified person,
