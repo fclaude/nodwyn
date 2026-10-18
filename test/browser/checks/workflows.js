@@ -58,7 +58,7 @@ check(async () => {
   await page.fill('#wf-credential', 'nothing');
   await page.click('#wf-test');
   await page.waitForSelector('.error:not(:empty)');
-  assert.ok((await page.textContent('.error')).includes('no credential'), 'a missing key is not said');
+  assert.ok((await page.textContent('.error')).includes('credential in the keychain'), 'a missing key is not said');
   await page.fill('#wf-credential', 'forge');
 
   await page.click('#wf-save');

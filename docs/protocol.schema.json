@@ -9047,6 +9047,16 @@
         "name": {
           "type": "string"
         },
+        "reply": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/watch.Reply"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "subject": {
           "type": "string"
         },
@@ -12552,6 +12562,29 @@
       ],
       "type": "object"
     },
+    "watch.Reply": {
+      "properties": {
+        "message_id": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "thread": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "to",
+        "subject",
+        "message_id",
+        "thread"
+      ],
+      "type": "object"
+    },
     "watch.Source": {
       "properties": {
         "command": {
@@ -12580,6 +12613,9 @@
             "array",
             "null"
           ]
+        },
+        "query": {
+          "type": "string"
         },
         "repo": {
           "type": "string"
@@ -12818,6 +12854,16 @@
         },
         "kind": {
           "type": "string"
+        },
+        "reply": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/watch.Reply"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "subject": {
           "type": "string"

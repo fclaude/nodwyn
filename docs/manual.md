@@ -2317,9 +2317,9 @@ and how the latest ended, with Pause, Run now and Schedule…. **New
 timetable** opens Home's Schedule dialog, beside the task's folder, model
 and limits.
 
-### A workflow that watches pull requests
+### A workflow that watches pull requests, email or a command
 
-**Workflows › Watch pull requests** builds one that runs a task when
+**Workflows › Watch for events** builds one that runs a task when
 something happens at a source (ADR 53). Its answers are four cards:
 
 - **When:** a Gitea or GitHub repository's pull requests (the server for
@@ -2359,12 +2359,40 @@ request, which is the instruction. **Test the trigger** asks the source once
 and lists what is there and whether each passes the filters, with no model
 and nothing recorded; the daemon says the whole workflow in a sentence.
 
-A forge is asked with a key from the keychain, only where Connections ›
-Credentials allows that key at that host for GET (`header:Authorization:token`
-for Gitea, `header:Authorization:Bearer` for GitHub), with no redirect
-followed; the request lists pull requests and nothing else. A locked keychain,
-a missing key or an unbound host is said on the workflow and, for a locked
-keychain, once on the desktop notices. A command source runs with no shell in
+**Email in Gmail** watches a search, as Gmail's own box takes it (your
+inbox when empty). A thread is the subject: a new email opens a task titled by
+its subject, and a later message in the thread arrives in it as the next run;
+reading or archiving a message is not an event, only a new message is. The
+email is attached as `email-….md`, its sender, recipients, date and text (the
+plain-text part, or the HTML with its tags taken out, at most 20 KiB), framed
+as data like any attachment: a message that tells the model to ignore its
+instructions is a quoted message. Filters read `from`, `to`, `subject`, `labels`
+and `date`, so `from does not contain "me@example.com"` leaves your own replies
+out. The answer can be saved as a **draft reply**: held on Home as **Draft
+reply · Reply to the sender**, with **Save draft**, **Edit**, **Discard** and
+**Open task**, and saved by the daemon in the thread, to the sender, with the
+headers that make it a reply. A draft is never sent; sending is yours, from
+Gmail. Nothing of the email's headers can add a header to the draft: line breaks
+in a name or subject are taken out.
+
+It needs a Google credential authorized for reading: `nodwyn credential add
+--oauth2 google --client-id ID --scopes gmail.readonly` (and `gmail.compose`
+to save drafts: a separate authorization, since it writes), allowed in
+Connections › Credentials at `gmail.googleapis.com` for GET (and POST for
+drafts) at `header:Authorization:Bearer`, with the Gmail API turned on in the
+Google project that owns the client id. The token is refreshed when it is about
+to expire, as any OAuth2 credential is. A refusal says which of these is most
+likely missing. IMAP is not offered.
+
+A forge, or Gmail, is asked with a key from the keychain through the check a
+task's own requests meet: only where Connections › Credentials allows that key
+at that host for that method (`header:Authorization:token` for Gitea,
+`header:Authorization:Bearer` for GitHub and Gmail), within the scopes the
+credential was authorized for, never over plain HTTP to a host that is not
+this computer unless Settings allows it, with an OAuth2 token refreshed first
+and no redirect followed. A poll lists pull requests, or the newest messages,
+and nothing else. A locked keychain, a missing key or an unbound host is said
+on the workflow and, for a locked keychain, once on the desktop notices. A command source runs with no shell in
 the workflow's folder, as the absolute path or the name on `PATH` you give
 (a program in the folder is refused, since its repository would choose what
 runs), for at most a minute, and prints one JSON object per line with an

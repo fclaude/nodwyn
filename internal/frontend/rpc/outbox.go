@@ -9,6 +9,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/schedule"
+	"github.com/fclaude/nodwyn/internal/watch"
 	"github.com/fclaude/nodwyn/internal/workflow"
 )
 
@@ -34,6 +35,10 @@ type pendingRun struct {
 	subject  string
 	summary  string
 	url      string
+	// label is what a line about the run calls its item: "#142" for a pull
+	// request, an email's subject in quotes.
+	label string
+	reply *watch.Reply
 }
 
 // runs are the workflow runs waiting for their task to go idle, by task.
@@ -116,27 +121,35 @@ func (s *server) runEnded(task string) {
 	if def.Then.Notify == "run" {
 		s.tell(ranTitle, ranBody)
 	}
-	if def.Then.Post != "review" {
+	if def.Then.Post != "review" && def.Then.Post != "draft" {
 		return
 	}
 	skip := func(why string) {
 		_, _ = s.flows().Append(run.workflow, workflow.KindSkip, workflow.Skip{Item: run.item, Reason: why, At: now})
 	}
 	if outcome != "completed" {
-		skip(fmt.Sprintf("the run for #%s did not finish (%s), so there is no answer to post", run.item, outcome))
+		skip(fmt.Sprintf("the run for %s did not finish (%s), so there is no answer to post", run.label, outcome))
 		return
 	}
 	reply, found := owned.session.FinalReply()
 	body := strings.TrimSpace(reply.Content)
 	if !found || body == "" {
-		skip(fmt.Sprintf("the run for #%s ended with no answer to post", run.item))
+		skip(fmt.Sprintf("the run for %s ended with no answer to post", run.label))
 		return
 	}
 	if len(body) > workflow.MaxReview {
 		body = strings.TrimSpace(body[:workflow.MaxReview-200]) + "\n\n[The rest of the answer is in the task: " + task + "]"
 	}
 	id := workflow.NewID()
-	item := workflow.Outbox{ID: id, Kind: "review", Item: run.item, Subject: run.subject, Task: task, Summary: run.summary, URL: run.url, Body: body, At: now}
+	kind := "review"
+	if def.Then.Post == "draft" {
+		kind = "draft"
+		if run.reply == nil {
+			skip("the email " + run.label + " has no sender a reply can go to")
+			return
+		}
+	}
+	item := workflow.Outbox{ID: id, Kind: kind, Item: run.item, Subject: run.subject, Task: task, Summary: run.summary, URL: run.url, Body: body, At: now, Reply: run.reply}
 	if _, err := s.flows().Append(run.workflow, workflow.KindOutbox, item); err != nil {
 		return
 	}
@@ -145,7 +158,7 @@ func (s *server) runEnded(task string) {
 		// choice. If it cannot be (no POST binding, a locked keychain) it
 		// stays in the outbox for the person.
 		if err := s.deliver(context.Background(), run.workflow, def, item, body, "workflow"); err != nil {
-			skip("could not post the review for #" + run.item + ": " + err.Error())
+			skip("could not " + map[string]string{"review": "post the review for ", "draft": "save the draft reply for "}[kind] + run.label + ": " + err.Error())
 			s.watch.broadcast("outbox.changed")
 			s.tell(answerTitle, answerBody)
 		}
@@ -161,7 +174,14 @@ func (s *server) runEnded(task string) {
 func (s *server) deliver(ctx context.Context, id string, def workflow.Definition, item workflow.Outbox, body, by string) error {
 	poller := s.poller()
 	var err error
-	s.slow("", func() { err = poller.PostReview(ctx, def.Source, item.Item, body) })
+	switch {
+	case item.Kind == "draft" && item.Reply != nil:
+		s.slow("", func() { err = poller.SaveDraft(ctx, def.Source, *item.Reply, body) })
+	case item.Kind == "review":
+		s.slow("", func() { err = poller.PostReview(ctx, def.Source, item.Item, body) })
+	default:
+		err = fmt.Errorf("an answer of kind %q has nowhere to go", item.Kind)
+	}
 	if err != nil {
 		return err
 	}

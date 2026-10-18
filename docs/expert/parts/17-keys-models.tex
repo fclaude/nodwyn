@@ -738,7 +738,13 @@ answer is to be posted is tracked in memory until its task goes idle; the
 host then reads the final reply from the log into a workflow.outbox record,
 and only on a decision, or the workflow's own choice made on this computer,
 posts it with the binding table's lookup for POST, so a run that read a
-hostile pull request has nothing to send with.
+hostile pull request has nothing to send with. Every poll and post goes
+through core.Keyed.Authorize, the check a task's model requests meet: the
+binding table read afresh, the credential's granted scopes against the row, the
+transport rule and an OAuth2 refresh. A Gmail source keys a thread by its id
+with its newest message's id as the version, reads a message in full only for
+a change, and writes a draft reply whose headers are built from the sender's
+address, parsed, and values with their line breaks removed.
 
 A successful turn that added more than a quarter-window since its last note
 asks compact-note for a handover focused on the scheduled request. It keeps

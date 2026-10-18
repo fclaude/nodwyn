@@ -1041,7 +1041,9 @@ same pull request arrives in its task. \textbf{Test the trigger} shows what
 would run, with no model. The run's answer can be posted back as a review
 comment: it waits on Home under Needs you for you to post, edit or discard it,
 and the daemon posts it, with a key you allowed for POST at that forge, never
-the run itself.
+the run itself. A workflow can also watch a Gmail search: each new email opens a
+task titled by its subject, the mail attached as data, and the answer can be
+saved as a draft reply in the thread, to the sender, which is never sent.
 The task opens immediately, without sending until due. On a task,
 \textbf{Schedule\ldots} in its menu adds a schedule, or edits,
 pauses, resumes, runs now or removes it. Run now leaves the automatic time

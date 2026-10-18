@@ -51,6 +51,7 @@ import (
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
 	fakedrive "github.com/fclaude/nodwyn/test/fakes/drive"
 	fakeforge "github.com/fclaude/nodwyn/test/fakes/forge"
+	fakegmail "github.com/fclaude/nodwyn/test/fakes/gmail"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
 	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
@@ -76,6 +77,7 @@ func main() {
 	docs := flag.Bool("docs", false, "keep a Google credential in a throwaway keychain, bound to a fake Drive that takes uploads")
 	oauthOnly := flag.Bool("oauth-only", false, "run only a fake OAuth2 provider (client id demo-client) and print its endpoints")
 	chatOnly := flag.Bool("chat-only", false, "run only a fake chat-completions provider and print its address and key")
+	mailed := flag.Bool("gmail", false, "a fake Gmail at GMAIL (a Google token bound to its host for GET and POST, one old thread, set over PUT /_fake/messages)")
 	forged := flag.Bool("forge", false, "a fake Gitea at FORGE (a token bound to its host for GET, fc/nodwyn with one open pull request, set over PUT /_fake/pulls/fc/nodwyn)")
 	locked := flag.Bool("locked", false, "a keychain with a passphrase (demo-passphrase), left locked, holding the key the model needs, and a task scheduled for 2099")
 	flag.DurationVar(&pace, "pace", 400*time.Millisecond, "how long the scripted model waits before each reply")
@@ -119,13 +121,13 @@ func main() {
 		model.Close()
 		return
 	}
-	if err := run(*seed, *port, *docs, *locked, *forged, *dir); err != nil {
+	if err := run(*seed, *port, *docs, *locked, *forged, *mailed, *dir); err != nil {
 		fmt.Fprintln(os.Stderr, "demo:", err)
 		os.Exit(1)
 	}
 }
 
-func run(seed bool, port int, docs, locked, forged bool, given string) error {
+func run(seed bool, port int, docs, locked, forged, mailed bool, given string) error {
 	root, kept := given, given != ""
 	if !kept {
 		var err error
@@ -152,7 +154,7 @@ func run(seed bool, port int, docs, locked, forged bool, given string) error {
 	defer chat.Close()
 
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
-	forgeURL := ""
+	forgeURL, mailURL := "", ""
 	cfg := config.Default()
 	cfg.Control = config.Model{URL: model.URL, Model: "demo"}
 	runtime, err := fakecontainer.Install(filepath.Join(root, "runtime"), "podman")
@@ -220,6 +222,37 @@ func run(seed bool, port int, docs, locked, forged bool, given string) error {
 			}
 		}
 		forgeURL = forge.URL
+	}
+	if mailed {
+		// A made-up Google token, bound to the fake Gmail's host for GET (a
+		// workflow's reading) and POST (a draft it saves), as an OAuth2
+		// credential authorized for gmail.readonly and gmail.compose would be
+		// (ADR 53).
+		mail := fakegmail.New("ya29.demo-token")
+		defer mail.Close()
+		mail.Set(fakegmail.Message{ID: "m1", Thread: "t1", From: "Ana <ana@acme.com>", To: "me@example.com", Subject: "Contract", Body: "The contract is attached."})
+		if err := os.MkdirAll(paths.ConfigDir, 0o700); err != nil {
+			return err
+		}
+		if store == nil {
+			var err error
+			if store, err = keychain.Create(filepath.Join(root, "keychain"), keychain.FastKDF, []byte("demo")); err != nil {
+				return err
+			}
+		}
+		if _, err := store.Add("google", []byte("ya29.demo-token")); err != nil {
+			return err
+		}
+		for _, method := range []string{"GET", "POST"} {
+			row, err := binding.Exact("google", "127.0.0.1", method, "header:Authorization:Bearer")
+			if err != nil {
+				return err
+			}
+			if err := binding.AppendExact(context.Background(), paths.Bindings, row); err != nil {
+				return err
+			}
+		}
+		mailURL = mail.URL
 	}
 	if locked {
 		// A task scheduled far ahead, made before the model needed a key,
@@ -344,6 +377,9 @@ func run(seed bool, port int, docs, locked, forged bool, given string) error {
 	fmt.Printf("URL %s/#ticket=%s\nCODE %s\nREPO %s\nMCP %s\nIMAGE %s\nGIT %s\n", url, ticket, code, repos["console"], chat.URL, notesImage, project)
 	if forgeURL != "" {
 		fmt.Printf("FORGE %s\n", forgeURL)
+	}
+	if mailURL != "" {
+		fmt.Printf("GMAIL %s\n", mailURL)
 	}
 	go func() {
 		// More tickets for automated checks: one per line on stdin.

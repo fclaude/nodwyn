@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 300 of 649 tracked Go files: every non-test Go file, 74,772 of 142,908 Go source lines (52.3\% by lines). It also includes all 37 tracked Scheme files (6,256 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 302 of 653 tracked Go files: every non-test Go file, 75,363 of 143,835 Go source lines (52.4\% by lines). It also includes all 37 tracked Scheme files (6,256 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -199,6 +199,8 @@ Read \src{internal/schedule/schedule.go} for the rules a schedule runs on (set t
 \chapter{Reading what a workflow's source has now}
 
 Read \src{internal/watch/watch.go} for the sources (a forge's pull requests, a command's JSON lines), the key sent only where the binding table allows it, the filters, and the changes against what was seen. It owns no timer and no log.
+
+\sourcefile{internal/watch/mail.go}{Go}
 
 \sourcefile{internal/watch/watch.go}{Go}
 
@@ -807,6 +809,8 @@ These are support implementations, not the Go test cases themselves. The fake mo
 \sourcefile{test/fakes/drive/drive.go}{Go}
 
 \sourcefile{test/fakes/forge/forge.go}{Go}
+
+\sourcefile{test/fakes/gmail/gmail.go}{Go}
 
 \sourcefile{test/fakes/home/home.go}{Go}
 

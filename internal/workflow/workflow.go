@@ -57,8 +57,10 @@ type Definition struct {
 }
 
 // Then is what happens with a run's answer (ADR 53 §7). Post is "" (it stays
-// in the task) or "review" (a review comment on the pull request, never an
-// approval or a request for changes: those are the person's). Held answers
+// in the task), "review" (a review comment on the pull request, never an
+// approval or a request for changes: those are the person's) or "draft" (a
+// draft reply in the email's thread, never sent: sending is the person's).
+// Held answers
 // wait in the outbox for the person's yes, unless Auto, a choice made on this
 // computer. Notify is "" (when the run needs the person, which Needs you and
 // the daemon's notices already say), "run" (a desktop notice at the end of
@@ -112,10 +114,14 @@ func (d Definition) Validate() error {
 		}
 	case "review":
 		if d.Source.Kind != watch.GiteaPulls && d.Source.Kind != watch.GitHubPulls {
-			return fmt.Errorf("a review is posted to a pull request, which a command source has none of")
+			return fmt.Errorf("a review is posted to a pull request, which this source has none of")
+		}
+	case "draft":
+		if d.Source.Kind != watch.Gmail {
+			return fmt.Errorf("a draft reply is saved in a mailbox, which this source has none of")
 		}
 	default:
-		return fmt.Errorf("the answer is posted as a review, or not at all, not %q", d.Then.Post)
+		return fmt.Errorf("the answer is posted as a review, saved as a draft reply, or left in the task, not %q", d.Then.Post)
 	}
 	switch d.Then.Notify {
 	case "", "run", "never":
@@ -186,6 +192,8 @@ type Outbox struct {
 	URL     string    `json:"url,omitempty"`
 	Body    string    `json:"body"`
 	At      time.Time `json:"at"`
+	// Reply is, for a draft, whom it answers and in which thread.
+	Reply *watch.Reply `json:"reply,omitempty"`
 }
 
 // Delivered says what came of an outbox item: posted, or discarded, by whom.
@@ -417,6 +425,20 @@ func (d Definition) Sentence() string {
 		default:
 			b.WriteString("gets new commits")
 		}
+	case watch.Gmail:
+		query := strings.TrimSpace(d.Source.Query)
+		if query == "" {
+			query = "in:inbox"
+		}
+		b.WriteString("When an email matching \"" + query + "\" ")
+		switch {
+		case opened && updated:
+			b.WriteString("arrives or gets a reply in Gmail")
+		case opened:
+			b.WriteString("arrives in Gmail")
+		default:
+			b.WriteString("gets a reply in Gmail")
+		}
 	default:
 		b.WriteString("When " + strings.Join(d.Source.Command, " ") + " prints ")
 		switch {
@@ -434,7 +456,7 @@ func (d Definition) Sentence() string {
 		} else {
 			b.WriteString(" and ")
 		}
-		fmt.Fprintf(&b, "%s %s %q", f.Field, strings.ReplaceAll(f.Op, "_", " "), f.Value)
+		b.WriteString(f.Words())
 	}
 	if d.Every == 1 {
 		b.WriteString(", checked every minute")
@@ -451,6 +473,10 @@ func (d Definition) Sentence() string {
 		b.WriteString("; its answer is posted as a review without asking")
 	case d.Then.Post == "review":
 		b.WriteString("; its answer is held for you to post as a review")
+	case d.Then.Post == "draft" && d.Then.Auto:
+		b.WriteString("; its answer is saved as a draft reply without asking")
+	case d.Then.Post == "draft":
+		b.WriteString("; its answer is held for you to save as a draft reply")
 	}
 	switch d.Then.Notify {
 	case "run":

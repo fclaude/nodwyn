@@ -2,6 +2,7 @@ package watch
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/test/fakes/forge"
 	"github.com/fclaude/nodwyn/test/fakes/must"
@@ -26,6 +28,15 @@ func keys(t *testing.T, class, secret string) *keychain.Store {
 		t.Fatal(err)
 	}
 	return store
+}
+
+// pollerWith is a poller whose keys go through the check a task's requests
+// pass: store may be nil (a locked keychain).
+func pollerWith(store *keychain.Store, table binding.Table) Poller {
+	if store == nil {
+		return Poller{}
+	}
+	return Poller{Authorize: core.Keyed{Keychain: store, Table: table, Locked: "the keychain is locked"}.Authorize}
 }
 
 func bound(t *testing.T, class, host, position string) binding.Table {
@@ -49,7 +60,7 @@ func TestPullRequestsAreReadThroughTheBindingTable(t *testing.T) {
 	for _, tc := range []struct{ kind, position string }{{GiteaPulls, "header:Authorization:token"}, {GitHubPulls, "header:Authorization:Bearer"}} {
 		t.Run(tc.kind, func(t *testing.T) {
 			s := Source{Kind: tc.kind, Server: f.URL, Repo: "fc/nodwyn", Credential: "forge"}
-			p := Poller{Keys: store, Bindings: bound(t, "forge", "127.0.0.1", tc.position)}
+			p := pollerWith(store, bound(t, "forge", "127.0.0.1", tc.position))
 			items, err := p.Poll(context.Background(), s)
 			if err != nil {
 				t.Fatal(err)
@@ -62,20 +73,20 @@ func TestPullRequestsAreReadThroughTheBindingTable(t *testing.T) {
 			if tc.position == other {
 				other = "header:Authorization:token"
 			}
-			if _, err := (Poller{Keys: store, Bindings: bound(t, "forge", "127.0.0.1", other)}).Poll(context.Background(), s); err == nil || !strings.Contains(err.Error(), "may not be sent") {
+			if _, err := (pollerWith(store, bound(t, "forge", "127.0.0.1", other))).Poll(context.Background(), s); err == nil || !strings.Contains(err.Error(), "is not bound") {
 				t.Fatalf("polled with an unbound position: %v", err)
 			}
 		})
 	}
 	polls := f.Polls()
 	s := Source{Kind: GiteaPulls, Server: f.URL, Repo: "fc/nodwyn", Credential: "forge"}
-	if _, err := (Poller{Keys: store, Bindings: binding.Table{}}).Poll(context.Background(), s); err == nil {
+	if _, err := (pollerWith(store, binding.Table{})).Poll(context.Background(), s); err == nil {
 		t.Fatal("polled with no binding")
 	}
-	if _, err := (Poller{Bindings: bound(t, "forge", "127.0.0.1", "header:Authorization:token")}).Poll(context.Background(), s); err != ErrLocked {
+	if _, err := (pollerWith(nil, bound(t, "forge", "127.0.0.1", "header:Authorization:token"))).Poll(context.Background(), s); err != ErrLocked {
 		t.Fatalf("polled with the keychain locked: %v", err)
 	}
-	if _, err := (Poller{Keys: store, Bindings: bound(t, "other", "127.0.0.1", "header:Authorization:token")}).Poll(context.Background(), Source{Kind: GiteaPulls, Server: f.URL, Repo: "fc/nodwyn", Credential: "other"}); err == nil || !strings.Contains(err.Error(), "no credential") {
+	if _, err := (pollerWith(store, bound(t, "other", "127.0.0.1", "header:Authorization:token"))).Poll(context.Background(), Source{Kind: GiteaPulls, Server: f.URL, Repo: "fc/nodwyn", Credential: "other"}); err == nil || !strings.Contains(err.Error(), "no other credential in the keychain") {
 		t.Fatalf("polled with a key the keychain does not have: %v", err)
 	}
 	if f.Polls() != polls {
@@ -83,7 +94,7 @@ func TestPullRequestsAreReadThroughTheBindingTable(t *testing.T) {
 	}
 	// A wrong key is the forge's refusal, said.
 	wrong := keys(t, "forge", "not-the-token")
-	if _, err := (Poller{Keys: wrong, Bindings: bound(t, "forge", "127.0.0.1", "header:Authorization:token")}).Poll(context.Background(), s); err == nil || !strings.Contains(err.Error(), "401") {
+	if _, err := (pollerWith(wrong, bound(t, "forge", "127.0.0.1", "header:Authorization:token"))).Poll(context.Background(), s); err == nil || !strings.Contains(err.Error(), "401") {
 		t.Fatalf("a refused key: %v", err)
 	}
 }
@@ -140,6 +151,9 @@ func TestChangesFiltersAndWords(t *testing.T) {
 			t.Errorf("%s: %v %q", tc.item.ID, ok, why)
 		}
 	}
+	if w := (Filter{Field: "subject", Op: "not_contains", Value: "invoice"}).Words(); w != `subject does not contain "invoice"` {
+		t.Error(w)
+	}
 	if ok, _ := (Filter{Field: "title", Op: "contains", Value: "LOGIN"}).Match(items[0]); !ok {
 		t.Error("contains is not case-blind")
 	}
@@ -177,7 +191,7 @@ func TestAPollDoesNotFollowARedirectWithItsKey(t *testing.T) {
 	}))
 	defer redirecting.Close()
 	s := Source{Kind: GiteaPulls, Server: redirecting.URL, Repo: "fc/nodwyn", Credential: "forge"}
-	p := Poller{Keys: keys(t, "forge", "forge-token"), Bindings: bound(t, "forge", "127.0.0.1", "header:Authorization:token")}
+	p := pollerWith(keys(t, "forge", "forge-token"), bound(t, "forge", "127.0.0.1", "header:Authorization:token"))
 	if _, err := p.Poll(context.Background(), s); err == nil {
 		t.Fatal("a redirect was followed")
 	}
@@ -206,13 +220,13 @@ func TestAReviewIsPostedOnlyWhereThePostIsBound(t *testing.T) {
 		t.Run(tc.kind, func(t *testing.T) {
 			s := Source{Kind: tc.kind, Server: f.URL, Repo: "fc/nodwyn", Credential: "forge"}
 			before := len(f.Reviews())
-			if err := (Poller{Keys: store, Bindings: boundFor(t, "GET", "forge", "127.0.0.1", tc.position)}).PostReview(context.Background(), s, "142", "Looks fine."); err == nil || !strings.Contains(err.Error(), "for POST") {
+			if err := (pollerWith(store, boundFor(t, "GET", "forge", "127.0.0.1", tc.position))).PostReview(context.Background(), s, "142", "Looks fine."); err == nil || !strings.Contains(err.Error(), "method POST") {
 				t.Fatalf("a review was posted with only the listing bound: %v", err)
 			}
 			if len(f.Reviews()) != before {
 				t.Fatal("a refused post reached the forge")
 			}
-			if err := (Poller{Keys: store, Bindings: boundFor(t, "POST", "forge", "127.0.0.1", tc.position)}).PostReview(context.Background(), s, "142", "Looks fine.\n\nOne point."); err != nil {
+			if err := (pollerWith(store, boundFor(t, "POST", "forge", "127.0.0.1", tc.position))).PostReview(context.Background(), s, "142", "Looks fine.\n\nOne point."); err != nil {
 				t.Fatal(err)
 			}
 			reviews := f.Reviews()
@@ -226,13 +240,42 @@ func TestAReviewIsPostedOnlyWhereThePostIsBound(t *testing.T) {
 		})
 	}
 	s := Source{Kind: GiteaPulls, Server: f.URL, Repo: "fc/nodwyn", Credential: "forge"}
-	if err := (Poller{Keys: store, Bindings: boundFor(t, "POST", "forge", "127.0.0.1", "header:Authorization:token")}).PostReview(context.Background(), s, "../../x", "no"); err == nil {
+	if err := (pollerWith(store, boundFor(t, "POST", "forge", "127.0.0.1", "header:Authorization:token"))).PostReview(context.Background(), s, "../../x", "no"); err == nil {
 		t.Fatal("posted to something that is not a pull request number")
 	}
-	if err := (Poller{Bindings: boundFor(t, "POST", "forge", "127.0.0.1", "header:Authorization:token")}).PostReview(context.Background(), s, "1", "no"); err != ErrLocked {
+	if err := (pollerWith(nil, boundFor(t, "POST", "forge", "127.0.0.1", "header:Authorization:token"))).PostReview(context.Background(), s, "1", "no"); err != ErrLocked {
 		t.Fatalf("posted with the keychain locked: %v", err)
 	}
-	if err := (Poller{Keys: store}).PostReview(context.Background(), Source{Kind: Command, Command: []string{"x"}, Dir: "/x"}, "1", "no"); err == nil {
+	if err := (pollerWith(store, binding.Table{})).PostReview(context.Background(), Source{Kind: Command, Command: []string{"x"}, Dir: "/x"}, "1", "no"); err == nil {
 		t.Fatal("a command source has no pull request")
+	}
+}
+
+// A key does not go over plain HTTP to a host that is not this computer,
+// however it is bound: the rule a task's own requests meet, since the poll
+// goes through the same check. The forge here is reached under another name by
+// a client that dials the fake, so the request is for a remote host.
+func TestAKeyDoesNotGoOverPlainHTTPToARemoteHost(t *testing.T) {
+	f := forge.New("forge-token")
+	defer f.Close()
+	f.Set("fc/nodwyn", forge.Pull{Number: 1, Title: "x", Head: "a"})
+	dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, strings.TrimPrefix(f.URL, "http://"))
+	}
+	remote := &http.Client{Transport: &http.Transport{DialContext: dial}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	s := Source{Kind: GiteaPulls, Server: "http://git.example.com", Repo: "fc/nodwyn", Credential: "forge"}
+	p := pollerWith(keys(t, "forge", "forge-token"), bound(t, "forge", "git.example.com", "header:Authorization:token"))
+	p.Client = remote
+	polls := f.Polls()
+	if _, err := p.Poll(context.Background(), s); err == nil || !strings.Contains(err.Error(), "require HTTPS") {
+		t.Fatalf("a key went over plain HTTP to a remote host: %v", err)
+	}
+	if f.Polls() != polls {
+		t.Fatal("the request reached the forge")
+	}
+	// Over https it would be allowed, and this fake is plain HTTP on this
+	// computer, which is.
+	if _, err := pollerWith(keys(t, "forge", "forge-token"), bound(t, "forge", "127.0.0.1", "header:Authorization:token")).Poll(context.Background(), Source{Kind: GiteaPulls, Server: f.URL, Repo: "fc/nodwyn", Credential: "forge"}); err != nil {
+		t.Fatal(err)
 	}
 }

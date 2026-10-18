@@ -2,8 +2,8 @@
 
 - Status: accepted 2026-10-17; the timetable (§3) built the same day as an
   amendment to ADR 49, §11 (slice 0), slice 2, slice 3 (pull requests and
-  commands) and slice 4 (the outbox) the same day, amended below; the rest
-  not built (see "Not built")
+  commands), slice 4 (the outbox) and slice 5 (Gmail) the same day, amended
+  below; the rest not built (see "Not built")
 - Date: 2026-10-17
 - Amends: 49 (a schedule becomes a workflow whose runs all go to one task;
   schedules stop being read from every task's log), 30 (a daemon may start at
@@ -415,4 +415,65 @@ may do with its answer is validated; a mutation that posts without asking
 fails the first of them), and the `workflows` browser check (the Then card,
 the held card on Home counted in the topbar, edit and post with the forge
 seeing the person's words, discard posting nothing).
+
+## Amendment 2026-10-17: slice 5, email through Gmail; and a correction to slices 3 and 4
+
+Built: **Email in Gmail** is a source (§4). Its answer can be saved as a
+**draft reply** (§7).
+
+- **Items.** A thread is the subject. The newest messages of the search are
+  listed (25), each thread is an item whose id is the thread's and whose version
+  is its newest message's id: a new message makes an event, and reading,
+  starring or archiving a message does not, which a thread's history id, that
+  changes with every label, would. A new email opens a task titled by its
+  subject; a reply arrives in it as its next run. A message is read in full
+  only for a thread that is new or changed, and not at all by the check that
+  only records what is there. The event is attached as `email-….md` (sender,
+  recipients, date, and the plain text, or an HTML part with its tags taken
+  out, at most 20 KiB), as data, never instructions; filters read from, to,
+  subject, labels and date, so `from does not contain "me@…"` leaves out the
+  person's own replies.
+- **Draft replies, never sent.** The held answer is an outbox item of kind
+  `draft` with the reply's address, subject, message id and thread; the daemon
+  saves it as a Gmail draft in the thread, to the sender, with `In-Reply-To`
+  and `References`. Sending is the person's, from Gmail: no part of nodwyn
+  sends mail. The sender's name, address and subject are a stranger's text:
+  the address is parsed (a sender that is not an address gets no draft) and
+  every value has its line breaks removed, so no header can be added
+  (`TestADraftReplyJoinsTheThreadAndAddsNoHeader` builds one from a hostile
+  subject and message id).
+- **Credentials and scopes.** Reading needs a Google credential authorized for
+  `gmail.readonly`, saving a draft one for `gmail.compose`, which is a separate
+  authorization because it writes, each allowed at `gmail.googleapis.com`
+  (GET, POST) at `header:Authorization:Bearer`. The shipped Google profile
+  (drive.file only) is **not** changed: the person authorizes with
+  `--scopes gmail.readonly` and, if they want drafts, `gmail.compose`, since a
+  default scope granted to every Google credential would be a widening nobody
+  asked for. A 401 and a 403 from Gmail are said with what is most likely
+  wrong (expired or revoked; a scope or the API not turned on).
+
+**Correction.** Slices 3 and 4, as pushed, made the binding-table lookup
+themselves and sent the key: they did not apply the rule against plain HTTP to
+a remote host, did not look at the credential's granted scopes against the
+row, and did not refresh an OAuth2 token about to expire. Every poll and post
+now goes through `core.Keyed.Authorize`, the check a task's own model requests
+pass (`internal/watch`'s `Poller` takes it as `Authorize`), so those three
+apply, and the daemon builds it per poll from the table as it is then.
+`TestAKeyDoesNotGoOverPlainHTTPToARemoteHost` fails on the code before this
+(a key went to `http://git.example.com`). A Gitea reached over plain HTTP on
+a tailnet is therefore refused unless Settings allows credentials over remote
+HTTP, as for a model's key.
+
+Not built, and not verified: **IMAP**. It needs a mail-protocol client, which
+is a dependency this repository does not have, and a person's mailbox password
+in the keychain instead of a scoped OAuth2 token; adding either is a decision
+of its own. The Gmail path was run only against `test/fakes/gmail`, not a real
+mailbox: a real response's shapes (nested multipart messages, attachments, odd
+encodings) are untried, and attachments are not read. Not built: marking a
+message read or labelling it, sending a reply, a thread's earlier messages in
+the event (only the newest is attached; the run can read the rest by asking).
+Checks: `internal/watch` (`mail_test.go`: items and versions, what is fetched
+and what is not, the refusals explained, the draft's headers), `internal/frontend/rpc`
+(`TestAnEmailRunsATaskAndItsAnswerWaitsAsADraft`), and the `mail` browser
+check.
 

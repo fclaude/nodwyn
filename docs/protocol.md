@@ -1298,9 +1298,11 @@ run: item, version, kind, subject, task, summary) and `workflow.skip`.
 
 - A definition is `{name, source, every, filters, message, routing, repo,
   worktree, model, no_limits, cost, day_cost, concurrency, existing, paused}`.
-  `source` is `{kind, server, repo, credential, command, dir, on}`: `kind` is
-  `gitea-pulls`, `github-pulls` (`server` optional, GitHub's API by default)
-  or `command`; `credential` is the keychain class a forge is asked with;
+  `source` is `{kind, server, repo, credential, query, command, dir, on}`:
+  `kind` is `gitea-pulls`, `github-pulls` (`server` optional, GitHub's API by
+  default), `gmail` (`credential` an OAuth2 credential for Google, `query`
+  Gmail's search, `in:inbox` when empty, `server` optional, Google's by
+  default) or `command`; `credential` is the keychain class a forge is asked with;
   `command` is a program (an absolute path, or a name without a slash, looked
   up on `PATH`) and its arguments, run in `dir` (the workflow's `repo`) with
   no shell; `on` is `opened`, `updated` or both. `every` is minutes between
@@ -1308,8 +1310,10 @@ run: item, version, kind, subject, task, summary) and `workflow.skip`.
   `is_not`, `contains`, `not_contains`, compared without regard to case.
   `routing` is `subject` (a task per item) or `one`. `concurrency` 0 is 2.
   `then` is `{post, auto, notify}`: `post` is `""` (the answer stays in the
-  task) or `review` (a pull-request source only: its answer is posted as a
-  review comment); `auto` posts as the run ends instead of holding it;
+  task), `review` (a pull-request source only: its answer is posted as a
+  review comment) or `draft` (a Gmail source only: its answer is saved as a
+  draft reply in the email's thread, to the sender, never sent); `auto` posts
+  or saves as the run ends instead of holding it;
   `notify` is `""` (when the run needs the person), `run` (a desktop notice
   after each run) or `never`.
 - `workflow.list {}` returns every workflow; `workflow.read {id}` one. Each is
@@ -1372,4 +1376,27 @@ An invited device may `outbox.list` and `outbox.decide` (not with a new
 decided the daemon pushes `session.event` with kind `outbox.changed` and no
 payload to every watching client, and an item waiting for a person is the
 same fixed `needs your answer` desktop notice as a question.
+
+### Email (Gmail)
+
+A `gmail` source lists the newest 25 messages of its search
+(`GET …/gmail/v1/users/me/messages`, the key at `header:Authorization:Bearer`)
+and gives one item per thread: its id is the thread's, its version the id of its
+newest message in the search, so a new message is a change (`updated`; a thread
+not seen before is `opened`) and reading or archiving one is not. A message is
+read in full (`…/messages/ID?format=full`) only for a thread that is new or has
+a new message, and not at all by a check that only records what is there. The
+item's title is the subject, its fields `from`, `to`, `date`, `labels`,
+`reply_to` and `message_id`, its text the `text/plain` part or the text of the
+`text/html` one, at most 20 KiB. `workflow.test` reads every one of them.
+
+With `then.post = "draft"` a held answer is an outbox item of `kind` `draft`
+with `reply` (`to`, `subject`, `message_id`, `thread`). `outbox.decide` post
+saves it with `POST …/gmail/v1/users/me/drafts`: a message in the thread, to the
+sender (an address; refused if the sender is not one), `Subject: Re: …`,
+`In-Reply-To` and `References` the message's id, a base64 plain-text body, and
+no header from the sender's text (line breaks in any value are removed). It is a
+draft, never sent. The credential needs the `gmail.readonly` scope to read and
+`gmail.compose` to save, and a binding at `gmail.googleapis.com` for GET and
+for POST.
 

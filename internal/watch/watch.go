@@ -24,25 +24,30 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/llm"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // The kinds of source.
 const (
 	GiteaPulls  = "gitea-pulls"
 	GitHubPulls = "github-pulls"
+	Gmail       = "gmail"
 	Command     = "command"
 )
+
+// GmailAPI is Gmail's API, the server a Gmail source asks unless it names
+// another (a fake, in tests).
+const GmailAPI = "https://gmail.googleapis.com"
 
 // GitHubAPI is GitHub's API, the server a GitHub source asks unless it names
 // another (GitHub Enterprise, or a fake in tests).
 const GitHubAPI = "https://api.github.com"
 
 // Source is where a workflow's events come from. A forge's is its server,
-// the repository (owner/name) and the keychain class of its token; a
-// command's is its program and arguments, run in Dir without a shell. On is
+// the repository (owner/name) and the keychain class of its token; Gmail's is
+// the keychain class of its OAuth2 credential and a search, as Gmail's own
+// box takes it (in:inbox by default); a command's is its program and
+// arguments, run in Dir without a shell. On is
 // which changes fire: "opened" (an item not seen before) and "updated" (an
 // item seen with another version: a pull request's new head commit).
 type Source struct {
@@ -50,6 +55,7 @@ type Source struct {
 	Server     string   `json:"server,omitempty"`
 	Repo       string   `json:"repo,omitempty"`
 	Credential string   `json:"credential,omitempty"`
+	Query      string   `json:"query,omitempty"`
 	Command    []string `json:"command,omitempty"`
 	Dir        string   `json:"dir,omitempty"`
 	On         []string `json:"on,omitempty"`
@@ -105,6 +111,19 @@ func (s Source) Validate() error {
 				return fmt.Errorf("the server is an http or https address, not %q", s.Server)
 			}
 		}
+	case Gmail:
+		if s.Credential == "" {
+			return fmt.Errorf("a Gmail source is asked with an OAuth2 credential from the keychain: name its credential")
+		}
+		if len(s.Query) > 500 {
+			return fmt.Errorf("a Gmail search is at most 500 characters")
+		}
+		if s.Server != "" {
+			u, err := url.Parse(s.Server)
+			if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+				return fmt.Errorf("the server is an http or https address, not %q", s.Server)
+			}
+		}
 	case Command:
 		if len(s.Command) == 0 || strings.TrimSpace(s.Command[0]) == "" {
 			return fmt.Errorf("a command source names its program")
@@ -120,7 +139,7 @@ func (s Source) Validate() error {
 			return fmt.Errorf("a command source runs in its workflow's folder")
 		}
 	default:
-		return fmt.Errorf("a source is %s, %s or %s, not %q", GiteaPulls, GitHubPulls, Command, s.Kind)
+		return fmt.Errorf("a source is %s, %s, %s or %s, not %q", GiteaPulls, GitHubPulls, Gmail, Command, s.Kind)
 	}
 	return nil
 }
@@ -156,7 +175,14 @@ func (f Filter) Match(item Item) (bool, string) {
 	if ok {
 		return true, ""
 	}
-	return false, fmt.Sprintf("%s %s %q", f.Field, strings.ReplaceAll(f.Op, "_", " "), f.Value)
+	return false, f.Words()
+}
+
+// Words says the condition: `author is not "me"`, `subject does not contain
+// "invoice"`.
+func (f Filter) Words() string {
+	op := map[string]string{"is": "is", "is_not": "is not", "contains": "contains", "not_contains": "does not contain"}[f.Op]
+	return fmt.Sprintf("%s %s %q", f.Field, op, f.Value)
 }
 
 func (i Item) field(name string) string {
@@ -195,21 +221,17 @@ func Changes(seen map[string]string, items []Item, on []string) []Event {
 	return events
 }
 
-// Keys is what a poll needs of the keychain: the key of a class, put into a
-// request's header. *keychain.Store has it.
-type Keys interface {
-	HandleForClass(class string) *scheme.Handle
-	InjectHeader(id, name, prefix string, req *http.Request) error
-}
-
-// Poller asks sources. Keys is nil while the keychain is locked; Bindings
-// is the binding table as it is now; Client sends forge requests (nil: one
-// that follows no redirect, so a key never goes to a host it is not bound
-// to).
+// Poller asks sources. Authorize puts a credential class's key into a
+// request at a binding position, if the binding table (read afresh), the
+// credential's own scopes and the transport rule (no key over plain HTTP to
+// a remote host unless the person allowed it) permit it, refreshing an OAuth2
+// token that is about to expire: core.Keyed.Authorize, the check a task's own
+// model requests pass. It is nil while the keychain is locked. Client sends
+// the requests (nil: one that follows no redirect, so a key never goes to a
+// host it is not bound to).
 type Poller struct {
-	Keys     Keys
-	Bindings binding.Authority
-	Client   *http.Client
+	Authorize func(class, position string) func(*http.Request) error
+	Client    *http.Client
 }
 
 var client = &http.Client{Timeout: time.Minute, CheckRedirect: llm.NoRedirect}
@@ -220,12 +242,28 @@ var ErrLocked = errors.New("the keychain is locked: unlock it, and the workflow 
 // maxBody bounds what one answer may be.
 const maxBody = 8 << 20
 
+// Look says what a poll needs to learn: Seen is what the workflow knows (item
+// to version), so that a source whose list does not carry an item's content
+// need fetch it only when the item is new or changed; IDsOnly is a poll that
+// only records what is there, and fetches no content at all.
+type Look struct {
+	Seen    map[string]string
+	IDsOnly bool
+}
+
 // Poll reads what the source has now.
 func (p Poller) Poll(ctx context.Context, s Source) ([]Item, error) {
+	return p.PollLook(ctx, s, Look{})
+}
+
+// PollLook is Poll for a source whose content is fetched item by item.
+func (p Poller) PollLook(ctx context.Context, s Source, look Look) ([]Item, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
 	switch s.Kind {
+	case Gmail:
+		return p.mail(ctx, s, look)
 	case GiteaPulls:
 		return p.pulls(ctx, s, strings.TrimRight(s.Server, "/")+"/api/v1/repos/"+s.Repo+"/pulls?state=open&sort=recentupdate&limit=50", "header:Authorization:token")
 	case GitHubPulls:
@@ -248,18 +286,8 @@ func (p Poller) send(ctx context.Context, s Source, method, address, position st
 	if err != nil {
 		return nil, err
 	}
-	if p.Keys == nil {
+	if p.Authorize == nil {
 		return nil, ErrLocked
-	}
-	handle := p.Keys.HandleForClass(s.Credential)
-	if handle == nil {
-		return nil, fmt.Errorf("the keychain has no credential %q", s.Credential)
-	}
-	if p.Bindings == nil {
-		return nil, fmt.Errorf("no binding table allows %q at %s", s.Credential, u.Hostname())
-	}
-	if bound, why := p.Bindings.Lookup(s.Credential, u.Hostname(), method, position); !bound {
-		return nil, fmt.Errorf("%q may not be sent to %s for %s at %s: %s (Connections › Credentials allows a host)", s.Credential, u.Hostname(), method, position, why)
 	}
 	var reader io.Reader
 	if body != nil {
@@ -277,9 +305,11 @@ func (p Poller) send(ctx context.Context, s Source, method, address, position st
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	}
-	_, name, prefix := binding.Position(position)
-	if err := p.Keys.InjectHeader(handle.ID, name, prefix, req); err != nil {
-		return nil, err
+	if err := p.Authorize(s.Credential, position)(req); err != nil {
+		// The reason is the check's own: a binding that is missing (which
+		// Connections › Credentials adds), a scope the row does not allow, a
+		// key that is not there, or the rule against plain HTTP.
+		return nil, fmt.Errorf("%q is not sent to %s for %s: %w", s.Credential, u.Hostname(), method, err)
 	}
 	c := p.Client
 	if c == nil {
@@ -425,6 +455,19 @@ func (l *limited) Write(p []byte) (int, error) {
 // Summary says what happened, in a line: "Pull request #142 opened".
 func (e Event) Summary(s Source) string {
 	switch s.Kind {
+	case Gmail:
+		who := e.Item.Fields["from"]
+		if who == "" {
+			who = "someone"
+		}
+		subject := e.Item.Title
+		if subject == "" {
+			subject = "(no subject)"
+		}
+		if e.Kind == "opened" {
+			return fmt.Sprintf("New email from %s: %s", who, subject)
+		}
+		return fmt.Sprintf("New reply from %s: %s", who, subject)
 	case GiteaPulls, GitHubPulls:
 		if e.Kind == "opened" {
 			return fmt.Sprintf("Pull request #%s opened: %s", e.Item.ID, e.Item.Title)
@@ -453,6 +496,8 @@ func (e Event) Text(s Source) string {
 			server = GitHubAPI
 		}
 		fmt.Fprintf(&b, "- Repository: %s (%s)\n- Head: %s\n", s.Repo, server, e.Item.Version)
+	case Gmail:
+		fmt.Fprintf(&b, "- Mailbox: Gmail, thread %s\n", e.Item.ID)
 	default:
 		fmt.Fprintf(&b, "- From: %s\n- Id: %s\n", strings.Join(s.Command, " "), e.Item.ID)
 	}

@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -38,13 +39,15 @@ func (s *server) flows() workflow.Store {
 	return workflow.Store{Dir: filepath.Join(s.options.Paths.DataDir, "workflows")}
 }
 
-// poller asks sources with the keychain as it is now: none while it is locked.
+// poller asks sources with the keychain as it is now, and none while it is
+// locked. A key goes only through the check a task's own requests pass: the
+// binding table as it is now, the credential's scopes, the rule against plain
+// HTTP to a remote host, and a refresh of an OAuth2 token about to expire.
 func (s *server) poller() watch.Poller {
-	p := watch.Poller{Bindings: s.bindingTable()}
-	if s.options.Keychain != nil {
-		p.Keys = s.options.Keychain
+	if s.options.Keychain == nil {
+		return watch.Poller{}
 	}
-	return p
+	return watch.Poller{Authorize: s.keyed().Authorize}
 }
 
 // workflowLoop polls the workflows every 30 seconds, and at once on start.
@@ -83,7 +86,8 @@ func (s *server) pollWorkflows(ctx context.Context, now time.Time) {
 	}
 	s.mu.Unlock()
 	for _, state := range due {
-		items, err := poller.Poll(ctx, state.Definition.Source)
+		def := state.Definition.Definition
+		items, err := poller.PollLook(ctx, def.Source, watch.Look{Seen: state.Seen, IDsOnly: !state.Seeded && !def.Existing})
 		if ctx.Err() != nil {
 			return
 		}
@@ -244,7 +248,10 @@ func (s *server) fire(id string, def workflow.Definition, state workflow.State, 
 		}
 		s.own(session)
 		title := def.Name
-		if subject != "" {
+		switch {
+		case subject != "" && def.Source.Kind == watch.Gmail:
+			title = cmp.Or(ev.Item.Title, "(no subject)")
+		case subject != "":
 			title = fmt.Sprintf("#%s %s", ev.Item.ID, ev.Item.Title)
 		}
 		if _, err := session.Record(log.KindSessionOrigin, log.SessionOrigin{Workflow: id, Name: def.Name, Subject: subject}); err != nil {
@@ -285,8 +292,11 @@ func (s *server) fire(id string, def workflow.Definition, state workflow.State, 
 	}
 	defer os.RemoveAll(dir)
 	name := "event-" + unsafeName.ReplaceAllString(ev.Item.ID, "-") + ".md"
-	if def.Source.Kind != watch.Command {
+	switch def.Source.Kind {
+	case watch.GiteaPulls, watch.GitHubPulls:
 		name = "pull-request-" + unsafeName.ReplaceAllString(ev.Item.ID, "-") + ".md"
+	case watch.Gmail:
+		name = "email-" + unsafeName.ReplaceAllString(ev.Item.ID, "-") + ".md"
 	}
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte(ev.Text(def.Source)), 0o600); err != nil {
@@ -297,9 +307,16 @@ func (s *server) fire(id string, def workflow.Definition, state workflow.State, 
 	}
 	run := log.ScheduleRun{Due: now, Started: now, Actor: "workflow", Cost: def.Cost, Workflow: id, Event: ev.Summary(def.Source)}
 	// Registered before the run starts, so that its end cannot be missed.
-	watching := def.Then.Post == "review" || def.Then.Notify == "run"
+	watching := def.Then.Post != "" || def.Then.Notify == "run"
 	if watching {
-		s.runs.add(task, pendingRun{workflow: id, item: ev.Item.ID, subject: subject, summary: run.Event, url: ev.Item.URL})
+		pending := pendingRun{workflow: id, item: ev.Item.ID, subject: subject, summary: run.Event, url: ev.Item.URL, label: "#" + ev.Item.ID}
+		if def.Source.Kind == watch.Gmail {
+			pending.label = fmt.Sprintf("%q", cmp.Or(ev.Item.Title, "(no subject)"))
+			if reply, err := watch.ReplyTo(ev.Item); err == nil {
+				pending.reply = &reply
+			}
+		}
+		s.runs.add(task, pending)
 	}
 	if err := session.SendScheduled(def.Message, run); err != nil {
 		if watching {
@@ -485,7 +502,9 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		poller := s.poller()
 		var items []watch.Item
 		var pollErr error
-		s.slow("", func() { items, pollErr = poller.Poll(s.serving(), state.Definition.Source) })
+		def := state.Definition.Definition
+		look := watch.Look{Seen: state.Seen, IDsOnly: !state.Seeded && !def.Existing}
+		s.slow("", func() { items, pollErr = poller.PollLook(s.serving(), def.Source, look) })
 		s.applyPoll(state.ID, items, pollErr, time.Now())
 		if state, err := s.flows().Read(state.ID); err == nil {
 			return s.workflowView(state), nil

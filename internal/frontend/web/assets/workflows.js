@@ -2,9 +2,10 @@
 // watches a source, with when it runs or what it watches, what today's runs
 // came to and how the latest ended, in the daemon's words. A timetable is
 // made on Home, in its Schedule dialog, with every choice a task has: there
-// is one way to start a task. A workflow that watches a source is made in
-// the builder here (#/workflows/new), which takes the same choices beside
-// its source, its filters and where its runs go.
+// is one way to start a task. A workflow that watches a source (pull
+// requests, email, a command) is made in the builder here (#/workflows/new),
+// which takes the same choices beside its source, its filters, where its runs
+// go and what happens with the answer.
 import { h, toast, toastError, removal } from "./dom.js";
 import { nextLine, scheduleActions, manageSchedule } from "./schedule.js";
 import { usd } from "./transcript.js";
@@ -113,7 +114,7 @@ export function renderWorkflows(root, ctx) {
   const body = h("div", { class: "workflow-list", "aria-label": "Workflows" });
   const paint = () => {
     body.replaceChildren(...(watched || []).map(watching), ...items.map(row));
-    if (!body.children.length) body.append(h("p", { class: "empty-note" }, watched === null && conn.has("workflow.list") ? "Reading the workflows…" : "No workflows yet. A timetable starts from Home, with its task's folder, model and limits. One that watches pull requests starts here."));
+    if (!body.children.length) body.append(h("p", { class: "empty-note" }, watched === null && conn.has("workflow.list") ? "Reading the workflows…" : "No workflows yet. A timetable starts from Home, with its task's folder, model and limits. One that watches pull requests, email or a command starts here."));
   };
   paint();
   if (conn.has("workflow.list")) {
@@ -126,7 +127,7 @@ export function renderWorkflows(root, ctx) {
   const start = h(
     "div",
     { class: "row-actions" },
-    conn.has("workflow.set") ? h("a", { class: "btn dark", id: "new-watcher", href: "#/workflows/new" }, "Watch pull requests") : null,
+    conn.has("workflow.set") ? h("a", { class: "btn dark", id: "new-watcher", href: "#/workflows/new" }, "Watch for events") : null,
     conn.has("schedule.set") ? h("button", { type: "button", class: "btn", id: "new-workflow", onclick: () => { newWorkflow = true; navigate("#/"); } }, "New timetable") : null,
   );
   root.replaceChildren(
@@ -147,10 +148,12 @@ export function renderWorkflows(root, ctx) {
 const sources = {
   "gitea-pulls": "Pull requests on Gitea",
   "github-pulls": "Pull requests on GitHub",
+  gmail: "Email in Gmail",
   command: "A command's output",
 };
 const filterOps = [["is", "is"], ["is_not", "is not"], ["contains", "contains"], ["not_contains", "does not contain"]];
 const pullFields = ["author", "base", "draft", "labels", "title"];
+const mailFields = ["from", "to", "subject", "labels", "date"];
 
 // The builder's state outlives a redraw of the page, and is dropped when the
 // page is left for another: one workflow is made at a time.
@@ -166,7 +169,7 @@ function renderBuilder(root, ctx) {
   const editingId = tab === "new" ? "" : tab;
   const folders = desk.folders();
   const defaults = () => ({
-    name: "", source: { kind: "gitea-pulls", server: "", repo: "", credential: "", command: [], on: ["opened", "updated"] }, every: 2, filters: [], message: "", routing: "subject",
+    name: "", source: { kind: "gitea-pulls", server: "", repo: "", credential: "", query: "", command: [], on: ["opened", "updated"] }, every: 2, filters: [], message: "", routing: "subject",
     repo: folders[0] || "", worktree: false, model: "", no_limits: false, cost: 0, day_cost: 0, concurrency: 0, existing: false,
     then: { post: "", auto: false, notify: "" },
   });
@@ -186,16 +189,32 @@ function renderBuilder(root, ctx) {
   const text = (id, value, onInput, extra = {}) => h("input", { id, class: "input", type: "text", value: value ?? "", oninput: (e) => onInput(e.target.value), ...extra });
   const select = (id, value, options, onChange) => h("select", { id, class: "input", onchange: (e) => { onChange(e.target.value); redraw(); } }, options.map(([v, label]) => h("option", { value: v, selected: v === value }, label)));
   const src = d.source;
-  const isPulls = src.kind !== "command";
+  const isPulls = src.kind === "gitea-pulls" || src.kind === "github-pulls";
+  const isMail = src.kind === "gmail";
 
   const credentials = h("datalist", { id: "builder-credentials" }, state.credentials.map((c) => h("option", { value: c })));
   const when = h(
     "section", { class: "builder-card", "aria-label": "When" },
     h("h2", { class: "eyebrow" }, "When"),
-    field("Source", select("wf-kind", src.kind, Object.entries(sources), (v) => { src.kind = v; state.test = null; })),
-    isPulls
+    field("Source", select("wf-kind", src.kind, Object.entries(sources), (v) => {
+      // What happens with the answer depends on the source: a review for a
+      // pull request, a draft reply for an email, nothing for a command.
+      const family = (k) => (k === "gitea-pulls" || k === "github-pulls" ? "pulls" : k);
+      if (family(v) !== family(src.kind)) { d.then.post = ""; d.then.auto = false; d.filters = []; }
+      src.kind = v;
+      state.test = null;
+    })),
+    isMail
+      ? [
+          field("Token", [text("wf-credential", src.credential, (v) => { src.credential = v; state.test = null; }, { list: "builder-credentials", placeholder: "the credential's name" }), credentials], "An OAuth2 credential for Google, authorized with the gmail.readonly scope (nodwyn credential add --oauth2 google --scopes gmail.readonly) and allowed at gmail.googleapis.com for GET. To save drafts it also needs the gmail.compose scope and a POST binding."),
+          field("Server (optional)", text("wf-server", src.server, (v) => { src.server = v; state.test = null; }, { placeholder: "Google's Gmail API" }), "Empty is Google's. The credential is sent only where Connections › Credentials allows it."),
+          field("Search", text("wf-query", src.query, (v) => { src.query = v; state.test = null; }, { placeholder: "in:inbox from:(@acme.com) is:unread" }), "As in Gmail's search box. Empty is your inbox. Reading a message or archiving it does not make an event; a new message does."),
+          h("div", { class: "row-actions", role: "group", "aria-label": "Fires on" }, h("span", { class: "muted" }, "Fires when"), ...[["opened", "a new email arrives"], ["updated", "a thread gets a reply"]].map(([on, label]) => h("button", { type: "button", class: "chip", id: `wf-on-${on}`, "aria-pressed": String((src.on || []).includes(on)), onclick: () => { const next = new Set(src.on || []); next.has(on) ? next.delete(on) : next.add(on); if (next.size) src.on = [...next]; state.test = null; redraw(); } }, label))),
+        ]
+      : isPulls
       ? [
           src.kind === "gitea-pulls" ? field("Server", text("wf-server", src.server, (v) => { src.server = v; state.test = null; }, { placeholder: "https://git.example.com" })) : null,
+          src.kind === "github-pulls" ? field("Server (optional)", text("wf-server", src.server, (v) => { src.server = v; state.test = null; }, { placeholder: "GitHub's API" }), "Empty is github.com. For GitHub Enterprise, its API address.") : null,
           field("Repository", text("wf-repo", src.repo, (v) => { src.repo = v; state.test = null; }, { placeholder: "owner/name" })),
           field("Token", [text("wf-credential", src.credential, (v) => { src.credential = v; state.test = null; }, { list: "builder-credentials", placeholder: "the credential's name" }), credentials], "A token kept in the keychain and allowed at this host for GET (Connections › Credentials). Nothing is sent with it but the listing."),
           h("div", { class: "row-actions", role: "group", "aria-label": "Fires on" }, h("span", { class: "muted" }, "Fires when a pull request is"), ...[["opened", "opened"], ["updated", "given new commits"]].map(([on, label]) => h("button", { type: "button", class: "chip", id: `wf-on-${on}`, "aria-pressed": String((src.on || []).includes(on)), onclick: () => { const next = new Set(src.on || []); next.has(on) ? next.delete(on) : next.add(on); if (next.size) src.on = [...next]; state.test = null; redraw(); } }, label))),
@@ -215,8 +234,8 @@ function renderBuilder(root, ctx) {
       h("input", { class: "input", type: "text", value: f.value, "aria-label": "Value", oninput: (e) => { f.value = e.target.value; state.test = null; } }),
       h("button", { type: "button", class: "icon-btn", "aria-label": "Remove this filter", onclick: () => { d.filters.splice(i, 1); state.test = null; redraw(); } }, "×"),
     )),
-    h("datalist", { id: "builder-fields" }, (isPulls ? pullFields : []).map((f) => h("option", { value: f }))),
-    h("button", { type: "button", class: "btn small ghost", id: "wf-add-filter", onclick: () => { d.filters.push({ field: isPulls ? "author" : "", op: "is_not", value: "" }); state.test = null; redraw(); } }, "Add a filter"),
+    h("datalist", { id: "builder-fields" }, (isPulls ? pullFields : isMail ? mailFields : []).map((f) => h("option", { value: f }))),
+    h("button", { type: "button", class: "btn small ghost", id: "wf-add-filter", onclick: () => { d.filters.push({ field: isPulls ? "author" : isMail ? "from" : "", op: "is_not", value: "" }); state.test = null; redraw(); } }, "Add a filter"),
     d.filters.length ? null : h("p", { class: "hint" }, "No filter: every event runs."),
   );
 
@@ -239,7 +258,7 @@ function renderBuilder(root, ctx) {
     "section", { class: "builder-card", "aria-label": "Runs go to" },
     h("h2", { class: "eyebrow" }, "Runs go to"),
     h("div", { class: "row-actions", role: "group", "aria-label": "Runs go to" },
-      ...[["subject", isPulls ? "A task per pull request" : "A task per item"], ["one", "One task for every event"]].map(([v, label]) => h("button", { type: "button", class: "chip", id: `wf-routing-${v}`, "aria-pressed": String(d.routing === v), onclick: () => { set({ routing: v }); redraw(); } }, label))),
+      ...[["subject", isPulls ? "A task per pull request" : isMail ? "A task per email thread" : "A task per item"], ["one", "One task for every event"]].map(([v, label]) => h("button", { type: "button", class: "chip", id: `wf-routing-${v}`, "aria-pressed": String(d.routing === v), onclick: () => { set({ routing: v }); redraw(); } }, label))),
     h("p", { class: "hint" }, d.routing === "subject" ? "A later event about the same item arrives in its task as the next run." : "Every event goes into one task, in turn."),
     field("Runs at once", h("input", { id: "wf-concurrency", class: "input", type: "number", min: 0, max: 10, step: 1, value: d.concurrency || 0, oninput: (e) => set({ concurrency: Number(e.target.value) || 0 }) }), "0 is 2. Events past it wait for the next check."),
   );
@@ -251,15 +270,19 @@ function renderBuilder(root, ctx) {
   const then = h(
     "section", { class: "builder-card", "aria-label": "Then" },
     h("h2", { class: "eyebrow" }, "Then"),
-    isPulls
-      ? h("div", { class: "row-actions", role: "group", "aria-label": "The answer" }, chip("wf-post-none", "Leave the answer in the task", !d.then.post, () => { d.then.post = ""; d.then.auto = false; state.test = null; redraw(); }), chip("wf-post-review", "Post it as a review", d.then.post === "review", () => { d.then.post = "review"; state.test = null; redraw(); }))
+    isPulls || isMail
+      ? h("div", { class: "row-actions", role: "group", "aria-label": "The answer" }, chip("wf-post-none", "Leave the answer in the task", !d.then.post, () => { d.then.post = ""; d.then.auto = false; state.test = null; redraw(); }), isPulls ? chip("wf-post-review", "Post it as a review", d.then.post === "review", () => { d.then.post = "review"; state.test = null; redraw(); }) : chip("wf-post-draft", "Save it as a draft reply", d.then.post === "draft", () => { d.then.post = "draft"; state.test = null; redraw(); }))
       : null,
-    d.then.post === "review"
+    d.then.post === "review" || d.then.post === "draft"
       ? [
           h("div", { class: "row-actions", role: "group", "aria-label": "Asking" }, chip("wf-ask", "Ask me first", !d.then.auto, () => { d.then.auto = false; state.test = null; redraw(); }), chip("wf-auto", "Without asking", !!d.then.auto, () => { d.then.auto = true; state.test = null; redraw(); })),
-          h("p", { class: "hint" }, d.then.auto
-            ? "The review is posted as the run ends, as a comment (never an approval), with the token bound for POST at the forge. If it cannot be, it waits on Home like any other."
-            : "The answer waits on Home, under Needs you, to post, edit or discard. Connections › Credentials must allow the token for POST at the forge's host: listing pull requests is a different grant."),
+          h("p", { class: "hint" }, d.then.post === "draft"
+            ? (d.then.auto
+              ? "The reply is saved as a draft in the email's thread as the run ends, to the sender. It is never sent: sending is yours, from Gmail. If it cannot be saved, it waits on Home."
+              : "The reply waits on Home, under Needs you, to save, edit or discard. Saving puts a draft in the thread, to the sender; nothing is sent. It needs the gmail.compose scope and a POST binding at gmail.googleapis.com.")
+            : (d.then.auto
+              ? "The review is posted as the run ends, as a comment (never an approval), with the token bound for POST at the forge. If it cannot be, it waits on Home like any other."
+              : "The answer waits on Home, under Needs you, to post, edit or discard. Connections › Credentials must allow the token for POST at the forge's host: listing pull requests is a different grant.")),
         ]
       : null,
     h("div", { class: "row-actions", role: "group", "aria-label": "Tell me" }, h("span", { class: "muted" }, "Desktop notice:"), chip("wf-notify-needs", "When it needs me", !d.then.notify, () => { d.then.notify = ""; state.test = null; redraw(); }), chip("wf-notify-run", "After every run", d.then.notify === "run", () => { d.then.notify = "run"; state.test = null; redraw(); }), chip("wf-notify-never", "Never", d.then.notify === "never", () => { d.then.notify = "never"; state.test = null; redraw(); })),
@@ -319,7 +342,7 @@ function renderBuilder(root, ctx) {
       h(
         "div",
         { class: "page-col" },
-        h("div", { class: "page-head" }, h("h1", {}, editingId ? "Change a workflow" : "Watch pull requests"), h("a", { class: "btn ghost", href: "#/workflows", onclick: () => { draft = null; } }, "Back")),
+        h("div", { class: "page-head" }, h("h1", {}, editingId ? "Change a workflow" : "Watch for events"), h("a", { class: "btn ghost", href: "#/workflows", onclick: () => { draft = null; } }, "Back")),
         h("p", { class: "lede" }, "Each answer is a card: when, only if, what to do, and where each run goes. Test the trigger asks the source once and lists what a run would be for, with no model and nothing recorded."),
         field("Name", text("wf-name", d.name, (v) => (d.name = v), { placeholder: "Review pull requests" })),
         when, filters, doing, routing, then,

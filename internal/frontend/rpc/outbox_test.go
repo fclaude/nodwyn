@@ -105,7 +105,7 @@ func TestARunsAnswerWaitsForThePersonToPostIt(t *testing.T) {
 	person := &peer{actor: "test"}
 	phone := &peer{actor: "phone", device: true}
 	// Only listing is bound: posting is refused, and the item stays.
-	if rerr := decide(t, s, person, outboxDecideParams{Workflow: id, ID: item.ID, Decision: "post"}); rerr == nil || !strings.Contains(rerr.Message, "for POST") || !strings.Contains(rerr.Message, "It stays here") {
+	if rerr := decide(t, s, person, outboxDecideParams{Workflow: id, ID: item.ID, Decision: "post"}); rerr == nil || !strings.Contains(rerr.Message, "method POST") || !strings.Contains(rerr.Message, "It stays here") {
 		t.Fatalf("%+v", rerr)
 	}
 	if len(f.Reviews()) != 0 || len(flowState(t, s, id).Outbox) != 1 {
