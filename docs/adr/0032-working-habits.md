@@ -2782,8 +2782,7 @@ shell result without its note.
 Commit-bench task 6e18b7ba is nodwyn's own repository at an older commit,
 trusted, run with Muse under the lean profile on 2026-10-17. The model made
 the change in 4 minutes and then spent 50 on `validate`, which the
-repository's AGENTS.md asks for. Three things went wrong, and none is the
-model's:
+repository's AGENTS.md asks for. Three things stood in its way:
 
 - The repository registers its own tools in `.nodwyn/init.scm` (`validate`,
   which runs `make validate` through `shell-start` and reads it with
@@ -2810,7 +2809,7 @@ model's:
 
 **Decision:**
 
-2. *`shell-exec` leaves a lean session's command running at its time limit*
+1. *`shell-exec` leaves a lean session's command running at its time limit*
    instead of killing it and returning nothing. The model's own call (not a
    program's of the `scheme` tool or a strategy's, which compute with the
    result) is run by `runHolding`: at the limit the command is kept in the
@@ -2836,7 +2835,7 @@ model's:
    to." The full profile kills at the limit as it did, in the same code.
    Not built: a bound on how many commands a session may leave running; each
    costs the model ten minutes of waiting first.
-3. *A glob pattern in a command line is judged by where it can match*, in
+2. *A glob pattern in a command line is judged by where it can match*, in
    both profiles, since the refusal was a false one. A word with `*`, `?` or
    `[` in a path component reaches its leading directory (the path up to the
    first such component, cleaned) and every path it matches when the call is
@@ -2848,7 +2847,7 @@ model's:
    match through a link in `/tmp` or in the repository that points outside is
    outside, which a pattern used to hide (`cat /tmp/l*/hosts` was judged by
    `/tmp` alone); another session's scratch directory is outside when a
-   pattern matches it; a pattern in `/tmp` named as a credential file is
+   pattern matches it; a pattern in `/tmp` named as a credential file
    (`/tmp/*.pem`) is outside, as the name is; a word with a parent component
    is judged as written, as every path with one is (`/tmp/../etc/*` is
    outside either way, and cleaning `src/../*` to the root would hide a link
@@ -2858,3 +2857,26 @@ model's:
    repository, and let the rest go when that one was in `/tmp`. The
    commit-bench line is the test, run in an unattended lean session whose
    `$TMPDIR` is under `/tmp`; it is refused on the unchanged code.
+
+**Tried and not kept**: offering the tools a trusted project registers
+itself, the first of the three. It was built on 2026-10-17: the lean offer was
+`lean-tools` and then every tool `register-tool` recorded while the project's
+init file ran, and a session of nodwyn's repository was offered `validate`,
+`go-test` and the rest. In the commit-bench run its sessions were shorter, 39
+model calls a task against 43, and their patches less complete: 84% had tests
+against 91%, 53% changed the docs against 59%, and a blind review scored them
+lower. Several sessions ended right after the repository's `validate` said
+PASS. The lean profile offers `shell-exec` and `fs-edit` alone, as before (a
+project that wants more offered names it in `lean-tools`), and the model runs
+the repository's checks through `shell-exec`, which the first decision keeps
+from losing a long check's output at the time limit.
+
+A lean session's end on a relay's 404 the same evening (21:49, the only
+model request that failed among thousands) is ADR 41's amendment of
+2026-10-17: such a request is now sent again, in both profiles.
+
+**Not built here**: the measurement of this build. The next step is
+commit-bench task 6e18b7ba again under the lean profile, for the minutes to
+the end and how the model reads a command left running; both changes apply
+to the 121 SWE-bench tasks as well, where a check piped into `tail` past ten
+minutes and a pattern in `/tmp` can show them.
