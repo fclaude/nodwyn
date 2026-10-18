@@ -52,8 +52,25 @@ type Definition struct {
 	DayCost     float64        `json:"day_cost,omitempty"`
 	Concurrency int            `json:"concurrency,omitempty"`
 	Existing    bool           `json:"existing,omitempty"`
+	Then        Then           `json:"then"`
 	Paused      bool           `json:"paused,omitempty"`
 }
+
+// Then is what happens with a run's answer (ADR 53 §7). Post is "" (it stays
+// in the task) or "review" (a review comment on the pull request, never an
+// approval or a request for changes: those are the person's). Held answers
+// wait in the outbox for the person's yes, unless Auto, a choice made on this
+// computer. Notify is "" (when the run needs the person, which Needs you and
+// the daemon's notices already say), "run" (a desktop notice at the end of
+// each run) or "never".
+type Then struct {
+	Post   string `json:"post,omitempty"`
+	Auto   bool   `json:"auto,omitempty"`
+	Notify string `json:"notify,omitempty"`
+}
+
+// MaxReview bounds a posted answer: a forge refuses much more.
+const MaxReview = 60 << 10
 
 // Where runs go.
 const (
@@ -88,6 +105,23 @@ func (d Definition) Validate() error {
 	if err := d.Source.Validate(); err != nil {
 		return err
 	}
+	switch d.Then.Post {
+	case "":
+		if d.Then.Auto {
+			return fmt.Errorf("\"without asking\" is about posting an answer, and none is posted")
+		}
+	case "review":
+		if d.Source.Kind != watch.GiteaPulls && d.Source.Kind != watch.GitHubPulls {
+			return fmt.Errorf("a review is posted to a pull request, which a command source has none of")
+		}
+	default:
+		return fmt.Errorf("the answer is posted as a review, or not at all, not %q", d.Then.Post)
+	}
+	switch d.Then.Notify {
+	case "", "run", "never":
+	default:
+		return fmt.Errorf("a notice is sent for each run, only when the run needs you, or never, not %q", d.Then.Notify)
+	}
 	for _, f := range d.Filters {
 		if err := f.Validate(); err != nil {
 			return err
@@ -110,6 +144,9 @@ const (
 	KindSeen   = "workflow.seen"
 	KindFire   = "workflow.fire"
 	KindSkip   = "workflow.skip"
+	// An answer waiting for the person to post it, and what came of it.
+	KindOutbox    = "workflow.outbox"
+	KindDelivered = "workflow.delivered"
 )
 
 // Define records a definition, who chose it, and whether it was removed.
@@ -134,6 +171,30 @@ type Fire struct {
 	Task    string    `json:"task"`
 	Summary string    `json:"summary"`
 	At      time.Time `json:"at"`
+}
+
+// Outbox is a run's answer held to be posted: what it would be (a review),
+// where (the item of the source), the task that wrote it and the text. ID
+// names it among the workflow's.
+type Outbox struct {
+	ID      string    `json:"id"`
+	Kind    string    `json:"kind"`
+	Item    string    `json:"item"`
+	Subject string    `json:"subject,omitempty"`
+	Task    string    `json:"task"`
+	Summary string    `json:"summary"`
+	URL     string    `json:"url,omitempty"`
+	Body    string    `json:"body"`
+	At      time.Time `json:"at"`
+}
+
+// Delivered says what came of an outbox item: posted, or discarded, by whom.
+type Delivered struct {
+	ID     string    `json:"id"`
+	Fate   string    `json:"fate"`
+	By     string    `json:"by"`
+	Detail string    `json:"detail,omitempty"`
+	At     time.Time `json:"at"`
 }
 
 // Skip is a poll or an event that did not come to a run, and why.
@@ -161,7 +222,11 @@ type State struct {
 	Subjects   map[string]string `json:"subjects,omitempty"`
 	Fires      []Fire            `json:"fires,omitempty"`
 	LastSkip   *Skip             `json:"last_skip,omitempty"`
-	seq        uint64
+	// Outbox are the answers still waiting to be posted, oldest first, and
+	// Delivered the latest few fates.
+	Outbox    []Outbox    `json:"outbox"`
+	Delivered []Delivered `json:"delivered,omitempty"`
+	seq       uint64
 }
 
 // recent is how many fires State keeps.
@@ -197,6 +262,20 @@ func (s *State) observe(r record) {
 		if json.Unmarshal(r.Payload, &p) == nil {
 			s.LastSkip = &p
 		}
+	case KindOutbox:
+		var p Outbox
+		if json.Unmarshal(r.Payload, &p) == nil {
+			s.Outbox = append(s.Outbox, p)
+		}
+	case KindDelivered:
+		var p Delivered
+		if json.Unmarshal(r.Payload, &p) == nil {
+			s.Outbox = slices.DeleteFunc(s.Outbox, func(o Outbox) bool { return o.ID == p.ID })
+			s.Delivered = append(s.Delivered, p)
+			if len(s.Delivered) > recent {
+				s.Delivered = slices.Clone(s.Delivered[len(s.Delivered)-recent:])
+			}
+		}
 	}
 }
 
@@ -231,7 +310,7 @@ func (s Store) Read(id string) (State, error) {
 		return State{}, err
 	}
 	defer f.Close()
-	state := State{ID: id}
+	state := State{ID: id, Outbox: []Outbox{}}
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 64<<10), 16<<20)
 	for scanner.Scan() {
@@ -366,6 +445,18 @@ func (d Definition) Sentence() string {
 		b.WriteString("; each in a task of its own")
 	} else {
 		b.WriteString("; all in one task")
+	}
+	switch {
+	case d.Then.Post == "review" && d.Then.Auto:
+		b.WriteString("; its answer is posted as a review without asking")
+	case d.Then.Post == "review":
+		b.WriteString("; its answer is held for you to post as a review")
+	}
+	switch d.Then.Notify {
+	case "run":
+		b.WriteString("; you are told after each run")
+	case "never":
+		b.WriteString("; you are not told")
 	}
 	return b.String()
 }

@@ -17,6 +17,7 @@ export class Desk {
     this.workspaces = []; // workspace.list: folders the person named
     this.forgotten = new Set(); // workspace.forgotten: folders left out of the suggestions, not out of task history
     this.last = ""; // workspace.active: the folder the daemon last saw picked for a new task
+    this.outbox = []; // outbox.list: workflow answers waiting for the person to post them (ADR 53)
     this.listeners = new Set();
     this.version = 0;
     this.latest = null; // the newest refresh, which an older one waits for
@@ -24,6 +25,7 @@ export class Desk {
     this.attentionTimer = 0;
     conn.onEvent((frame) => {
       if (frame.method === "session.event" && frame.params?.kind === "session.state") this.watch(frame.params.payload);
+      if (frame.method === "session.event" && frame.params?.kind === "outbox.changed") this.refreshOutbox();
     });
     // Whether a model can be used depends on its key: the keychain unlocked,
     // a key stored, replaced or allowed, or removed. The pickers and Settings
@@ -43,12 +45,14 @@ export class Desk {
     this.sessions.clear();
     this.states.clear();
     this.pending.clear();
+    this.outbox = [];
     this.notifier.reset();
     this.changed("reset");
   }
   async start() {
     await this.refreshSetup();
     await this.refresh();
+    await this.refreshOutbox();
     if (this.conn.has("session.watch")) {
       const states = await this.conn.call("session.watch");
       for (const state of states || []) this.watch(state, false);
@@ -102,6 +106,18 @@ export class Desk {
       for (const ev of item.pending || []) if (!this.firstSeen.has(ev.payload?.ID)) this.firstSeen.set(ev.payload?.ID, Date.now());
     }
     this.changed("attention");
+  }
+  // refreshOutbox reads the answers waiting to be posted. A daemon without
+  // workflows has none, and a read that fails leaves what was shown.
+  async refreshOutbox() {
+    if (!this.conn.has("outbox.list")) return;
+    try {
+      this.outbox = (await this.conn.call("outbox.list")) || [];
+    } catch (error) {
+      this.report("Could not read what waits to be posted", error, () => this.refreshOutbox());
+      return;
+    }
+    this.changed("outbox");
   }
   scheduleAttention() {
     clearTimeout(this.attentionTimer);

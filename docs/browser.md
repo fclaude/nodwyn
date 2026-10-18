@@ -133,7 +133,15 @@ from the desk's list with its sentence, next time or why not, `today` (runs
 and cost against `day_cost`) and the latest `history` entry, with Pause or
 Resume, Run now and Schedule…; it follows the list as runs start and end.
 **New timetable** goes to Home and opens its Schedule dialog once Home is
-drawn. **Watch pull requests** opens the builder, `#/workflows/new` (and
+drawn. A held answer is a card on Home under Needs you (`outbox.js`): **Ready to post**,
+the workflow's name, the pull request, the first lines of the answer, with
+**Post review**, **Edit** (a dialog with the whole text, so a redraw of Home
+does not lose it; this computer only), **Discard** and **Open task**. The
+topbar counts held answers with the tasks that need you, and the desk reads
+`outbox.list` at the start and on the pushed `outbox.changed`. The builder's
+**Then** card chooses leaving the answer in the task or posting it as a review
+(held, or **Without asking**) and the notice after each run.
+**Watch pull requests** opens the builder, `#/workflows/new` (and
 `#/workflows/<id>` to change one): cards for When, Only if, Do and Runs go
 to, the credential names from `credentials.list`, and **Test the trigger**,
 which shows `workflow.test`'s sentence and what is there, and says nothing

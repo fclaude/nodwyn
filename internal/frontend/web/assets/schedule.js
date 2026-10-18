@@ -155,9 +155,9 @@ export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "S
   return form;
 }
 
-function dialog() {
-  const box = h("dialog", { class: "schedule-dialog", "aria-label": "Schedule" });
-  box.append(h("div", { class: "dialog-head" }, h("h2", {}, "Schedule"), h("button", { type: "button", class: "btn ghost", onclick: () => box.close(), "aria-label": "Close schedule" }, "Close")));
+export function dialog(title = "Schedule") {
+  const box = h("dialog", { class: "schedule-dialog", "aria-label": title });
+  box.append(h("div", { class: "dialog-head" }, h("h2", {}, title), h("button", { type: "button", class: "btn ghost", onclick: () => box.close(), "aria-label": `Close ${title.toLowerCase()}` }, "Close")));
   box.addEventListener("close", () => box.remove());
   document.body.append(box); box.showModal();
   return box;

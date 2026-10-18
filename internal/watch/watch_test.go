@@ -185,3 +185,54 @@ func TestAPollDoesNotFollowARedirectWithItsKey(t *testing.T) {
 		t.Fatalf("the key went to the host it was redirected to: %q", leaked)
 	}
 }
+
+func boundFor(t *testing.T, method, class, host, position string) binding.Table {
+	t.Helper()
+	row, err := binding.Exact(class, host, method, position)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return binding.Table{Bind: []binding.Binding{row}}
+}
+
+// A review is posted as a comment, with the key the binding table allows at
+// the forge's host for POST. Listing pull requests (GET) is a different grant:
+// it does not let a review be posted.
+func TestAReviewIsPostedOnlyWhereThePostIsBound(t *testing.T) {
+	f := forge.New("forge-token")
+	defer f.Close()
+	store := keys(t, "forge", "forge-token")
+	for _, tc := range []struct{ kind, position string }{{GiteaPulls, "header:Authorization:token"}, {GitHubPulls, "header:Authorization:Bearer"}} {
+		t.Run(tc.kind, func(t *testing.T) {
+			s := Source{Kind: tc.kind, Server: f.URL, Repo: "fc/nodwyn", Credential: "forge"}
+			before := len(f.Reviews())
+			if err := (Poller{Keys: store, Bindings: boundFor(t, "GET", "forge", "127.0.0.1", tc.position)}).PostReview(context.Background(), s, "142", "Looks fine."); err == nil || !strings.Contains(err.Error(), "for POST") {
+				t.Fatalf("a review was posted with only the listing bound: %v", err)
+			}
+			if len(f.Reviews()) != before {
+				t.Fatal("a refused post reached the forge")
+			}
+			if err := (Poller{Keys: store, Bindings: boundFor(t, "POST", "forge", "127.0.0.1", tc.position)}).PostReview(context.Background(), s, "142", "Looks fine.\n\nOne point."); err != nil {
+				t.Fatal(err)
+			}
+			reviews := f.Reviews()
+			got := reviews[len(reviews)-1]
+			if len(reviews) != before+1 || got.Repo != "fc/nodwyn" || got.Number != "142" || got.Body["event"] != "COMMENT" || got.Body["body"] != "Looks fine.\n\nOne point." {
+				t.Fatalf("%+v", reviews)
+			}
+			if !strings.HasSuffix(got.Auth, " forge-token") {
+				t.Fatalf("the key was not sent in the forge's way: %q", got.Auth)
+			}
+		})
+	}
+	s := Source{Kind: GiteaPulls, Server: f.URL, Repo: "fc/nodwyn", Credential: "forge"}
+	if err := (Poller{Keys: store, Bindings: boundFor(t, "POST", "forge", "127.0.0.1", "header:Authorization:token")}).PostReview(context.Background(), s, "../../x", "no"); err == nil {
+		t.Fatal("posted to something that is not a pull request number")
+	}
+	if err := (Poller{Bindings: boundFor(t, "POST", "forge", "127.0.0.1", "header:Authorization:token")}).PostReview(context.Background(), s, "1", "no"); err != ErrLocked {
+		t.Fatalf("posted with the keychain locked: %v", err)
+	}
+	if err := (Poller{Keys: store}).PostReview(context.Background(), Source{Kind: Command, Command: []string{"x"}, Dir: "/x"}, "1", "no"); err == nil {
+		t.Fatal("a command source has no pull request")
+	}
+}

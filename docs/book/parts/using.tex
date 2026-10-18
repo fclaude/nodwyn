@@ -1038,7 +1038,10 @@ a Gitea or GitHub repository's pull requests, or a command's output: it
 filters what happens, then runs a task for each pull request with the event
 attached as data and your instruction as the request, and a new commit to the
 same pull request arrives in its task. \textbf{Test the trigger} shows what
-would run, with no model.
+would run, with no model. The run's answer can be posted back as a review
+comment: it waits on Home under Needs you for you to post, edit or discard it,
+and the daemon posts it, with a key you allowed for POST at that forge, never
+the run itself.
 The task opens immediately, without sending until due. On a task,
 \textbf{Schedule\ldots} in its menu adds a schedule, or edits,
 pauses, resumes, runs now or removes it. Run now leaves the automatic time

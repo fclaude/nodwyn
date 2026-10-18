@@ -191,8 +191,8 @@ func run(seed bool, port int, docs, locked, forged bool, given string) error {
 	}
 	if forged {
 		// A keychain holding a made-up forge token, bound to the fake
-		// forge's host for GET as Gitea takes it and as GitHub does, which
-		// a workflow's poll needs and nothing else (ADR 53).
+		// forge's host for GET (a workflow's poll) and for POST (a review
+		// it posts), as Gitea takes the key and as GitHub does (ADR 53).
 		forge := fakeforge.New("forge-token")
 		defer forge.Close()
 		forge.Set("fc/nodwyn", fakeforge.Pull{Number: 1, Title: "old change", Author: "ana", Base: "main", Head: "a1"})
@@ -208,13 +208,15 @@ func run(seed bool, port int, docs, locked, forged bool, given string) error {
 		if _, err := store.Add("forge", []byte("forge-token")); err != nil {
 			return err
 		}
-		for _, position := range []string{"header:Authorization:token", "header:Authorization:Bearer"} {
-			row, err := binding.Exact("forge", "127.0.0.1", "GET", position)
-			if err != nil {
-				return err
-			}
-			if err := binding.AppendExact(context.Background(), paths.Bindings, row); err != nil {
-				return err
+		for _, method := range []string{"GET", "POST"} {
+			for _, position := range []string{"header:Authorization:token", "header:Authorization:Bearer"} {
+				row, err := binding.Exact("forge", "127.0.0.1", method, position)
+				if err != nil {
+					return err
+				}
+				if err := binding.AppendExact(context.Background(), paths.Bindings, row); err != nil {
+					return err
+				}
 			}
 		}
 		forgeURL = forge.URL

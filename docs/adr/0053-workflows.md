@@ -1,9 +1,9 @@
 # ADR 0053: Workflows: a trigger, a filter, an instruction, where runs go, and what happens with them
 
 - Status: accepted 2026-10-17; the timetable (§3) built the same day as an
-  amendment to ADR 49, §11 (slice 0), slice 2 and slice 3 (pull requests and
-  commands) the same day, amended below; the rest not built (see "Not
-  built")
+  amendment to ADR 49, §11 (slice 0), slice 2, slice 3 (pull requests and
+  commands) and slice 4 (the outbox) the same day, amended below; the rest
+  not built (see "Not built")
 - Date: 2026-10-17
 - Amends: 49 (a schedule becomes a workflow whose runs all go to one task;
   schedules stop being read from every task's log), 30 (a daemon may start at
@@ -360,4 +360,59 @@ JSON lines, the changes and filters), `internal/frontend/rpc`
 removing the attachment fails it; `TestEventsWaitTheirTurnAndAFloodPauses`;
 `TestAWorkflowsDailySpendLimitHoldsItsEvents`; `TestWorkflowsAreMadeOnThisComputer`),
 the `workflows` browser check, and the bridge's classification of every method.
+
+## Amendment 2026-10-17: slice 4, the outbox
+
+Built (§7): a workflow on pull requests has a **Then** card. The run's answer
+stays in its task, or is posted as a review comment on the pull request. A
+posted answer is held in an outbox, shown on Home under Needs you as a card
+("Ready to post · Review for #142") with **Post review**, **Edit**,
+**Discard** and **Open task**, and the host posts it only when the person
+says so; "Without asking" has the host post it as the run ends, a choice made
+on this computer when the workflow is made. Who sends: the run's model never
+does. When a run's turn ends, the host reads its answer from the log (the last
+reply, if the turn completed and said something), writes it as a
+`workflow.outbox` record, and, on a decision, posts it itself: a `POST` to the
+forge's review endpoint of kind `COMMENT`, with the workflow's key, only where
+the binding table allows that key at that host for **POST** at the position the
+forge takes it (the same lookup the guard makes), no redirect followed. A key
+bound only for GET, which lists pull requests, cannot post: the two are
+separate grants, said in the builder and in the refusal. A review that
+approves or asks for changes is never posted by a workflow: those are the
+person's.
+
+- **Who decides:** `outbox.decide` post or discard is a paired device's to
+  make, as answering a question is; **the words** of an answer are changed on
+  this computer only (the daemon refuses another body from a device), so a
+  phone can post what the run wrote and not something else with this
+  computer's key.
+- **Records:** `workflow.outbox` (id, kind, item, subject, task, summary,
+  address, body, time) and `workflow.delivered` (id, fate: posted or
+  discarded, by whom, "edited before it was posted") in the workflow's log;
+  a post that fails stays in the outbox with the reason, and a run that did
+  not finish, or said nothing, queues nothing and says so in the log.
+- **Notices:** a held answer is a `needs your answer` notice (ADR 53 §11,
+  fixed words) when no window of this computer watches; a workflow may ask
+  for "nodwyn ran a workflow" after each run, or for no notice. The topbar
+  counts held answers among what needs you; clients refresh on a pushed
+  `outbox.changed`.
+- **Not built:** "when the run says so" (§7), a tool offered only in workflow
+  runs by which a run asks to be told: the choice is when it needs you, after
+  every run, or never; posting a reply to an email (slice 5); a held answer
+  that a daemon restart cut off from its run (the pending run is in memory:
+  the run's answer stays in its task, and nothing is queued); the sidebar's
+  Needs you list does not list held answers, only Home and the count do; a
+  real Gitea or GitHub has not been posted to, only the fake.
+
+Checks: `internal/watch` (`TestAReviewIsPostedOnlyWhereThePostIsBound`: both
+forges' ways, refused with only GET bound, no number but a pull request's,
+a locked keychain), `internal/frontend/rpc` (`outbox_test.go`: held and not
+posted; refused without the POST binding and kept; a device posts but cannot
+edit; posted once; discarded; edited then posted with the record saying so;
+without asking posts as the run ends, by "workflow"; without asking with
+nothing allowed waits, and says why; the notice after a run; what a workflow
+may do with its answer is validated; a mutation that posts without asking
+fails the first of them), and the `workflows` browser check (the Then card,
+the held card on Home counted in the topbar, edit and post with the forge
+seeing the person's words, discard posting nothing).
 

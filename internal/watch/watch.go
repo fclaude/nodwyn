@@ -238,9 +238,12 @@ func (p Poller) Poll(ctx context.Context, s Source) ([]Item, error) {
 	return runCommand(ctx, s)
 }
 
-// pulls asks a forge for the open pull requests, with the source's key at
-// position, if the binding table allows it there.
-func (p Poller) pulls(ctx context.Context, s Source, address, position string) ([]Item, error) {
+// send makes one request to a forge with the source's key at position, if
+// the binding table allows that class at that host for that method there:
+// the same lookup the guard makes for http-request. A GET lists, a POST posts
+// a review; no redirect is followed, so the key goes to the bound host and no
+// other, and what comes back is bounded.
+func (p Poller) send(ctx context.Context, s Source, method, address, position string, body []byte) ([]byte, error) {
 	u, err := url.Parse(address)
 	if err != nil {
 		return nil, err
@@ -255,14 +258,21 @@ func (p Poller) pulls(ctx context.Context, s Source, address, position string) (
 	if p.Bindings == nil {
 		return nil, fmt.Errorf("no binding table allows %q at %s", s.Credential, u.Hostname())
 	}
-	if bound, why := p.Bindings.Lookup(s.Credential, u.Hostname(), "GET", position); !bound {
-		return nil, fmt.Errorf("%q may not be sent to %s for GET at %s: %s (Connections › Credentials allows a host)", s.Credential, u.Hostname(), position, why)
+	if bound, why := p.Bindings.Lookup(s.Credential, u.Hostname(), method, position); !bound {
+		return nil, fmt.Errorf("%q may not be sent to %s for %s at %s: %s (Connections › Credentials allows a host)", s.Credential, u.Hostname(), method, position, why)
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", address, nil)
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, address, reader)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if s.Kind == GitHubPulls {
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
@@ -280,15 +290,28 @@ func (p Poller) pulls(ctx context.Context, s Source, address, position string) (
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if err := llm.Redirected(resp, "a workflow's poll"); err != nil {
+	if err := llm.Redirected(resp, "a workflow's request"); err != nil {
 		return nil, err
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("%s answered %s", u.Host, resp.Status)
+	}
+	return raw, nil
+}
+
+// pulls asks a forge for the open pull requests.
+func (p Poller) pulls(ctx context.Context, s Source, address, position string) ([]Item, error) {
+	u, err := url.Parse(address)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := p.send(ctx, s, "GET", address, position, nil)
+	if err != nil {
+		return nil, err
 	}
 	var pulls []struct {
 		Number  int    `json:"number"`
@@ -450,4 +473,35 @@ func (e Event) Text(s Source) string {
 		b.WriteString("\n" + body + "\n")
 	}
 	return b.String()
+}
+
+// PostReview posts body as a review comment on pull request number: the
+// forge's review of kind "COMMENT", never an approval or a request for
+// changes, which are the person's. The key must be bound for POST at the
+// forge's host, at the position the forge takes it, which is a different
+// grant from the GET that lists.
+func (p Poller) PostReview(ctx context.Context, s Source, number, body string) error {
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	if _, err := strconv.Atoi(number); err != nil {
+		return fmt.Errorf("%q is not a pull request number", number)
+	}
+	payload, err := json.Marshal(map[string]string{"body": body, "event": "COMMENT"})
+	if err != nil {
+		return err
+	}
+	switch s.Kind {
+	case GiteaPulls:
+		_, err = p.send(ctx, s, "POST", strings.TrimRight(s.Server, "/")+"/api/v1/repos/"+s.Repo+"/pulls/"+number+"/reviews", "header:Authorization:token", payload)
+	case GitHubPulls:
+		server := s.Server
+		if server == "" {
+			server = GitHubAPI
+		}
+		_, err = p.send(ctx, s, "POST", strings.TrimRight(server, "/")+"/repos/"+s.Repo+"/pulls/"+number+"/reviews", "header:Authorization:Bearer", payload)
+	default:
+		return fmt.Errorf("a %s source has no pull request to post to", s.Kind)
+	}
+	return err
 }

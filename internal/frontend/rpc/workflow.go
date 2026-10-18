@@ -24,6 +24,16 @@ import (
 // subject, opened for it the first time, with the event attached as data and
 // the workflow's message as the run's request.
 
+// serving is the context of the daemon's life, which asking a forge or
+// running a command is cut short by; Background for a server that was not
+// started by Serve.
+func (s *server) serving() context.Context {
+	if s.ctx == nil {
+		return context.Background()
+	}
+	return s.ctx
+}
+
 func (s *server) flows() workflow.Store {
 	return workflow.Store{Dir: filepath.Join(s.options.Paths.DataDir, "workflows")}
 }
@@ -286,7 +296,18 @@ func (s *server) fire(id string, def workflow.Definition, state workflow.State, 
 		return task, false, err
 	}
 	run := log.ScheduleRun{Due: now, Started: now, Actor: "workflow", Cost: def.Cost, Workflow: id, Event: ev.Summary(def.Source)}
-	return task, false, session.SendScheduled(def.Message, run)
+	// Registered before the run starts, so that its end cannot be missed.
+	watching := def.Then.Post == "review" || def.Then.Notify == "run"
+	if watching {
+		s.runs.add(task, pendingRun{workflow: id, item: ev.Item.ID, subject: subject, summary: run.Event, url: ev.Item.URL})
+	}
+	if err := session.SendScheduled(def.Message, run); err != nil {
+		if watching {
+			s.runs.take(task)
+		}
+		return task, false, err
+	}
+	return task, false, nil
 }
 
 // workflowView is a workflow as clients show it, in the daemon's words.
@@ -464,7 +485,7 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		poller := s.poller()
 		var items []watch.Item
 		var pollErr error
-		s.slow("", func() { items, pollErr = poller.Poll(s.ctx, state.Definition.Source) })
+		s.slow("", func() { items, pollErr = poller.Poll(s.serving(), state.Definition.Source) })
 		s.applyPoll(state.ID, items, pollErr, time.Now())
 		if state, err := s.flows().Read(state.ID); err == nil {
 			return s.workflowView(state), nil
@@ -495,7 +516,7 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		poller := s.poller()
 		var items []watch.Item
 		var pollErr error
-		s.slow("", func() { items, pollErr = poller.Poll(s.ctx, p.Definition.Source) })
+		s.slow("", func() { items, pollErr = poller.Poll(s.serving(), p.Definition.Source) })
 		if pollErr != nil {
 			return nil, failure(-32000, "Could not check the source: "+pollErr.Error())
 		}

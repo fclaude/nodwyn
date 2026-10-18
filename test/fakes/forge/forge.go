@@ -76,7 +76,7 @@ func (f *Forge) Polls() int {
 func (f *Forge) Reviews() []Review {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]Review(nil), f.reviews...)
+	return append([]Review{}, f.reviews...)
 }
 
 func (f *Forge) serve(w http.ResponseWriter, r *http.Request) {

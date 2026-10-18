@@ -464,7 +464,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 
 func readOnly(method string) bool {
 	switch method {
-	case "schedule.read", "schedule.next", "workflow.list", "workflow.read", "hello", "session.list", "session.watch", "session.info", "session.totals", "session.subscribe", "session.unsubscribe", "log.read", "log.runs", "conversation.search", "log.context",
+	case "schedule.read", "schedule.next", "workflow.list", "workflow.read", "outbox.list", "hello", "session.list", "session.watch", "session.info", "session.totals", "session.subscribe", "session.unsubscribe", "log.read", "log.runs", "conversation.search", "log.context",
 		"attention.list", "notes.read", "index.status", "models.status", "models.offered", "models.published", "keychain.status", "settings.read",
 		"workspace.list", "workspace.forgotten", "versions.list", "versions.diff", "worktree.diff", "mcp.list", "mcp.runtime", "credentials.list":
 		return true
@@ -788,7 +788,7 @@ func (b *bridge) tierOf(method string) tier {
 	}
 	switch method {
 	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.approval.create", "session.friction", "session.policy.read",
-		"schedule.pause", "schedule.run", "workflow.pause", "workflow.check", "session.notes.write", "session.restore", "session.rename", "session.archive":
+		"schedule.pause", "schedule.run", "workflow.pause", "workflow.check", "outbox.decide", "session.notes.write", "session.restore", "session.rename", "session.archive":
 		return tierAnswer
 	// "Don't ask" can be turned off from a device, the safe direction; the
 	// daemon refuses to turn it on for one (ADR 30), so a device can stop a

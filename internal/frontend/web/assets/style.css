@@ -1082,6 +1082,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .builder-field .input { width: 100%; }
 .builder-filter .input { flex: 1 1 140px; min-width: 0; }
 .builder-test { display: grid; gap: 8px; margin-top: 12px; }
+.outbox-body { margin: 0; font-size: 13.5px; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .page-col > .builder-field { margin-top: 12px; }
 @media (max-width: 700px) { .workflow-row { grid-template-columns: 1fr; } .workflow-row .row-actions { justify-content: flex-start; } }
 .schedule-preview { display: grid; gap: 4px; }

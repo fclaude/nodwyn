@@ -1307,6 +1307,11 @@ run: item, version, kind, subject, task, summary) and `workflow.skip`.
   checks, 1 to 1440. A filter is `{field, op, value}` with `op` one of `is`,
   `is_not`, `contains`, `not_contains`, compared without regard to case.
   `routing` is `subject` (a task per item) or `one`. `concurrency` 0 is 2.
+  `then` is `{post, auto, notify}`: `post` is `""` (the answer stays in the
+  task) or `review` (a pull-request source only: its answer is posted as a
+  review comment); `auto` posts as the run ends instead of holding it;
+  `notify` is `""` (when the run needs the person), `run` (a desktop notice
+  after each run) or `never`.
 - `workflow.list {}` returns every workflow; `workflow.read {id}` one. Each is
   the folded log plus `sentence` (the workflow in words), `status`
   ("Watching 3 items, checked Sat 17 Oct 14:02", "Paused", "Could not check
@@ -1338,4 +1343,33 @@ workflow opens has `session.origin {workflow, name, subject}` and the name
 yet (its task busy or waiting for an answer, the workflow's runs all going,
 the keychain locked, the day's `day_cost` reached) is not marked seen, and is
 tried at the next check.
+
+### The outbox
+
+A workflow with `then.post = "review"` does not post from its run. When the
+run's turn has ended (the task's idle status, read on a goroutine of its own),
+the daemon takes the run's final reply, if the turn's outcome was `completed`
+and the reply says something (at most 60 KiB), and records it in the workflow's
+log as `workflow.outbox` (`id`, `kind` `review`, `item`, `subject`, `task`,
+`summary`, `url`, `body`, `at`). `workflow.delivered` (`id`, `fate` `posted` or
+`discarded`, `by`, `detail`, `at`) closes it. Every workflow view carries its
+pending `outbox`.
+
+- `outbox.list {}` returns every held answer across workflows, each with
+  `workflow`, `name` and `when`.
+- `outbox.decide {workflow, id, decision, body?}`: `decision` is `post` or
+  `discard`. A post is the daemon's `POST` of `{body, event: "COMMENT"}` to the
+  forge's review endpoint (Gitea's and GitHub's `…/pulls/N/reviews`), with the
+  workflow's credential at the position the forge takes it, only if the
+  binding table allows it at that host for POST; no redirect is followed. A
+  failure leaves the item and says why. `body` posts other words than the
+  run's: refused to a paired device. An item already decided is refused.
+  With `then.auto` the daemon posts as the run ends, by `workflow`, and a
+  post that cannot be made leaves the item.
+
+An invited device may `outbox.list` and `outbox.decide` (not with a new
+`body`); a read-only console may `outbox.list`. When an item is queued or
+decided the daemon pushes `session.event` with kind `outbox.changed` and no
+payload to every watching client, and an item waiting for a person is the
+same fixed `needs your answer` desktop notice as a question.
 

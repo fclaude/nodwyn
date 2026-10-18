@@ -63,6 +63,9 @@ type server struct {
 	polled     map[string]time.Time
 	pollErrors map[string]string
 	capped     map[string]string
+	// runs are the workflow runs waiting for their task to go idle, so that
+	// their answers can be read (outbox.go).
+	runs runs
 	// ctx ends when Serve is told to stop, and every wait on the network a
 	// method makes without the lock ends with it (base). closing is set once
 	// the sessions are being closed, which a session made after that does not
@@ -322,6 +325,8 @@ var methodTable = map[string]handler{
 	"workflow.pause":               (*server).workflowMethod,
 	"workflow.check":               (*server).workflowMethod,
 	"workflow.test":                (*server).workflowMethod,
+	"outbox.list":                  (*server).outboxMethod,
+	"outbox.decide":                (*server).outboxMethod,
 	"session.close":                (*server).closeSession,
 	"session.rename":               (*server).rename,
 	"session.archive":              (*server).archive,
@@ -950,6 +955,11 @@ func (s *server) own(session *core.Session, drivers ...*run.Driver) {
 			}
 			stream.publish(ev)
 			s.watch.update(session, true, driver.Active())
+			// A workflow's run has ended when its task goes idle; reading its
+			// answer takes the daemon's lock, which this goroutine must not.
+			if st, ok := ev.Payload.(event.StatusInfo); ok && ev.Kind == event.Status && st.State == "idle" && s.runs.has(session.ID()) {
+				go s.runEnded(session.ID())
+			}
 		}
 		stream.closed()
 		s.watch.update(session, false)

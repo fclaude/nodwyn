@@ -2,6 +2,7 @@
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, toastError, basename } from "./dom.js";
 import { newSchedule, nextLine, scheduleTime, scheduleActions } from "./schedule.js";
 import { takeNewWorkflow } from "./workflows.js";
+import { outboxCard } from "./outbox.js";
 import { summary } from "./prompts.js";
 import { keychainForm } from "./setup.js";
 import { firstModel } from "./models.js";
@@ -187,7 +188,9 @@ export function renderHome(root, ctx) {
   // Needs you: each waiting task says what it asks.
   const needs = h("section", { class: "home-section home-needs", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
   const waiting = desk.needsYou();
-  if (!waiting.length) needs.append(h("p", { class: "empty-note" }, "Nothing is waiting for you."));
+  if (!waiting.length && !desk.outbox.length) needs.append(h("p", { class: "empty-note" }, "Nothing is waiting for you."));
+  // A workflow's answer waits here for a yes before anything is posted.
+  for (const held of desk.outbox) needs.append(outboxCard(conn, desk, held));
   for (const item of waiting) {
     const events = desk.pending.get(item.id) || [];
     const first = events[0];

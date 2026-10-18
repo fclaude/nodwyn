@@ -93,6 +93,7 @@ export function renderWorkflows(root, ctx) {
         h("p", { class: view.status.startsWith("Could not") ? "hint warn" : "hint" }, view.status),
         h("p", { class: "hint workflow-today" }, todayLine(view, d.day_cost), view.running ? ` · ${view.running} running` : ""),
         view.last_skip ? h("p", { class: "hint warn" }, view.last_skip.reason) : null,
+        view.outbox?.length ? h("p", { class: "hint warn" }, `${view.outbox.length} answer${view.outbox.length === 1 ? "" : "s"} waiting to be posted, on Home under Needs you`) : null,
         view.recent.length
           ? h("ul", { class: "workflow-fires", "aria-label": "Recent events" }, view.recent.map((f) => h("li", {}, h("span", { class: "schedule-when" }, f.when), h("a", { href: `#/task/${f.task}` }, f.summary))))
           : null,
@@ -167,13 +168,14 @@ function renderBuilder(root, ctx) {
   const defaults = () => ({
     name: "", source: { kind: "gitea-pulls", server: "", repo: "", credential: "", command: [], on: ["opened", "updated"] }, every: 2, filters: [], message: "", routing: "subject",
     repo: folders[0] || "", worktree: false, model: "", no_limits: false, cost: 0, day_cost: 0, concurrency: 0, existing: false,
+    then: { post: "", auto: false, notify: "" },
   });
   if (!draft || draft.id !== editingId) draft = { id: editingId, def: defaults(), loaded: !editingId, test: null, credentials: [] };
   const state = draft;
   const redraw = () => renderBuilder(root, ctx);
   if (!state.loaded) {
     state.loaded = true;
-    conn.call("workflow.read", { id: editingId }).then((view) => { state.def = { ...defaults(), ...view.definition, filters: view.definition.filters || [] }; delete state.def.actor; delete state.def.removed; redraw(); }).catch((error) => { toastError(error.message); navigate("#/workflows"); });
+    conn.call("workflow.read", { id: editingId }).then((view) => { state.def = { ...defaults(), ...view.definition, filters: view.definition.filters || [], then: { ...defaults().then, ...(view.definition.then || {}) } }; delete state.def.actor; delete state.def.removed; redraw(); }).catch((error) => { toastError(error.message); navigate("#/workflows"); });
   }
   if (conn.has("credentials.list") && !state.credentials.length) {
     conn.call("credentials.list").then((r) => { state.credentials = [...new Set((r.credentials || []).map((c) => c.class))]; redraw(); }).catch(() => {});
@@ -242,6 +244,27 @@ function renderBuilder(root, ctx) {
     field("Runs at once", h("input", { id: "wf-concurrency", class: "input", type: "number", min: 0, max: 10, step: 1, value: d.concurrency || 0, oninput: (e) => set({ concurrency: Number(e.target.value) || 0 }) }), "0 is 2. Events past it wait for the next check."),
   );
 
+  // Then: what happens with the answer. A review is posted by the host
+  // with a key bound for that call, once the person says yes; a command
+  // source has no pull request to post to.
+  const chip = (id, label, pressed, onclick) => h("button", { type: "button", class: "chip", id, "aria-pressed": String(pressed), onclick }, label);
+  const then = h(
+    "section", { class: "builder-card", "aria-label": "Then" },
+    h("h2", { class: "eyebrow" }, "Then"),
+    isPulls
+      ? h("div", { class: "row-actions", role: "group", "aria-label": "The answer" }, chip("wf-post-none", "Leave the answer in the task", !d.then.post, () => { d.then.post = ""; d.then.auto = false; state.test = null; redraw(); }), chip("wf-post-review", "Post it as a review", d.then.post === "review", () => { d.then.post = "review"; state.test = null; redraw(); }))
+      : null,
+    d.then.post === "review"
+      ? [
+          h("div", { class: "row-actions", role: "group", "aria-label": "Asking" }, chip("wf-ask", "Ask me first", !d.then.auto, () => { d.then.auto = false; state.test = null; redraw(); }), chip("wf-auto", "Without asking", !!d.then.auto, () => { d.then.auto = true; state.test = null; redraw(); })),
+          h("p", { class: "hint" }, d.then.auto
+            ? "The review is posted as the run ends, as a comment (never an approval), with the token bound for POST at the forge. If it cannot be, it waits on Home like any other."
+            : "The answer waits on Home, under Needs you, to post, edit or discard. Connections › Credentials must allow the token for POST at the forge's host: listing pull requests is a different grant."),
+        ]
+      : null,
+    h("div", { class: "row-actions", role: "group", "aria-label": "Tell me" }, h("span", { class: "muted" }, "Desktop notice:"), chip("wf-notify-needs", "When it needs me", !d.then.notify, () => { d.then.notify = ""; state.test = null; redraw(); }), chip("wf-notify-run", "After every run", d.then.notify === "run", () => { d.then.notify = "run"; state.test = null; redraw(); }), chip("wf-notify-never", "Never", d.then.notify === "never", () => { d.then.notify = "never"; state.test = null; redraw(); })),
+  );
+
   const error = h("p", { class: "error", role: "alert" });
   const outcome = h("div", { class: "builder-test", role: "status" });
   const definition = () => ({ ...d, name: d.name.trim() || (isPulls ? `Pull requests on ${src.repo}` : "A workflow"), filters: d.filters.filter((f) => f.field.trim()) });
@@ -299,7 +322,7 @@ function renderBuilder(root, ctx) {
         h("div", { class: "page-head" }, h("h1", {}, editingId ? "Change a workflow" : "Watch pull requests"), h("a", { class: "btn ghost", href: "#/workflows", onclick: () => { draft = null; } }, "Back")),
         h("p", { class: "lede" }, "Each answer is a card: when, only if, what to do, and where each run goes. Test the trigger asks the source once and lists what a run would be for, with no model and nothing recorded."),
         field("Name", text("wf-name", d.name, (v) => (d.name = v), { placeholder: "Review pull requests" })),
-        when, filters, doing, routing,
+        when, filters, doing, routing, then,
         h("div", { class: "row-actions" }, test, save),
         error, outcome,
       ),

@@ -2335,6 +2335,18 @@ something happens at a source (ADR 53). Its answers are four cards:
   again.
 - **Do:** the instruction, sent as each run's request, with the task's
   folder, worktree, model, limits and spend per run and per day, as any task.
+- **Then:** the answer stays in the task, or is **posted as a review**: a
+  comment on the pull request, never an approval or a request for changes.
+  A review is held on Home, under Needs you, as **Ready to post** with
+  **Post review**, **Edit** (this computer only), **Discard** and **Open
+  task**, and nothing is sent until you choose; **Without asking** has the
+  daemon post it as the run ends. Either way the daemon posts it, with the
+  token, and only where Connections › Credentials allows that token at the
+  forge's host for **POST**: the permission to list pull requests (GET) is a
+  separate one, and a post that cannot be made stays in the outbox with the
+  reason. A run that did not finish, or said nothing, queues nothing. You can
+  also have a desktop notice after every run, or none, besides the notice that
+  a held answer needs you.
 - **Runs go to:** a task per pull request (its first event opens a task
   named `#142 title`, and a later one, such as a new commit, arrives there
   as its next run), or one task for every event. At most 2 runs go at once

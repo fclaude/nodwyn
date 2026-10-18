@@ -265,11 +265,11 @@ function draw(routeChanged, what) {
   $("gate").hidden = true;
   $("shell").hidden = false;
   renderSidebar($("sidebar"), { desk, route, conn, rerender: () => render() });
-  const attention = desk.needsYou().length;
+  const attention = desk.needsYou().length + desk.outbox.length;
   $("topbar-count").textContent = attention ? `${attention} need${attention === 1 ? "s" : ""} you` : "";
   $("topbar-count").hidden = !attention;
   // On a phone the sidebar is a drawer, so this is the way to what waits.
-  $("topbar-count").href = attention === 1 ? `#/task/${desk.needsYou()[0].id}` : "#/";
+  $("topbar-count").href = attention === 1 && desk.needsYou().length === 1 ? `#/task/${desk.needsYou()[0].id}` : "#/";
   document.title = attention ? `(${attention}) nodwyn` : "nodwyn";
   const view = $("view");
   const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.id}` : route.name;

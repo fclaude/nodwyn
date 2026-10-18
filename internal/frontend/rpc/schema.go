@@ -38,6 +38,8 @@ func contracts() map[string]methodContract {
 		"workflow.pause":               {workflowPauseParams{}, workflowView{}},
 		"workflow.check":               {idParams{}, workflowView{}},
 		"workflow.test":                {workflowTestParams{}, workflowTest{}},
+		"outbox.list":                  {struct{}{}, []outboxView{}},
+		"outbox.decide":                {outboxDecideParams{}, struct{}{}},
 		"run.start":                    {runParams{}, runResult{}},
 		"run.info":                     {idParams{}, run.State{}},
 		"run.stop":                     {idParams{}, struct{}{}},

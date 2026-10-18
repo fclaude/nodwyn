@@ -100,10 +100,10 @@ it is built.
    moved into core; and the exfil scenarios and the two-session race that
    prove it (WT5).
 3. **Workflows (ADR 53).** The timetable, slice 0 (a login item, the
-   daemon's desktop notices), the Workflows page and a daily limit, and
-   workflows that watch pull requests or a command are built, against fakes
-   (no real forge yet); next, in its order: the outbox, email, and the TUI and
-   the CLI.
+   daemon's desktop notices), the Workflows page and a daily limit, workflows
+   that watch pull requests or a command, and the outbox (a review posted
+   when the person says yes) are built, against fakes (no real forge yet);
+   next, in its order: email, and the TUI and the CLI.
 4. **Retrieval beyond words (ADR 51, 50).** The measurement of what words
    alone find, then vectors from a small model shipped inside nodwyn, fused
    with the words (R4), model-written summaries, and providers' embeddings

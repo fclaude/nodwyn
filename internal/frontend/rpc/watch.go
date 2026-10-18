@@ -73,6 +73,19 @@ func (w *stateWatch) publish(state sessionState, open bool) (unwatched bool) {
 	}
 	return unwatched
 }
+
+// broadcast tells every watching client that something outside any one task
+// changed (kind "outbox.changed"), content-free as the states are: a client
+// asks for what it shows.
+func (w *stateWatch) broadcast(kind string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for client := range w.clients {
+		if !client.enqueue(notification{"2.0", "session.event", sessionEvent{Kind: kind}}) {
+			delete(w.clients, client)
+		}
+	}
+}
 func (w *stateWatch) subscribe(client *peer) []sessionState {
 	w.mu.Lock()
 	defer w.mu.Unlock()

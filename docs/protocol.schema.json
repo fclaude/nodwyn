@@ -3704,6 +3704,12 @@
           "$ref": "#/$defs/request.notes.read"
         },
         {
+          "$ref": "#/$defs/request.outbox.decide"
+        },
+        {
+          "$ref": "#/$defs/request.outbox.list"
+        },
+        {
           "$ref": "#/$defs/request.run.info"
         },
         {
@@ -4901,6 +4907,69 @@
         "jsonrpc",
         "method",
         "params"
+      ],
+      "type": "object"
+    },
+    "request.outbox.decide": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "outbox.decide"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.outboxDecideParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.outbox.list": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "outbox.list"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
       ],
       "type": "object"
     },
@@ -7164,6 +7233,20 @@
     "result.notes.read": {
       "$ref": "#/$defs/rpc.notesResult"
     },
+    "result.outbox.decide": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "result.outbox.list": {
+      "items": {
+        "$ref": "#/$defs/rpc.outboxView"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
     "result.run.info": {
       "$ref": "#/$defs/run.State"
     },
@@ -8921,6 +9004,82 @@
       ],
       "type": "object"
     },
+    "rpc.outboxDecideParams": {
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow",
+        "id",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "rpc.outboxView": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "item": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "item",
+        "task",
+        "summary",
+        "body",
+        "at",
+        "workflow",
+        "name",
+        "when"
+      ],
+      "type": "object"
+    },
     "rpc.passphraseParams": {
       "properties": {
         "passphrase": {
@@ -10370,6 +10529,15 @@
             }
           ]
         },
+        "delivered": {
+          "items": {
+            "$ref": "#/$defs/workflow.Delivered"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "fires": {
           "items": {
             "$ref": "#/$defs/workflow.Fire"
@@ -10390,6 +10558,15 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "outbox": {
+          "items": {
+            "$ref": "#/$defs/workflow.Outbox"
+          },
+          "type": [
+            "array",
+            "null"
           ]
         },
         "recent": {
@@ -10443,6 +10620,7 @@
         "id",
         "sequence",
         "seeded",
+        "outbox",
         "sentence",
         "status",
         "running",
@@ -12471,6 +12649,9 @@
         "source": {
           "$ref": "#/$defs/watch.Source"
         },
+        "then": {
+          "$ref": "#/$defs/workflow.Then"
+        },
         "worktree": {
           "type": "boolean"
         }
@@ -12483,6 +12664,7 @@
         "routing",
         "repo",
         "cost",
+        "then",
         "actor"
       ],
       "type": "object"
@@ -12537,6 +12719,9 @@
         "source": {
           "$ref": "#/$defs/watch.Source"
         },
+        "then": {
+          "$ref": "#/$defs/workflow.Then"
+        },
         "worktree": {
           "type": "boolean"
         }
@@ -12548,7 +12733,35 @@
         "message",
         "routing",
         "repo",
-        "cost"
+        "cost",
+        "then"
+      ],
+      "type": "object"
+    },
+    "workflow.Delivered": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "fate": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "fate",
+        "by",
+        "at"
       ],
       "type": "object"
     },
@@ -12588,6 +12801,48 @@
       ],
       "type": "object"
     },
+    "workflow.Outbox": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "item": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "item",
+        "task",
+        "summary",
+        "body",
+        "at"
+      ],
+      "type": "object"
+    },
     "workflow.Skip": {
       "properties": {
         "at": {
@@ -12605,6 +12860,21 @@
         "reason",
         "at"
       ],
+      "type": "object"
+    },
+    "workflow.Then": {
+      "properties": {
+        "auto": {
+          "type": "boolean"
+        },
+        "notify": {
+          "type": "string"
+        },
+        "post": {
+          "type": "string"
+        }
+      },
+      "required": [],
       "type": "object"
     }
   },
