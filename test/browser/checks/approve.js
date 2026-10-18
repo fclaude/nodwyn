@@ -224,9 +224,15 @@ check(async () => {
   assert.deepStrictEqual(sent.of("session.answer").map((a) => [a.id, a.reply]), [], "the switch answered; no Y was sent");
   step("the ask answered by the switch; task answered");
   // A refused switch-off restores the server's on-state and reports the refusal.
+  // The pending state is read in the same task as the click: the refusal
+  // comes straight back from the socket above, and a read of its own let the
+  // console handle it first under load, so the check saw the state after.
   failNextApprove = true;
-  await page.$eval(".dont-ask input", (el) => el.click());
-  assert.deepStrictEqual(await page.$eval(".dont-ask", (el) => ({ checked: el.querySelector("input").checked, on: el.classList.contains("on"), disabled: el.querySelector("input").disabled })), { checked: false, on: false, disabled: true }, "the requested off-state appears while pending");
+  const pendingOff = await page.$eval(".dont-ask", (el) => {
+    el.querySelector("input").click();
+    return { checked: el.querySelector("input").checked, on: el.classList.contains("on"), disabled: el.querySelector("input").disabled };
+  });
+  assert.deepStrictEqual(pendingOff, { checked: false, on: false, disabled: true }, "the requested off-state appears while pending");
   await until("the refusal", async () => (await page.textContent(".toast.error"))?.includes("simulated approval refusal"));
   // An error stays until it is dismissed: a confirmation shown after it does
   // not replace it, it is announced as an alert, and it does not sit over
