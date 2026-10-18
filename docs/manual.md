@@ -2741,11 +2741,16 @@ nodwyn startup on                   # the daemon at login: a user service, locke
 nodwyn ui --no-open --listen 127.0.0.1:7777 --name https://nodwyn.example.net
 ```
 
-Give the console https in one of two ways: your own proxy that ends TLS in
+Give the console https in one of three ways: your own proxy that ends TLS in
 front of it (Caddy, nginx with certbot, a VPN's https), named with `--name
-https://NAME`; or `--tls-cert` and `--tls-key` with a certificate from any ACME
+https://NAME`; `--tls-cert` and `--tls-key` with a certificate from any ACME
 client or a CA of your own, which the console reads again when they are
-renewed. Over plain http devices pair and answer, but the person cannot sign
+renewed; or, on a server the internet reaches on port 443 with no proxy in
+front, `--acme nodwyn.example.net --acme-accept-terms`, which has the
+console ask Let's Encrypt for the certificate itself and renew it (the
+service needs permission to bind port 443, `AmbientCapabilities=CAP_NET_BIND_SERVICE`
+in a unit; `--acme-directory` names another CA, such as its staging one, to
+try it first). Over plain http devices pair and answer, but the person cannot sign
 in with a passkey, so setup stays on the server.
 
 Pairing takes no code. Once, on the server, `nodwyn devices invite` prints

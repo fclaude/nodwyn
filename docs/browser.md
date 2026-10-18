@@ -655,6 +655,7 @@ changes nothing.
 ```sh
 nodwyn ui --listen 127.0.0.1:7777 --name https://desk.example.net   # behind your proxy that ends TLS
 nodwyn ui --listen 0.0.0.0:7777 --name desk.example.net:7777 --tls-cert cert.pem --tls-key key.pem
+nodwyn ui --acme nodwyn.example.net --acme-accept-terms   # the console gets its own certificate, on :443
 nodwyn ui --listen 100.101.102.103:7777          # a VPN address, plain http: devices only answer
 nodwyn devices invite                            # an invitation for another device
 nodwyn devices                                   # list paired devices
@@ -713,7 +714,11 @@ front of the console sends the bare name and an `https://` origin, which
 name, marks the device cookie Secure, and still speaks http to the proxy. A
 refused origin is answered with the one expected. `--tls-cert` and
 `--tls-key` are read again when either file changes, so a renewed certificate
-is served without a restart. Every answer from a device is recorded as the
+is served without a restart. `--acme NAME` gets the certificate itself from an
+ACME CA such as Let's Encrypt (it serves https on :443 for that name, keeps
+its certificates in `acme/` of the config directory and renews them; the CA's
+terms are accepted with `--acme-accept-terms`, and `--acme-directory` and
+`--acme-email` name another CA and an address for its notices). Every answer from a device is recorded as the
 bridge's kernel identity followed by `via web:NAME`, and `passkey:NAME` for
 the person's device.
 
