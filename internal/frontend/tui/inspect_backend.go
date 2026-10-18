@@ -18,13 +18,6 @@ type policyView struct {
 	TurnWrites       bool
 }
 
-func (l *local) Policy(ctx context.Context, _ string) (policyView, error) {
-	if err := ctx.Err(); err != nil {
-		return policyView{}, err
-	}
-	trust, _ := l.session.TurnApproval()
-	return policyView{Bindings: l.session.Bindings(), Commands: l.session.Allowed(), Writes: l.session.AllowedWrites(), TurnWrites: trust}, nil
-}
 func (r *remote) Policy(ctx context.Context, id string) (policyView, error) {
 	// A missing field on an older daemon must not look like an empty policy.
 	var info struct {
@@ -42,14 +35,9 @@ func (r *remote) Policy(ctx context.Context, id string) (policyView, error) {
 	return policyView{Bindings: *info.Bindings, Commands: info.Commands, Writes: info.Writes, TurnWrites: info.TurnWrites}, nil
 }
 
-// Read the model-facing catalog captured when the session was constructed,
-// not the interpreter's mutable registry or configuration files on disk.
-func (l *local) Tools(ctx context.Context, _ string) ([]llm.Tool, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return l.session.Tools(), nil
-}
+// Tools is the model-facing catalog captured when the session was
+// constructed, not the interpreter's mutable registry or configuration
+// files on disk.
 func (r *remote) Tools(ctx context.Context, id string) ([]llm.Tool, error) {
 	var info struct {
 		Tools []llm.Tool `json:"tools"`
@@ -61,15 +49,9 @@ func (r *remote) Tools(ctx context.Context, id string) ([]llm.Tool, error) {
 }
 
 // These are the limits for new turns in this session lifetime, not current
-// usage or a soft limit changed by an in-progress checkpoint reply. Both
-// modes show the session's own: a run's spend limit and a task whose limits
-// are off differ from the configuration.
-func (l *local) Budgets(ctx context.Context, _ string) (budget.Limits, error) {
-	if err := ctx.Err(); err != nil {
-		return budget.Limits{}, err
-	}
-	return l.session.Limits(), nil
-}
+// usage or a soft limit changed by an in-progress checkpoint reply. They are
+// the session's own: a run's spend limit and a task whose limits are off
+// differ from the configuration.
 func (r *remote) Budgets(ctx context.Context, id string) (budget.Limits, error) {
 	var info rpc.SessionDetails
 	if err := r.client.Call(ctx, "session.info", map[string]any{"id": id}, &info); err != nil {
@@ -94,10 +76,6 @@ func checkTurnLimits(limits budget.Limits) error {
 		}
 	}
 	return nil
-}
-func (l *local) History(ctx context.Context, id string) ([]log.Event, error) {
-	store := core.Store{Dir: l.options.Paths.SessionsDir}
-	return readHistory(ctx, func(after, through uint64) (core.LogPage, error) { return store.ReadLog(id, after, through, 100) })
 }
 func (r *remote) History(ctx context.Context, id string) ([]log.Event, error) {
 	return readHistory(ctx, func(after, through uint64) (page core.LogPage, err error) {

@@ -273,7 +273,9 @@ const helpText = `Commands
 :thinking              Show or hide thinking.
 :details               Show or hide tool arguments and results inline.
 :help, :h              This view.
-:q, :quit, :exit       Quit (detach in daemon mode).
+:q, :quit, :exit       Quit, as Ctrl+Q does.
+:close                 Close the task and quit: its log is released, and a
+                       worktree with nothing unlanded is removed.
 
 Inspectors are fixed snapshots. r refreshes; Esc returns to conversation.
 Pending approvals always take priority over an inspector.
@@ -281,5 +283,7 @@ Enter sends a message. Alt+Enter or Ctrl+J inserts a newline.
 Bracketed paste preserves line breaks and never sends.
 PgUp/PgDn scroll; Ctrl+End jumps to the bottom.
 Ctrl+C aborts busy work, or quits when idle.
-Ctrl+Q quits; a daemon session keeps running after detach.
-Ctrl+R reconnects in daemon mode, without retrying operations.`
+Ctrl+Q detaches: the task and its turn go on in the daemon, for every
+client and the scheduler. When this process started the daemon (none was
+running), quitting ends its tasks with it.
+Ctrl+R reconnects to the daemon, without retrying operations.`

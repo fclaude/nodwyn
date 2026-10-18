@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/fclaude/nodwyn/internal/core"
@@ -27,21 +26,6 @@ type modelOption struct {
 	Effort  string   `json:"effort"`
 }
 
-func (l *local) Models(ctx context.Context, _ string) (modelView, error) {
-	if err := ctx.Err(); err != nil {
-		return modelView{}, err
-	}
-	cfg := l.options.Config
-	view := modelView{Current: l.session.Model()}
-	for _, c := range cfg.ModelChoices() {
-		host := c.Model.URL
-		if u, err := url.Parse(c.Model.URL); err == nil {
-			host = u.Host
-		}
-		view.Choices = append(view.Choices, modelOption{Name: c.Name, Model: c.Model.Model, Host: host, Efforts: cfg.Efforts(c.Model), Effort: c.Model.Effort})
-	}
-	return view, nil
-}
 func (r *remote) Models(ctx context.Context, id string) (modelView, error) {
 	var info struct {
 		Model core.ModelState `json:"model"`
@@ -58,9 +42,6 @@ func (r *remote) Models(ctx context.Context, id string) (modelView, error) {
 	return modelView{Current: info.Model, Choices: settings.Choices}, nil
 }
 
-func (l *local) SetModel(_ context.Context, _, name, effort string) (core.ModelState, error) {
-	return l.session.SetModel(core.ModelChoice{Name: name, Effort: effort, Actor: "terminal"})
-}
 func (r *remote) SetModel(ctx context.Context, id, name, effort string) (state core.ModelState, err error) {
 	err = r.client.Call(ctx, "session.model.set", map[string]any{"id": id, "name": name, "effort": effort}, &state)
 	return

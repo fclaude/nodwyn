@@ -99,89 +99,80 @@ func TestToolCardsRestoreOpenIntervalsAndRenderSafely(t *testing.T) {
 	}
 }
 
-func TestToolCardsFromLocalAndRPCEvents(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			o := testOptions(t)
-			if err := os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700); err != nil {
+func TestToolCardsFromDaemonEvents(t *testing.T) {
+	o := testOptions(t)
+	if err := os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-tool "read-note" (lambda () (fs-read "note")) '((doc . "Read note") (params . ())))`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
+	if err := os.WriteFile(filepath.Join(o.Repo, "note"), []byte("visible result\nsk-ant-abcdefgh1234"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	server := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{
+		{ID: "read", Name: "read-note", Args: map[string]any{}},
+		{ID: "write", Name: "fs-write", Args: map[string]any{"path": "declined", "content": "must not write"}},
+	}}, fake.Turn{Content: "done"})
+	defer server.Close()
+	o.Provider = llm.NewOllama(server.URL)
+	b, _ := testRemote(t, o)
+	defer b.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	snap, err := b.Attach(ctx, o.Repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(ctx, b, o.Repo, snap.ID, false)
+	m.restore(snap)
+	if err := b.Send(ctx, snap.ID, "read and propose a write", false); err != nil {
+		t.Fatal(err)
+	}
+	completed := false
+	for {
+		ev, err := b.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.consume(ev)
+		if ev.Kind == event.PromptConfirm {
+			p, _ := decode[event.Confirm](ev.Payload)
+			if m.prompt == nil {
+				t.Fatal("tool card hid confirmation")
+			}
+			if err := b.Answer(ctx, snap.ID, p.ID, "n"); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-tool "read-note" (lambda () (fs-read "note")) '((doc . "Read note") (params . ())))`), 0600); err != nil {
-				t.Fatal(err)
-			}
-			o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
-			if err := os.WriteFile(filepath.Join(o.Repo, "note"), []byte("visible result\nsk-ant-abcdefgh1234"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			server := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{
-				{ID: "read", Name: "read-note", Args: map[string]any{}},
-				{ID: "write", Name: "fs-write", Args: map[string]any{"path": "declined", "content": "must not write"}},
-			}}, fake.Turn{Content: "done"})
-			defer server.Close()
-			o.Provider = llm.NewOllama(server.URL)
-			var b backend
-			if mode == "local" {
-				b = newLocal(o)
-			} else {
-				b, _ = testRemote(t, o)
-			}
-			defer b.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			snap, err := b.Attach(ctx, o.Repo, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			m := newModel(ctx, b, o.Repo, snap.ID, false)
-			m.restore(snap)
-			if err := b.Send(ctx, snap.ID, "read and propose a write", false); err != nil {
-				t.Fatal(err)
-			}
-			completed := false
-			for {
-				ev, err := b.Next(ctx)
-				if err != nil {
-					t.Fatal(err)
-				}
-				m.consume(ev)
-				if ev.Kind == event.PromptConfirm {
-					p, _ := decode[event.Confirm](ev.Payload)
-					if m.prompt == nil {
-						t.Fatal("tool card hid confirmation")
-					}
-					if err := b.Answer(ctx, snap.ID, p.ID, "n"); err != nil {
-						t.Fatal(err)
-					}
-				}
-				if ev.Kind == string(log.KindTurnEnd) {
-					completed = true
-				}
-				if completed && ev.Kind == event.Status && !m.busy {
-					break
-				}
-			}
-			cards := toolCards(m)
-			if len(cards) != 2 || !cards[0].result.OK || cards[1].result.OK || len(cards[0].decisions) != 2 {
-				t.Fatal("tool results or nested guard decisions missing")
-			}
-			if _, err := os.Stat(filepath.Join(o.Repo, "declined")); !os.IsNotExist(err) {
-				t.Fatal("declined write took effect")
-			}
-			history, err := b.History(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			m.restore(snapshot{ID: snap.ID, Repo: o.Repo, History: history})
-			restoredCards := toolCards(m)
-			if len(restoredCards) != len(cards) {
-				t.Fatal("history lost tool cards")
-			}
-			for i, restored := range restoredCards {
-				if restored.render(true) != cards[i].render(true) || strings.Contains(restored.render(true), "sk-ant-abcdefgh1234") {
-					t.Fatal("history changed or exposed tool details")
-				}
-			}
-		})
+		}
+		if ev.Kind == string(log.KindTurnEnd) {
+			completed = true
+		}
+		if completed && ev.Kind == event.Status && !m.busy {
+			break
+		}
+	}
+	cards := toolCards(m)
+	if len(cards) != 2 || !cards[0].result.OK || cards[1].result.OK || len(cards[0].decisions) != 2 {
+		t.Fatal("tool results or nested guard decisions missing")
+	}
+	if _, err := os.Stat(filepath.Join(o.Repo, "declined")); !os.IsNotExist(err) {
+		t.Fatal("declined write took effect")
+	}
+	history, err := b.History(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.restore(snapshot{ID: snap.ID, Repo: o.Repo, History: history})
+	restoredCards := toolCards(m)
+	if len(restoredCards) != len(cards) {
+		t.Fatal("history lost tool cards")
+	}
+	for i, restored := range restoredCards {
+		if restored.render(true) != cards[i].render(true) || strings.Contains(restored.render(true), "sk-ant-abcdefgh1234") {
+			t.Fatal("history changed or exposed tool details")
+		}
 	}
 }
 

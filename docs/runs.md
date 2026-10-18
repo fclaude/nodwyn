@@ -14,7 +14,7 @@ nodwyn daemon
 nodwyn run --task task.txt --repo . --budget-wall 2h --max-turns 20
 # nodwyn run start ... is the same command, spelled out
 nodwyn ui
-# Or nodwyn tui --socket /absolute/path/to/daemon.sock
+# Or nodwyn tui (--socket PATH for a daemon on another socket)
 ```
 
 The console does not start or resume runs. It shows a run started here,

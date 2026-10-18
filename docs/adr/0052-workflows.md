@@ -199,11 +199,12 @@ Built, as §11 and §13 slice 0 have it:
 2. **ADR 30's lifecycle, amended.** A daemon the app starts still closes
    with its window. A daemon started at login is the one the app finds and
    uses, and closing the window leaves it running with its schedules.
-   `nodwyn daemon` now removes a socket nobody listens on before it listens,
-   as the app always did, since a login item that restarts a failed daemon
-   would otherwise find the crash's socket and fail again
-   (`TestADaemonStartedAgainClearsTheSocketACrashLeft`, which fails on the
-   code before this).
+   A login item restarts a daemon that failed, which finds the socket its
+   crash left: `rpc.Listen` removes one nobody listens on, for every caller,
+   under a lock (built the same day beside this, ADR 21 amended; this slice
+   had its own copy of the check, dropped when the two met). The daemons
+   `nodwyn tui` and line mode start when none answers (ADR 30, amended the
+   same day) get the same login item and notices as the app's.
 3. **The daemon's own desktop notices**, off unless a person turns on
    `[notify] desktop` (Settings › General), as a browser's are. With fixed
    words, never a task's, as the app's notification has (a lock screen shows

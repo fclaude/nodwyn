@@ -7,19 +7,24 @@ nodwyn has four ways in, over one core:
   [app.md](app.md)). It always talks to a daemon, through the bridge in
   `internal/frontend/web/server.go`.
 - **The TUI**: `nodwyn tui` (`internal/frontend/tui`, [tui.md](tui.md)).
-  It either owns a session in its own process (local mode) or attaches to a
-  daemon with `--socket` (daemon mode). Every operation has both
-  implementations: `backend.go` and `remote.go`, and in `inspect_backend.go`
-  and `models.go`.
-- **Line mode**: `nodwyn` or `nodwyn chat` (`internal/frontend/plain`). It
-  owns its session and is scriptable.
+  It always talks to a daemon: the one on the default socket or
+  `--socket`'s, or one it starts in its own process when none answers, as
+  `nodwyn app` does (ADR 30, amended 2026-10-17). Its operations are calls
+  in `remote.go` and beside each view (`inspect_backend.go`, `models.go`,
+  `judges.go`, `retrieval.go`).
+- **Line mode**: `nodwyn` or `nodwyn chat` (`internal/frontend/plain`), the
+  scriptable client. It talks to the daemon on the default socket, or one
+  it starts in its own process when none answers, as the TUI does (ADR 30,
+  amended 2026-10-17); its operations are calls in `daemon.go`, and
+  "Line mode and the daemon" below says what became of its per-run flags.
 - **The CLI**: the other subcommands in `cmd/nodwyn/cli.go` (`sessions`,
   `replay`, `versions`, `undo`, `credential`, `keychain`, `mcp`, `trust`,
   `devices`, `startup`, `run`, `summary`, `eval`, `repl`).
 
-This page records what each one can do as of 2026-10-15 (the judge choice,
-ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49, and
-retrieval, ADR 50, included), so work on a
+This page records what each one can do as of 2026-10-17 (the judge choice,
+ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49,
+retrieval, ADR 50, and the TUI and line mode on the daemon, ADR 30 amended
+2026-10-17, included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -43,7 +48,9 @@ it can see the thing but not change it.
 | A schedule's recent runs: when, how each ended or why it was skipped, cost (`history` in `schedule.read`, ADR 49 amended 2026-10-17) | yes, **Recent runs** in a task's **Schedule…** | not built | — | `replay` shows the records |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
-| Quit while a turn runs | the task goes on in the daemon | daemon mode detaches and the turn goes on; local mode aborts it | aborts it | — |
+| Quit while a turn runs | the task goes on in the daemon | Ctrl+Q detaches and the turn goes on; when the TUI's own process serves the daemon, quitting ends its tasks, as closing `nodwyn app` does | aborts it | — |
+| Come back after the connection drops | yes, by itself after a wait that grows to 30 s, at once when the page is shown again or the network returns; reloads the open task from its log and sends nothing again; a revoked device stops trying; back to an upgraded daemon (another version in `hello`), says so and offers Reload, keeping the reply drafts until the reader reloads | Ctrl+R reconnects; not built: reconnecting by itself | ends, saying it lost the daemon; not built: reconnecting | — |
+| Close a task: its log released, a worktree with nothing unlanded removed (`session.close`) | yes, the task's **⋯** menu, Close | yes, `:close`, which then quits | quitting closes a task it opened; one another client had open stays open | — |
 
 ## The conversation
 
@@ -52,6 +59,7 @@ it can see the thing but not change it.
 | Jump from a search match to bounded, read-only turn history (`log.context`) | yes; load earlier/later within that turn, or open the live task | deliberate gap: replays whole history | replays whole | `memory recall` reads an event and the turn’s card |
 | Open at the latest run; page back through collapsed earlier runs (ADR 49) | yes; earlier contents load on expansion | deliberate gap: replays the conversation whole | replays whole | `replay` reads whole |
 | Send a message, abort a turn | yes | yes; Ctrl+C aborts, and clears an unsent draft before it quits | yes | — |
+| A turn another client or the schedule started | live | live | shown when line mode next reads a line, with its message | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |
 | Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` (recorded as `eval.req` and `eval.result`, as in the TUI) | `nodwyn eval`, `nodwyn repl` |
 | Thinking | inline, folded | `:thinking` toggles it | `--show-thinking` | `--show-thinking replay` |
@@ -71,8 +79,8 @@ it can see the thing but not change it.
 | Save a binding (`session.binding.create`) | yes, on this computer | yes, `b` | yes | `nodwyn credential` |
 | Masked secret prompts | yes | yes | yes | — |
 | Budget checkpoints | yes | yes | yes | — |
-| Don't ask (`session.approve_all`) | yes, when Settings offers it; a paired device sees it while on and turns it off | not built | `--yolo` at start | `nodwyn run --yolo` |
-| A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: `--budget-*` set limits, none removes them | `nodwyn run`: not built, its run limits are its own |
+| Don't ask (`session.approve_all`) | yes, when Settings offers it; a paired device sees it while on and turns it off | not built | `--yolo` turns it on at start, when Settings offers it | `nodwyn run --yolo` answers a run's confirms itself |
+| A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: a task opens with Settings' limits, and `--budget-*` are refused | `nodwyn run`: not built, its run limits are its own |
 | Edit `allow.toml` (`session.policy.write`) | yes, the policy editor | deliberate gap: `:bindings` reads only | — | — |
 
 ## Models (ADR 40, ADR 41)
@@ -81,7 +89,7 @@ it can see the thing but not change it.
 |---|---|---|---|---|
 | See the model and its efforts | yes, the picker | yes, `:model` | the banner names the model | — |
 | Move the conversation to a configured model | yes | yes, `:model NAME [EFFORT]` | not built | — |
-| Choose a model as a task opens | yes, New task's picker | not built: it opens on `[control]`; use `:model` before the first message | `--model`/`--url` override `[control]` | `nodwyn run`: not built |
+| Choose a model as a task opens | yes, New task's picker | not built: it opens on `[control]`; use `:model` before the first message | `--model NAME`: a `[models.NAME]`, or a model on `[control]`'s server (with `--resume`, moves the task to it); `--url` is refused | `nodwyn run`: not built |
 | A model on a server with no `[models.NAME]` entry (`server` + `model`) | not offered: the picker lists names | not offered | — | — |
 | A choice while a turn runs is queued | yes | yes, and the conversation says so | — | — |
 | Choosing from a paired device | refused (ADR 30) | — | — | — |
@@ -179,7 +187,7 @@ needs.
 | Providers, models, efforts, judges, limits, timeouts | Settings: Models, Judge, and General (limits, timeouts and the context window under Advanced); one Save bar for the settings | — | — | edit `config.toml` |
 | MCP servers: add, inspect, approve, pull | Connections › Tools | — | — | `nodwyn mcp` |
 | Credentials: add, replace, allow a host, take a host back, remove; OAuth2 sign-in | Connections › Credentials (a ChatGPT plan is connected on its provider, Settings › Models) | — | — | `nodwyn credential` (taking a host back is an edit of `bindings.toml`) |
-| Keychain: create, unlock, passphrase | Settings › Keys & devices, and beside a provider form that needs it | unlocks at start | unlocks at start | `nodwyn keychain` |
+| Keychain: create, unlock, passphrase | Settings › Keys & devices, and beside a provider form that needs it | unlocks the daemon's at start, over the socket (`keychain.unlock`); an empty answer or `--no-keychain` leaves it locked | the same; under a script, only with `--keychain-tty`, which asks the controlling terminal | `nodwyn keychain` |
 | Named workspaces and mounts | Workspaces | — | — | edit `workspaces.toml` |
 | Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor; a task's Workspace tab says which | yes, `:earlier`, `:earlier on`, `:earlier off` | — | edit `workspaces.toml` (`earlier_tasks = true`) |
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
@@ -193,7 +201,7 @@ needs.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
-| Start, stop, resume a run | shows a run and **Stop** aborts it; starts none (ADR 35) | follows a run in daemon mode and answers its checkpoint | — | `nodwyn run` |
+| Start, stop, resume a run | shows a run and **Stop** aborts it; starts none (ADR 35) | follows a run and answers its checkpoint | — | `nodwyn run` |
 
 ## Not built, in the order proposed
 
@@ -207,11 +215,43 @@ needs.
    deliberate gap, so a new console feature cannot widen the difference
    unnoticed.
 
+## Line mode and the daemon
+
+Every client reaches tasks through a daemon (ADR 30, amended 2026-10-17), so
+a task open in line mode is open for every client and for the scheduler,
+which runs its schedule as for a closed task. Until then line mode ran its
+session in its own process and held the task's log: while it had a task
+open the daemon could not open it, run its schedule, or even record that
+the run was skipped.
+
+Its per-run flags each reach the daemon or are refused, with a sentence
+saying where the setting is now:
+
+| Flag | On the daemon |
+|---|---|
+| `--repo`, `--resume` | `session.open`, `session.resume`; the daemon's task-root refusal now applies. `--repo` beside `--resume` must name the task's folder, checked before it is resumed |
+| `--model NAME` | `session.open`'s `name` for a configured model, else `server` and `model` for a model on `[control]`'s server; with `--resume`, `session.model.set` |
+| `--url` | refused: the daemon reaches only the servers config.toml names |
+| `--budget-*`, `--max-tool-calls` | refused: a task has the `[budget]` limits every task has; `nodwyn run` keeps its own `--budget-wall` and `--budget-cost` |
+| `--no-confirm` | line mode answers every confirm and checkpoint no without reading a line; a question with set answers (uploads to Google Docs), none of which only declines, stops the turn |
+| `--yolo` | `session.approve_all`, so it needs `[approval] dont_ask`, as the console's switch does; security confirms and checkpoints ask, or with `--no-confirm` are declined. The task is not unattended: `nodwyn run --yolo` is |
+| `--no-keychain`, `--keychain-tty` | the daemon's keychain is left locked, or its passphrase asked on the controlling terminal under a script (`keychain.unlock`, as the TUI does) |
+| `--show-thinking` | line mode's own |
+
+Quitting closes a task line mode opened, as it always did, and leaves open
+one another client had open, turning off a Don't ask its `--yolo` turned
+on. Ctrl-C aborts a turn line mode started and otherwise quits; a turn
+another client or the schedule started is shown when line mode next reads
+a line, since its input is read in turn with the events. Line mode refuses
+a daemon that keeps its tasks in another data directory than its own (a
+script that set `XDG_DATA_HOME` and not `XDG_RUNTIME_DIR`), closing the
+task it opened there before any model is asked.
+
 ## Found while writing this
 
-- The TUI's local mode makes worktrees without the daemon's task-root
-  refusal, as it opens any `--repo` without it. The refusal moving into core
-  is still not built (ADR 34, amended 2026-10-08).
+- The daemon's task-root refusal is still the daemon's, not core's (ADR 34,
+  amended 2026-10-08); since 2026-10-17 every client opens tasks through
+  it.
 - The console reads whole-task totals from the daemon's log index; its
   current-turn gauges still read the loaded conversation. The TUI computes
   its own in `gauge.go` and `plan_budget.go`.

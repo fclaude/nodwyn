@@ -86,82 +86,73 @@ func TestPlanAndBudgetInspectorsRejectMalformedRecords(t *testing.T) {
 	}
 }
 
-func TestBudgetInspectionAndCheckpointThroughBothBackends(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			o := testOptions(t)
-			o.Config.Budget.ToolCallsSoft = 1
-			o.Config.Loop.MaxToolCalls = 3
-			server := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "one", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "two", Name: "fs-list", Args: map[string]any{"path": "."}}}})
-			defer server.Close()
-			o.Provider = llm.NewOllama(server.URL)
-			var b backend
-			if mode == "local" {
-				b = newLocal(o)
-			} else {
-				b, _ = testRemote(t, o)
+func TestBudgetInspectionAndCheckpointThroughTheDaemon(t *testing.T) {
+	o := testOptions(t)
+	o.Config.Budget.ToolCallsSoft = 1
+	o.Config.Loop.MaxToolCalls = 3
+	server := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "one", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "two", Name: "fs-list", Args: map[string]any{"path": "."}}}})
+	defer server.Close()
+	o.Provider = llm.NewOllama(server.URL)
+	b, _ := testRemote(t, o)
+	defer b.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	snap, err := b.Attach(ctx, o.Repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(ctx, b, o.Repo, snap.ID, false)
+	m.restore(snap)
+	before, err := b.History(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Update(m.inspect(":budget")())
+	if !strings.Contains(m.inspector.content, "tool_calls · soft 1 · hard 3") {
+		t.Fatal(m.inspector.content)
+	}
+	m.Update(m.inspect(":plan")())
+	if !strings.Contains(m.inspector.content, "No user message recorded") {
+		t.Fatal(m.inspector.content)
+	}
+	after, err := b.History(ctx, snap.ID)
+	if err != nil || len(before) != len(after) {
+		t.Fatal("inspection changed history", err)
+	}
+	if err := b.Send(ctx, snap.ID, "list twice", false); err != nil {
+		t.Fatal(err)
+	}
+	completed, prompted := false, false
+	for {
+		ev, err := b.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.consume(ev)
+		if ev.Kind == event.PromptCheckpoint {
+			prompted = true
+			if m.prompt == nil || !strings.Contains(m.prompt.detail, "Tool calls: 1") || !strings.Contains(m.prompt.detail, "tokens:") {
+				t.Fatal("checkpoint usage missing or inspector hid prompt")
 			}
-			defer b.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			snap, err := b.Attach(ctx, o.Repo, "")
-			if err != nil {
+			p, _ := decode[event.Checkpoint](ev.Payload)
+			if err := b.Answer(ctx, snap.ID, p.ID, "n"); err != nil {
 				t.Fatal(err)
 			}
-			m := newModel(ctx, b, o.Repo, snap.ID, false)
-			m.restore(snap)
-			before, err := b.History(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			m.Update(m.inspect(":budget")())
-			if !strings.Contains(m.inspector.content, "tool_calls · soft 1 · hard 3") {
-				t.Fatal(m.inspector.content)
-			}
-			m.Update(m.inspect(":plan")())
-			if !strings.Contains(m.inspector.content, "No user message recorded") {
-				t.Fatal(m.inspector.content)
-			}
-			after, err := b.History(ctx, snap.ID)
-			if err != nil || len(before) != len(after) {
-				t.Fatal("inspection changed history", err)
-			}
-			if err := b.Send(ctx, snap.ID, "list twice", false); err != nil {
-				t.Fatal(err)
-			}
-			completed, prompted := false, false
-			for {
-				ev, err := b.Next(ctx)
-				if err != nil {
-					t.Fatal(err)
-				}
-				m.consume(ev)
-				if ev.Kind == event.PromptCheckpoint {
-					prompted = true
-					if m.prompt == nil || !strings.Contains(m.prompt.detail, "Tool calls: 1") || !strings.Contains(m.prompt.detail, "tokens:") {
-						t.Fatal("checkpoint usage missing or inspector hid prompt")
-					}
-					p, _ := decode[event.Checkpoint](ev.Payload)
-					if err := b.Answer(ctx, snap.ID, p.ID, "n"); err != nil {
-						t.Fatal(err)
-					}
-				}
-				if ev.Kind == string(log.KindTurnEnd) {
-					completed = true
-				}
-				if completed && ev.Kind == event.Status && !m.busy {
-					break
-				}
-			}
-			m.Update(m.inspect(":budget")())
-			if !prompted || !strings.Contains(m.inspector.content, "Decision: stop") || !strings.Contains(m.inspector.content, "Turn end is recorded") {
-				t.Fatal(m.inspector.content)
-			}
-			m.Update(m.inspect(":plan")())
-			if !strings.Contains(m.inspector.content, "No planning outcome recorded for this message") {
-				t.Fatal("missing gate was presented as planning success")
-			}
-		})
+		}
+		if ev.Kind == string(log.KindTurnEnd) {
+			completed = true
+		}
+		if completed && ev.Kind == event.Status && !m.busy {
+			break
+		}
+	}
+	m.Update(m.inspect(":budget")())
+	if !prompted || !strings.Contains(m.inspector.content, "Decision: stop") || !strings.Contains(m.inspector.content, "Turn end is recorded") {
+		t.Fatal(m.inspector.content)
+	}
+	m.Update(m.inspect(":plan")())
+	if !strings.Contains(m.inspector.content, "No planning outcome recorded for this message") {
+		t.Fatal("missing gate was presented as planning success")
 	}
 }
 
@@ -286,38 +277,30 @@ func TestLimitsChoiceInTheConversation(t *testing.T) {
 	}
 }
 
-// The spend limit reaches :budget in both modes (the daemon's was dropped),
-// and local mode reads the session's limits, not the configuration, as the
-// daemon does: a task whose limits are off has none but its spend limit.
+// The spend limit reaches :budget (the daemon's was once dropped), and the
+// view reads the session's limits, not the configuration: a task whose
+// limits are off has none but its spend limit.
 func TestBudgetViewHasTheSpendLimitAndTheSessionsLimits(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			o := testOptions(t)
-			o.Config.Budget.CostHard = 5
-			b := testBackend(t, mode, o)
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			snap, err := b.Attach(ctx, o.Repo, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			limits, err := b.Budgets(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if limits.Cost.Hard != 5*budget.Micro || limits.ToolCalls.Hard == 0 {
-				t.Fatalf("limits %+v", limits)
-			}
-			l, ok := b.(*local)
-			if !ok {
-				return
-			}
-			if err := l.session.SetLimits(false, "test"); err != nil {
-				t.Fatal(err)
-			}
-			if limits, err = b.Budgets(ctx, snap.ID); err != nil || limits.ToolCalls.Hard != 0 || limits.Cost.Hard != 5*budget.Micro {
-				t.Fatalf("limits of a task with them off: %+v %v", limits, err)
-			}
-		})
+	o := testOptions(t)
+	o.Config.Budget.CostHard = 5
+	b, _ := testRemote(t, o)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	snap, err := b.Attach(ctx, o.Repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits, err := b.Budgets(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limits.Cost.Hard != 5*budget.Micro || limits.ToolCalls.Hard == 0 {
+		t.Fatalf("limits %+v", limits)
+	}
+	if err := b.client.Call(ctx, "session.limits.set", map[string]any{"id": snap.ID, "on": false}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if limits, err = b.Budgets(ctx, snap.ID); err != nil || limits.ToolCalls.Hard != 0 || limits.Cost.Hard != 5*budget.Micro {
+		t.Fatalf("limits of a task with them off: %+v %v", limits, err)
 	}
 }

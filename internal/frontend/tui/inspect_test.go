@@ -16,91 +16,83 @@ import (
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
-func TestInspectorsWorkLocallyAndOverRPC(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			o := testOptions(t)
-			o.Paths.Bindings = "" // explicitly in-memory test policy
-			o.Bindings = binding.Table{Bind: []binding.Binding{{Class: "service", Dest: "api.example.test", Methods: []string{"POST"}, Positions: []string{"header:Authorization"}}}}
-			os.MkdirAll(filepath.Join(o.Repo, "docs"), 0700)
-			const canary = "sk-ant-abcdefgh1234"
-			os.WriteFile(filepath.Join(o.Repo, "docs", "friction.md"), []byte("# Friction\nline with "+canary+"\n\x1b[2Jterminal escape"), 0600)
-			var b backend
-			if mode == "local" {
-				b = newLocal(o)
-			} else {
-				b, _ = testRemote(t, o)
+func TestInspectorsWorkOverTheDaemon(t *testing.T) {
+	o := testOptions(t)
+	o.Paths.Bindings = "" // explicitly in-memory test policy
+	o.Bindings = binding.Table{Bind: []binding.Binding{{Class: "service", Dest: "api.example.test", Methods: []string{"POST"}, Positions: []string{"header:Authorization"}}}}
+	must.MkdirAll(t, filepath.Join(o.Repo, "docs"), 0700)
+	const canary = "sk-ant-abcdefgh1234"
+	must.WriteFile(t, filepath.Join(o.Repo, "docs", "friction.md"), []byte("# Friction\nline with "+canary+"\n\x1b[2Jterminal escape"), 0600)
+	b, _ := testRemote(t, o)
+	defer b.Close()
+	ctx := context.Background()
+	snap, err := b.Attach(ctx, o.Repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(ctx, b, o.Repo, snap.ID, false)
+	m.restore(snap)
+	before, err := b.History(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{":bindings", ":log", ":replay"} {
+		cmd := m.inspect(command)
+		if cmd == nil {
+			t.Fatal("inspector not opened")
+		}
+		m.Update(cmd())
+		if m.inspector.loading || strings.Contains(m.inspector.content, "Cannot inspect") {
+			t.Fatal(m.inspector.content)
+		}
+		if command == ":bindings" && !strings.Contains(m.inspector.content, "api.example.test") {
+			t.Fatal("loaded policy missing")
+		}
+	}
+	after, err := b.History(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != len(after) {
+		t.Fatal("metadata/replay views appended to history")
+	}
+	cmd := m.inspect(":friction")
+	m.Update(cmd())
+	for {
+		ev, err := b.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.consume(ev)
+		if ev.Kind == event.Status {
+			status, _ := decode[event.StatusInfo](ev.Payload)
+			if status.State == "idle" {
+				break
 			}
-			defer b.Close()
-			ctx := context.Background()
-			snap, err := b.Attach(ctx, o.Repo, "")
-			if err != nil {
-				t.Fatal(err)
+		}
+	}
+	if m.inspector.loading || !strings.Contains(m.inspector.content, "# Friction") || strings.Contains(m.inspector.content, canary) || strings.Contains(m.inspector.content, "\x1b") {
+		t.Fatal("unsafe/incomplete friction view")
+	}
+	history, err := b.History(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guarded := false
+	for _, e := range history {
+		if e.Kind == log.KindGuardDecision {
+			var p log.GuardDecision
+			e.Decode(&p)
+			if p.Prim == "fs-read" && p.Origin == "user" {
+				guarded = true
 			}
-			m := newModel(ctx, b, o.Repo, snap.ID, false)
-			m.restore(snap)
-			before, err := b.History(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, command := range []string{":bindings", ":log", ":replay"} {
-				cmd := m.inspect(command)
-				if cmd == nil {
-					t.Fatal("inspector not opened")
-				}
-				m.Update(cmd())
-				if m.inspector.loading || strings.Contains(m.inspector.content, "Cannot inspect") {
-					t.Fatal(m.inspector.content)
-				}
-				if command == ":bindings" && !strings.Contains(m.inspector.content, "api.example.test") {
-					t.Fatal("loaded policy missing")
-				}
-			}
-			after, err := b.History(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(before) != len(after) {
-				t.Fatal("metadata/replay views appended to history")
-			}
-			cmd := m.inspect(":friction")
-			m.Update(cmd())
-			for {
-				ev, err := b.Next(ctx)
-				if err != nil {
-					t.Fatal(err)
-				}
-				m.consume(ev)
-				if ev.Kind == event.Status {
-					status, _ := decode[event.StatusInfo](ev.Payload)
-					if status.State == "idle" {
-						break
-					}
-				}
-			}
-			if m.inspector.loading || !strings.Contains(m.inspector.content, "# Friction") || strings.Contains(m.inspector.content, canary) || strings.Contains(m.inspector.content, "\x1b") {
-				t.Fatal("unsafe/incomplete friction view")
-			}
-			history, err := b.History(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			guarded := false
-			for _, e := range history {
-				if e.Kind == log.KindGuardDecision {
-					var p log.GuardDecision
-					e.Decode(&p)
-					if p.Prim == "fs-read" && p.Origin == "user" {
-						guarded = true
-					}
-				}
-			}
-			if !guarded {
-				t.Fatal("friction bypassed guard")
-			}
-		})
+		}
+	}
+	if !guarded {
+		t.Fatal("friction bypassed guard")
 	}
 }
 func TestInspectorDoesNotHidePromptOrReopenAfterEscape(t *testing.T) {
@@ -175,67 +167,60 @@ func TestLogFilterAndFixedPagination(t *testing.T) {
 }
 
 func TestFrictionInspectorHonorsGuardAndRepositoryBoundary(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		for _, denial := range []string{"checker", "symlink"} {
-			t.Run(mode+"/"+denial, func(t *testing.T) {
-				o := testOptions(t)
-				if err := os.MkdirAll(filepath.Join(o.Repo, "docs"), 0700); err != nil {
+	for _, denial := range []string{"checker", "symlink"} {
+		t.Run(denial, func(t *testing.T) {
+			o := testOptions(t)
+			if err := os.MkdirAll(filepath.Join(o.Repo, "docs"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(o.Repo, "docs", "friction.md")
+			if denial == "checker" {
+				if err := os.WriteFile(target, []byte("must-not-read"), 0600); err != nil {
 					t.Fatal(err)
 				}
-				target := filepath.Join(o.Repo, "docs", "friction.md")
-				if denial == "checker" {
-					if err := os.WriteFile(target, []byte("must-not-read"), 0600); err != nil {
-						t.Fatal(err)
-					}
-					o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
-					if err := os.MkdirAll(filepath.Dir(o.InitFile), 0700); err != nil {
-						t.Fatal(err)
-					}
-					if err := os.WriteFile(o.InitFile, []byte(`(register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0600); err != nil {
-						t.Fatal(err)
-					}
-				} else {
-					outside := filepath.Join(t.TempDir(), "outside.md")
-					if err := os.WriteFile(outside, []byte("must-not-read"), 0600); err != nil {
-						t.Fatal(err)
-					}
-					if err := os.Symlink(outside, target); err != nil {
-						t.Fatal(err)
-					}
+				o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
+				if err := os.MkdirAll(filepath.Dir(o.InitFile), 0700); err != nil {
+					t.Fatal(err)
 				}
-				var b backend
-				if mode == "local" {
-					b = newLocal(o)
-				} else {
-					b, _ = testRemote(t, o)
+				if err := os.WriteFile(o.InitFile, []byte(`(register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0600); err != nil {
+					t.Fatal(err)
 				}
-				defer b.Close()
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				snap, err := b.Attach(ctx, o.Repo, "")
+			} else {
+				outside := filepath.Join(t.TempDir(), "outside.md")
+				if err := os.WriteFile(outside, []byte("must-not-read"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, target); err != nil {
+					t.Fatal(err)
+				}
+			}
+			b, _ := testRemote(t, o)
+			defer b.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			snap, err := b.Attach(ctx, o.Repo, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := newModel(ctx, b, o.Repo, snap.ID, false)
+			m.restore(snap)
+			m.Update(m.inspect(":friction")())
+			for {
+				ev, err := b.Next(ctx)
 				if err != nil {
 					t.Fatal(err)
 				}
-				m := newModel(ctx, b, o.Repo, snap.ID, false)
-				m.restore(snap)
-				m.Update(m.inspect(":friction")())
-				for {
-					ev, err := b.Next(ctx)
-					if err != nil {
-						t.Fatal(err)
-					}
-					m.consume(ev)
-					if ev.Kind == event.Status {
-						state, _ := decode[event.StatusInfo](ev.Payload)
-						if state.State == "idle" {
-							break
-						}
+				m.consume(ev)
+				if ev.Kind == event.Status {
+					state, _ := decode[event.StatusInfo](ev.Payload)
+					if state.State == "idle" {
+						break
 					}
 				}
-				if !strings.Contains(m.inspector.content, "Friction read failed") || strings.Contains(m.inspector.content, "must-not-read") {
-					t.Fatal("inspector bypassed read policy")
-				}
-			})
-		}
+			}
+			if !strings.Contains(m.inspector.content, "Friction read failed") || strings.Contains(m.inspector.content, "must-not-read") {
+				t.Fatal("inspector bypassed read policy")
+			}
+		})
 	}
 }

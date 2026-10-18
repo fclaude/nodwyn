@@ -667,12 +667,13 @@ for any tool or any primitive that is host, egress, irreversible or
 audited; pure builtins such as \code{car} and \code{+} are allowed
 silently, and every non-allow is recorded. A confirm goes to the
 confirmer, which \code{initialize} installs once \file{init.scm} has run.
-With \code{--no-confirm} it answers every confirm with no; with
-\code{--yolo} every ordinary confirm with yes and every security confirm
-with no; in a \code{-{}-judge} run it is \code{judgeConfirmer}
+In a run with \code{auto\_approve} (\code{nodwyn run --yolo}) it answers
+every ordinary confirm with yes and every security confirm with no; in a \code{-{}-judge} run it is \code{judgeConfirmer}
 (\file{internal/core/judge.go}), which puts each ordinary confirm to the
 judge and declines a security one without asking; in an unattended run
-with neither, it answers every confirm with no. Otherwise a person answers,
+with neither, it answers every confirm with no. Otherwise a person answers
+(line mode's \code{--no-confirm} answers no as a person would, in the
+front-end, and its \code{--yolo} is the task's Don't ask),
 and it is \code{personConfirmer} (\file{internal/core/approval.go}), which
 reads \code{approval.commands}. With \code{"judge"}, the default, an
 ordinary confirm that is not a write and carries no credential (no egress,

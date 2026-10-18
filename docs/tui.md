@@ -11,23 +11,36 @@ nodwyn tui --resume SESSION_ID
 nodwyn tui --socket /absolute/private/directory/sock --repo /path/to/project
 ```
 
-Without `--socket`, the TUI uses core directly and owns the selected session.
-It loads the same configuration, bindings, initialization and shared keychain
-as line mode. Keychain unlock happens before entering the full-screen view
-(a keychain without a passphrase opens without asking);
-`--no-keychain` skips it. Quitting aborts local work, drains events and closes
-the session log.
+The TUI is a client of the daemon, as the console is (ADR 30, amended
+2026-10-17): the daemon owns the sessions, configuration, credentials,
+schedules and every refusal, and the TUI shows them. It uses the daemon on
+the default socket, or `--socket`'s. When none answers there it starts one
+in its own process, as `nodwyn app` does, and says so before the full screen
+opens (`tui: serving tasks in this process on …; quitting ends them`). The
+console, another TUI or `nodwyn run` can then attach to it while it runs. A
+daemon that answers but that this build cannot use (an older protocol) is
+left running, and the TUI says so instead of starting a second one.
 
-With `--socket`, the TUI attaches to an already running `nodwyn daemon`. The
-daemon owns configuration and credentials, so `--no-keychain` is rejected in
-this mode. Quitting detaches; the session and any turn continue in the daemon.
-Use Ctrl+C to abort before detaching if that is what you want. The UI shows
-this difference in its footer. A connection never silently falls back to a
-local session.
+When the daemon's keychain is locked (one `nodwyn app` started, or one whose
+passphrase was changed elsewhere), the TUI asks for its passphrase before
+the full screen opens, masked, and unlocks it over the socket
+(`keychain.unlock`). A keychain without a passphrase is opened by the daemon
+without asking. An empty answer leaves it locked, and `--no-keychain` does
+not ask: tasks then have no credentials until it is unlocked, here next time
+or in the console.
+
+Ctrl+Q detaches: the task and any turn go on in the daemon, for every client
+and the scheduler, as when a console tab closes. Use Ctrl+C first to abort
+the turn if that is what you want. When the TUI's own process serves the
+daemon, quitting ends the daemon and with it the tasks it serves; their logs
+remain, and a worktree with nothing unlanded is removed. The footer says
+which of the two quitting does. `:close` closes the task in the daemon and
+quits, as the console's Close does: its log is released, and a worktree with
+nothing unlanded goes with its branch. It waits for a turn to end.
 
 `--show-thinking` starts with the model's thinking shown, as `:thinking`
 would. Flags belong after `tui`. Both standard input and output must be terminals;
-use line mode (`nodwyn chat`) for pipes. No daemon is started automatically.
+use line mode (`nodwyn chat`) for pipes.
 
 ## Everyday use
 
@@ -109,12 +122,12 @@ shows the attach line. An image asks its own security confirm, which naming
 the file does not answer. It takes the screen like any other prompt, and the
 attachment waits for its answer. Ctrl+C meanwhile cancels the attachment
 instead of quitting. A message waits until the attachment is done, and a
-busy session refuses one. In daemon mode the attachment is asked on a
+busy session refuses one. The attachment is asked on a
 connection of its own, because the daemon runs one connection's calls in
 order and the confirm's answer could not pass the waiting call. The file is
 the person's choice, as the console's file picker is. The daemon reads it
 as the same user, and the model never names it.
-Attached to a daemon, the TUI also follows a run (`nodwyn run`): its
+The TUI also follows a run (`nodwyn run`): its
 checkpoint arrives as an ordinary prompt ([runs](runs.md)). A question with
 named answers, such as the first upload's to Google Docs, lists them; type
 one's key (`ask`, `allow` or `deny`) and Enter.
@@ -129,8 +142,8 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 | PgUp / PgDn | Scroll conversation or the current approval diff |
 | Ctrl+End | Jump to the bottom |
 | Ctrl+C | Abort busy work or an attachment; with an unsent draft, clear it; otherwise quit (also after a disconnect) |
-| Ctrl+Q | Quit immediately (detach in daemon mode) |
-| Ctrl+R | Reconnect to the daemon and refresh history/prompts (daemon mode) |
+| Ctrl+Q | Quit immediately: detach, or end the tasks when this process serves the daemon |
+| Ctrl+R | Reconnect to the daemon and refresh history/prompts |
 | `:eval EXPR` | Evaluate user-origin Scheme through the usual guard |
 | `:thinking` | Show or hide thinking |
 | `:log [n] [kind prefix]` | Inspect the last matching durable records (default 20, maximum 1000) |
@@ -152,6 +165,7 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 | `:allow` | Open the bindings/current approvals inspector |
 | `:help`, `:h` | Show available controls in a scrollable view |
 | `:q`, `:quit`, `:exit` | Quit using the same lifecycle as Ctrl+Q |
+| `:close` | Close the task in the daemon and quit; a worktree with nothing unlanded is removed |
 
 The composer is a separate multiline editor, with up to four visible rows.
 Longer drafts scroll within it; terminal resizing does not truncate the draft.
@@ -225,8 +239,7 @@ match exactly. This includes tools registered during initialization and excludes
 ordinary Scheme builtins and hidden primitives. Inspection never evaluates the
 tool, contacts its external service or grants permission to call it. The catalog
 is captured when the session is constructed, so later edits to initialization
-files do not change this view. Local mode reads `Session.Tools`; daemon mode
-reads the existing `session.info.tools` field. Normal inspector refresh,
+files do not change this view. It reads `session.info`'s `tools` field. Normal inspector refresh,
 scrolling, prompt priority and safe rendering apply.
 
 `:bindings` (also `:allow`) shows the session's loaded class/destination/method/position rows
@@ -359,28 +372,32 @@ other clients of the same daemon, which also drives runs ([runs](runs.md)).
 
 ## P9 acceptance coverage
 
-The TUI covers the line frontend's user flows over both direct core ownership
-and the Unix daemon protocol. Line mode remains the default; this milestone
-adds no desktop client or supervisor.
+The TUI covers the line frontend's user flows over the Unix daemon protocol;
+until 2026-10-17 it also ran them over a session in its own process (ADR 30,
+amended 2026-10-17). Line mode remains the default.
 
 | Flow | Regression evidence in `internal/frontend/tui` |
 |---|---|
-| Send messages, evaluate Scheme, masked credential input, cancel | `TestBothBackendsApproveRegisterAndCancel`, `TestMultilineSubmissionThroughBothBackends` |
-| One-time, standing-directory and turn approvals | `TestBothBackendsStandingAndTurnApprovalFlows`, `TestSecurityPromptNeverOffersWiderScope` |
-| Persistent credential binding, failure, cancellation and reconnect | `TestBothBackendsPersistExactBindingAndReloadPolicy` |
+| Send messages, evaluate Scheme, masked credential input, cancel | `TestApproveRegisterAndCancelThroughTheDaemon`, `TestMultilineSubmissionThroughTheDaemon` |
+| One-time, standing-directory and turn approvals | `TestStandingAndTurnApprovalFlows`, `TestSecurityPromptNeverOffersWiderScope` |
+| Persistent credential binding, failure, cancellation and reconnect | `TestBindingPersistsExactlyAndPolicyReloads` |
 | Approval audit history without replaying authority | `TestApprovalAuditIsVisibleAndDeduplicated` |
-| Tools, help, quit and approval-list commands | `TestToolInspectionThroughBothBackends`, `TestPlainCommandAliasesRespectPrompts` |
-| Log filtering, replay, bindings and guarded friction inspection | `TestInspectorsWorkLocallyAndOverRPC`, `TestLogFilterAndFixedPagination`, `TestFrictionInspectorHonorsGuardAndRepositoryBoundary` |
-| Thinking visibility and tool results | `TestThinkingToggleRevealsAndHidesRecordedReasoning`, `TestToolCardsFromLocalAndRPCEvents` |
-| Plan and budget inspection, checkpoint replies | `TestBudgetInspectionAndCheckpointThroughBothBackends`, `TestPlanViewSeparatesGateOutcomesAndMessages` |
+| Tools, help, quit and approval-list commands | `TestToolInspectionThroughTheDaemon`, `TestPlainCommandAliasesRespectPrompts` |
+| Log filtering, replay, bindings and guarded friction inspection | `TestInspectorsWorkOverTheDaemon`, `TestLogFilterAndFixedPagination`, `TestFrictionInspectorHonorsGuardAndRepositoryBoundary` |
+| Thinking visibility and tool results | `TestThinkingToggleRevealsAndHidesRecordedReasoning`, `TestToolCardsFromDaemonEvents` |
+| Plan and budget inspection, checkpoint replies | `TestBudgetInspectionAndCheckpointThroughTheDaemon`, `TestPlanViewSeparatesGateOutcomesAndMessages` |
 | Resize, multiline paste, draft preservation and scrollable prompts | `TestComposerNewlinesPasteResizeAndBusyDraft`, `TestContentCannotControlTerminalAndDiffScrolls` |
-| Abort kills shell children; quit releases local ownership | `TestAbortThroughTUIBackendKillsShellChildren`, `TestLocalCloseDrainsBackpressureAndReleasesLog` |
+| Abort kills shell children | `TestAbortThroughTUIBackendKillsShellChildren` |
+| Ctrl+Q leaves the task open; `:close` closes it and removes its clean worktree | `TestCloseEndsTheTaskAndItsCleanWorktree`, `TestTheFooterSaysWhatQuittingDoes` |
+| A task open in the TUI still runs on its schedule | `TestATaskOpenInTheTUIStillRunsOnSchedule` |
+| A resumed task shows its whole conversation, past the first page | `TestResumeShowsTheWholeConversation` |
+| The daemon's locked keychain unlocked over the socket | `TestTUIUnlocksTheDaemonsKeychain` (in `cmd/nodwyn`) |
 | Reconnect restores history and pending prompts without resending | `TestRemoteReconnectRecoversPendingPromptAndHistory` |
-| Worktree row, `--worktree`, branch in the title and list | `TestChooserOpensAWorktreeThroughBothBackends`, `TestChooserStillOpensInTheFolder`, `TestWorktreeFlagSkipsTheChooser` |
-| `:model`, a switch the next turn asks, a choice queued behind a turn | `TestModelChoiceThroughBothBackends`, `TestModelChoiceWhileBusyIsQueued` |
-| `:attach` of text and of an image whose confirm is answered while it waits; Ctrl+C cancels | `TestAttachThroughBothBackends`, `TestCtrlCCancelsAnAttachment`, `TestAttachPathAndRefusals` |
-| `:judge`, a switch, none, and a judge not configured | `TestJudgeChoiceThroughBothBackends` |
+| Worktree row, `--worktree`, branch in the title and list | `TestChooserOpensAWorktreeThroughTheDaemon`, `TestChooserStillOpensInTheFolder`, `TestWorktreeFlagSkipsTheChooser` |
+| `:model`, a switch the next turn asks, a choice queued behind a turn | `TestModelChoiceThroughTheDaemon`, `TestModelChoiceWhileBusyIsQueued` |
+| `:attach` of text and of an image whose confirm is answered while it waits; Ctrl+C cancels | `TestAttachThroughTheDaemon`, `TestCtrlCCancelsAnAttachment`, `TestAttachPathAndRefusals` |
+| `:judge`, a switch, none, and a judge not configured | `TestJudgeChoiceThroughTheDaemon` |
 
-Real-terminal smoke checks supplement these tests for composer input, local and
-remote inspectors, tool cards, checkpoint choices, masked credentials and the
+Real-terminal smoke checks supplement these tests for composer input,
+inspectors, tool cards, checkpoint choices, masked credentials and the
 persistent binding choice. These are operator checks, not human usability research.

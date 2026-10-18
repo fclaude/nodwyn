@@ -40,17 +40,12 @@ func runDaemon(paths config.Paths, args []string, noKeychain bool) error {
 			return err
 		}
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	// A daemon started at login, or again after it failed, finds the socket
-	// a crash left; one that answers is another daemon, which Listen refuses.
-	if _, err := clearStaleSocket(ctx, *socket); err != nil {
-		return fmt.Errorf("daemon: %w", err)
-	}
 	listener, err := rpc.Listen(*socket)
 	if err != nil {
 		return err
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	fmt.Fprintln(os.Stderr, "daemon: listening on", *socket)
 	return rpc.Serve(ctx, listener, options, daemonOptions()...)
 }

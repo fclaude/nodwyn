@@ -23,7 +23,7 @@ root=$(cd "$here/../.." && pwd)
 out="$here/out"
 engine=${BROWSER:-chromium}
 case $engine in
-chromium) all="screens transcript approve firstrun firstmodel remote mcp credentials settings tasks schedule away worktrees lastfolder attach models retrieval conversation-search" ;;
+chromium) all="screens transcript approve firstrun firstmodel remote reconnect mcp credentials settings tasks schedule away worktrees lastfolder attach models retrieval conversation-search" ;;
 webkit)
 	all="screens approve tasks"
 	out="$out/webkit"

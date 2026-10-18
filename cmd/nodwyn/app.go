@@ -58,7 +58,7 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	owned, daemonDone, err := ensureDaemon(ctx, paths, socket)
+	owned, daemonDone, err := ensureDaemon(ctx, paths, socket, "app")
 	if err != nil {
 		return err
 	}
@@ -115,61 +115,55 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 	return err
 }
 
-// clearStaleSocket says whether a daemon answers on socket, and removes a
-// socket file nobody listens on (the connection is refused), which a crash
-// leaves. A daemon that listens but cannot be used (an older protocol, a
-// hello it refuses, a slow answer) is still running its tasks and schedules:
-// its socket stays, and the error says so.
-func clearStaleSocket(ctx context.Context, socket string) (answered bool, err error) {
-	dialCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	client, dialErr := rpc.Dial(dialCtx, socket)
-	cancel()
-	if dialErr == nil {
-		client.Close()
-		return true, nil
-	}
-	if info, statErr := os.Lstat(socket); statErr == nil && info.Mode()&os.ModeSocket != 0 {
-		if !errors.Is(dialErr, syscall.ECONNREFUSED) {
-			return false, fmt.Errorf("a daemon is running on %s, but this build cannot use it (%w); stop it, or run the nodwyn it came with", socket, dialErr)
-		}
-		if err := os.Remove(socket); err != nil {
-			return false, fmt.Errorf("stale socket %s: %w", socket, err)
-		}
-	}
-	return false, nil
-}
-
 // ensureDaemon attaches to a daemon that answers on socket, or starts one
-// in this process. A socket file nobody listens on (the connection is
-// refused) is left by a crash, and is removed. A daemon that listens but
-// cannot be used (an older protocol, a hello it refuses, a slow answer) is
-// still running its tasks and schedules: its socket stays, and the app
-// says so instead of starting a second daemon beside it.
-func ensureDaemon(ctx context.Context, paths config.Paths, socket string) (owned bool, done chan error, err error) {
-	answered, err := clearStaleSocket(ctx, socket)
-	if err != nil {
-		return false, nil, fmt.Errorf("app: %w", err)
+// in this process, for nodwyn app, nodwyn tui and line mode (command, which
+// its messages begin with). rpc.Listen removes a socket file nobody listens
+// on, which a crash leaves. A daemon that listens but cannot be used (an
+// older protocol, a hello it refuses, a slow answer) is still running its
+// tasks and schedules: its socket stays, and the command says so instead of
+// starting a second daemon beside it.
+func ensureDaemon(ctx context.Context, paths config.Paths, socket, command string) (owned bool, done chan error, err error) {
+	attach := func() error {
+		dialCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		client, err := rpc.Dial(dialCtx, socket)
+		if err == nil {
+			client.Close()
+		}
+		return err
 	}
-	if answered {
+	dialErr := attach()
+	if dialErr == nil {
 		return false, nil, nil
+	}
+	// Listening before the configuration is read refuses a daemon this build
+	// cannot use before anything else can fail.
+	listener, err := rpc.Listen(socket)
+	if errors.Is(err, rpc.ErrInUse) {
+		// A daemon may have started since the dial above.
+		if dialErr = attach(); dialErr == nil {
+			return false, nil, nil
+		}
+		return false, nil, fmt.Errorf("%s: a daemon is running on %s, but this build cannot use it (%w); stop it, or run the nodwyn it came with", command, socket, dialErr)
+	}
+	if err != nil {
+		return false, nil, err
 	}
 	cfg, err := config.Load(paths.ConfigFile)
 	if err != nil {
+		listener.Close()
 		return false, nil, err
 	}
-	// The keychain starts locked, and the console asks for the passphrase;
-	// one without a passphrase is opened now.
+	// The keychain starts locked, and the console, the TUI or line mode asks
+	// for the passphrase; one without a passphrase is opened now.
 	options := core.Options{Config: cfg, Paths: paths, Version: versionString()}
 	if store, err := keychain.OpenWithoutPassphrase(paths.Keychain); err == nil {
 		if options.Bindings, err = binding.Load(paths.Bindings); err != nil {
+			listener.Close()
 			return false, nil, err
 		}
 		options.Keychain = store
-		fmt.Fprintln(os.Stderr, "app: the keychain has no passphrase; opened it")
-	}
-	listener, err := rpc.Listen(socket)
-	if err != nil {
-		return false, nil, err
+		fmt.Fprintln(os.Stderr, command+": the keychain has no passphrase; opened it")
 	}
 	done = make(chan error, 1)
 	go func() { done <- rpc.Serve(ctx, listener, options, daemonOptions()...) }()

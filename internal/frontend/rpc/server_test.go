@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -315,6 +316,50 @@ func TestSocketPermissionsAndExistingPaths(t *testing.T) {
 	if l, err := Listen("relative/sock"); err == nil {
 		l.Close()
 		t.Fatal("accepted relative socket")
+	}
+}
+
+// Listen checks for a stale socket and binds under a lock beside it, so two
+// daemons starting at once cannot both find a crashed daemon's socket stale,
+// and the second unlink the socket the first has just bound.
+func TestListenBindsUnderTheSocketLock(t *testing.T) {
+	path := filepath.Join(shortDir(t), "sock")
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	type bound struct {
+		listener *net.UnixListener
+		err      error
+	}
+	done := make(chan bound, 1)
+	go func() {
+		listener, err := Listen(path)
+		done <- bound{listener, err}
+	}()
+	select {
+	case b := <-done:
+		if b.listener != nil {
+			b.listener.Close()
+		}
+		t.Fatalf("Listen did not wait for the lock: %v", b.err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case b := <-done:
+		if b.err != nil {
+			t.Fatal(b.err)
+		}
+		b.listener.Close()
+	case <-time.After(5 * time.Second):
+		t.Fatal("Listen did not bind once the lock was free")
 	}
 }
 

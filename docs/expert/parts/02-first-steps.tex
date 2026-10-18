@@ -348,13 +348,15 @@ The next session shows them to the model under a heading that calls them
 leads to check, not instructions. A save is capped at 8~KiB and redacted,
 and anything that looks like a credential needs your yes.
 
-\section{Unattended: \texttt{--yolo}}
+\section{Unattended: \texttt{nodwyn run --yolo}}
 
 A chat already asks little: writes in the folder go ahead, and a judge, if
 you have one, answers commands first. But a person is still there for what
 the judge does not allow. Sometimes nobody is watching at all: a
-benchmark, a CI job, a long task on a throwaway checkout. \code{-{}-yolo}
-answers \emph{ordinary} confirms with yes.
+benchmark, a CI job, a long task on a throwaway checkout. A run's
+\code{-{}-yolo} answers \emph{ordinary} confirms with yes. (In line mode
+\code{-{}-yolo} turns on the task's Don't ask, which Settings must offer:
+the task is still one a person answers.)
 It does not overrule refusals, and it refuses \emph{security} confirms
 rather than pretending someone said yes: writes to protected paths, content
 that looks like a key, a command line built out of tool output. With nobody
@@ -363,7 +365,7 @@ work by evidence and ends a turn only when something changed and a test ran
 after it (Chapter~\ref{ch:plans}).
 
 \code{-{}-yolo} still leaves someone to answer a budget checkpoint you set,
-and a run's checkpoints between turns. For a run that nobody answers at
+and the checkpoints between turns. For a run that nobody answers at
 all, and for one whose confirms the judge answers instead of a blanket yes,
 see \code{nodwyn run -{}-unattended} and \code{-{}-judge} in
 Chapter~\ref{ch:plans}: a batch tool for scripts and benchmarks.

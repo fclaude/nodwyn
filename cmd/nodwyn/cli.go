@@ -24,13 +24,6 @@ type cli struct {
 	resume      string
 	repo        string
 	model       string
-	url         string
-	budgetWall  string
-
-	budgetTokens  int64
-	budgetActions int64
-	budgetCost    float64
-	maxCalls      int
 }
 
 // commands maps the first argument to its handler. One rule governs flags:
@@ -68,18 +61,21 @@ func newCLI(args []string) *cli {
 	c.fs.BoolVar(&c.showVersion, "version", false, "print version and exit")
 	c.fs.StringVar(&c.resume, "resume", "", "resume a task by its session id")
 	c.fs.StringVar(&c.repo, "repo", ".", "repository root; every path the model touches is pinned under it")
-	c.fs.StringVar(&c.model, "model", "", "override control.model")
-	c.fs.StringVar(&c.url, "url", "", "override control.url")
+	c.fs.StringVar(&c.model, "model", "", "the model a new task talks to: a [models.NAME], or a model on [control]'s server")
 	c.fs.BoolVar(&c.thinking, "show-thinking", false, "show the model's thinking as it streams")
-	c.fs.BoolVar(&c.noConfirm, "no-confirm", false, "answer every confirm with no (non-interactive runs)")
-	c.fs.BoolVar(&c.yolo, "yolo", false, "answer ordinary confirms with yes (unattended runs); denials and security confirms are unaffected")
-	c.fs.BoolVar(&c.noKeychain, "no-keychain", false, "start without opening the keychain (no credential primitives)")
-	c.fs.BoolVar(&c.keychainTTY, "keychain-tty", false, "ask for the keychain passphrase on the controlling terminal even when stdin is a script")
-	c.fs.StringVar(&c.budgetWall, "budget-wall", "", "hard turn wall limit, e.g. 2h")
-	c.fs.Int64Var(&c.budgetTokens, "budget-tokens", 0, "hard reported model token limit per turn")
-	c.fs.Int64Var(&c.budgetActions, "budget-actions", 0, "hard irreversible host-action limit per turn")
-	c.fs.Float64Var(&c.budgetCost, "budget-cost", 0, "spend limit for the session in US dollars, as far as costs are known (replaces budget.cost_hard)")
-	c.fs.IntVar(&c.maxCalls, "max-tool-calls", 0, "tool calls allowed per turn before the hard stop (overrides budget.tool_calls_hard)")
+	c.fs.BoolVar(&c.noConfirm, "no-confirm", false, "answer every confirm and budget checkpoint with no, without reading a line (scripts)")
+	c.fs.BoolVar(&c.yolo, "yolo", false, "turn on the task's Don't ask, which [approval] dont_ask must offer: ordinary writes and commands are approved without asking")
+	c.fs.BoolVar(&c.noKeychain, "no-keychain", false, "leave the daemon's keychain locked instead of asking for its passphrase")
+	c.fs.BoolVar(&c.keychainTTY, "keychain-tty", false, "ask for the daemon's keychain passphrase on the controlling terminal even when stdin is a script")
+	// Line mode took these while it hosted its own session; a task in the
+	// daemon has no form for them, and chat refuses each, saying where its
+	// setting is now (ADR 30, amended 2026-10-17).
+	c.fs.String("url", "", "no longer taken: name the server in config.toml")
+	c.fs.String("budget-wall", "", "no longer taken: [budget] wall_hard in config.toml")
+	c.fs.Int64("budget-tokens", 0, "no longer taken: [budget] tokens_hard in config.toml")
+	c.fs.Int64("budget-actions", 0, "no longer taken: [budget] actions_hard in config.toml")
+	c.fs.Float64("budget-cost", 0, "no longer taken: [budget] cost_hard in config.toml")
+	c.fs.Int("max-tool-calls", 0, "no longer taken: [budget] tool_calls_hard in config.toml")
 	c.fs.Bool("plain", true, "deprecated and ignored: line mode is the default, as nodwyn chat")
 	c.fs.Usage = func() { fmt.Fprint(c.fs.Output(), usage); c.fs.PrintDefaults() }
 	_ = c.fs.Parse(args)

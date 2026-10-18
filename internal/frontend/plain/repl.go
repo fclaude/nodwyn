@@ -1,7 +1,7 @@
 // Package plain is the line-mode front-end: a plain reader/writer pair over
-// the core, with no terminal control. It is what CI, selfcheck and
-// `nodwyn chat` (the default command) use. This file is the Scheme REPL used
-// to try the language directly.
+// a task in the daemon, with no terminal control. It is what CI, selfcheck
+// and `nodwyn chat` (the default command) use. This file is the Scheme REPL
+// used to try the language directly.
 package plain
 
 import (
