@@ -112,6 +112,18 @@ type outputTap struct {
 	fileEnd int  // line ends in the file
 	limited bool // the file stopped at spoolLimit
 	partial bool // the stream's last line has no line end
+
+	// mu is held by Write and by what reads the tap while the command may
+	// still write: detach, and finish once it is left running.
+	mu sync.Mutex
+	// onlyHeld is a stream that is never shown as a view (a command that
+	// reads a range or limits its own output): it gets a file only when its
+	// command is left running at the time limit (runHolding), holding up to
+	// spoolLimit until then.
+	onlyHeld bool
+	// detached is set once the command is left running: what it writes goes
+	// to the file alone.
+	detached bool
 }
 
 func newOutputTap(next io.Writer, files *outputFiles, call *callFiles, scratch, stream string) *outputTap {
@@ -123,6 +135,12 @@ func newOutputTap(next io.Writer, files *outputFiles, call *callFiles, scratch, 
 const lineKeep = 4*viewLine + 4
 
 func (t *outputTap) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.detached {
+		t.spoolBytes(p)
+		return len(p), nil
+	}
 	t.bytes += len(p)
 	for rest := p; len(rest) > 0; {
 		i := bytes.IndexByte(rest, '\n')
@@ -134,15 +152,42 @@ func (t *outputTap) Write(p []byte) (int, error) {
 		t.finishLine()
 		rest = rest[i+1:]
 	}
-	if t.file != nil {
+	switch {
+	case t.file != nil:
 		t.spoolBytes(p)
-	} else if !t.failed {
+	case t.onlyHeld:
+		t.kept = append(t.kept, p[:min(len(p), max(spoolLimit-len(t.kept), 0))]...)
+	case !t.failed:
 		t.kept = append(t.kept, p...)
 		if t.bytes > viewBytes || t.lines() > viewLines {
 			t.open()
 		}
 	}
 	return t.next.Write(p)
+}
+
+// detach turns the stream to its file alone, made now if the stream had none,
+// for a command left running, and returns the view of what it printed so
+// far, its unfinished line included, within budget bytes; false when the file
+// cannot be made.
+func (t *outputTap) detach(budget int) (string, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.file == nil && !t.failed {
+		t.open()
+	}
+	if t.file == nil || t.failed {
+		return "", false
+	}
+	t.detached = true
+	if t.done == 0 {
+		return t.display(), true
+	}
+	v, _ := t.view(budget)
+	if t.curLen > 0 {
+		v += t.display()
+	}
+	return v, true
 }
 
 // hold adds to the unfinished line.
@@ -233,6 +278,8 @@ func (t *outputTap) spoolBytes(p []byte) {
 // finish ends the stream: its last line, which has no line end, is a line of
 // its own, and the file is closed.
 func (t *outputTap) finish() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if t.curLen > 0 {
 		t.finishLine()
 		t.partial = true

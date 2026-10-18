@@ -11,7 +11,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/fclaude/nodwyn/internal/guard"
 	nlog "github.com/fclaude/nodwyn/internal/log"
@@ -643,4 +645,118 @@ func TestShellExecViewIsNotCutAgainByTheWindow(t *testing.T) {
 	if got := showsInWindow(t, "exit 0\n"+whole.Stdout); !strings.Contains(got, "of this result left out here") {
 		t.Fatal("the control was not cut by the window")
 	}
+}
+
+// A lean session's command that is still running at the time limit is left
+// running (ADR 32, amended 2026-10-17): on commit-bench, `go run
+// ./scripts/validate 2>&1 | tail -n 60` was killed at ten minutes and, tail
+// printing at its end, came back with nothing, twice, 20 minutes lost. Its
+// output goes on into the saved files the view uses, its exit status is
+// written next to them when it ends, and the result says so and shows what
+// it printed by then.
+func TestALeanCommandStillRunningAtTheLimitIsLeftRunning(t *testing.T) {
+	procs := NewProcs()
+	t.Cleanup(procs.Close)
+	r := newViewRig(t, func(o *Options) { o.ShellTimeout = 500 * time.Millisecond; o.Procs = procs })
+	got := r.run(t, "echo started; echo warming >&2; sleep 2; echo finished; exit 3")
+	if got.Status != "still running after 500ms" {
+		t.Fatalf("status %v: %+v", got.Status, got)
+	}
+	if got.Stdout != "started\n" || got.Stderr != "warming\n" {
+		t.Errorf("what it printed by the limit: %+v", got)
+	}
+	for _, want := range []string{"$TMPDIR/out/1.stdout", "$TMPDIR/out/1.stderr", "$TMPDIR/out/1.exit"} {
+		if !strings.Contains(got.Note, want) {
+			t.Errorf("the note does not name %s: %q", want, got.Note)
+		}
+	}
+	exit := filepath.Join(r.scratch, "out", "1.exit")
+	if _, err := os.Stat(exit); err == nil {
+		t.Fatal("the exit status was written before the command ended")
+	}
+	if !waitFor(5*time.Second, func() bool { _, err := os.Stat(exit); return err == nil }) {
+		t.Fatalf("no exit status after the command ended: %v", r.saved(t))
+	}
+	if code := r.file(t, "1.exit"); code != "3\n" {
+		t.Errorf("exit file %q, want 3", code)
+	}
+	if out, errs := r.file(t, "1.stdout"), r.file(t, "1.stderr"); out != "started\nfinished\n" || errs != "warming\n" {
+		t.Errorf("the saved output is not the whole of it: %q %q", out, errs)
+	}
+
+	// A command piped into tail, which prints at its end, has shown nothing
+	// by the limit and is not shown as a view when it ends in time; its
+	// output reaches the file all the same, under the next number.
+	got = r.run(t, "sleep 1; seq 1 5 | tail -n 2")
+	if got.Status != "still running after 500ms" || got.Stdout != "" || !strings.Contains(got.Note, "$TMPDIR/out/2.stdout") {
+		t.Fatalf("%+v", got)
+	}
+	if !waitFor(5*time.Second, func() bool { _, err := os.Stat(filepath.Join(r.scratch, "out", "2.exit")); return err == nil }) {
+		t.Fatal("no exit status for the piped command")
+	}
+	if out, code := r.file(t, "2.stdout"), r.file(t, "2.exit"); out != "4\n5\n" || code != "0\n" {
+		t.Errorf("the piped command's file %q and exit %q", out, code)
+	}
+	if got := r.run(t, "seq 1 3 | tail -n 1"); got.Status != float64(0) || got.Stdout != "3\n" || got.Note != "" {
+		t.Errorf("a command that ends in time: %+v", got)
+	}
+	if files := r.saved(t); strings.Join(files, " ") != "1.exit 1.stderr 1.stdout 2.exit 2.stderr 2.stdout" {
+		t.Errorf("saved files %v", files)
+	}
+}
+
+// What is still running when the session ends is stopped with it, whatever
+// it started in its process group, and its files are closed before the
+// scratch directory goes; the full profile still stops a command at the
+// limit, as it always did.
+func TestACommandLeftRunningStopsWithTheSession(t *testing.T) {
+	procs := NewProcs()
+	r := newViewRig(t, func(o *Options) { o.ShellTimeout = 500 * time.Millisecond; o.Procs = procs })
+	got := r.run(t, "sleep 60 & echo $$ $!; wait")
+	if got.Status != "still running after 500ms" {
+		t.Fatalf("%+v", got)
+	}
+	var shell, child int
+	if _, err := fmt.Sscan(got.Stdout, &shell, &child); err != nil {
+		t.Fatalf("pids %q: %v", got.Stdout, err)
+	}
+	if syscall.Kill(shell, 0) != nil || syscall.Kill(child, 0) != nil {
+		t.Fatal("the command is not running after the limit")
+	}
+	started := time.Now()
+	procs.Close()
+	if took := time.Since(started); took > 5*time.Second {
+		t.Errorf("Close took %v", took)
+	}
+	if syscall.Kill(shell, 0) == nil || syscall.Kill(child, 0) == nil {
+		t.Errorf("still running after the session ended: %d %d", shell, child)
+	}
+	if _, err := os.Stat(filepath.Join(r.scratch, "out", "1.exit")); err != nil {
+		t.Errorf("no exit status for the stopped command: %v", err)
+	}
+	if got := r.run(t, "echo late; sleep 30"); got.Status != "timed out after 500ms" || got.Stdout != "late\n" {
+		t.Errorf("a command at the limit once the session is closing: %+v", got)
+	}
+
+	full := newViewRig(t, func(o *Options) { o.ShellTimeout = 500 * time.Millisecond; o.Procs = NewProcs(); o.Lean = false })
+	started = time.Now()
+	if got := full.run(t, "echo FAIL; sleep 30"); got.Status != "timed out after 500ms" || got.Stdout != "FAIL\n" || got.Note != "" {
+		t.Errorf("the full profile's command at the limit: %+v", got)
+	}
+	if took := time.Since(started); took > 10*time.Second {
+		t.Errorf("the full profile's command ran %v", took)
+	}
+	if files := full.saved(t); len(files) != 0 {
+		t.Errorf("the full profile saved %v", files)
+	}
+}
+
+// waitFor polls cond until it holds or d has passed.
+func waitFor(d time.Duration, cond func() bool) bool {
+	for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if cond() {
+			return true
+		}
+	}
+	return cond()
 }

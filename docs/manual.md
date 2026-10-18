@@ -780,7 +780,11 @@ own tools, MCP tools and the other built-ins are not offered unless the
 project adds them to `lean-tools`), a run's plan one line, with no explorer or
 planner, recorded for you and not shown to the model, and nothing said to the
 model while it works or as it ends: no finish review, no reminders to test or
-to stop reading, no hints, and a turn that changed nothing told so once. On
+to stop reading, no hints, and a turn that changed nothing told so once. A
+command the model runs that is still running at `shell-exec`'s ten minutes is
+left running, its output and then its exit status going to files in the
+session's scratch directory that the answer names, and stopped when the
+session ends. On
 those tasks the loop before that change resolved as many as the same loop with six tools and as Pi, for about a fifth
 less cost per task (ADR 32, amended 2026-10-17). A chat in a session nobody
 approves is still reviewed when it ends, since a person reads its answer. The

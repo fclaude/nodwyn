@@ -2,10 +2,13 @@ package core
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -537,4 +540,40 @@ func resultOf(r *rig, id string) log.ToolResult {
 	}
 	r.t.Fatalf("no result for call %s", id)
 	return log.ToolResult{}
+}
+
+// A lean session's command still running at shell-exec's time limit is left
+// running, and the session stops it, and what it started, when it closes,
+// before its scratch directory, which holds the command's files, goes.
+func TestALeanSessionStopsTheCommandsItLeftRunningWhenItCloses(t *testing.T) {
+	useProfile(t, "")
+	r := profileRig(t, func(o *Options) { o.AutoApprove = true; o.Config.Loop.ShellTimeout = "1s" }, "",
+		shellArgs("check", "bash", "-c", "sleep 60 & echo $$ $!; wait"), fake.Turn{Content: "It runs on."}, fake.Turn{Content: "Nothing to change."})
+	if e := r.turn("run the check"); e != "" {
+		t.Fatal(e)
+	}
+	got := resultOf(r, "check")
+	var res struct{ Status, Stdout, Note string }
+	if err := json.Unmarshal([]byte(got.Value), &res); err != nil {
+		t.Fatalf("%v: %+v", err, got)
+	}
+	if res.Status != "still running after 1s" || !strings.Contains(res.Note, "$TMPDIR/out/1.exit") {
+		t.Fatalf("%+v", res)
+	}
+	var shell, child int
+	if _, err := fmt.Sscan(res.Stdout, &shell, &child); err != nil {
+		t.Fatalf("pids %q: %v", res.Stdout, err)
+	}
+	if syscall.Kill(shell, 0) != nil || syscall.Kill(child, 0) != nil {
+		t.Fatal("the command is not running after the turn")
+	}
+	if err := r.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if syscall.Kill(shell, 0) == nil || syscall.Kill(child, 0) == nil {
+		t.Errorf("still running after the session closed: %d %d", shell, child)
+	}
+	if _, err := os.Stat(r.s.scratch); !os.IsNotExist(err) {
+		t.Errorf("the scratch directory %s is left: %v", r.s.scratch, err)
+	}
 }

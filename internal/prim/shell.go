@@ -27,7 +27,7 @@ func shellExec(o Options) *scheme.Prim {
 	if o.Lean {
 		// Generic and short (2026-10-17): what the tool takes and gives back,
 		// and nothing on how to work with it.
-		doc = "Run a program in the repository root: cmd is the program and args a list of its arguments. There is no shell: run bash with args [\"-c\", \"...\"] for pipes, redirects or several commands. Returns status, stdout and stderr. A long stream is shown as its first and last lines, with the whole saved in a file whose path the marker gives. A command that runs past the time limit is stopped and returns what it printed, with a status that says so."
+		doc = "Run a program in the repository root: cmd is the program and args a list of its arguments. There is no shell: run bash with args [\"-c\", \"...\"] for pipes, redirects or several commands. Returns status, stdout and stderr. A long stream is shown as its first and last lines, with the whole saved in a file whose path the marker gives. A command still running at the time limit is left running, and the result names the files its output and exit status go to."
 	}
 	return &scheme.Prim{
 		Name: "shell-exec",
@@ -52,29 +52,51 @@ func shellExec(o Options) *scheme.Prim {
 			}
 			ctx, cancel := context.WithTimeout(c.Ctx, o.ShellTimeout)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, cmdName, pipefail(cmdName, args)...)
+			// The model's own call in a lean session is left running past the
+			// time limit, its output going on into the saved files
+			// (runHolding); any other call is stopped there, as it always was.
+			held := o.Lean && o.Scratch != "" && o.Procs != nil && directCall(c.Ctx)
+			var cmd *exec.Cmd
+			if held {
+				cmd = exec.Command(cmdName, pipefail(cmdName, args)...)
+			} else {
+				cmd = exec.CommandContext(ctx, cmdName, pipefail(cmdName, args)...)
+				cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+				cmd.WaitDelay = 5 * time.Second
+			}
 			cmd.Dir = o.Root
 			cmd.Env = childEnv(o)
 			cmd.Stdin = nil
 			// Children get their own process group so cancellation kills the
 			// whole tree, not just the parent.
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-			cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-			cmd.WaitDelay = 5 * time.Second
 			var stdout, stderr bytes.Buffer
 			out, errOut := &capped{buf: &stdout, n: o.MaxOutput, tail: o.MaxOutput / 2}, &capped{buf: &stderr, n: o.MaxOutput, tail: o.MaxOutput / 2}
 			// A long stream is shown as a view with a file behind it, unless
 			// there is nowhere to keep the file, the command asks for a range of
-			// a file, or a program is computing with the output.
+			// a file, or a program is computing with the output. A command that
+			// may be left running keeps its streams for a file all the same.
 			var outTap, errTap *outputTap
 			var outW, errW io.Writer = out, errOut
-			if o.Lean && o.Scratch != "" && directCall(c.Ctx) && !readLike(cmdName, args) {
+			view := !readLike(cmdName, args)
+			if o.Lean && o.Scratch != "" && directCall(c.Ctx) && (view || held) {
 				call := &callFiles{}
 				outTap = newOutputTap(out, files, call, o.Scratch, "stdout")
 				errTap = newOutputTap(errOut, files, call, o.Scratch, "stderr")
+				outTap.onlyHeld, errTap.onlyHeld = !view, !view
 				outW, errW = outTap, errTap
 			}
-			runErr := runStopping(cmd, outW, errW)
+			var runErr error
+			timedOut := false
+			if held {
+				outcome, err := runHolding(c.Ctx, cmd, o.ShellTimeout, o.Procs, outTap, errTap)
+				if outcome.left {
+					return heldResult(o.ShellTimeout, outcome), nil
+				}
+				runErr, timedOut = err, outcome.stopped
+			} else {
+				runErr = runStopping(cmd, outW, errW)
+			}
 			out.finish()
 			errOut.finish()
 			if outTap != nil {
@@ -85,7 +107,10 @@ func shellExec(o Options) *scheme.Prim {
 			if c.Ctx.Err() != nil {
 				return scheme.Value{}, c.Ctx.Err() // aborted by the user or the loop
 			}
-			if ctx.Err() != nil {
+			if !held {
+				timedOut = ctx.Err() != nil
+			}
+			if timedOut {
 				// What it printed before the cut is what says where it
 				// hung, so it is returned with the reason.
 				status = scheme.Str("timed out after " + o.ShellTimeout.String())
@@ -146,15 +171,33 @@ func shellExec(o Options) *scheme.Prim {
 // through pipes this function owns, so Wait returns as soon as the program
 // itself exits rather than when the last holder of its output does.
 func runStopping(cmd *exec.Cmd, stdout, stderr io.Writer) error {
-	outR, outW, err := os.Pipe()
+	run, err := startPiped(cmd, stdout, stderr)
 	if err != nil {
 		return err
+	}
+	err = cmd.Wait()
+	run.end()
+	return err
+}
+
+// piped is a started command whose output goes through pipes this package
+// owns, copied to its writers until end.
+type piped struct {
+	cmd        *exec.Cmd
+	outR, errR *os.File
+	copied     chan struct{}
+}
+
+func startPiped(cmd *exec.Cmd, stdout, stderr io.Writer) (*piped, error) {
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		return nil, err
 	}
 	errR, errW, err := os.Pipe()
 	if err != nil {
 		outR.Close()
 		outW.Close()
-		return err
+		return nil, err
 	}
 	cmd.Stdout, cmd.Stderr = outW, errW
 	err = cmd.Start()
@@ -163,30 +206,118 @@ func runStopping(cmd *exec.Cmd, stdout, stderr io.Writer) error {
 	if err != nil {
 		outR.Close()
 		errR.Close()
-		return err
+		return nil, err
 	}
 	copied := make(chan struct{}, 2)
 	go func() { _, _ = io.Copy(stdout, outR); copied <- struct{}{} }()
 	go func() { _, _ = io.Copy(stderr, errR); copied <- struct{}{} }()
-	err = cmd.Wait()
+	return &piped{cmd: cmd, outR: outR, errR: errR, copied: copied}, nil
+}
+
+// end stops whatever the command, which has exited, left running in its
+// process group, and ends the copying of its output.
+func (p *piped) end() {
 	// SIGTERM first, so a program can clean up after itself (the demo
 	// removes its folders).
-	stopProcessGroup(cmd.Process.Pid, syscall.SIGTERM, func() bool { return syscall.Kill(-cmd.Process.Pid, 0) != nil })
+	pgid := p.cmd.Process.Pid
+	stopProcessGroup(pgid, syscall.SIGTERM, func() bool { return syscall.Kill(-pgid, 0) != nil })
 	// The output ends when its last writer is gone. A process that left the
 	// group (setsid) may still hold it: reading stops after a moment.
 	timeout := time.After(procStopGrace)
 	for left := 2; left > 0; left-- {
 		select {
-		case <-copied:
+		case <-p.copied:
 		case <-timeout:
-			outR.Close()
-			errR.Close()
-			<-copied
+			p.outR.Close()
+			p.errR.Close()
+			<-p.copied
 		}
 	}
-	outR.Close()
-	errR.Close()
-	return err
+	p.outR.Close()
+	p.errR.Close()
+}
+
+// holdOutcome is how runHolding left a command: ended (in time, or aborted),
+// stopped at the limit, or left running, with what it had printed by then.
+type holdOutcome struct {
+	stopped, left    bool
+	outView, errView string
+	outFile, errFile string // $TMPDIR/out/N.stdout and N.stderr
+	exitFile         string // $TMPDIR/out/N.exit
+}
+
+// runHolding runs cmd as runStopping does, but a command still running at
+// limit is not stopped (ADR 32, amended 2026-10-17): on commit-bench, `go run
+// ./scripts/validate 2>&1 | tail -n 60` was killed at ten minutes twice and,
+// tail printing at its end, came back with nothing each time. It is left in
+// ps, which stops it when the session ends, its output going on into the
+// taps' saved files; when it ends, what it left in its process group is
+// stopped, the files are closed and its exit status is written beside them
+// as N.exit. A command that cannot be left (the session is closing, a file
+// cannot be made) is stopped at the limit, as every command used to be. An
+// abort stops it at once.
+func runHolding(ctx context.Context, cmd *exec.Cmd, limit time.Duration, ps *Procs, outTap, errTap *outputTap) (holdOutcome, error) {
+	run, err := startPiped(cmd, outTap, errTap)
+	if err != nil {
+		return holdOutcome{}, err
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- cmd.Wait() }()
+	limited := time.NewTimer(limit)
+	defer limited.Stop()
+	kill := func() error {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		err := <-waited
+		run.end()
+		return err
+	}
+	select {
+	case err := <-waited:
+		run.end()
+		return holdOutcome{}, err
+	case <-ctx.Done():
+		return holdOutcome{}, kill()
+	case <-limited.C:
+	}
+	h := &heldCommand{pgid: cmd.Process.Pid, done: make(chan struct{})}
+	if !ps.hold(h) {
+		return holdOutcome{stopped: true}, kill()
+	}
+	// The two views share the budget, as a finished command's two do.
+	outView, outOK := outTap.detach(viewBudget / 2)
+	errView, errOK := errTap.detach(viewBudget / 2)
+	if !outOK || !errOK {
+		ps.release(h)
+		return holdOutcome{stopped: true}, kill()
+	}
+	exitPath := strings.TrimSuffix(outTap.path, ".stdout") + ".exit"
+	go func() {
+		defer close(h.done)
+		defer ps.release(h)
+		err := <-waited
+		run.end()
+		outTap.finish()
+		errTap.finish()
+		code, _ := exitStatus(err)
+		// Written whole and renamed, so a poll never reads half of it.
+		if os.WriteFile(exitPath+".part", []byte(fmt.Sprintf("%d\n", code)), 0o600) == nil {
+			_ = os.Rename(exitPath+".part", exitPath)
+		}
+	}()
+	return holdOutcome{left: true, outView: outView, errView: errView, outFile: outTap.handle(), errFile: errTap.handle(),
+		exitFile: "$TMPDIR/out/" + filepath.Base(exitPath)}, nil
+}
+
+// heldResult is a command left running at the limit, as the model reads it:
+// a status that says so, what it printed by then, and a note naming the
+// files.
+func heldResult(limit time.Duration, h holdOutcome) scheme.Value {
+	return scheme.List(
+		scheme.Cons(scheme.Str("status"), scheme.Str("still running after "+limit.String())),
+		scheme.Cons(scheme.Str("stdout"), scheme.Str(h.outView)),
+		scheme.Cons(scheme.Str("stderr"), scheme.Str(h.errView)),
+		scheme.Cons(scheme.Str("note"), scheme.Str("the command was not stopped and is still running: its output goes on into "+h.outFile+" and "+h.errFile+", and its exit status is written to "+h.exitFile+" when it ends (the session stops it if it is still running when the session ends)")),
+	)
 }
 
 // stopProcessGroup ends a process group: sig first, then SIGKILL when gone

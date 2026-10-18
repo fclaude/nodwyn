@@ -28,16 +28,43 @@ const (
 	procMaxText    = termMaxText     // the most one shell-send types
 )
 
-// Procs holds a session's background processes.
+// Procs holds a session's background processes: those shell-start started,
+// and the shell-exec commands a lean session left running at the time limit
+// (runHolding).
 type Procs struct {
 	mu     sync.Mutex
 	next   int
 	procs  map[string]*proc
+	held   map[*heldCommand]bool
 	closed bool
 }
 
 // NewProcs returns an empty set.
-func NewProcs() *Procs { return &Procs{procs: map[string]*proc{}} }
+func NewProcs() *Procs { return &Procs{procs: map[string]*proc{}, held: map[*heldCommand]bool{}} }
+
+// heldCommand is a shell-exec command left running: its process group, and
+// done, closed once it has ended and its files are written and closed.
+type heldCommand struct {
+	pgid int
+	done chan struct{}
+}
+
+// hold keeps h until release, unless the session is closing.
+func (ps *Procs) hold(h *heldCommand) bool {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if ps.closed {
+		return false
+	}
+	ps.held[h] = true
+	return true
+}
+
+func (ps *Procs) release(h *heldCommand) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	delete(ps.held, h)
+}
 
 type proc struct {
 	id      string
@@ -264,7 +291,9 @@ func (ps *Procs) start(o Options, name string, args []string) (*proc, error) {
 	return p, nil
 }
 
-// Close stops every process the session started.
+// Close stops every process the session started, and returns once each
+// shell-exec command left running has ended and its files are closed, so the
+// scratch directory can go.
 func (ps *Procs) Close() {
 	ps.mu.Lock()
 	ps.closed = true
@@ -272,11 +301,23 @@ func (ps *Procs) Close() {
 	for _, p := range ps.procs {
 		all = append(all, p)
 	}
+	held := make([]*heldCommand, 0, len(ps.held))
+	for h := range ps.held {
+		held = append(held, h)
+	}
 	ps.mu.Unlock()
 	var wg sync.WaitGroup
 	for _, p := range all {
 		wg.Add(1)
 		go func(p *proc) { defer wg.Done(); p.stop() }(p)
+	}
+	for _, h := range held {
+		wg.Add(1)
+		go func(h *heldCommand) {
+			defer wg.Done()
+			stopProcessGroup(h.pgid, syscall.SIGTERM, func() bool { return syscall.Kill(-h.pgid, 0) != nil })
+			<-h.done
+		}(h)
 	}
 	wg.Wait()
 }

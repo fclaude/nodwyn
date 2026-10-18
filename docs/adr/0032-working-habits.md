@@ -2810,6 +2810,32 @@ model's:
 
 **Decision:**
 
+2. *`shell-exec` leaves a lean session's command running at its time limit*
+   instead of killing it and returning nothing. The model's own call (not a
+   program's of the `scheme` tool or a strategy's, which compute with the
+   result) is run by `runHolding`: at the limit the command is kept in the
+   session's `prim.Procs`, both streams go on into the saved-output files the
+   view uses, `$TMPDIR/out/N.stdout` and `N.stderr` under the call's number
+   (made then if the call had none: a command piped into `tail`, which is
+   never shown as a view, keeps up to 8 MiB of each stream for this), and
+   when it ends whatever it left in its process group is stopped, as for
+   every command, the files are closed and its exit status is written, whole
+   and renamed into place, to `N.exit`. The result is `status` "still running
+   after 10m0s", the view of what it printed by then (empty under `tail`),
+   and a note: "the command was not stopped and is still running: its output
+   goes on into $TMPDIR/out/N.stdout and $TMPDIR/out/N.stderr, and its exit
+   status is written to $TMPDIR/out/N.exit when it ends (the session stops it
+   if it is still running when the session ends)". `Procs.Close`, which the
+   session calls when it closes (a daemon closes its sessions when it is
+   stopped), stops each such command's process group and waits for its files
+   before the scratch directory is removed; a command whose session is
+   already closing, or whose file cannot be made, is stopped at the limit as
+   before, and an abort stops it at once. The lean description's last
+   sentence says so: "A command still running at the time limit is left
+   running, and the result names the files its output and exit status go
+   to." The full profile kills at the limit as it did, in the same code.
+   Not built: a bound on how many commands a session may leave running; each
+   costs the model ten minutes of waiting first.
 3. *A glob pattern in a command line is judged by where it can match*, in
    both profiles, since the refusal was a false one. A word with `*`, `?` or
    `[` in a path component reaches its leading directory (the path up to the
