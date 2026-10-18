@@ -2421,6 +2421,14 @@ events at one check pause the workflow and say so. A workflow is made,
 tried, changed and removed on this computer only; a paired device sees it,
 pauses it and asks it to check now.
 
+**What has been tried.** The watchers, the outbox and the email source have
+been run only against stand-ins for Gitea, GitHub and Gmail (the test
+suite's fakes, which answer as those services document), never against the
+real servers. The first poll of a real forge or mailbox is the first time
+their pagination, rate limits and error bodies meet the code. Try a new
+workflow with **Test the trigger**, which asks once and records nothing, and
+leave **Without asking** off until a held answer has been posted by hand once.
+
 On an existing task, **Schedule…** in its **⋯** menu adds a schedule, or
 shows the rule in words, its message, when it runs next and its **Recent
 runs**, and lets you save changes (behind **Edit**), pause, resume, run now or

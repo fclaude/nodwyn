@@ -124,6 +124,53 @@ special fixed sinks. This switch does not relax separate MCP, OAuth endpoint or
 Google upload URL validation. Requests without credentials are governed by their
 own existing endpoint rules.
 
+## Workflows: what the daemon asks, and what it sends
+
+A workflow (ADR 53) makes the daemon send requests nobody typed at the moment
+they go out, so the boundaries are stated here.
+
+- **Who makes one.** A workflow, its source and its answer are made, changed
+  and removed on this computer, never from a paired device (the daemon refuses
+  it, whatever the console's tier allows), which may only see it, pause it and
+  ask it to check now. Its
+  definition is a record in nodwyn's data directory (`workflows/<id>.jsonl`),
+  written by the daemon that holds the scheduler lock; nothing in a repository
+  writes one, so a stranger's clone cannot add a workflow or change a source.
+- **How a source is asked.** A poll of a forge or Gmail goes through
+  `core.Keyed.Authorize`, the check a task's own requests meet: the key goes
+  only where the binding table allows that credential at that host for that
+  method, within the scopes it was authorized for, over HTTPS unless Settings
+  allows plain HTTP, with an OAuth2 token refreshed first and no redirect
+  followed. A poll lists pull requests or the newest messages and nothing
+  else (GET); a host without a binding is refused and said on the workflow.
+- **What an event is.** What a pull request or an email says is attached to
+  the run as a file and framed as data. The instruction is the workflow's own
+  words, so a description that says "ignore your instructions" is a quoted
+  description. The event passes the workflow's filters, which read its fields,
+  before any model is asked.
+- **What can be sent out.** Only a pull-request review comment and a saved
+  Gmail draft, and never from the run: the model has no way to send, and the
+  run's answer is held in the outbox until a person posts it (or the person
+  turned on **Without asking** for that workflow, on this computer). The host
+  posts it with a key bound for that one call, which needs its own POST
+  binding. A review is never an approval or a request for changes; a draft is
+  never sent; header values are stripped of line breaks.
+- **A command source** runs a program the person named, with no shell, as an
+  absolute path or a name on `PATH` (a relative path into the folder is
+  refused, since a repository would choose what runs), in the workflow's
+  folder, for at most a minute, with its output capped. It inherits the
+  daemon's environment. It is a program of this person's, run on their word
+  when the workflow is saved here, not something an event can choose; the
+  guard's approvals do not apply to it, which is why only this computer may
+  save one.
+- **Limits.** At most 20 events at one check (more pauses the workflow), a
+  number of runs at once, and a spend limit per run and per day, so a hostile
+  source cannot start unbounded work.
+
+These paths have been exercised against fakes of Gitea, GitHub and Gmail, not
+the real services. The exfiltration suite (`make exfil`) covers the guard and
+the keychain; it does not drive a workflow.
+
 ## Keychain input and persistence
 
 The existing XChaCha20-Poly1305 file format and default Argon2id parameters remain.
