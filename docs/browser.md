@@ -773,6 +773,14 @@ goes to pairing and stops trying: the console closes a revoked device's
 socket saying so, and a socket refused before it opened is followed by `GET
 /paired`, which says whether the console takes this browser; a stopped
 console, or the 5xx a proxy in front of one answers, is tried again.
+A page that comes back to a daemon of another version than the one it first
+connected to (nodwyn upgraded, as `make promote` does on an always-on
+computer) still runs the console it loaded: a banner says nodwyn was
+restarted as that version and offers **Reload**. The page never reloads by
+itself, since the reply drafts and the New task message are only in this
+tab's memory and a reload loses them; they are not handed over through the
+browser's storage (ADR 30, amended 2026-10-17). A reconnect to the same
+version shows no banner.
 Untrusted text is rendered as literal text, never HTML or executable Markdown.
 Quotes and lists nest at most eight deep; deeper lines show as text. A record
 the console cannot draw shows a line saying so in its place, and the rest of

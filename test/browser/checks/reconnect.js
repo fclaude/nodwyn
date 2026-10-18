@@ -3,9 +3,12 @@
 // of `nodwyn ui` and of the daemon. A browser the console no longer takes (this
 // computer's, paired with the run that stopped, and a revoked phone) goes to
 // pairing and stops trying. The pages' clocks are paused while the
-// connection is down, so each try comes when the check lets it.
+// connection is down, so each try comes when the check lets it. The daemon
+// comes back from a build that reports another version, as `make promote`
+// leaves an always-on computer, and the pages say so and offer Reload.
 const assert = require("assert");
 const fs = require("fs");
+const path = require("path");
 const { execFileSync } = require("child_process");
 const { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, shows, until, step, ready, check } = require("../lib");
 
@@ -17,8 +20,13 @@ check(async () => {
   const model = start(process.env.DEMO, ["-model-only", "-pace=0"]);
   const [modelURL] = await line(model, /MODEL (\S+)/);
   fs.writeFileSync(`${root}/config/nodwyn/config.toml`, `[control]\nurl = "${modelURL}"\nmodel = "demo"\n`);
-  const startDaemon = async () => {
-    const daemon = start(process.env.NODWYN, ["daemon", "--no-keychain"], { env });
+  // The upgrade the daemon is restarted with: the same code, reporting
+  // another version. Only the link differs, so it builds while the check
+  // pairs its pages.
+  const next = `${root}/nodwyn-next`;
+  const building = start("go", ["build", "-ldflags", "-X main.version=check-next", "-o", next, "./cmd/nodwyn"], { cwd: path.resolve(__dirname, "../../..") });
+  const startDaemon = async (binary = process.env.NODWYN) => {
+    const daemon = start(binary, ["daemon", "--no-keychain"], { env });
     await line(daemon, /(listening)/, "stderr");
     return daemon;
   };
@@ -152,6 +160,9 @@ check(async () => {
   assert.strictEqual(sent.of("session.open").length, asked.open, "a task was started again");
   assert.strictEqual(sent.of("session.send").length, asked.send, "a message was sent again");
   assert.strictEqual(await sockets(phone), made + 1, "the phone made more than one socket to come back");
+  // The daemon it reached again is the one it left, so its code is still
+  // the console's.
+  assert.ok(await phone.isHidden("#updated"), "after a plain restart the phone says nodwyn was upgraded");
   await phone.screenshot({ path: `${out}/phone-back.png` });
   step("the phone comes back by itself and reloads its task from the log, sending nothing again");
 
@@ -164,7 +175,10 @@ check(async () => {
   step("this computer's browser, paired with the run that stopped, goes to pairing and stops trying");
 
   // The daemon stops: the console tells the phone so (1013), and the phone
-  // asks no more often than every five seconds.
+  // asks no more often than every five seconds. The phone is writing a
+  // reply, which an upgrade's banner must not take from it.
+  const unsent = "A reply not yet sent";
+  await phone.fill("#reply", unsent);
   await pause(phone);
   const before = reads();
   made = await sockets(phone);
@@ -183,13 +197,18 @@ check(async () => {
   await shows(computer, "#gate", "Connection lost", "connects again by itself", "nodwyn is not running on this computer", "Trying again in 5 s.", "Reconnect now");
   await computer.screenshot({ path: `${out}/computer-not-running.png` });
   step("paired while the daemon is stopped, this computer's browser says so and when it tries again");
-  daemon = await startDaemon();
+  assert.strictEqual(await building.exited, 0, `the upgrade did not build:\n${building.stderrText}`);
+  daemon = await startDaemon(next);
   const computerMade = await sockets(computer);
   await computer.context().clock.resume();
   await computer.click("#gate button:text-is('Reconnect now')");
   await ready(computer);
   assert.strictEqual(await sockets(computer), computerMade + 1, "Reconnect now made more than one socket");
-  step("Reconnect now connects it at once");
+  // This page was first live with the daemon before the upgrade, and its
+  // pairing again did not reload it.
+  await computer.waitForSelector("#updated:not([hidden])");
+  await shows(computer, "#updated", "nodwyn was restarted as check-next", "Reload");
+  step("Reconnect now connects it at once, to an upgraded daemon, which it says");
   await phone.context().clock.runFor(5000);
   assert.strictEqual(await sockets(phone), made + 2, "the phone did not try again five seconds later");
   await phone.context().clock.resume();
@@ -199,6 +218,30 @@ check(async () => {
   assert.ok((await transcript()).includes("This request carries 0 image(s)"), "the task reloaded after the daemon's restart lost its reply");
   assert.strictEqual(sent.of("session.open").length, asked.open, "a task was started again");
   step("the daemon back, the phone reconnects and reloads its task");
+
+  // The daemon came back as another version than the one the phone was
+  // loaded with: it says so and offers Reload, without reloading by itself,
+  // and the reply being written is still there.
+  await phone.waitForSelector("#updated:not([hidden])");
+  await shows(phone, "#updated", "nodwyn was restarted as check-next", "this page still runs the console it loaded before", "a reload loses text you have not sent", "Reload");
+  assert.ok(await phone.isHidden("#offline"), "the upgraded phone still says it is disconnected");
+  assert.strictEqual(await phone.inputValue("#reply"), unsent, "the reply being written was lost");
+  assert.strictEqual(await sockets(phone), made + 2, "the phone reloaded by itself");
+  await phone.screenshot({ path: `${out}/phone-upgraded.png` });
+  step("reconnected to an upgraded daemon, the phone says so, offers Reload and keeps its reply");
+  // Reloaded, the page is first live with the upgraded daemon, so there is
+  // nothing to say. The draft was only in the old page's memory, never in
+  // the browser's storage (ADR 30, amended 2026-10-17).
+  const loaded = phone.waitForEvent("load");
+  await phone.click("#reload");
+  await loaded;
+  await ready(phone);
+  await phone.waitForSelector(".task[data-loaded]");
+  assert.ok(await phone.isHidden("#updated"), "the reloaded phone still says nodwyn was upgraded");
+  assert.strictEqual(await phone.inputValue("#reply"), "", "the reload kept a draft");
+  const stored = await phone.evaluate(() => JSON.stringify([{ ...localStorage }, { ...sessionStorage }]));
+  assert.ok(!stored.includes(unsent), `the draft was written to the browser's storage: ${stored}`);
+  step("Reload runs the new console, which has nothing to say, and the draft went with the old page");
 
   // Revoked while its console is open, the phone is told (1008) and goes to
   // pairing, and tries no more.

@@ -281,7 +281,9 @@ provider that cannot read one refuses that request, and the turn says so
   prompts, and may not change settings, policy files, the keychain,
   workspaces or MCP servers, or delete a task. \code{nodwyn devices revoke NAME} unpairs one.
   A phone that sleeps or changes network connects again by itself and
-  reloads the open task; nothing that was on its way is sent again.
+  reloads the open task; nothing that was on its way is sent again. If
+  nodwyn was upgraded meanwhile, the page says so and offers \textbf{Reload},
+  which it leaves to you, since a reload loses a reply being written.
 \end{description}
 
 \chapter{A session}

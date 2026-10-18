@@ -290,6 +290,18 @@ function showRetry(detail = "") {
 function setText(el, text) {
   if (el.textContent !== text) el.textContent = text;
 }
+// firstVersion is the daemon's version at this page's first connection. A
+// reconnect that finds another (nodwyn upgraded on an always-on computer,
+// its console restarted with it) leaves the page running the code it loaded
+// with, so the page says so and offers Reload. It never reloads by itself:
+// the drafts are only in this tab's memory (ADR 30, amended 2026-10-17).
+let firstVersion = null;
+function showUpdated() {
+  const version = conn.hello?.version || "";
+  firstVersion ??= version;
+  $("updated").hidden = version === firstVersion;
+  setText($("updated-text"), `nodwyn was restarted as ${version}, and this page still runs the console it loaded before. Reload to run the new one; a reload loses text you have not sent.`);
+}
 conn.onState(async (state, detail) => {
   // A page that was live keeps its banner while it reconnects.
   $("offline").hidden = state === "live" || $("shell").hidden;
@@ -303,6 +315,7 @@ conn.onState(async (state, detail) => {
     desk.reset();
     if ($("shell").hidden) showDown(detail);
   } else if (state === "live") {
+    showUpdated();
     dropViews();
     lastRoute = "";
     delete document.documentElement.dataset.ready;
@@ -343,6 +356,7 @@ document.addEventListener("click", (event) => {
 $("menu").append(icon("menu", 20));
 $("menu").addEventListener("click", openMenu);
 $("reconnect").addEventListener("click", () => conn.connect());
+$("reload").addEventListener("click", () => location.reload());
 // A phone that wakes, or a laptop back on a network, reconnects at once
 // rather than at its next try, and a connection that only looks live is
 // found out (Connection.wake).

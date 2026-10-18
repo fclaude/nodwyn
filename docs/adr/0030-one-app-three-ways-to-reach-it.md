@@ -311,3 +311,43 @@ review's unsent comments are lost on a reconnect, as on a reload; the TUI's
 daemon mode still reconnects only on Ctrl+R. Evidence: the `reconnect`
 browser check, and `TestPairedSaysWhetherTheConsoleTakesThisBrowser` and
 `TestASilentConsoleIsPingedAndClosed`.
+
+## Amendment 2026-10-17: a page reconnected to an upgrade says so
+
+On an always-on computer, `make promote` swaps the binary and the console
+and the daemon start again from it. A page that comes back by itself (the
+amendment above) keeps the code it loaded, against a bridge and a daemon
+that may now answer otherwise, until someone reloads it.
+
+- **The page compares the daemon's version.** `hello` returns it; the page
+  keeps the first it saw, and when a reconnect's `hello` reports another, a
+  banner says nodwyn was restarted as that version and offers **Reload**. A
+  reconnect to the same version (a restart, a sleep, another network) shows
+  nothing, and one back to the first version hides the banner.
+- **It never reloads by itself.** A reconnect keeps each task's reply draft
+  and the New task message, which live only in this tab's memory, and a
+  reload loses them. The banner says so, and the reader reloads once they
+  are sent.
+- **Drafts are not carried across that reload.** Handing them over in
+  `sessionStorage`, which is per tab and survives a reload, was weighed and
+  not built. ADR 21 keeps drafts in tab memory and `browser.md` says a
+  reload loses them; the console's storage holds choices (the theme, the
+  last folder, folded folders), never what a task says. A draft holds
+  whatever was pasted into it, a secret meant for a masked reply included,
+  and Chromium keeps session storage in the profile on disk to restore a
+  session, where removing the item later does not scrub it. Since the page
+  waits for the reader, keeping the rule costs only that wait.
+- **The version is the daemon's; the page's code is the console's**
+  (`nodwyn ui`). `make promote` starts both from one binary, whose version
+  is its commit, so there one changes with the other. A console restarted
+  from a new build in front of a daemon still on the old says nothing, and a
+  new daemon behind an old console offers a reload that brings back the same
+  code; neither is how nodwyn is upgraded. Two builds of one dirty checkout
+  both report `dev-COMMIT-dirty` and are not told apart.
+
+Not built: comparing the console's own build, which the bridge would have
+to add to `hello` (a protocol change). Evidence: the `reconnect` browser
+check, whose daemon comes back from a build reporting `check-next`: the
+pages say so and keep the reply being written, Reload runs the new code
+and writes nothing to the browser's storage, and the restart of `nodwyn ui`
+before it, to the same daemon, shows no banner.

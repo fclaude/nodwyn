@@ -136,7 +136,10 @@ again by itself, at once when the page is shown again, and reloads the open
 task from its log; nothing that was on its way is sent again. The console
 pings an open page every 30 seconds, so a proxy such as \code{tailscale
 serve} does not close a quiet connection. A revoked phone goes to pairing
-and stops trying.
+and stops trying. A page that comes back to an upgraded nodwyn (after
+\code{make promote}) still runs the code it loaded, so it says so and
+offers \textbf{Reload}; it never reloads by itself, since a reply being
+written lives only in the page and a reload loses it.
 
 \begin{careful}
 A paired device can answer approvals, and approving a command \emph{is}
