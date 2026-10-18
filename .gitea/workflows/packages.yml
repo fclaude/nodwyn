@@ -1,0 +1,27 @@
+name: Dispatch workstation packages for main
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  dispatch:
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - name: Queue this exact main commit in Beauties
+        env:
+          DISPATCH_TOKEN: ${{ secrets.BEAUTIES_DISPATCH_TOKEN }}
+          SOURCE_SHA: ${{ gitea.sha }}
+        run: |
+          node --input-type=module <<'JS'
+          const sha = process.env.SOURCE_SHA;
+          if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('Invalid source commit');
+          const response = await fetch('http://git.example.com/api/v1/repos/beauties/packages/actions/workflows/nodwyn.yml/dispatches', {
+            method: 'POST', redirect: 'error',
+            headers: {Authorization: 'token ' + process.env.DISPATCH_TOKEN, 'Content-Type': 'application/json'},
+            body: JSON.stringify({ref: 'main', inputs: {source_sha: sha}})
+          });
+          if (!response.ok) throw new Error('Package dispatch failed: HTTP ' + response.status);
+          console.log('Queued Nodwyn workstation packages for ' + sha);
+          JS

@@ -5,6 +5,15 @@ binary. For *why* things are shaped this way read [SPEC.md](../SPEC.md);
 for *what comes next* read [plan.md](../plan.md); for individual decisions
 read [docs/adr/](adr/).
 
+## Managed workstation installation
+
+On the enrolled fleet, `nodwyn` is installed from the private Beauties signed
+Fedora RPM repository or Homebrew tap. Each Gitea main push queues a checked
+package; routine software updates install new builds. `nodwyn version` reports
+the exact source commit, and `nodwyn app` opens the native desktop window.
+See [workstation packages](releases.md#workstation-packages-from-main) for
+commands, the macOS bundle and the separate manual stable promotion path.
+
 ---
 
 ## Part 1 — Reading the code

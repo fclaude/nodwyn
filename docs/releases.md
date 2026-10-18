@@ -2,7 +2,8 @@
 
 [Gitea releases](http://git.example.com/fc/nodwyn/releases)
 contain manually requested versioned releases, beginning with `v0.1.0`.
-Pushes run checks but never publish. Each release names its full source commit. The repository is
+Pushes run checks and dispatch the private workstation package channel below.
+Versioned archive releases remain manual. Each release names its full source commit. The repository is
 private, so sign in to download. GitHub Actions are disabled on the mirror for now; nothing publishes
 releases to GitHub.
 
@@ -115,3 +116,27 @@ still contain the old commits. Server disk reclamation depends on garbage
 collection, while fresh clones receive the reachable, cleaned history.
 
 The permission model follows [Gitea's job-token documentation](https://docs.gitea.com/usage/actions/token-permissions/).
+
+## Workstation packages from main
+
+Every push to Gitea main queues its exact commit in `beauties/packages` through
+`.gitea/workflows/packages.yml`. After acceptance, browser checks and a
+fake-model selfcheck, Beauties publishes a signed Fedora 44 x86_64 RPM and a
+checksum-pinned Homebrew source formula for Apple Silicon macOS. Both include
+the native desktop window and a Linux egress helper for their architecture.
+`nodwyn version` identifies the full source commit. Package version `0.0.0`
+plus an increasing release/revision identifies this moving main channel.
+
+Enrolled workstations use normal `sudo dnf upgrade nodwyn`, or `brew update`
+and `brew upgrade beauties/tap/nodwyn`. Their routine update tasks also install
+new builds. The macOS formula supplies `Nodwyn.app`; fleet enrollment links it
+from `~/Applications`. Homebrew builds it locally and signs it ad hoc. Source
+compilation needs the current developer tools and can take several minutes.
+
+Failed builds retain the last good package. The central five-minute retry poll
+repairs missed notifications, and unchanged source/recipe pairs are skipped.
+Rapid pushes queue separately; an older queued commit cannot replace a newer
+already-published one. The channel is private and does not change manual
+versioned archives or their books. Manually promoted `nodwyn-stable`, settings,
+credentials, sessions and running daemons remain separate. See infra's
+`homelab/docs/beauties.md` for fleet enrollment and rollback.

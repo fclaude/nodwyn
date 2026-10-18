@@ -97,3 +97,33 @@ backups and maps explain the old source IDs. Decisions 3 and 4 remain unchanged,
 as does local promotion in Decision 6. Repository committers still control
 the workflow, but only a trusted main-branch manual run receives publication
 authority. This amendment does not give pull requests a release token.
+
+## Amendment 2026-10-17: Main pushes also produce private workstation packages
+
+The user requested package-manager updates for every push to main. Keep the
+manual versioned archives and books above. Add a separate private Beauties
+channel for Fedora 44 x86_64 and Apple Silicon macOS, including the native
+window and the matching Linux egress helper. These package builds use a fixed
+`0.0.0` package version and an increasing RPM release/Homebrew revision; the
+application's `version` command embeds the full source commit.
+
+A main-only source workflow dispatches that exact commit to `beauties/packages`.
+Its dedicated non-admin account has write permission only for the packaging
+repository's Actions unit: no code, package, tap or source access. The dispatch
+token is an Actions secret, with recovery stored as SOPS ciphertext in infra.
+Signing and publishing credentials remain only in the package repository. Its
+publisher has read-only Nodwyn access and rejects commits outside main's
+ancestry. Repository committers control both recipes and source, so trusted
+main is the authority boundary; pull requests receive no publishing secret.
+
+The isolated Fedora package runner executes acceptance, native builds, the
+fake-model selfcheck and the browser checks before signing an RPM or updating
+the checksum-pinned Homebrew recipe. Browser checks run sequentially to respect
+the runner's memory and process limits. macOS builds the same source natively
+through Homebrew and ad-hoc signs its app bundle; it is not notarised. A later
+push queued before an older one cannot make an older source replace an already
+packaged newer commit. Failed builds retain the previous package. A five-minute
+central retry poll repairs missed dispatches and transient failures; push
+notifications are the primary trigger. Normal workstation DNF/Homebrew update
+tasks install the packages. Existing manually promoted `nodwyn-stable` binaries,
+user settings, credentials, sessions and running daemons are not replaced.

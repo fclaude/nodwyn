@@ -382,3 +382,11 @@ needs a judge (`[judge]` naming a provider whose key is stored; see
 hard limit, and the run goes on after a turn only if that turn marked a
 plan step done. A resume restores none of these; `nodwyn run resume` takes
 them again.
+
+### Managed workstation packages
+
+Gitea main pushes also queue private Beauties packages for Fedora 44 x86_64 and
+Apple Silicon macOS, including the native window and Linux egress helper.
+Enrolled workstations install them through routine DNF or Homebrew updates.
+`nodwyn version` reports the packaged source commit. See
+[workstation packages](docs/releases.md#workstation-packages-from-main).

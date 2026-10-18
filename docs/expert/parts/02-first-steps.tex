@@ -10,8 +10,8 @@ SHA-256 digest against \file{SHA256SUMS}, extract it, and keep its two
 executables beside one another on your \code{PATH}. \code{nodwyn version}
 prints the source commit, also recorded in \file{SOURCE.json}. Releases begin
 at \code{v0.1.0}; a manual Gitea workflow run on \code{main} supplies the
-version and publishes only after checks pass. Pushes run checks without
-publishing.
+version and publishes only after checks pass. Pushes dispatch the separate
+workstation packages below.
 
 These builds open the browser for \code{nodwyn app}; they do not contain a
 native webview window. macOS builds are unsigned and not notarised. Only
@@ -24,6 +24,15 @@ the LaTeX sources and catalogue; generated PDFs live in release attachments.
 \code{make book} and \code{make expert} also build ignored local copies.
 
 \nodwyn{} is one Go program. From a checkout of the repository:
+
+The private workstation fleet also receives native packages from Beauties.
+Each Gitea main push dispatches its exact commit for acceptance, browser checks
+and a fake-model selfcheck, then signed Fedora 44 x86-64 RPM and Apple Silicon
+Homebrew publication. Routine software updates install the checked build;
+\code{nodwyn version} names its source commit. The package includes the native
+window and a Linux egress helper. macOS supplies an ad-hoc-signed
+\file{Nodwyn.app}. See \file{docs/releases.md}; manual versioned archives,
+books and local stable promotion remain separate.
 
 \begin{sh}
 make build        # bin/nodwyn, for the terminal
