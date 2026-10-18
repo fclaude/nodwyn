@@ -685,6 +685,19 @@ this console by anything but its loopback address (a proxy such as
 pair only local browsers. Without `--tls-cert`, traffic is unencrypted unless
 the network encrypts it; a tailnet does.
 
+**On a phone, the console is an app** (ADR 52). The page links a manifest
+(`manifest.json`, its icons in `icons/`) and registers a service worker
+(`sw.js`), so a phone that reaches the console over https adds it to its Home
+Screen (Safari's Share › Add to Home Screen, Chrome's Install app) and opens
+it full screen. The worker handles no fetch and keeps no cache: every request
+reaches the bridge and its checks as before, and no task, prompt or diff is
+stored on the phone. It shows the console's notices (see "Cross-session
+attention" below). The page keeps out of the notch and the home indicator by
+the screen's safe areas, which are zero elsewhere. An iPhone's Home Screen
+app keeps its storage apart from Safari's, so it may ask to pair again. Over
+plain http to another address neither the app nor its notices are offered;
+the console still works in the phone's browser.
+
 # Local browser view
 
 The U3 session desk supports conversations, prompt replies and session lifecycle
@@ -942,8 +955,8 @@ its reasons, destination and diff are on the task's card. On a phone, where
 the sidebar is a drawer, the topbar's "N needs you" pill is a link: to the
 task when one waits, to Home when several do.
 
-Desktop notifications are optional. In Settings › This browser › Desktop
-notifications, **Turn on** asks this browser for permission; the choice is
+Notifications are optional. In Settings › This browser › Notifications,
+**Turn on** asks this browser for permission; the choice is
 kept in this browser (`nodwyn-notify` in local storage), so it holds across
 reloads, and counts only while the browser still allows them: a permission
 taken back turns them off, and nodwyn never asks for it again unprompted. In
@@ -951,7 +964,13 @@ the app window the system's notifications are used instead, with no browser
 permission to grant, and are on until turned off. When the page
 is hidden, a new needs-answer transition can produce a generic notification.
 It never includes task text, prompt arguments, diffs, credential classes or
-values. Clicking it opens the corresponding session for review. Resolution
+values. Clicking it opens the corresponding session for review. Where the
+console's service worker is registered (a secure page; ADR 52) the notice is
+shown through it, which is the only way a phone shows one: it carries the
+task's id as data it never shows, and a click on it brings an open console to
+the task, or opens the console there. On an iPhone's Safari, which shows
+notifications only to an app on the Home Screen, Settings says to add nodwyn
+there first. Resolution
 closes the notification where supported; reconnect snapshots do not re-notify old
 prompts. Blocked or unsupported browser notifications leave sidebar attention
 available. Browser/OS notification delivery still depends on their permission

@@ -269,6 +269,20 @@ window.addEventListener("error", (event) => {
   if (event.message && !event.message.startsWith("ResizeObserver")) toastError(event.message);
 });
 desk.notifier.onOpen = (id) => navigate(`#/task/${id}`);
+// The service worker makes the console installable as an app and shows its
+// notices (ADR 52); a click on one asks the page to open its task. It caches
+// nothing, so a browser that refuses it loses only those.
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker
+    .register("/sw.js", { scope: "/" })
+    .then(() => navigator.serviceWorker.ready)
+    .then((registration) => (desk.notifier.worker = registration))
+    .catch((error) => console.warn("nodwyn: no service worker:", error.message));
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const id = event.data?.open;
+    if (typeof id === "string" && id !== "") desk.notifier.onOpen?.(id);
+  });
+}
 conn.onState(async (state, detail) => {
   $("offline").hidden = state === "live" || state === "connecting" || $("shell").hidden;
   if (state === "unpaired") {

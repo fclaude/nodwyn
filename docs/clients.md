@@ -17,9 +17,10 @@ nodwyn has four ways in, over one core:
   `replay`, `versions`, `undo`, `credential`, `keychain`, `mcp`, `trust`,
   `devices`, `run`, `summary`, `eval`, `repl`).
 
-This page records what each one can do as of 2026-10-15 (the judge choice,
-ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49, and
-retrieval, ADR 50, included), so work on a
+This page records what each one can do as of 2026-10-17 (the judge choice,
+ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49,
+retrieval, ADR 50, and the console as a phone's app, ADR 52, included), so
+work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -39,6 +40,8 @@ it can see the thing but not change it.
 | Resume a stored session | yes, the sidebar | yes, the chooser (paged, typing filters it) or `--resume` | yes, `--resume` | — |
 | Switch between open tasks | yes, the sidebar; several open at once | one session per process; quit and choose again | one session | — |
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
+| Told when a task needs an answer while looking elsewhere | yes, Settings › This browser › Notifications; on a phone through the console's service worker (ADR 52) | not built | — | — |
+| Installed on a phone's Home Screen (ADR 52) | yes, over https: the console is a web app | deliberate gap: a terminal client | — | — |
 | Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu); Home’s cards pause and run now; paired devices can pause or run now | not built | not built | not built |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |

@@ -128,6 +128,16 @@ The phone opens the address, enters the pairing code the command printed
 days. Only a hash of its token is stored. Every answer from it is recorded
 with its name, \code{via web:phone}, so the log says which screen said yes.
 
+Served over https (\code{--tls-cert}, or a proxy that ends TLS with
+\code{--name https://NAME}), the console is also an app. On an iPhone,
+Safari's Share \textrightarrow{} Add to Home Screen puts it there; on Android,
+Chrome's Install app does. It opens full screen and, once Settings
+\textrightarrow{} This browser \textrightarrow{} Notifications is on, says
+``nodwyn needs your answer'' when a task waits, and nothing more. Its service
+worker caches nothing, so no task is kept on the phone, and there is nothing
+to update but \nodwyn{} itself. A notice while the app is closed is not
+built.
+
 There is no relay in between: the phone talks straight to your computer, so
 your computer must be on and reachable, and the network path (a tailnet, or
 your home Wi-Fi) is yours to provide.

@@ -269,3 +269,10 @@ Not changed: the `settings.*` methods still hold the lock while they wait for
   runtime directory, and the console would then fail to open without saying
   why. It is documented instead, with `--no-open` and the pairing code (never
   on a command line) as the way on a shared computer.
+
+## Amendment 2026-10-17: the phone view is an app on the Home Screen (ADR 52)
+
+The phone view (§4, §6) installs: over https the console serves a manifest,
+icons and a service worker that caches nothing, a phone adds it to its Home
+Screen, and its notices are shown through the worker, the only way a phone
+shows them. ADR 52 records the choice of a web app over a native shell.
