@@ -34,9 +34,12 @@ front-ends:
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible, Anthropic) and price their requests; derive their context; redact text; detect credential shapes. |
 | `memory`, `retrieval` | Make a task's history searchable by words and keep its per-turn cards, as views of the log that the log never records. |
-| `schedule`, `catalogue` | Compute scheduled tasks' civil-time repeats; hold what providers publish about their models. |
+| `schedule`, `catalogue` | Compute scheduled tasks' civil-time rules and say them in words; hold what providers publish about their models. |
+| `watch`, `workflow` | Read what a workflow's source has now (a forge's pull requests, a Gmail search, a command's lines) through the credential check a task's requests meet; keep a workflow's log, its held answers and what it has seen. |
+| `startup` | Write the login item that starts the daemon, only when asked. |
 | `termemu`, `frontend/termvt` | Give the terminal primitives an emulator behind an interface, with the Charm library only under `frontend`. |
 | `mcp`, `extract` | Talk to remote MCP servers (pinned manifests, bound keys); turn attached documents into redacted text, check attached images by their content, and read all a document carries before it is sent. |
+| `frontend/workflows` | Read the daemon's workflows and held answers, say them in words and act on them, for the command line and the TUI alike. |
 | `frontend/run` | Chain planned turns under a finite deadline and turn count; ask a person to continue, or, unattended, go on only after a turn that marked a plan step done. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nodwyn` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 

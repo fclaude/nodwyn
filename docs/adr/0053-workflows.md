@@ -145,7 +145,7 @@ list of workflows, and the outbox joins Needs you. The TUI (`:workflows`)
 and the CLI (`nodwyn workflows`) list, pause, run now and decide on the
 outbox, in the daemon's words.
 
-### 13. The order to build it
+### 13. The order to build it (all built 2026-10-17; see the amendments)
 0. the daemon at login, its notifications, the locked-keychain state;
 1. the timetable (built);
 2. the workflow log, the Workflows page, the daily cap, today's schedules
@@ -173,9 +173,16 @@ amendment here.
 
 ## Not built
 
-Everything but §3 and §11, in §13's order. Not proposed: one workflow
-starting another, a zone chosen per workflow, a cron line turned into a
-rule.
+§13's seven slices are built (the amendments below say how, and where each
+departs from the text above): the timetable, the daemon at login, the Workflows
+page, pull requests and commands, the outbox, Gmail, and the terminal clients.
+What this record still leaves open, each said in the amendment that built the
+part it belongs to: a real Gitea, GitHub or Gmail (everything ran against
+`test/fakes`); IMAP; "when the run says so" (§7); the judge told a run came from
+an outside event (§5); watchers as Scheme procedures (§4: they are Go, with a
+command source for a person's own); a workflow log for a timetable (§8: it
+stays in its task's log). Not proposed: one workflow starting another, a zone
+chosen per workflow, a cron line turned into a rule.
 
 ## Amendment 2026-10-17: slice 0, the daemon keeps running and says when it needs the person
 

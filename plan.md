@@ -36,9 +36,11 @@ stood until 2026-10-02 is `git show 2f4394f^:plan.md`.
   can restart it; the console installs on a phone as a web app and shows its
   notices there (ADR 52); the console reconnects by itself, and the TUI and
   line mode use the daemon (ADR 30); schedules run on rules said in the
-  daemon's words, with their recent runs (ADR 49), and become workflows
-  (ADR 53), whose first slice has the daemon start at login and say on the
-  desktop when a task needs an answer. For a server nobody sits at (ADR
+  daemon's words, with their recent runs (ADR 49), and are workflows (ADR 53):
+  the daemon starts at login and says on the desktop when a task needs an
+  answer; a workflow can watch pull requests, Gmail or a command, hold its
+  answer on Home for a yes and post it (a review, a draft reply); the console,
+  the TUI and the command line list and decide. For a server nobody sits at (ADR
   30, amended): devices pair by invitation, with no code, and stay signed
   in while they are used, and the person signs in with a passkey, makes
   this computer's choices from any device and changes setup after a touch;

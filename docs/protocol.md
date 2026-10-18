@@ -79,6 +79,13 @@ exceptions are `.set` (`session.model.set`, `session.judge.set`,
 `notes.read` beside `session.notes.write`, and `session.approve_all`, which
 has no verb. Prefer the rule over the nearest neighbour.
 
+The methods of ADR 53 do not all follow the rules either, and are not renamed
+for that reason alone: `startup.set` and `workflow.set` take `.set` after
+`schedule.set` (the rule's `.write` would be the nearest of the settings
+methods, which they are not), and `workflow.pause`, `workflow.check`,
+`workflow.test` and `outbox.decide` name what they do. A rename is cheap until
+a client ships them.
+
 ## Lifecycle methods
 
 | Method | Named parameters | Result |
@@ -865,6 +872,16 @@ daemon also refuses `run.start` and `run.resume` with `auto_approve`,
 the bridge's actor for a paired device does. A device signed in with a
 passkey may call all of them, the setup methods after a touch of its passkey;
 `session.eval` and the run methods stay out of every browser's reach.
+
+The methods that decide what runs with nobody watching are this computer's
+too, and the bridge and the daemon refuse them to a paired remote device:
+`schedule.set` (and resuming a paused schedule through `schedule.pause`),
+`startup.read` and `startup.set`, `workflow.set`, `workflow.remove` and
+`workflow.test` (and resuming a workflow through `workflow.pause`), and
+`outbox.decide` with words other than the run's. A device may pause, run a
+schedule now, check a workflow now, list the held answers and post or discard
+one as the run wrote it (ADR 49 §12, ADR 53 §9). A device signed in with a
+passkey is the person's and may call them, the setup ones after a touch.
 
 An MCP server is remote (its `url` HTTPS, or plain HTTP to this machine
 only) or contained (ADR 23 W3b): the daemon runs it in podman or docker from

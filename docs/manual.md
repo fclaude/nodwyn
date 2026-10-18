@@ -57,6 +57,8 @@ This is the spine. Read these in order and you have read the system.
 | `internal/extract` | attachments: text by file type, images checked but never read as text | `extract.go`, `image.go` |
 | `internal/memory`, `internal/retrieval` | what a task remembers of its history (a card for each turn, an episode for each compaction note), and the words-only ranking `index-search` uses over the repository, the conversation and earlier tasks ([docs/memory.md](memory.md)) | `memory/card.go`; `retrieval/index.go` |
 | `internal/schedule` | the civil-time rules of scheduled tasks and the words they are said in; it owns no timers or files ([ADR 49](adr/0049-scheduled-tasks.md)) | `schedule.go` |
+| `internal/watch`, `internal/workflow` | what a workflow's source has now (a forge's pull requests, a Gmail search, a command's JSON lines), read through `core.Keyed.Authorize` so a key goes only where the binding table, the credential's scopes and the transport rule allow, and posted to (a review, a draft reply); a workflow's log: its definition, what it has seen, its events and the answers it holds ([ADR 53](adr/0053-workflows.md)) | `watch/watch.go`, `watch/mail.go`; `workflow/workflow.go` |
+| `internal/startup` | the login item that starts the daemon (a systemd user unit, a launchd agent), written only when asked ([ADR 53](adr/0053-workflows.md) §11) | `startup.go` |
 | `internal/catalogue` | what providers publish about their models (context, effort, price), as models.dev collects it ([ADR 41](adr/0041-model-providers-and-efforts.md)) | `catalogue.go`, `modelsdev.go` |
 | `internal/termemu`, `internal/frontend/termvt` | the terminal primitives' emulator seam, and the Charm emulator behind it, kept under `frontend` by the boundary lint ([ADR 48](adr/0048-experimental-terminal.md)) | `termemu.go`; `termvt.go` |
 | `internal/policyfile` | atomic writes of the policy files the console edits | `update.go` |
@@ -72,6 +74,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/frontend/tui` | the terminal client ([docs/tui.md](tui.md)) | `model.go` |
 | `internal/frontend/rpc` | local daemon sessions, turns and events | `server.go`, `sessions.go`, `events.go` |
 | `internal/frontend/run` | supervised and unattended runs ([docs/runs.md](runs.md)) | `run.go` `Driver` |
+| `internal/frontend/workflows` | the daemon's workflows and held answers, laid out and acted on by reference, shared by `nodwyn workflows`, `nodwyn outbox` and the TUI | `workflows.go` |
 | `internal/frontend/web` | the browser console: its bridge to the daemon and its pages ([docs/browser.md](browser.md)) | `server.go`, `assets/app.js` |
 | `cmd/nodwyn` | flags → core → front-end; nothing else | `main.go` |
 | `cmd/nodwyn-schema` | generates `docs/protocol.schema.json` | `main.go` |
@@ -81,7 +84,7 @@ This is the spine. Read these in order and you have read the system.
 | `test/release`, `test/sessions` | the release publisher's tests against a fake Gitea, and recorded session logs the replay tests read | `test_release.py`; `README.md` |
 | `scripts/validate` | what `validate` runs and checks for a change ([ADR 37](adr/0037-validate-before-done.md)) | `main.go` |
 | `test/fakes/ollama` | scriptable fake of the model server; `serve` runs it for the selfcheck | `ollama.go` |
-| `test/fakes/jev`, `mcp`, `oauth`, `drive` | fakes of the judge, an MCP server (HTTP or stdio), an OAuth2 provider and Drive's upload endpoint: no test reaches a real service | each package's comment |
+| `test/fakes/jev`, `mcp`, `oauth`, `drive`, `forge`, `gmail` | fakes of the judge, an MCP server (HTTP or stdio), an OAuth2 provider, Drive's upload endpoint, Gitea's and GitHub's pull-request listing and review endpoints, and Gmail's messages and drafts: no test reaches a real service | each package's comment |
 | `test/fakes/container`, `chat`, `home` | a fake container runtime that is the test binary run again; a fake chat-completions provider; an isolated HOME for packages whose tests build a guard or commit | `container.go`, `chat.go`, `home.go` |
 
 ### The invariants and the tests that hold them

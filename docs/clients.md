@@ -24,8 +24,8 @@ nodwyn has four ways in, over one core:
 This page records what each one can do as of 2026-10-17 (the judge choice,
 ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49,
 retrieval, ADR 50, the TUI and line mode on the daemon, the console as a phone's
-app, ADR 52, and devices that pair by invitation and sign in with a passkey,
-ADR 30 amended 2026-10-17 twice, included), so work on a
+app, ADR 52, devices that pair by invitation and sign in with a passkey,
+ADR 30 amended 2026-10-17 twice, and workflows, ADR 53, included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
