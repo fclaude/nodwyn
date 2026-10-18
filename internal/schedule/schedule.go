@@ -22,15 +22,17 @@ const (
 const MinEvery = 5
 
 // Definition is what a person chose: the message each run sends, when it
-// runs, and the spend a run may reach. A schedule written before rules has
-// Repeat and At, one of five repeats from a local minute; it is read as the
-// rule it always meant (Timetable), so no log is rewritten.
+// runs, the spend a run may reach and the spend its runs may reach in a day
+// (DayCost, 0 for none). A schedule written before rules has Repeat and At,
+// one of five repeats from a local minute; it is read as the rule it always
+// meant (Timetable), so no log is rewritten.
 type Definition struct {
 	Message string  `json:"message"`
 	Repeat  string  `json:"repeat,omitempty"`
 	At      string  `json:"at,omitempty"`
 	Rule    *Rule   `json:"rule,omitempty"`
 	Cost    float64 `json:"cost"`
+	DayCost float64 `json:"day_cost,omitempty"`
 	Paused  bool    `json:"paused"`
 }
 
@@ -65,6 +67,9 @@ func (d Definition) Validate() error {
 	}
 	if math.IsNaN(d.Cost) || math.IsInf(d.Cost, 0) || d.Cost < 0 || d.Cost > 1e9 {
 		return fmt.Errorf("the per-run spend limit must be between 0 and 1 billion dollars")
+	}
+	if math.IsNaN(d.DayCost) || math.IsInf(d.DayCost, 0) || d.DayCost < 0 || d.DayCost > 1e9 {
+		return fmt.Errorf("the daily spend limit must be between 0 and 1 billion dollars")
 	}
 	if d.Rule != nil {
 		if d.Repeat != "" || d.At != "" {

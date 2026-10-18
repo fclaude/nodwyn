@@ -1,8 +1,8 @@
 # ADR 0053: Workflows: a trigger, a filter, an instruction, where runs go, and what happens with them
 
 - Status: accepted 2026-10-17; the timetable (§3) built the same day as an
-  amendment to ADR 49, and §11 (slice 0) the same day, amended below; the
-  rest not built (see "Not built")
+  amendment to ADR 49, and §11 (slice 0) and slice 2 the same day, amended
+  below; the rest not built (see "Not built")
 - Date: 2026-10-17
 - Amends: 49 (a schedule becomes a workflow whose runs all go to one task;
   schedules stop being read from every task's log), 30 (a daemon may start at
@@ -236,3 +236,41 @@ without a place or for a temporary build), `cmd/nodwyn` (the stale socket),
 and the `away` browser check (Home's held schedule and its unlock, start at
 login turned on and off in the demo's own home, the notices saved and read
 back).
+
+## Amendment 2026-10-17: slice 2, the Workflows page and a daily spend limit, with a timetable kept in its task
+
+Built: a **Workflows** page (the sidebar, and **All workflows** on Home's
+Scheduled section) lists every schedule as a workflow whose runs go to one
+task: its task, the rule in the daemon's words, when it runs next or why
+not (paused, archived, held by locked keys), what today's runs came to and
+how the latest ended, with Pause or Resume, Run now and Schedule…. **New
+workflow** opens Home's Schedule dialog, so a workflow starts as any task
+does, with its folder, worktree, model, judge, helpers and limits: there
+stays one way to start a task. A schedule has a **daily spend limit**
+(`day_cost`, 0 for none) beside the one per run: once what the day's runs
+cost (their follow-ups included) reaches it, the day's remaining automatic
+times are skipped in one `schedule.skip` standing for all of them, and runs
+go on the next day; Run now, a person's choice, is not held to it. The log
+index folds the day's runs and cost (`today` in `schedule.read`; version 8),
+so a run every five minutes needs no walk through the log to check it.
+
+Changed from §8: a timetable whose runs all go to one task keeps its
+definition in that task's log, as ADR 49 has it, and has no workflow log.
+The task's log already holds what such a workflow needs (its runs and
+skips, the per-run spend base, the handover, its history and today's
+sums), and a second record of the same definition would be one to keep in
+step for nothing; the house rule is to add nothing a change does not use.
+A workflow log comes with slice 3, for what a task's log cannot hold: an
+event source's cursor, the tasks of each subject, and the outbox. The
+scheduler's tick still reads every task's schedule from the index, which
+answers from memory while a log is unchanged; the tasks of a workflow with
+a task per subject will carry no schedule of their own.
+
+Not built in this slice: the builder's cards as one page (the Schedule
+dialog is the When card until event triggers need the rest), a cost
+estimate per day. Checks: `internal/core` (today's runs and cost in the
+history test), `internal/frontend/rpc`
+(`TestADailySpendLimitSkipsTheRestOfTheDay`), and the `schedule` browser
+check (the daily limit sent, the Workflows page reached from Home and the
+sidebar, its row before and after Run now, New workflow opening Home's
+Schedule dialog).

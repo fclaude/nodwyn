@@ -1062,6 +1062,16 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 #schedule-dates { width: 140px; }
 .schedule-sentence { font-family: var(--serif); font-size: 17px; margin: 0; }
 .hint.warn { color: var(--warn-ink); }
+.eyebrow-link { margin-left: 8px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--accent-link); }
+.page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.workflow-list { display: grid; gap: 10px; margin-top: 20px; }
+.workflow-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: start; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.workflow-row p { margin: 0; }
+.workflow-main { display: grid; gap: 4px; min-width: 0; }
+.workflow-name { font-weight: 600; color: var(--ink); }
+.workflow-when { font-family: var(--serif); font-size: 16px; }
+.workflow-row .row-actions { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 700px) { .workflow-row { grid-template-columns: 1fr; } .workflow-row .row-actions { justify-content: flex-start; } }
 .schedule-preview { display: grid; gap: 4px; }
 .schedule-preview p { margin: 0; }
 .schedule-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }

@@ -1134,8 +1134,11 @@ reading old run previews or replaying the whole log.
 
 ## Scheduled tasks (ADR 49)
 
-- A definition is `{message,rule,cost,paused}`: `cost` is dollars per run, 0
-  for none. `rule` says when, in the daemon's local civil time:
+- A definition is `{message,rule,cost,day_cost,paused}`: `cost` is dollars
+  per run and `day_cost` dollars per day, each 0 for none. Once the day's
+  runs (by the daemon's local date of their start, follow-ups included)
+  cost `day_cost`, the day's remaining automatic times are skipped in one
+  `schedule.skip`; `schedule.run` is not held to it. `rule` says when, in the daemon's local civil time:
   - `{once:"YYYY-MM-DDTHH:MM"}` runs once, and has nothing else;
   - otherwise the times of a day are `at` (up to 48 `"HH:MM"`) or `every`
     minutes (5 to 1440), counted from `between[0]` (midnight without it)
@@ -1167,7 +1170,9 @@ reading old run previews or replaying the whole log.
 - `schedule.read {id}` returns `definition` when present, its log `sequence`,
   automatic `cursor`, optional `last_run` and `last_skip`, plus `rule`,
   `sentence`, `next`, `next_words`, `timezone`, `archived`, `scheduler`
-  (whether this daemon owns the lock) and `history`: the latest twenty
+  (whether this daemon owns the lock), `today` (`{day,runs,cost}`: the
+  runs started today and what they cost; empty on another day) and
+  `history`: the latest twenty
   scheduled times, newest first, each with `seq` (its `schedule.run` or
   `schedule.skip`), `due`, `started`, `missed`, `manual`, `skipped` (the
   reason, for a time not run), `outcome` (the run's turn's `turn.end`

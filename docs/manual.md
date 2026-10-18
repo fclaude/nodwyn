@@ -2248,7 +2248,10 @@ holds. Under **Repeat**, choose when it runs:
 **Starts** is the first minute it may run (empty: now), and **Last day** its
 last day, if it has one. Times are this computer's, and the zone is named in
 the dialog (America/Los_Angeles, not "Local"). Set the dollar spend limit per
-run (0 means none). The daemon says the rule back in words ("Every 30 minutes
+run and per day (0 means none for either): once the day's runs, their
+follow-ups included, cost the day's limit, the rest of that day's times are
+skipped, in one line in the task, and runs go on the next day; Run now is
+not held to it. The daemon says the rule back in words ("Every 30 minutes
 from 09:00 to 18:00 on weekdays") with the next times, and refuses what a
 schedule cannot be (an interval under 5 minutes, hours that end before they
 start) before anything is saved. A new schedule's first run is its first time
@@ -2257,6 +2260,13 @@ Saving opens the task immediately; its message is sent when due. Scheduled
 tasks appear on Home with their next time or Paused, and a card has **Pause
 schedule** (or **Resume schedule**) and **Run now**; Home says "Nothing
 scheduled." when there is none.
+
+The **Workflows** page (in the sidebar, and **All workflows** on Home's
+Scheduled section) lists every schedule: its task, the rule in words, when
+it runs next (or Paused, or held by locked keys), what today's runs cost
+and how the latest ended, with Pause, Run now and Schedule…. **New
+workflow** opens Home's Schedule dialog, beside the task's folder, model
+and limits.
 
 On an existing task, **Schedule…** in its **⋯** menu adds a schedule, or
 shows the rule in words, its message, when it runs next and its **Recent

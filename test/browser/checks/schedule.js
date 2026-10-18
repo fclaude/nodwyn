@@ -41,6 +41,7 @@ check(async () => {
   await page.click('.schedule-days [data-day=tue]');
   await page.click('.schedule-days [data-day=thu]');
   await page.fill('#schedule-cost', '1.25');
+  await page.fill('#schedule-day-cost', '5');
   await until("daemon preview of the rule", () => sent.of('schedule.next').some((p) => JSON.stringify(p.rule) === JSON.stringify({ at: ['15:00'], days: ['tue', 'thu'], from: '2099-10-16T00:00' })));
   await page.waitForFunction(() => document.querySelector('.schedule-form [role=status]')?.textContent.includes('Next: Tue 20 Oct 2099 15:00, then Thu 22 Oct 2099 15:00'));
   const preview = await page.textContent('.schedule-form [role=status]');
@@ -58,6 +59,7 @@ check(async () => {
   const def = sent.of('schedule.set').find((p) => p.id === id);
   assert.strictEqual(def.message, 'Write scheduled'); assert.strictEqual(def.cost, 1.25);
   assert.deepStrictEqual(def.rule, { at: ['15:00'], days: ['tue', 'thu'], from: '2099-10-16T00:00' });
+  assert.strictEqual(def.day_cost, 5, 'the daily spend limit was not sent');
   assert.ok((await page.locator('.transcript').textContent()).includes('Schedule: Tuesdays and Thursdays at 15:00'), 'the transcript does not show the schedule in the daemon\'s words');
   // Home lists it, with pause and run now on the card: pausing there sends the
   // same request as the dialog does, and resuming undoes it.
@@ -74,6 +76,20 @@ check(async () => {
   await until('card resumed', async () => (await page.locator('[aria-label="Scheduled tasks"] article').textContent()).includes('Next: Tue 20 Oct 2099 15:00'));
   assert.deepStrictEqual(sent.of('schedule.pause').at(-1), { id, paused: false });
   await page.screenshot({ path: `${out}/schedule-home.png` });
+  // The Workflows page lists it, reached from the sidebar and from Home's
+  // Scheduled section, with when it runs, the day's limit and its controls.
+  await page.click('[aria-label="Scheduled tasks"] a:text-is("All workflows")');
+  await page.waitForSelector('.workflow-row');
+  const workflow = await page.textContent('.workflow-row');
+  assert.ok(workflow.includes('Write scheduled') && workflow.includes('Tuesdays and Thursdays at 15:00') && workflow.includes('Next: Tue 20 Oct 2099 15:00') && workflow.includes('up to $5.00 a day'), `the Workflows page does not say it: ${workflow}`);
+  assert.strictEqual(await page.getAttribute('.nav-link[href="#/workflows"]', 'aria-current'), 'page', 'the sidebar does not mark the Workflows page');
+  await page.screenshot({ path: `${out}/schedule-workflows.png` });
+  // New workflow starts one on Home, in the Schedule dialog with every
+  // choice of a task beside it.
+  await page.click('#new-workflow');
+  await page.waitForSelector('dialog.schedule-dialog[open] #schedule-message');
+  assert.strictEqual(await page.evaluate(() => location.hash), '#/', 'New workflow did not go to Home');
+  await page.click('button[aria-label="Close schedule"]');
   await page.evaluate((hash) => location.hash = hash, taskHash);
   await page.waitForSelector('.task[data-loaded]');
   await page.reload(); await ready(page); await page.waitForSelector('.task[data-loaded]');
@@ -172,6 +188,15 @@ check(async () => {
   const recent = await page.locator('.schedule-history li').first().textContent();
   assert.ok(recent.includes('Finished (Run now)'), `the history does not say what came of the run: ${recent}`);
   await page.screenshot({ path: `${out}/schedule-controls.png` });
+  await close();
+  // The Workflows page counts today's run, under the day's limit, and says how it ended.
+  await page.evaluate(() => (location.hash = '#/workflows'));
+  await until('the run counted on the Workflows page', async () => (await page.textContent('.workflow-row')).includes('Today: 1 run'), () => page.textContent('.workflow-row'));
+  const counted = await page.textContent('.workflow-row');
+  assert.ok(counted.includes('of $5.00 a day') && counted.includes('Last: Finished (Run now)'), `the Workflows page does not say what today came to: ${counted}`);
+  await page.evaluate((hash) => (location.hash = hash), taskHash);
+  await page.waitForSelector('.task[data-loaded]');
+  await manage(); await status("Scheduled");
   // Removing asks first, as every removal does: Cancel keeps it.
   await page.click('button:text-is("Remove schedule")');
   assert.ok((await page.locator('.schedule-dialog').textContent()).includes('Remove the schedule? The task and what it has done stay.'));

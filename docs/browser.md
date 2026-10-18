@@ -125,6 +125,13 @@ top right and the edit form folded behind **Edit**; the transcript shows a
 `session.schedule` record by its `words`. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,
 as do edits and removal. Runs discard Don’t ask and use normal approvals.
+The **Workflows** page (`#/workflows`, `workflows.js`) lists every schedule
+from the desk's list with its sentence, next time or why not, `today` (runs
+and cost against `day_cost`) and the latest `history` entry, with Pause or
+Resume, Run now and Schedule…; it follows the list as runs start and end.
+**New workflow** goes to Home and opens its Schedule dialog once Home is
+drawn. The dialog has a daily spend limit beside the one per run and says
+what today's runs came to.
 Home lists each schedule's sentence and next time, or Paused, each card with Pause or Resume and
 Run now. The daemon coalesces missed times,
 records skips and closes idle scheduled sessions after 15 minutes; see the

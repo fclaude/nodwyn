@@ -395,3 +395,53 @@ func TestTheZoneIsNamed(t *testing.T) {
 		t.Fatalf("the computer's zone is named %q", got)
 	}
 }
+
+// A daily spend limit stops the automatic runs of a day once what that day's
+// runs cost reaches it, with one skip standing for the rest of the day's
+// times, and they go on the next day.
+func TestADailySpendLimitSkipsTheRestOfTheDay(t *testing.T) {
+	o := options(t)
+	s := schedulerServer(t, o)
+	y, m, d := time.Now().Date()
+	noon := time.Date(y, m, d, 12, 0, 0, 0, time.Local)
+	id := scheduledTask(t, s, noon.Add(-time.Hour))
+	session, err := core.Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := 1.5
+	if _, err := session.Record(log.KindScheduleRun, log.ScheduleRun{Due: noon.Add(-time.Hour), Through: noon.Add(-time.Hour), Started: noon.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.Record(log.KindLLMResp, log.LLMResp{Usage: log.Usage{Cost: &cost}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.store().Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := *state.Definition
+	def.DayCost, def.After = 1, state.Cursor
+	if err := s.store().SetSchedule(id, def); err != nil {
+		t.Fatal(err)
+	}
+	tickSchedule(s, noon)
+	state, err = s.store().Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.LastSkip == nil || !strings.Contains(state.LastSkip.Reason, "daily spend limit") || state.LastSkip.Through.Format("15:04") != "23:00" || state.LastRun.Manual || !state.LastRun.Started.Equal(noon.Add(-time.Hour)) {
+		t.Fatalf("skip %+v, run %+v", state.LastSkip, state.LastRun)
+	}
+	skips := len(state.History)
+	tickSchedule(s, noon.Add(3*time.Hour))
+	if state, err = s.store().Schedule(id); err != nil || len(state.History) != skips {
+		t.Fatalf("the rest of the day was skipped again: %+v %v", state.History, err)
+	}
+	if def.Definition.Validate() != nil || (schedule.Definition{Message: "x", Repeat: "daily", At: "2026-10-20T09:00", DayCost: -1}).Validate() == nil {
+		t.Fatal("a negative daily limit was taken")
+	}
+}

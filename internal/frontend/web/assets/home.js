@@ -1,6 +1,7 @@
 // Home: start anything, and see what needs you across every task.
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, toastError, basename } from "./dom.js";
 import { newSchedule, nextLine, scheduleTime, scheduleActions } from "./schedule.js";
+import { takeNewWorkflow } from "./workflows.js";
 import { summary } from "./prompts.js";
 import { keychainForm } from "./setup.js";
 import { firstModel } from "./models.js";
@@ -270,7 +271,7 @@ export function renderHome(root, ctx) {
       ),
     );
 
-  const schedules = h("section", { class: "home-section", "aria-label": "Scheduled tasks" }, h("h2", { class: "eyebrow" }, "Scheduled"));
+  const schedules = h("section", { class: "home-section", "aria-label": "Scheduled tasks" }, h("h2", { class: "eyebrow" }, "Scheduled", " ", h("a", { class: "eyebrow-link", href: "#/workflows" }, "All workflows")));
   for (const item of desk.sessions.values()) if (item.schedule?.definition && !item.archived) {
     const s = item.schedule;
     const update = async (method, params = {}) => {
@@ -669,6 +670,9 @@ export function renderHome(root, ctx) {
   // the field to land in.
   if (!draft && canStart && !settingUp && document.activeElement === document.body) focus();
   if (canChoose) drawPicker();
+  // New workflow on the Workflows page comes here for the Schedule dialog,
+  // which starts a task with every choice above.
+  if (takeNewWorkflow() && scheduleButton && !scheduleButton.disabled) scheduleButton.click();
   current = {
     focus,
     // Redrawn when the desk changes under a page being typed into.

@@ -48,6 +48,7 @@ it can see the thing but not change it.
 | Installed on a phone's Home Screen (ADR 52) | yes, over https: the console is a web app | deliberate gap: a terminal client | — | — |
 | Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu): set times on chosen weekdays, an interval within hours of the day, monthly dates or weekday, once, a first minute and a last day; the daemon's sentence, next times and zone name; Home’s cards pause and run now; paired devices can pause or run now | not built, and it does not show a `session.schedule` record or a run's marker either | not built | not built |
 | A schedule's recent runs: when, how each ended or why it was skipped, cost (`history` in `schedule.read`, ADR 49 amended 2026-10-17) | yes, **Recent runs** in a task's **Schedule…** | not built | — | `replay` shows the records |
+| Every workflow in one place, with today's runs and spend and a daily spend limit (ADR 53, slice 2) | yes, the **Workflows** page; New workflow opens Home's Schedule dialog | not built | — | — |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | Ctrl+Q detaches and the turn goes on; when the TUI's own process serves the daemon, quitting ends its tasks, as closing `nodwyn app` does | aborts it | — |

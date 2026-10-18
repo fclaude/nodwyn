@@ -974,6 +974,21 @@
       ],
       "type": "object"
     },
+    "core.ScheduleDay": {
+      "properties": {
+        "cost": {
+          "type": "number"
+        },
+        "day": {
+          "type": "string"
+        },
+        "runs": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
     "core.ScheduleEntry": {
       "properties": {
         "cost": {
@@ -2668,6 +2683,9 @@
           "type": "string"
         },
         "cost": {
+          "type": "number"
+        },
+        "day_cost": {
           "type": "number"
         },
         "message": {
@@ -8887,6 +8905,9 @@
         "cost": {
           "type": "number"
         },
+        "day_cost": {
+          "type": "number"
+        },
         "id": {
           "type": "string"
         },
@@ -9010,11 +9031,15 @@
         },
         "timezone": {
           "type": "string"
+        },
+        "today": {
+          "$ref": "#/$defs/core.ScheduleDay"
         }
       },
       "required": [
         "sequence",
         "cursor",
+        "today",
         "next",
         "next_words",
         "timezone",
@@ -9877,6 +9902,9 @@
           "type": "string"
         },
         "cost": {
+          "type": "number"
+        },
+        "day_cost": {
           "type": "number"
         },
         "message": {
