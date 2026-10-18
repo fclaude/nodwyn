@@ -2875,8 +2875,13 @@ A lean session's end on a relay's 404 the same evening (21:49, the only
 model request that failed among thousands) is ADR 41's amendment of
 2026-10-17: such a request is now sent again, in both profiles.
 
-**Not built here**: the measurement of this build. The next step is
-commit-bench task 6e18b7ba again under the lean profile, for the minutes to
-the end and how the model reads a command left running; both changes apply
-to the 121 SWE-bench tasks as well, where a check piped into `tail` past ten
-minutes and a pattern in `/tmp` can show them.
+**Measured so far** (2026-10-17, Muse, effort low): task 6e18b7ba was run
+again. The landed lean build's first attempt had run under the evening's
+heaviest load (ten commit-bench attempts, twelve SWE-bench containers and the
+local model's queue on one host); two more attempts under ordinary load
+resolved it in 6 and 8 minutes. The build with these two changes and the
+project tools resolved it 3 times of 3 in 5 to 9 minutes, and no command of
+its 34 sessions reached shell-exec's limit. This build, without the project
+tools, is not measured yet; both changes apply to the 121 SWE-bench tasks as
+well, where a check piped into `tail` past ten minutes and a pattern in
+`/tmp` can show them.
