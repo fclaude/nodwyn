@@ -653,7 +653,9 @@ pairs with an **invitation** and a device name: `nodwyn devices invite`
 prints one on the computer nodwyn runs on, and a paired device makes one in
 Settings › Keys & devices, with a link (`/#invite=CODE`) that fills it in.
 An invitation is twenty characters, good once and for ten minutes; it is
-typed in any case, with or without its dashes. This computer's browser pairs
+typed in any case, with or without its dashes. It names a new device: a name
+a paired device or a passkey has already is refused, and the invitation stays
+good for another. This computer's browser pairs
 with the launch ticket `nodwyn ui` opens it with, when it listens on
 loopback; nothing on such a console pairs this computer by code, so neither
 a forward to its loopback address nor another account on the computer can.

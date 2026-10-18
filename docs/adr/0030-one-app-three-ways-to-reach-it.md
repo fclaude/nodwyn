@@ -375,7 +375,10 @@ that depends on one VPN, and no sign-in that lapses while a device is used.
    characters, good once and for ten minutes, kept in `devices.toml` as its
    SHA-256. `nodwyn devices invite` prints one to the terminal that ran it,
    never to the console's log; a paired device makes one in Settings › Keys &
-   devices, shown with a link that carries it in the fragment. A console on
+   devices, shown with a link that carries it in the fragment. It names a
+   new device, never one whose name a device or a passkey has already, which
+   it would lock out; only the person, signing in with their passkey,
+   replaces a device of the same name. A console on
    loopback alone (`nodwyn ui` without those flags, `nodwyn app`'s window)
    keeps its code: its loopback address is this computer, and a forward to it
    takes an account that already reaches the daemon's socket.

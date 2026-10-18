@@ -182,7 +182,9 @@ func (b *bridge) answered(value, kind, host string) bool {
 	return ok && x.kind == kind && x.host == host && time.Now().Before(x.expires)
 }
 
-// touch starts or renews device's touch.
+// touch starts or renews the touch of the device whose token has the digest
+// device (Device.Hash): a device paired again under a revoked one's name
+// inherits nothing.
 func (b *bridge) touch(device string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -192,8 +194,9 @@ func (b *bridge) touch(device string) {
 	b.touches[device] = time.Now().Add(touchLife)
 }
 
-// touched reports whether device's person touched their passkey within
-// touchLife of its last setup action.
+// touched reports whether the person of the device whose token has the
+// digest device touched their passkey within touchLife of its last setup
+// action.
 func (b *bridge) touched(device string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -293,7 +296,7 @@ func (b *bridge) passkey(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.signIn(w, r, token)
-		b.touch(p.Device)
+		b.touch(digest(token))
 		b.logf("%s paired with an invitation and registered the passkey %s", p.Device, p.Device)
 		reply(map[string]string{"device": p.Device})
 	case "/passkey/assert":
@@ -311,7 +314,7 @@ func (b *bridge) passkey(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusForbidden)
 				return
 			}
-			b.touch(device.Name)
+			b.touch(device.Hash)
 			b.logf("%s confirmed with the passkey %s", device.Name, key.Name)
 			// A device the passkey made the person's, or now names another
 			// passkey, reconnects, so its daemon connection carries it.
@@ -323,7 +326,7 @@ func (b *bridge) passkey(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			b.signIn(w, r, token)
-			b.touch(p.Device)
+			b.touch(digest(token))
 			b.logf("%s signed in with the passkey %s", p.Device, key.Name)
 			reply(map[string]any{"device": p.Device, "promoted": true})
 		}

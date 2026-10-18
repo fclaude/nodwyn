@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1066,12 +1067,16 @@ func TestAHostBehindATLSProxyPairsOverHTTPS(t *testing.T) {
 	s := New(Options{PairingCode: testCode, Devices: devices, Hosts: []string{"https://desk.tailnet.ts.net", "desk.local:7777"}})
 	s.b.ctx = context.Background()
 	s.b.listensAt("127.0.0.1:7777")
+	// Each pairing names a device of its own: an invitation takes no name
+	// in use.
+	paired := 0
 	pair := func(host, origin string) *httptest.ResponseRecorder {
 		code, _, err := devices.Invite(Terminal, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r := httptest.NewRequest("POST", "http://"+host+"/pair", strings.NewReader(`{"invite":"`+code+`","device":"phone"}`))
+		paired++
+		r := httptest.NewRequest("POST", "http://"+host+"/pair", strings.NewReader(`{"invite":"`+code+`","device":"phone-`+strconv.Itoa(paired)+`"}`))
 		r.RemoteAddr = "127.0.0.1:40000" // the proxy, on the phone's behalf
 		r.Header.Set("Origin", origin)
 		r.Header.Set("Content-Type", "application/json")

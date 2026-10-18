@@ -198,7 +198,7 @@ func TestAPasskeyPairsThePersonsDevices(t *testing.T) {
 	if d, ok := devices.Check(laptop.cookies[0].Value); !ok || d.Name != "laptop" || d.Passkey != "laptop" {
 		t.Fatalf("the laptop: %+v %v", d, ok)
 	}
-	if !s.b.touched("laptop") {
+	if !s.b.touched(digest(laptop.cookies[0].Value)) {
 		t.Fatal("registering is no touch")
 	}
 
@@ -427,7 +427,7 @@ func TestThePersonsDeviceTouchesItsPasskeyForSetup(t *testing.T) {
 	}
 	// The registration was a touch; one that lapsed is asked for again.
 	b.mu.Lock()
-	b.touches["laptop"] = time.Now().Add(-time.Second)
+	b.touches[digest(laptop.cookies[0].Value)] = time.Now().Add(-time.Second)
 	b.mu.Unlock()
 	setting := map[string]any{"google_upload": "deny"}
 	if _, rerr := call(laptopConn, "settings.docs.write", setting); rerr == nil || rerr.Code != touchCode {

@@ -551,7 +551,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 	// device one that only answers at once, though its daemon connection
 	// still carries the passkey; one that touches a passkey reconnects.
 	who := func(now Device) caller {
-		return caller{local: !remote, person: now.Passkey != "" && now.Passkey == device.Passkey, touched: now.Name != "" && b.touched(now.Name)}
+		return caller{local: !remote, person: now.Passkey != "" && now.Passkey == device.Passkey, touched: now.Name != "" && b.touched(now.Hash)}
 	}
 	revoked := func() {
 		conn.Close(websocket.StatusPolicyViolation, "this device was revoked")
@@ -637,7 +637,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 		// the audit (Options.Audit), whether it worked or not.
 		audited := access == granted && current.Name != "" && b.tierOf(req.Method) == tierSetup
 		if audited {
-			b.touch(current.Name)
+			b.touch(current.Hash)
 		}
 		var result json.RawMessage
 		var callErr error
@@ -929,7 +929,8 @@ func (b *bridge) deviceMethod(req request, device Device, c caller) (json.RawMes
 			return nil, errors.New("invalid parameters")
 		}
 	}
-	by := Terminal
+	// Who an invitation is by: the device, or this computer's console.
+	by := "computer"
 	if device.Name != "" {
 		by = device.Name
 	}
@@ -957,7 +958,7 @@ func (b *bridge) deviceMethod(req request, device Device, c caller) (json.RawMes
 			if !c.touched {
 				return nil, errTouch
 			}
-			b.touch(device.Name)
+			b.touch(device.Hash)
 		}
 		code, expires, err := b.devices.Invite(by, p.Passkey)
 		if err != nil {

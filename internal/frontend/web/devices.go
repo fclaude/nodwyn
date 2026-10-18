@@ -143,11 +143,16 @@ func digest(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// pair records a device under name in f, replacing one of the same name,
-// and returns the token its cookie carries.
-func pair(f *deviceFile, name, by, passkey string) (string, error) {
+// pair records a device under name in f and returns the token its cookie
+// carries. Only the person, with their passkey, replaces a device of the same
+// name: an invitation names a new one, since one that took the name of a
+// device already paired would lock that device out.
+func pair(f *deviceFile, name, by, passkey string, replace bool) (string, error) {
 	if !DeviceName.MatchString(name) {
 		return "", fmt.Errorf("name the device with lower-case letters, digits, dots or dashes (at most 32)")
+	}
+	if !replace && slices.ContainsFunc(f.Device, func(x Device) bool { return x.Name == name }) {
+		return "", fmt.Errorf("a device named %s is paired already: choose another name, or revoke it first", name)
 	}
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -302,15 +307,15 @@ func (d *Devices) Join(code, name string) (string, error) {
 		if err != nil {
 			return err
 		}
-		token, err = pair(f, name, x.By, "")
+		token, err = pair(f, name, x.By, "", false)
 		return err
 	})
 	return token, err
 }
 
-// Register uses an invitation that may register a passkey: the passkey key
-// (named after the device, replacing one of that name) and the device
-// signed in with it. It returns the device's token.
+// Register uses an invitation that may register a passkey: the passkey key,
+// named after the device, and the device signed in with it. It returns the
+// device's token.
 func (d *Devices) Register(code, name string, key Passkey) (string, error) {
 	var token string
 	err := d.change(func(f *deviceFile) error {
@@ -321,12 +326,16 @@ func (d *Devices) Register(code, name string, key Passkey) (string, error) {
 		if !x.Passkey {
 			return errors.New("this invitation pairs a device that answers, without a passkey")
 		}
-		if token, err = pair(f, name, x.By, name); err != nil {
+		// A failure leaves the file as it was, the invitation in it.
+		if slices.ContainsFunc(f.Passkey, func(p Passkey) bool { return p.Name == name }) {
+			return fmt.Errorf("a passkey named %s is registered already: choose another name, or remove it first", name)
+		}
+		if token, err = pair(f, name, x.By, name, false); err != nil {
 			return err
 		}
 		now := time.Now().UTC().Truncate(time.Second)
 		key.Name, key.By, key.Added, key.LastUsed = name, x.By, now, now
-		f.Passkey = append(slices.DeleteFunc(f.Passkey, func(p Passkey) bool { return p.Name == name || p.ID == key.ID }), key)
+		f.Passkey = append(slices.DeleteFunc(f.Passkey, func(p Passkey) bool { return p.ID == key.ID }), key)
 		return nil
 	})
 	return token, err
@@ -352,7 +361,7 @@ func used(f *deviceFile, passkey string) error {
 }
 
 // SignIn pairs a device named name whose person just proved themself with
-// passkey, and returns its token.
+// passkey, replacing one of that name, and returns its token.
 func (d *Devices) SignIn(name, passkey string) (string, error) {
 	var token string
 	err := d.change(func(f *deviceFile) error {
@@ -360,7 +369,7 @@ func (d *Devices) SignIn(name, passkey string) (string, error) {
 			return err
 		}
 		var err error
-		token, err = pair(f, name, "passkey:"+passkey, passkey)
+		token, err = pair(f, name, "passkey:"+passkey, passkey, true)
 		return err
 	})
 	return token, err
