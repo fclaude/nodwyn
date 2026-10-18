@@ -47,12 +47,16 @@ func (r *remote) subscribe(ctx context.Context, info rpc.SessionDetails) (snapsh
 		result.Branch = info.Worktree.Branch
 		result.Project = config.CanonicalPath(info.Worktree.Repository)
 	}
-	page := sub.Page
-	for page.More {
-		if err := r.client.Call(ctx, "log.read", map[string]any{"id": info.ID, "after": page.Next, "through": page.Through, "limit": 100}, &page); err != nil {
+	// Each page is decoded into a page of its own: decoding into the last
+	// one would reuse its events' array, which the history holds, and
+	// write the second page over the first.
+	for page := sub.Page; page.More; {
+		var next core.LogPage
+		if err := r.client.Call(ctx, "log.read", map[string]any{"id": info.ID, "after": page.Next, "through": page.Through, "limit": 100}, &next); err != nil {
 			return snapshot{}, err
 		}
-		result.History = append(result.History, page.Events...)
+		result.History = append(result.History, next.Events...)
+		page = next
 	}
 	return result, nil
 }
@@ -75,6 +79,9 @@ func (r *remote) Secret(ctx context.Context, id, prompt string, value []byte) er
 }
 func (r *remote) Abort(ctx context.Context, id string) error {
 	return r.client.Call(ctx, "session.abort", map[string]any{"id": id}, nil)
+}
+func (r *remote) CloseSession(ctx context.Context, id string) error {
+	return r.client.Call(ctx, "session.close", map[string]any{"id": id}, nil)
 }
 func (r *remote) Close() { r.client.Close() }
 

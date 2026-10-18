@@ -17,14 +17,14 @@ import (
 
 // attachOptions is a session on a model that takes images, with a text file
 // and an image to attach.
-func attachTest(t *testing.T, mode string) (m *model, text, img string) {
+func attachTest(t *testing.T) (m *model, text, img string) {
 	t.Helper()
 	vision := fake.NewT(t)
 	t.Cleanup(vision.Close)
 	vision.SetCapabilities("completion", "vision")
 	o := testOptions(t)
 	o.Config.Control.URL, o.Config.Control.Model = vision.URL, "fake-vision"
-	b := testBackend(t, mode, o)
+	b := testBackend(t, o)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	t.Cleanup(cancel)
 	snap, err := b.Attach(ctx, o.Repo, "")
@@ -76,62 +76,54 @@ func finished(t *testing.T, m *model, done chan tea.Msg) {
 // :attach adds a file to the conversation; an image asks its own confirm,
 // which is answered while the attachment waits for it. Over the daemon that
 // needs a connection of its own, since one connection's calls run in order.
-func TestAttachThroughBothBackends(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			m, text, img := attachTest(t, mode)
-			done := attachInBackground(t, m, text)
-			finished(t, m, done)
-			if m.attaching || m.status != "" {
-				t.Fatalf("text: %q", m.status)
-			}
-			pump(t, m, transcriptHas(m, "[attached notes.txt · text"))
+func TestAttachThroughTheDaemon(t *testing.T) {
+	m, text, img := attachTest(t)
+	done := attachInBackground(t, m, text)
+	finished(t, m, done)
+	if m.attaching || m.status != "" {
+		t.Fatalf("text: %q", m.status)
+	}
+	pump(t, m, transcriptHas(m, "[attached notes.txt · text"))
 
-			done = attachInBackground(t, m, img)
-			pump(t, m, func() bool { return m.prompt != nil })
-			if m.prompt.title != "attach image" || !strings.Contains(m.prompt.detail, "cannot be redacted") {
-				t.Fatalf("image confirm: %q\n%s", m.prompt.title, m.prompt.detail)
-			}
-			if title, _, _ := strings.Cut(m.View().Content, "\n"); !strings.Contains(title, "NEEDS YOUR ANSWER") {
-				t.Fatalf("the confirm is not in front: %q", title)
-			}
-			m.promptInput.SetValue("y")
-			m.Update(m.submit()())
-			finished(t, m, done)
-			if m.attaching || m.status != "" {
-				t.Fatalf("image: %q", m.status)
-			}
-			pump(t, m, transcriptHas(m, "[attached board.png · image · 20×10"))
-			// The confirm marked the session busy, as every prompt does; the
-			// attachment's end must not leave it so, or the next message is
-			// refused.
-			if m.busy {
-				t.Fatal("still busy after the attachment")
-			}
-		})
+	done = attachInBackground(t, m, img)
+	pump(t, m, func() bool { return m.prompt != nil })
+	if m.prompt.title != "attach image" || !strings.Contains(m.prompt.detail, "cannot be redacted") {
+		t.Fatalf("image confirm: %q\n%s", m.prompt.title, m.prompt.detail)
+	}
+	if title, _, _ := strings.Cut(m.View().Content, "\n"); !strings.Contains(title, "NEEDS YOUR ANSWER") {
+		t.Fatalf("the confirm is not in front: %q", title)
+	}
+	m.promptInput.SetValue("y")
+	m.Update(m.submit()())
+	finished(t, m, done)
+	if m.attaching || m.status != "" {
+		t.Fatalf("image: %q", m.status)
+	}
+	pump(t, m, transcriptHas(m, "[attached board.png · image · 20×10"))
+	// The confirm marked the session busy, as every prompt does; the
+	// attachment's end must not leave it so, or the next message is
+	// refused.
+	if m.busy {
+		t.Fatal("still busy after the attachment")
 	}
 }
 
 // Ctrl+C while an image waits for its confirm cancels the attachment, as it
 // aborts a turn, instead of quitting.
 func TestCtrlCCancelsAnAttachment(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			m, _, img := attachTest(t, mode)
-			done := attachInBackground(t, m, img)
-			pump(t, m, func() bool { return m.prompt != nil })
-			_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-			if cmd == nil {
-				t.Fatal("Ctrl+C did nothing")
-			}
-			if _, quit := cmd().(tea.QuitMsg); quit {
-				t.Fatal("Ctrl+C quit while an attachment waited")
-			}
-			finished(t, m, done)
-			if m.attaching || !strings.HasPrefix(m.status, "Not attached: board.png") {
-				t.Fatalf("after Ctrl+C: %q", m.status)
-			}
-		})
+	m, _, img := attachTest(t)
+	done := attachInBackground(t, m, img)
+	pump(t, m, func() bool { return m.prompt != nil })
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if cmd == nil {
+		t.Fatal("Ctrl+C did nothing")
+	}
+	if _, quit := cmd().(tea.QuitMsg); quit {
+		t.Fatal("Ctrl+C quit while an attachment waited")
+	}
+	finished(t, m, done)
+	if m.attaching || !strings.HasPrefix(m.status, "Not attached: board.png") {
+		t.Fatalf("after Ctrl+C: %q", m.status)
 	}
 }
 

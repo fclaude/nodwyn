@@ -269,3 +269,49 @@ Not changed: the `settings.*` methods still hold the lock while they wait for
   runtime directory, and the console would then fail to open without saying
   why. It is documented instead, with `--no-open` and the pairing code (never
   on a command line) as the way on a shared computer.
+
+## Amendment 2026-10-17: the TUI talks to the daemon too
+
+The TUI had two hosts: by default it ran the session in its own process,
+and with `--socket` it attached to a daemon. Every one of its operations was
+written twice, and the local one skipped what only the daemon does: the
+refusal of a task root that holds nodwyn's own directories, the refusal of a
+model whose key is locked, the scheduler and attention. It also held the
+task's log, so a scheduled run of a task open in the TUI could not start and
+could not even record its skip ("session is already open or cannot be
+locked"), and no other client could open the task.
+
+- **`nodwyn tui` uses the daemon on the default socket, and starts one in
+  its own process when none answers**, as `nodwyn app` does (§1, through the
+  same `ensureDaemon`): attached, quitting leaves the tasks running; owning
+  it, quitting closes them, their logs kept. The footer says which. The local
+  backend is deleted, with no `--no-daemon`: nothing needs it. The TUI needs
+  a terminal, so no script used it, and its tests start a daemon on a
+  private socket with the fakes.
+- **The TUI unlocks the daemon's keychain over the socket** before its
+  full screen opens, with a masked prompt and `keychain.unlock`, a method
+  for this computer, which a client of the Unix socket is. An empty answer
+  leaves it locked and `--no-keychain` does not ask. Attached to a daemon
+  `nodwyn app` started, the TUI could before only say "Unlock the keychain
+  first".
+- **Ctrl+Q detaches, and `:close` closes**, as the console's tab and its
+  Close do. Local mode closed the session on quitting, and with it removed
+  a worktree with nothing unlanded; a task left open now goes on in the
+  daemon, reachable from every client and the scheduler. `:close` closes
+  it there (`session.close`) and quits, waiting, as the console's Close
+  does, for the turn to end.
+- **Line mode keeps its own process, for now.** It is the scriptable client
+  and carries what the daemon has no form for: `--url`, a server no
+  configuration names, `--budget-*` limits for one session, `--no-confirm`,
+  `--yolo` without the setting the console's Don't ask needs, and a
+  passphrase read from `/dev/tty` under a script. Moving it needs those
+  decided as `session.open` options or dropped, and its front-end,
+  `internal/frontend/plain`, reading events from the socket instead of
+  `core.Session`; [the clients](../clients.md) records the gap.
+
+Found on the way: the TUI's history over the daemon decoded each page of a
+long log over the first page's events, and so showed a conversation of more
+than a hundred records with its second hundred twice and its first not at
+all. The test of a whole history ran only in local mode.
+ADR 34's note that the TUI's local mode opens a worktree without the task-root
+refusal no longer applies.

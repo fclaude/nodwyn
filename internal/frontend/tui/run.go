@@ -7,16 +7,18 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 // Options configure the terminal client.
 type Options struct {
-	Core         core.Options // for a session in this process, when Socket is ""
-	Socket       string       // a daemon to attach to instead
-	Resume       string       // session to reopen; "" starts a new one
-	Worktree     bool         // start the new one in a git worktree of Core.Repo (ADR 34)
+	Socket string // the daemon that hosts the sessions (ADR 30)
+	// Owned is set when this process serves that daemon: quitting then
+	// ends its tasks rather than leaving them running.
+	Owned        bool
+	Repo         string // the folder new tasks start in
+	Resume       string // session to reopen; "" starts a new one
+	Worktree     bool   // start the new one in a git worktree of Repo (ADR 34)
 	ShowThinking bool
 	Input        io.Reader
 	Output       io.Writer
@@ -57,22 +59,13 @@ func Run(ctx context.Context, o Options) error {
 			b.Close()
 		}
 	}()
-	var b backend
-	if o.Socket != "" {
-		var err error
-		b, err = connect(ctx)
-		if err != nil {
-			return err
-		}
-	} else {
-		b = newLocal(o.Core)
-		opened = append(opened, b)
+	b, err := connect(ctx)
+	if err != nil {
+		return err
 	}
-	m := newModel(ctx, b, o.Core.Repo, o.Resume, o.ShowThinking)
-	m.worktree = o.Worktree
-	if o.Socket != "" {
-		m.reconnect = connect
-	}
-	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(o.Input), tea.WithOutput(o.Output)).Run()
+	m := newModel(ctx, b, o.Repo, o.Resume, o.ShowThinking)
+	m.worktree, m.owned = o.Worktree, o.Owned
+	m.reconnect = connect
+	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(o.Input), tea.WithOutput(o.Output)).Run()
 	return err
 }

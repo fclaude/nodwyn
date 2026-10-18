@@ -58,6 +58,9 @@ type model struct {
 	// attaching is while a file is being added: an image waits for its
 	// confirm, so the keyboard stays free to answer it.
 	attaching bool
+	// owned is set when this process serves the daemon: quitting ends the
+	// tasks it hosts instead of leaving them running there.
+	owned bool
 }
 type listResult struct {
 	items []rpc.SessionInfo
@@ -198,6 +201,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sessionsListed(msg)
 	case actionResult:
 		m.actionFinished(msg)
+		if msg.kind == "close" && msg.err == nil {
+			return m, tea.Quit
+		}
 	case attachResult:
 		return m, m.attached(msg)
 	case attachFileResult:
@@ -279,10 +285,7 @@ func (m *model) eventArrived(msg nextResult) tea.Cmd {
 		m.prompt = nil
 		m.promptInput.Reset()
 		m.promptInput.EchoMode = textinput.EchoNormal
-		m.status = "Disconnected. Ctrl+Q quits; submitted operations are never retried."
-		if m.reconnect != nil {
-			m.status = "Disconnected. Ctrl+R reconnects, Ctrl+C or Ctrl+Q quits; submitted operations are never retried."
-		}
+		m.status = "Disconnected. Ctrl+R reconnects, Ctrl+C or Ctrl+Q quits; submitted operations are never retried."
 		m.refresh(false)
 		return nil
 	}
@@ -552,6 +555,8 @@ func (m *model) submit() tea.Cmd {
 		return m.attachFile(strings.TrimPrefix(strings.TrimSpace(text), ":attach"))
 	case text == ":q" || text == ":quit" || text == ":exit":
 		return tea.Quit
+	case text == ":close":
+		return m.closeSession()
 	case text == ":help" || text == ":h":
 		m.inspectionToken++
 		m.inspector = &inspector{title: "help", token: m.inspectionToken, content: helpText}
@@ -591,6 +596,22 @@ func (m *model) submit() tea.Cmd {
 	m.busy = true
 	b, id := m.backend, m.id
 	return m.action("send", "", func(ctx context.Context) error { return b.Send(ctx, id, source, eval) })
+}
+
+// closeSession closes the task in the daemon and quits, as the console's
+// Close does: its log is released, and a worktree with nothing unlanded is
+// removed with its branch. Quitting only detaches from a daemon another
+// process serves, so a task left open there goes on, reachable from every
+// client and the scheduler. Like the console's, it waits for the turn and
+// any question to be over.
+func (m *model) closeSession() tea.Cmd {
+	if m.busy || m.attaching {
+		m.status = "Close the task when this turn ends. Ctrl+C aborts it; :close then closes it."
+		return nil
+	}
+	m.composer.Reset()
+	b, id := m.backend, m.id
+	return m.action("close", "", func(ctx context.Context) error { return b.CloseSession(ctx, id) })
 }
 
 // chooseModel moves the conversation to a model by its choice's name, with an
@@ -840,25 +861,23 @@ func (m *model) View() tea.View {
 // helpLine is the footer: the keys that do something now, and above all the
 // one that stops what is running or leaves, which a person looks for first.
 func (m *model) helpLine() string {
-	reconnect := ""
-	if m.reconnect != nil {
-		reconnect = " · Ctrl+R reconnect (quit detaches)"
+	leave := "detaches; tasks go on in the daemon"
+	if m.owned {
+		leave = "quits, ending the tasks this process serves"
 	}
 	switch {
 	case !m.active:
 		return "Ctrl+C or Ctrl+Q quit"
-	case m.disconnected && m.reconnect != nil:
-		return "Ctrl+R reconnects the daemon · Ctrl+C or Ctrl+Q quits (detaches)"
 	case m.disconnected:
-		return "Ctrl+C or Ctrl+Q quits"
+		return "Ctrl+R reconnects the daemon · Ctrl+C or Ctrl+Q " + leave
 	case m.prompt != nil || m.inspector != nil:
-		return "PgUp/PgDn scroll · Ctrl+C abort/quit · Ctrl+Q quit" + reconnect
+		return "PgUp/PgDn scroll · Ctrl+C abort/quit · Ctrl+R reconnect · Ctrl+Q " + leave
 	case m.busy:
-		return "Ctrl+C aborts the turn · Enter keeps your draft · Alt+Enter/Ctrl+J newline · Ctrl+Q quits"
+		return "Ctrl+C aborts the turn · Enter keeps your draft · Alt+Enter/Ctrl+J newline · Ctrl+Q " + leave
 	case m.attaching:
-		return "Ctrl+C cancels the attachment · Alt+Enter/Ctrl+J newline · Ctrl+Q quits"
+		return "Ctrl+C cancels the attachment · Alt+Enter/Ctrl+J newline · Ctrl+Q " + leave
 	}
-	return "Enter sends · Alt+Enter/Ctrl+J newline · Ctrl+C clears the draft, then quits · Ctrl+Q quits"
+	return "Enter sends · Alt+Enter/Ctrl+J newline · Ctrl+C clears the draft, then quits · Ctrl+Q " + leave
 }
 
 func (m *model) refresh(bottom bool) {

@@ -37,7 +37,7 @@ func TestAppLeavesADaemonItCannotUse(t *testing.T) {
 		}
 	}()
 	paths := config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data"))
-	_, _, err = ensureDaemon(context.Background(), paths, socket)
+	_, _, err = ensureDaemon(context.Background(), paths, socket, "app")
 	if err == nil || !strings.Contains(err.Error(), "cannot use it") {
 		t.Fatalf("ensureDaemon: %v", err)
 	}

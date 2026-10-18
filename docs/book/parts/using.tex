@@ -228,8 +228,10 @@ provider that cannot read one refuses that request, and the turn says so
 \item[\code{nodwyn}] Line mode in the current directory: the session runs
   in this process, and ends with it. Scriptable; \code{--no-confirm}
   answers every confirm with no.
-\item[\code{nodwyn tui}] The full-screen terminal client, in its own
-  process or attached to a daemon with \code{--socket}. In a git
+\item[\code{nodwyn tui}] The full-screen terminal client. It talks to the
+  daemon that is running, or starts one in its own process as
+  \code{nodwyn app} does, and asks for a locked keychain's passphrase;
+  Ctrl+Q detaches and \code{:close} closes the task. In a git
   repository it offers a session in a worktree of its own first
   (\code{--worktree} opens one directly); \code{:model} moves the
   conversation to another model, and \code{:attach PATH} adds a file.

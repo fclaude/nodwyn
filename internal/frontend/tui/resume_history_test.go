@@ -12,11 +12,11 @@ import (
 	"github.com/fclaude/nodwyn/internal/log"
 )
 
-// A task resumed in the TUI's own process shows its whole conversation,
-// read from its log, though the session holds only the end of it (ADR 49
-// §10): with the snapshot taken from the session's events, only the runs
-// since its last compaction were shown.
-func TestLocalResumeShowsTheWholeConversation(t *testing.T) {
+// A resumed task shows its whole conversation, read from its log, though
+// the session holds only the end of it (ADR 49 §10): with the snapshot
+// taken from the session's events, only the runs since its last compaction
+// were shown, as the TUI's own process once did.
+func TestResumeShowsTheWholeConversation(t *testing.T) {
 	o := testOptions(t)
 	id := "20260901T070000Z-0000eeee"
 	if err := os.MkdirAll(o.Paths.SessionsDir, 0o700); err != nil {
@@ -49,14 +49,10 @@ func TestLocalResumeShowsTheWholeConversation(t *testing.T) {
 	}
 	f.Close()
 
-	b := newLocal(o)
-	defer b.Close()
+	b, _ := testRemote(t, o)
 	snap, err := b.Attach(context.Background(), o.Repo, id)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if first := b.session.EventsSoFar()[0].Seq; first <= 1 {
-		t.Fatalf("the session holds its log from seq %d: this shows nothing", first)
 	}
 	if len(snap.History) <= int(seq) || snap.History[0].Seq != 1 {
 		t.Fatalf("the conversation shown has %d events from seq %d; the log had %d before the resume", len(snap.History), snap.History[0].Seq, seq)

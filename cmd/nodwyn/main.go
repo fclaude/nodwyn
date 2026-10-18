@@ -45,7 +45,7 @@ commands:
   ui [--socket PATH]    interactive browser view (optional --read-only)
   ui --listen ADDR     also serve other machines; devices pair by name
   devices [revoke NAME] list or revoke browsers paired from other machines
-  tui [--socket PATH]   interactive terminal client (local or daemon)
+  tui [--socket PATH]   interactive terminal client, over the daemon (starts one if none runs)
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
   eval -e EXPR         evaluate an expression and print its value

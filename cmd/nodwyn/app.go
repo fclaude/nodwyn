@@ -58,7 +58,7 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	owned, daemonDone, err := ensureDaemon(ctx, paths, socket)
+	owned, daemonDone, err := ensureDaemon(ctx, paths, socket, "app")
 	if err != nil {
 		return err
 	}
@@ -116,12 +116,13 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 }
 
 // ensureDaemon attaches to a daemon that answers on socket, or starts one
-// in this process. A socket file nobody listens on (the connection is
+// in this process, for nodwyn app and nodwyn tui (command, which its
+// messages begin with). A socket file nobody listens on (the connection is
 // refused) is left by a crash, and is removed. A daemon that listens but
 // cannot be used (an older protocol, a hello it refuses, a slow answer) is
-// still running its tasks and schedules: its socket stays, and the app
+// still running its tasks and schedules: its socket stays, and the command
 // says so instead of starting a second daemon beside it.
-func ensureDaemon(ctx context.Context, paths config.Paths, socket string) (owned bool, done chan error, err error) {
+func ensureDaemon(ctx context.Context, paths config.Paths, socket, command string) (owned bool, done chan error, err error) {
 	dialCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	client, dialErr := rpc.Dial(dialCtx, socket)
 	cancel()
@@ -131,25 +132,25 @@ func ensureDaemon(ctx context.Context, paths config.Paths, socket string) (owned
 	}
 	if info, statErr := os.Lstat(socket); statErr == nil && info.Mode()&os.ModeSocket != 0 {
 		if !errors.Is(dialErr, syscall.ECONNREFUSED) {
-			return false, nil, fmt.Errorf("app: a daemon is running on %s, but this build cannot use it (%w); stop it, or run the nodwyn it came with", socket, dialErr)
+			return false, nil, fmt.Errorf("%s: a daemon is running on %s, but this build cannot use it (%w); stop it, or run the nodwyn it came with", command, socket, dialErr)
 		}
 		if err := os.Remove(socket); err != nil {
-			return false, nil, fmt.Errorf("app: stale socket %s: %w", socket, err)
+			return false, nil, fmt.Errorf("%s: stale socket %s: %w", command, socket, err)
 		}
 	}
 	cfg, err := config.Load(paths.ConfigFile)
 	if err != nil {
 		return false, nil, err
 	}
-	// The keychain starts locked, and the console asks for the passphrase;
-	// one without a passphrase is opened now.
+	// The keychain starts locked, and the console or the TUI asks for the
+	// passphrase; one without a passphrase is opened now.
 	options := core.Options{Config: cfg, Paths: paths, Version: versionString()}
 	if store, err := keychain.OpenWithoutPassphrase(paths.Keychain); err == nil {
 		if options.Bindings, err = binding.Load(paths.Bindings); err != nil {
 			return false, nil, err
 		}
 		options.Keychain = store
-		fmt.Fprintln(os.Stderr, "app: the keychain has no passphrase; opened it")
+		fmt.Fprintln(os.Stderr, command+": the keychain has no passphrase; opened it")
 	}
 	listener, err := rpc.Listen(socket)
 	if err != nil {

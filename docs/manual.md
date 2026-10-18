@@ -213,7 +213,7 @@ servers (W3b) live.
 | P5 Jev + plan gate | `internal/loop/plan.scm`; `internal/prim/judge.go`; `log.KindGatePlan`; `ArgvTrigger` is the hard-trigger list |
 | P6 taint | `Value.Taint`, propagated in `taintResult`; `guard.Taint` runs before L1 |
 | P7 redaction | `Session.Record` sanitizes payloads; the log writer enforces redaction; `window.Build` derives context from written events |
-| P9 TUI | `internal/frontend/tui` over `core.Session`, no core change |
+| P9 TUI | `internal/frontend/tui` over the daemon's protocol (ADR 30, amended 2026-10-17), no core change |
 | P10 memory | summaries in `internal/window` (`summary.go`) and `log.KindSummary`; `index-grep` ([docs/memory.md](memory.md)) |
 | P8 L3 (optional, not started) | the residual L1 marks as unknown entropy (`l1.Scanner`'s `isUnknownEntropy`); a checker after `guard.TextSecret` |
 | W3b contained local MCP servers | `internal/container` runs a server in podman or docker, `internal/egress` (`cmd/nodwyn-egress`) is the allowlisting proxy, `core/contained.go` connects it to a session; `internal/mcp` speaks to it over stdio |
@@ -336,7 +336,14 @@ Line mode is one client of several: `nodwyn tui` is a full-screen terminal
 client ([the TUI](tui.md)), `nodwyn app` and `nodwyn ui` show the console in
 a window or a browser ([the app](app.md), [the browser view](browser.md)),
 and `nodwyn run` carries a task to its end with no conversation, a batch
-tool for scripts and benchmarks ([runs](runs.md)). Everywhere else a task is
+tool for scripts and benchmarks ([runs](runs.md)). All of them but line mode
+reach tasks through a daemon, so a task open in one is open in the others
+and runs on its schedule. `nodwyn tui`, like `nodwyn app`, uses the daemon
+that is running or starts one in its own process; quitting it detaches, or
+ends the tasks when its process serves them, and `:close` closes a task.
+Line mode still runs its task in its own process, and while it has a task
+open no other client can open it and its schedule is skipped ([the
+clients](clients.md), "Line mode and the daemon"). Everywhere else a task is
 a chat: a request that takes long is a message like any other.
 [The clients](clients.md) lists what each of them can do, and what is
 still built in one and not another.
@@ -1266,8 +1273,9 @@ nodwyn keychain passphrase              # set or change it (asks for the current
 nodwyn keychain passphrase --remove     # leave it without one (not recommended)
 ```
 
-A passphrase is asked for when a session, the TUI or a daemon starts, at the
-terminal; the app's console asks for it instead. On Home, a locked keychain
+A passphrase is asked for when a line-mode session or a daemon starts, at the
+terminal; the app's console asks for it instead, and so does the TUI, at its
+start, for the daemon it uses when that daemon's keychain is locked. On Home, a locked keychain
 opens its unlock form and focuses the masked password field. Startup refreshes
 keep that field and anything already typed in it, rather than moving typing
 into chat; a failed unlock returns focus there for another attempt.
