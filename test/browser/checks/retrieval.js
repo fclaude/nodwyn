@@ -18,11 +18,17 @@ check(async () => {
   const task = await page.evaluate(() => location.hash);
   await page.waitForFunction(() => document.querySelector(".task-head .pill")?.textContent === "Idle", null, { timeout: 20000 });
 
+  // The pill says Idle when the task's state does, which can be before the
+  // transcript has drawn its last events: wait for the fold to say what is
+  // asserted below, and let that assertion report what it said if it never does.
+  await page.waitForFunction(() => [...document.querySelectorAll(".activity-fold .activity .what")].pop()?.textContent === "searched 3 times · recalled 1 event · updated the index · 1 failed", null, { timeout: 15000 }).catch(() => {});
+
   // One fold for the looks, each said in words; the index's build under the
   // search that made it, and no read of it marking a call.
   const fold = await page.evaluate(() => {
     document.querySelectorAll("details").forEach((d) => (d.open = true));
     const g = [...document.querySelectorAll(".activity-fold .activity")].pop();
+    if (!g) return { what: "no activity fold was drawn", rows: [], marked: [], index: [] };
     return {
       what: g.querySelector(".what").textContent,
       rows: [...g.querySelectorAll(".call > summary")].map((s) => `${s.querySelector(".name").textContent} ${s.querySelector(".args").textContent}`),
