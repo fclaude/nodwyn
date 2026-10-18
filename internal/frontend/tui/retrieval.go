@@ -20,21 +20,6 @@ type retrievalView struct {
 	EarlierTasks bool
 }
 
-func (l *local) Retrieval(ctx context.Context, project string) (retrievalView, error) {
-	if err := ctx.Err(); err != nil {
-		return retrievalView{}, err
-	}
-	index, err := core.ProjectIndex(l.options.Paths.DataDir, project)
-	if err != nil {
-		return retrievalView{}, err
-	}
-	ws, err := config.LoadWorkspace(config.RegistryFile(l.options.Paths), project)
-	if err != nil {
-		return retrievalView{}, err
-	}
-	return retrievalView{Project: project, Index: index, EarlierTasks: ws.EarlierTasks}, nil
-}
-
 // registered is a workspace as workspace.list gives it.
 type registered struct {
 	Name         string         `json:"name"`
@@ -70,10 +55,6 @@ func (r *remote) Retrieval(ctx context.Context, project string) (retrievalView, 
 // SetEarlierTasks turns searching the project's earlier tasks on or off,
 // as the console's Workspaces page does: kept with the folder's name in
 // workspaces.toml on this computer (ADR 50 §9).
-func (l *local) SetEarlierTasks(_ context.Context, project string, on bool) error {
-	_, err := config.SetEarlierTasks(config.RegistryFile(l.options.Paths), project, on)
-	return err
-}
 func (r *remote) SetEarlierTasks(ctx context.Context, project string, on bool) error {
 	w, ok, err := r.named(ctx, project)
 	if err != nil {
@@ -92,9 +73,6 @@ func (r *remote) SetEarlierTasks(ctx context.Context, project string, on bool) e
 
 // ForgetIndex deletes the project's repository index; the next search
 // builds it again.
-func (l *local) ForgetIndex(_ context.Context, project string) error {
-	return core.ForgetProjectIndex(l.options.Paths.DataDir, project)
-}
 func (r *remote) ForgetIndex(ctx context.Context, project string) error {
 	return r.client.Call(ctx, "index.forget", map[string]any{"repo": project}, nil)
 }

@@ -45,59 +45,55 @@ func transcriptHas(m *model, text string) func() bool {
 
 // :model shows the model the conversation talks to and the choices; :model
 // NAME moves it, and the next turn asks the chosen model (ADR 41).
-func TestModelChoiceThroughBothBackends(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			home := fake.NewT(t)
-			defer home.Close()
-			away := fake.NewT(t, fake.Turn{Content: "away answer"})
-			defer away.Close()
-			o := testOptions(t)
-			o.Config.Control.URL, o.Config.Control.Model, o.Config.Control.Server = home.URL, "control-model", "home"
-			o.Config.Servers = map[string]config.Server{"home": {URL: home.URL}, "away": {URL: away.URL}}
-			o.Config.Models = map[string]config.Model{"coder": {Server: "away", URL: away.URL, Model: "coder-model", NumCtx: 32768}}
-			b := testBackend(t, mode, o)
-			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-			defer cancel()
-			snap, err := b.Attach(ctx, o.Repo, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			m := newModel(ctx, b, o.Repo, snap.ID, false)
-			m.restore(snap)
+func TestModelChoiceThroughTheDaemon(t *testing.T) {
+	home := fake.NewT(t)
+	defer home.Close()
+	away := fake.NewT(t, fake.Turn{Content: "away answer"})
+	defer away.Close()
+	o := testOptions(t)
+	o.Config.Control.URL, o.Config.Control.Model, o.Config.Control.Server = home.URL, "control-model", "home"
+	o.Config.Servers = map[string]config.Server{"home": {URL: home.URL}, "away": {URL: away.URL}}
+	o.Config.Models = map[string]config.Model{"coder": {Server: "away", URL: away.URL, Model: "coder-model", NumCtx: 32768}}
+	b := testBackend(t, o)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	snap, err := b.Attach(ctx, o.Repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(ctx, b, o.Repo, snap.ID, false)
+	m.restore(snap)
 
-			typed(m, ":model")
-			if m.inspector == nil || !strings.Contains(m.inspector.content, "talks to control (control-model) on home") ||
-				!strings.Contains(m.inspector.content, "› control · control-model") || !strings.Contains(m.inspector.content, "  coder · coder-model on ") {
-				t.Fatalf(":model:\n%v", m.inspector)
-			}
-			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	typed(m, ":model")
+	if m.inspector == nil || !strings.Contains(m.inspector.content, "talks to control (control-model) on home") ||
+		!strings.Contains(m.inspector.content, "› control · control-model") || !strings.Contains(m.inspector.content, "  coder · coder-model on ") {
+		t.Fatalf(":model:\n%v", m.inspector)
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
-			typed(m, ":model coder extreme")
-			if !strings.Contains(m.status, "takes no effort setting") {
-				t.Fatalf("an effort the model does not take: %q", m.status)
-			}
-			typed(m, ":model nobody")
-			if !strings.Contains(m.status, `no model named "nobody"`) {
-				t.Fatalf("an unknown name: %q", m.status)
-			}
+	typed(m, ":model coder extreme")
+	if !strings.Contains(m.status, "takes no effort setting") {
+		t.Fatalf("an effort the model does not take: %q", m.status)
+	}
+	typed(m, ":model nobody")
+	if !strings.Contains(m.status, `no model named "nobody"`) {
+		t.Fatalf("an unknown name: %q", m.status)
+	}
 
-			typed(m, ":model coder")
-			if m.status != "" {
-				t.Fatalf("switch: %q", m.status)
-			}
-			pump(t, m, transcriptHas(m, "model → coder (coder-model) on away"))
-			typed(m, "hello")
-			pump(t, m, transcriptHas(m, "nodwyn> away answer"))
-			pump(t, m, func() bool { return !m.busy })
-			if len(home.Requests) != 0 || len(away.Requests) != 1 || away.Requests[0].Model != "coder-model" {
-				t.Fatalf("home was asked %d times, away %d", len(home.Requests), len(away.Requests))
-			}
-			typed(m, ":model")
-			if !strings.Contains(m.inspector.content, "talks to coder (coder-model) on away") {
-				t.Fatalf(":model after the switch:\n%s", m.inspector.content)
-			}
-		})
+	typed(m, ":model coder")
+	if m.status != "" {
+		t.Fatalf("switch: %q", m.status)
+	}
+	pump(t, m, transcriptHas(m, "model → coder (coder-model) on away"))
+	typed(m, "hello")
+	pump(t, m, transcriptHas(m, "nodwyn> away answer"))
+	pump(t, m, func() bool { return !m.busy })
+	if len(home.Requests) != 0 || len(away.Requests) != 1 || away.Requests[0].Model != "coder-model" {
+		t.Fatalf("home was asked %d times, away %d", len(home.Requests), len(away.Requests))
+	}
+	typed(m, ":model")
+	if !strings.Contains(m.inspector.content, "talks to coder (coder-model) on away") {
+		t.Fatalf(":model after the switch:\n%s", m.inspector.content)
 	}
 }
 
@@ -111,7 +107,7 @@ func TestModelChoiceWhileBusyIsQueued(t *testing.T) {
 	o.Config.Control.URL, o.Config.Control.Model, o.Config.Control.Server = home.URL, "control-model", "home"
 	o.Config.Servers = map[string]config.Server{"home": {URL: home.URL}, "away": {URL: away.URL}}
 	o.Config.Models = map[string]config.Model{"coder": {Server: "away", URL: away.URL, Model: "coder-model", NumCtx: 32768}}
-	b := testBackend(t, "local", o)
+	b := testBackend(t, o)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	snap, err := b.Attach(ctx, o.Repo, "")

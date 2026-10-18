@@ -18,7 +18,9 @@ HOST:PORT` and `--tls-cert`/`--tls-key` (browser.md, "Other devices").
 - **A daemon is running** (your usual `nodwyn daemon`): the app attaches to it.
   Closing the app leaves its tasks running, as closing `nodwyn ui` does.
 - **No daemon is running**: the app serves tasks itself on the standard
-  socket, so `nodwyn tui --socket …` or `nodwyn ui` can attach to it meanwhile.
+  socket, so `nodwyn tui` or `nodwyn ui` can attach to it meanwhile. `nodwyn
+  tui` and line mode (`nodwyn chat`) do the same when they find no daemon
+  running ([the TUI](tui.md), [the clients](clients.md)).
   Closing the app closes those tasks; their conversations are kept and resume
   later like after any daemon shutdown.
 

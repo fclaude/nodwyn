@@ -3,8 +3,6 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
-	"sync"
 
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/core"
@@ -26,9 +24,10 @@ type snapshot struct {
 	Pending []rpc.ClientEvent
 }
 
-// backend is the small set of operations these views need. Core and RPC retain
-// ownership of sessions, prompts and authorization. Only the RPC adapter retries
-// a connection; neither adapter retries a submitted operation.
+// backend is the small set of operations these views need, each a call to
+// the daemon, which owns sessions, prompts and authorization (ADR 30,
+// amended 2026-10-17). A connection is retried only when the person asks;
+// a submitted operation never is.
 type backend interface {
 	List(context.Context) ([]rpc.SessionInfo, error)
 	// Attach opens a session: the stored one id names, or with id "" a new
@@ -54,6 +53,10 @@ type backend interface {
 	Bind(context.Context, string, string) error
 	Secret(context.Context, string, string, []byte) error
 	Abort(context.Context, string) error
+	// CloseSession closes the session in the daemon, as the console's
+	// Close does: its log is released and a worktree with nothing unlanded
+	// is removed. Quitting only detaches.
+	CloseSession(context.Context, string) error
 	History(context.Context, string) ([]log.Event, error)
 	Policy(context.Context, string) (policyView, error)
 	Tools(context.Context, string) ([]llm.Tool, error)
@@ -65,138 +68,4 @@ type backend interface {
 	SetEarlierTasks(context.Context, string, bool) error
 	ForgetIndex(context.Context, string) error
 	Close()
-}
-
-type local struct {
-	mu      sync.Mutex
-	options core.Options
-	session *core.Session
-	events  chan rpc.ClientEvent
-	stop    chan struct{}
-	once    sync.Once
-}
-
-func newLocal(o core.Options) *local {
-	return &local{options: o, events: make(chan rpc.ClientEvent, 256), stop: make(chan struct{})}
-}
-func (l *local) List(context.Context) ([]rpc.SessionInfo, error) {
-	items, err := core.Readable((core.Store{Dir: l.options.Paths.SessionsDir}).List())
-	var out []rpc.SessionInfo
-	for _, s := range items {
-		out = append(out, rpc.SessionInfo{ID: s.ID, Repo: s.Repo, FirstMessage: s.FirstMessage, LastEvent: s.LastEvent, InFlight: s.InFlight, Truncated: s.Truncated, Worktree: s.Worktree})
-	}
-	return out, err
-}
-func (l *local) Attach(ctx context.Context, repo, id string) (snapshot, error) {
-	o := l.options
-	o.Repo = repo
-	if id == "" {
-		return l.start(ctx, func() (*core.Session, error) { return core.New(o) })
-	}
-	o.Repo = ""
-	return l.start(ctx, func() (*core.Session, error) { return core.Resume(o, id) })
-}
-func (l *local) OpenWorktree(ctx context.Context, repo string) (snapshot, error) {
-	o := l.options
-	o.Repo, o.Worktree = repo, true
-	return l.start(ctx, func() (*core.Session, error) { return core.New(o) })
-}
-
-// start makes the session this process owns and forwards its events.
-func (l *local) start(ctx context.Context, open func() (*core.Session, error)) (snapshot, error) {
-	if err := ctx.Err(); err != nil {
-		return snapshot{}, err
-	}
-	select {
-	case <-l.stop:
-		return snapshot{}, context.Canceled
-	default:
-	}
-	s, err := open()
-	if err != nil {
-		return snapshot{}, err
-	}
-	go func() {
-		defer close(l.events)
-		for ev := range s.Events() {
-			raw, err := json.Marshal(ev.Payload)
-			if err != nil {
-				continue
-			}
-			select {
-			case l.events <- rpc.ClientEvent{ID: s.ID(), Kind: ev.Kind, Seq: ev.Seq, Payload: raw}:
-			case <-l.stop:
-			}
-		}
-	}()
-	// The whole conversation, from the log: a resumed session holds only
-	// its end (ADR 49 §10).
-	history, err := s.History()
-	if err != nil {
-		s.Close()
-		return snapshot{}, err
-	}
-
-	l.mu.Lock()
-	select {
-	case <-l.stop:
-		l.mu.Unlock()
-		s.Close()
-		return snapshot{}, context.Canceled
-	default:
-		l.session = s
-		l.mu.Unlock()
-	}
-	result := snapshot{ID: s.ID(), Repo: s.Repo(), Project: s.Project(), History: history, Busy: s.Busy()}
-	if w := s.Worktree(); w != nil {
-		result.Branch = w.Branch
-	}
-	return result, nil
-}
-func (l *local) Next(ctx context.Context) (rpc.ClientEvent, error) {
-	select {
-	case ev, ok := <-l.events:
-		if !ok {
-			return rpc.ClientEvent{}, context.Canceled
-		}
-		return ev, nil
-	case <-ctx.Done():
-		return rpc.ClientEvent{}, ctx.Err()
-	}
-}
-func (l *local) Send(_ context.Context, _, text string, eval bool) error {
-	if eval {
-		return l.session.StartEval(text, "terminal")
-	}
-	return l.session.Send(text)
-}
-func (l *local) Answer(_ context.Context, _, prompt, reply string) error {
-	return l.session.AnswerFrom(prompt, reply, "terminal")
-}
-func (l *local) Grant(_ context.Context, _, prompt, scope string) error {
-	return l.session.CreateApproval(prompt, scope, "terminal")
-}
-func (l *local) Secret(_ context.Context, _, prompt string, value []byte) error {
-	return l.session.SecretReplyFrom(prompt, value, "terminal")
-}
-func (l *local) Abort(context.Context, string) error { l.session.Abort(); return nil }
-
-// AttachFile waits for an image's confirm, which reaches this view as a
-// prompt and is answered through Answer meanwhile.
-func (l *local) AttachFile(_ context.Context, _, path string) (log.Attach, error) {
-	return l.session.Attach(path, "", "terminal")
-}
-func (l *local) Close() {
-	l.once.Do(func() {
-		l.mu.Lock()
-		defer l.mu.Unlock()
-		close(l.stop)
-		if l.session != nil {
-			l.session.Close()
-		}
-	})
-}
-
-func (l *local) Bind(_ context.Context, _, prompt string) error {
-	return l.session.CreateBinding(prompt, "terminal")
 }

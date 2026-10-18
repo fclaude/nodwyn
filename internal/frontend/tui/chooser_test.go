@@ -40,9 +40,8 @@ func TestCtrlCQuitsAfterADisconnectDuringATurn(t *testing.T) {
 	if !m.disconnected {
 		t.Fatal("not disconnected")
 	}
-	// In local mode there is no reconnect to offer.
-	if strings.Contains(m.status, "Ctrl+R") || !strings.Contains(m.View().Content, "Ctrl+C or Ctrl+Q quits") {
-		t.Fatalf("local mode offers a reconnect it cannot do: %q", m.status)
+	if !strings.Contains(m.status, "Ctrl+R reconnects") || !strings.Contains(m.helpLine(), "Ctrl+R reconnects the daemon · Ctrl+C or Ctrl+Q detaches") {
+		t.Fatalf("the disconnect does not offer the reconnect, or says quitting does more than detach: %q, %q", m.status, m.helpLine())
 	}
 	_, cmd := m.Update(ctrlC())
 	if cmd == nil {
@@ -51,9 +50,19 @@ func TestCtrlCQuitsAfterADisconnectDuringATurn(t *testing.T) {
 	if _, quit := cmd().(tea.QuitMsg); !quit {
 		t.Fatal("Ctrl+C did not quit")
 	}
-	m.reconnect = func(context.Context) (backend, error) { return nil, errors.New("down") }
-	if !strings.Contains(m.helpLine(), "Ctrl+R reconnects") {
-		t.Fatalf("the footer does not offer the reconnect: %q", m.helpLine())
+}
+
+// Quitting leaves a task running in a daemon another process serves, and
+// ends it with one this process serves: the footer says which.
+func TestTheFooterSaysWhatQuittingDoes(t *testing.T) {
+	m := testModel()
+	if !strings.Contains(m.helpLine(), "Ctrl+Q detaches; tasks go on in the daemon") {
+		t.Fatalf("attached: %q", m.helpLine())
+	}
+	m.owned = true
+	m.busy = true
+	if !strings.Contains(m.helpLine(), "Ctrl+Q quits, ending the tasks this process serves") {
+		t.Fatalf("serving: %q", m.helpLine())
 	}
 }
 
@@ -81,32 +90,28 @@ func TestCtrlCClearsADraftBeforeQuitting(t *testing.T) {
 // A --resume that fails still offers the stored sessions, so the one meant
 // can be picked without quitting.
 func TestFailedResumeOffersTheStoredSessions(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			o := testOptions(t)
-			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-			defer cancel()
-			b := testBackend(t, mode, o)
-			first := newModel(ctx, b, o.Repo, "", false)
-			first.Update(first.Init()())
-			press(first, tea.KeyPressMsg{Code: tea.KeyEnter})
-			if !first.active {
-				t.Fatalf("no session to list: %s", first.status)
-			}
-			m := newModel(ctx, b, o.Repo, "no-such-session", false)
-			if _, cmd := m.Update(m.Init()()); cmd != nil {
-				m.Update(cmd())
-			}
-			if m.active || !strings.HasPrefix(m.status, "Cannot attach") {
-				t.Fatalf("the resume did not fail: active=%v %q", m.active, m.status)
-			}
-			if len(m.sessions) == 0 || m.loading {
-				t.Fatalf("no stored sessions after the failed resume (loading %v)", m.loading)
-			}
-			if !strings.Contains(m.View().Content, "untitled") {
-				t.Fatalf("the chooser does not show the stored session:\n%s", m.View().Content)
-			}
-		})
+	o := testOptions(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	b := testBackend(t, o)
+	first := newModel(ctx, b, o.Repo, "", false)
+	first.Update(first.Init()())
+	press(first, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !first.active {
+		t.Fatalf("no session to list: %s", first.status)
+	}
+	m := newModel(ctx, b, o.Repo, "no-such-session", false)
+	if _, cmd := m.Update(m.Init()()); cmd != nil {
+		m.Update(cmd())
+	}
+	if m.active || !strings.HasPrefix(m.status, "Cannot attach") {
+		t.Fatalf("the resume did not fail: active=%v %q", m.active, m.status)
+	}
+	if len(m.sessions) == 0 || m.loading {
+		t.Fatalf("no stored sessions after the failed resume (loading %v)", m.loading)
+	}
+	if !strings.Contains(m.View().Content, "untitled") {
+		t.Fatalf("the chooser does not show the stored session:\n%s", m.View().Content)
 	}
 }
 

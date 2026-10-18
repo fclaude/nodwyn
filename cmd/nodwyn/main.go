@@ -27,7 +27,7 @@ them (chat all of them; replay --show-thinking; memory, versions and undo
 --repo). A command with flags of its own takes them after its name.
 
 commands:
-  (none) | chat        start a task in line mode
+  (none) | chat        start a task in line mode, over the daemon (starts one if none runs)
   replay SESSION       print a session log as a transcript (id or path)
   replay SESSION --window SEQ  reconstruct and verify a recorded model request
   summary [flags] SESSION  inspect, add or revoke a conversation summary
@@ -47,7 +47,7 @@ commands:
   devices [revoke NAME] list or revoke browsers paired from other machines
   devices invite       print a one-time invitation for another device (over https
                        it also registers a passkey there)
-  tui [--socket PATH]   interactive terminal client (local or daemon)
+  tui [--socket PATH]   interactive terminal client, over the daemon (starts one if none runs)
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
   eval -e EXPR         evaluate an expression and print its value

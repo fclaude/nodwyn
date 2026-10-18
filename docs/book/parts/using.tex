@@ -225,11 +225,14 @@ provider that cannot read one refuses that request, and the turn says so
 \chapter{Ways in}
 
 \begin{description}[leftmargin=2.2em]
-\item[\code{nodwyn}] Line mode in the current directory: the session runs
-  in this process, and ends with it. Scriptable; \code{--no-confirm}
-  answers every confirm with no.
-\item[\code{nodwyn tui}] The full-screen terminal client, in its own
-  process or attached to a daemon with \code{--socket}. In a git
+\item[\code{nodwyn}] Line mode in the current directory, over the daemon
+  that is running or one it starts in its own process; quitting closes the
+  task it opened. Scriptable; \code{--no-confirm} answers every confirm
+  with no without reading a line.
+\item[\code{nodwyn tui}] The full-screen terminal client. It talks to the
+  daemon that is running, or starts one in its own process as
+  \code{nodwyn app} does, and asks for a locked keychain's passphrase;
+  Ctrl+Q detaches and \code{:close} closes the task. In a git
   repository it offers a session in a worktree of its own first
   (\code{--worktree} opens one directly); \code{:model} moves the
   conversation to another model, and \code{:attach PATH} adds a file.
@@ -885,9 +888,9 @@ file leaves unset follows its hard one, so lowering a hard limit moves the
 checkpoint with it. Set a soft limit lower to have the turn stop there at a
 \emph{checkpoint}: \code{y} doubles the soft limit up to the hard one,
 \code{n} stops, a number or a duration sets a new soft limit. A checkpoint
-never approves a tool. The flags \code{--max-tool-calls},
-\code{--budget-wall}, \code{--budget-tokens} and \code{--budget-actions}
-set the hard limits for one invocation.
+never approves a tool. These are every task's limits, whichever client
+opened it: line mode's old \code{--max-tool-calls} and \code{--budget-*}
+flags are refused, naming the key to set.
 
 In the console a task can do without these four (\adr{49}). Home's
 \textbf{Limits} is ticked for every new task; untick it and that task's turns
@@ -899,7 +902,7 @@ only the computer nodwyn runs on makes it.
 
 A spend limit is yours to set, and off unless you do: \code{cost\_soft}
 and \code{cost\_hard} in \code{[budget]}, in US dollars, or
-\code{--budget-cost} for one session or run. It counts what the whole task
+\code{nodwyn run --budget-cost} for one run. It counts what the whole task
 has cost, every turn and a resumed session's history included, not one
 turn. Past the soft limit a checkpoint asks (a new soft limit is in dollars,
 and holds for later turns); at the hard one the task stops, a run ends
@@ -994,7 +997,7 @@ an MCP server offers no tools & its tool list changed or was never approved: rev
 a contained MCP server is unavailable & the task's Tools panel says why: no podman or docker, an image not pulled (\code{nodwyn mcp pull NAME}), or no \code{nodwyn-egress} next to \code{nodwyn} \\
 a contained server cannot reach a site & the task shows the connection its proxy refused: add the host to its \code{network} list, or the server ignores \code{HTTPS\_PROXY} \\
 the model loops on a denied call & the progress guard stops it; read the reason and say what to do instead \\
-\code{hard stop: tool\_calls budget reached} & the turn ended; the log has everything; rephrase smaller, or raise \code{--max-tool-calls} \\
+\code{hard stop: tool\_calls budget reached} & the turn ended; the log has everything; rephrase smaller, or raise \code{budget.tool\_calls\_hard} \\
 a tool call errored & the error line printed during the turn, or \code{nodwyn replay ID}, has the exact error the model saw; \code{:log} cuts each event at 120 characters \\
 a file changed without a prompt & by default writes in the folder go ahead (\code{approval.writes}); otherwise \code{:allow}: a standing approval covered it. The \code{guard.decision} line names which; \code{nodwyn undo} or Restore puts the file back \\
 a command ran without a prompt & the judge allowed it (\code{approval.commands = "judge"}, the default), the setting did (\code{"allow"}), or a standing approval covered it; the \code{guard.decision} line says which \\

@@ -20,6 +20,20 @@ func TestMain(m *testing.M) {
 		desktopTestMain()
 		return
 	}
+	// Line mode reaches the daemon on the standard socket, under
+	// XDG_RUNTIME_DIR: a command these tests run must never find the
+	// person's own daemon there, with its configuration and keys. In /tmp,
+	// since a socket's path is short.
+	if os.Getenv("NODWYN_TEST_CLI") != "1" {
+		run, err := os.MkdirTemp("/tmp", "nodwyn-run-")
+		if err != nil {
+			panic(err)
+		}
+		os.Setenv("XDG_RUNTIME_DIR", run)
+		code := m.Run()
+		os.RemoveAll(run)
+		os.Exit(code)
+	}
 	os.Exit(m.Run())
 }
 

@@ -112,7 +112,7 @@ bin/nodwyn app                  # the whole thing in one program: a window, and 
 bin/nodwyn ui                   # the browser console for a running daemon
 bin/nodwyn ui --listen IP:7777  # also for other devices, which pair with `nodwyn devices invite`
 make app                      # bin/Nodwyn.app for macOS (to share with people who never open a terminal)
-bin/nodwyn                      # chat in the current repository (plain front-end)
+bin/nodwyn                      # chat in the current repository (line mode, over the daemon)
 bin/nodwyn --repo ~/src/x       # pin to another repository
 bin/nodwyn --show-thinking      # show the model's redacted thinking too
 # Exact request replay (new logs with recorded context):
@@ -221,9 +221,11 @@ larger soft limit. A completed answer does not ask for more soft allowance. This
 `--no-confirm` stops at checkpoints. Each answer, including cancellation, is a
 redacted `turn.checkpoint` log record. A new turn starts with fresh accounting.
 
-`--max-tool-calls N`, `--budget-wall 2h`, `--budget-tokens N`,
-`--budget-actions N` and `--budget-cost USD` override hard ceilings for this
-invocation. Explicit legacy
+A task stops at these limits wherever it is opened: line mode, the TUI and the
+console all open tasks in the daemon, so line mode no longer takes limits for
+one invocation (`--max-tool-calls`, `--budget-*` are refused, saying which
+`[budget]` key to set). `nodwyn run` has a run's own `--budget-wall` and
+`--budget-cost`. Explicit legacy
 `loop.max_tool_calls` settings still work; do not also set
 `budget.tool_calls_hard` in that file. Configurations without a legacy override
 get the ADR 18 default of 500 hard tool calls.
@@ -263,8 +265,8 @@ outcome `spend_limit`), and no later turn starts: a run ends `limited`, and
 a new message stops before it reaches the model. Raise `cost_hard` to go on.
 It counts only known costs, reported by the provider or priced from the
 model's `price_*`. A request with neither is not counted, and the first
-turn that has one says so in a note. `--budget-cost USD` sets the hard limit
-for one session or one run (`nodwyn run --budget-cost 5`, kept on resume).
+turn that has one says so in a note. `nodwyn run --budget-cost USD` sets the
+hard limit for one run (kept on resume).
 An unattended run's soft checkpoint goes on to the hard limit, as for the
 other budgets.
 

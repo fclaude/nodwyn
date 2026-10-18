@@ -8,7 +8,6 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/prim"
 )
 
 // judgeView is what :judge shows: the judge the task asks now, and the
@@ -32,18 +31,6 @@ type judgeOption struct {
 	Default     bool     `json:"default"`
 }
 
-func (l *local) Judges(ctx context.Context, _ string) (judgeView, error) {
-	if err := ctx.Err(); err != nil {
-		return judgeView{}, err
-	}
-	cfg := l.options.Config
-	view := judgeView{Current: l.session.Judge()}
-	for _, name := range cfg.JudgeChoices() {
-		spec, _ := cfg.JudgeOn(name)
-		view.Choices = append(view.Choices, judgeOption{Name: name, Provider: spec.Provider, Host: prim.JudgeHost(prim.JudgeOptions{URL: spec.URL}), Model: spec.Model, PriceInput: spec.PriceInput, PriceOutput: spec.PriceOutput, Default: name == cfg.Judge.Server})
-	}
-	return view, nil
-}
 func (r *remote) Judges(ctx context.Context, id string) (judgeView, error) {
 	var info struct {
 		Judge core.JudgeState `json:"judge"`
@@ -60,9 +47,6 @@ func (r *remote) Judges(ctx context.Context, id string) (judgeView, error) {
 	return judgeView{Current: info.Judge, Choices: settings.Judges}, nil
 }
 
-func (l *local) SetJudge(_ context.Context, _, server string) (core.JudgeState, error) {
-	return l.session.SetJudge(server, "terminal")
-}
 func (r *remote) SetJudge(ctx context.Context, id, server string) (state core.JudgeState, err error) {
 	err = r.client.Call(ctx, "session.judge.set", map[string]any{"id": id, "judge": server}, &state)
 	return

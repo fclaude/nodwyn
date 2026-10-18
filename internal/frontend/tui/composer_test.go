@@ -65,81 +65,72 @@ func TestPromptKeepsComposerCursorAndDisconnectKeepsDraft(t *testing.T) {
 	}
 }
 
-func TestMultilineSubmissionThroughBothBackends(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			o := testOptions(t)
-			server := fake.New(fake.Turn{Content: "received"})
-			defer server.Close()
-			o.Provider = llm.NewOllama(server.URL)
-			var b backend
-			if mode == "local" {
-				b = newLocal(o)
-			} else {
-				b, _ = testRemote(t, o)
-			}
-			defer b.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			snap, err := b.Attach(ctx, o.Repo, "")
+func TestMultilineSubmissionThroughTheDaemon(t *testing.T) {
+	o := testOptions(t)
+	server := fake.New(fake.Turn{Content: "received"})
+	defer server.Close()
+	o.Provider = llm.NewOllama(server.URL)
+	b, _ := testRemote(t, o)
+	defer b.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	snap, err := b.Attach(ctx, o.Repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(ctx, b, o.Repo, snap.ID, false)
+	m.restore(snap)
+	for _, text := range []string{"first line\n\nlast line λ", ":eval (begin\n; keep the next expression outside the comment\n(+ 20 22))"} {
+		m.Update(tea.PasteMsg{Content: text})
+		if m.busy {
+			t.Fatal("paste submitted without Enter")
+		}
+		_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		if cmd == nil {
+			t.Fatal("Enter did not submit")
+		}
+		result := cmd().(actionResult)
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		m.Update(result)
+		completed := false
+		for {
+			ev, err := b.Next(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
-			m := newModel(ctx, b, o.Repo, snap.ID, false)
-			m.restore(snap)
-			for _, text := range []string{"first line\n\nlast line λ", ":eval (begin\n; keep the next expression outside the comment\n(+ 20 22))"} {
-				m.Update(tea.PasteMsg{Content: text})
-				if m.busy {
-					t.Fatal("paste submitted without Enter")
-				}
-				_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-				if cmd == nil {
-					t.Fatal("Enter did not submit")
-				}
-				result := cmd().(actionResult)
-				if result.err != nil {
-					t.Fatal(result.err)
-				}
-				m.Update(result)
-				completed := false
-				for {
-					ev, err := b.Next(ctx)
-					if err != nil {
-						t.Fatal(err)
-					}
-					m.consume(ev)
-					if ev.Kind == string(log.KindLLMResp) || ev.Kind == string(log.KindEvalResult) {
-						completed = true
-					}
-					if completed && ev.Kind == event.Status && !m.busy {
-						break
-					}
-				}
-				if m.composer.Value() != "" {
-					t.Fatal("submitted draft retained")
-				}
+			m.consume(ev)
+			if ev.Kind == string(log.KindLLMResp) || ev.Kind == string(log.KindEvalResult) {
+				completed = true
 			}
-			history, err := b.History(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
+			if completed && ev.Kind == event.Status && !m.busy {
+				break
 			}
-			var message, source, value string
-			for _, e := range history {
-				switch e.Kind {
-				case log.KindUserMsg:
-					p, _ := decode[log.UserMsg](e.Payload)
-					message = p.Text
-				case log.KindEvalReq:
-					p, _ := decode[log.EvalRequest](e.Payload)
-					source = p.Source
-				case log.KindEvalResult:
-					p, _ := decode[log.EvalResult](e.Payload)
-					value = p.Value
-				}
-			}
-			if message != "first line\n\nlast line λ" || source != "(begin\n; keep the next expression outside the comment\n(+ 20 22))" || value != "42" {
-				t.Fatalf("multiline submission changed: %q, %q, %q", message, source, value)
-			}
-		})
+		}
+		if m.composer.Value() != "" {
+			t.Fatal("submitted draft retained")
+		}
+	}
+	history, err := b.History(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var message, source, value string
+	for _, e := range history {
+		switch e.Kind {
+		case log.KindUserMsg:
+			p, _ := decode[log.UserMsg](e.Payload)
+			message = p.Text
+		case log.KindEvalReq:
+			p, _ := decode[log.EvalRequest](e.Payload)
+			source = p.Source
+		case log.KindEvalResult:
+			p, _ := decode[log.EvalResult](e.Payload)
+			value = p.Value
+		}
+	}
+	if message != "first line\n\nlast line λ" || source != "(begin\n; keep the next expression outside the comment\n(+ 20 22))" || value != "42" {
+		t.Fatalf("multiline submission changed: %q, %q, %q", message, source, value)
 	}
 }

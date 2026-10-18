@@ -14,61 +14,52 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 )
 
-func TestToolInspectionThroughBothBackends(t *testing.T) {
-	for _, mode := range []string{"local", "rpc"} {
-		t.Run(mode, func(t *testing.T) {
-			o := testOptions(t)
-			if err := os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700); err != nil {
-				t.Fatal(err)
-			}
-			init := `(register-tool "greet" (lambda (name) (error "must not execute"))
+func TestToolInspectionThroughTheDaemon(t *testing.T) {
+	o := testOptions(t)
+	if err := os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	init := `(register-tool "greet" (lambda (name) (error "must not execute"))
   '((doc . "Greet a person") (params . (("name" "string" "who")))))`
-			if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(init), 0600); err != nil {
-				t.Fatal(err)
-			}
-			o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
-			var b backend
-			if mode == "local" {
-				b = newLocal(o)
-			} else {
-				b, _ = testRemote(t, o)
-			}
-			defer b.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			snap, err := b.Attach(ctx, o.Repo, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			m := newModel(ctx, b, o.Repo, snap.ID, false)
-			m.restore(snap)
-			before, err := b.History(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// Disk edits must not misrepresent the catalog already sent to the model.
-			if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), nil, 0600); err != nil {
-				t.Fatal(err)
-			}
-			for _, tc := range []struct{ command, want string }{
-				{":tools", "Greet a person"},
-				{":tools greet", `"name"`},
-				{":tools +", "no model tool named"},
-				{":allow", "Current command approvals"},
-			} {
-				m.Update(m.inspect(tc.command)())
-				if m.inspector.loading || !strings.Contains(m.inspector.content, tc.want) {
-					t.Fatalf("%s: %s", tc.command, m.inspector.content)
-				}
-			}
-			after, err := b.History(ctx, snap.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(before) != len(after) {
-				t.Fatal("tool or approval inspection executed or recorded an operation")
-			}
-		})
+	if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(init), 0600); err != nil {
+		t.Fatal(err)
+	}
+	o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
+	b, _ := testRemote(t, o)
+	defer b.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	snap, err := b.Attach(ctx, o.Repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(ctx, b, o.Repo, snap.ID, false)
+	m.restore(snap)
+	before, err := b.History(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Disk edits must not misrepresent the catalog already sent to the model.
+	if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ command, want string }{
+		{":tools", "Greet a person"},
+		{":tools greet", `"name"`},
+		{":tools +", "no model tool named"},
+		{":allow", "Current command approvals"},
+	} {
+		m.Update(m.inspect(tc.command)())
+		if m.inspector.loading || !strings.Contains(m.inspector.content, tc.want) {
+			t.Fatalf("%s: %s", tc.command, m.inspector.content)
+		}
+	}
+	after, err := b.History(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != len(after) {
+		t.Fatal("tool or approval inspection executed or recorded an operation")
 	}
 }
 

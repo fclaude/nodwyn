@@ -17,10 +17,10 @@ it by hand: the app starts one inside itself when none is running.
 \toprule
 \textbf{command} & \textbf{what you get} \\
 \midrule
-\code{nodwyn} & a line-mode session in the current folder (no daemon) \\
+\code{nodwyn} & a line-mode session in the current folder; attaches to a running daemon or runs its own \\
 \code{nodwyn app} & a window (or your browser) with the console; attaches to a running daemon or runs its own \\
 \code{nodwyn ui} & the console in your browser, attached to a running daemon \\
-\code{nodwyn tui} & a full-screen terminal client, local or attached to a daemon \\
+\code{nodwyn tui} & a full-screen terminal client; attaches to a running daemon or runs its own \\
 \code{nodwyn daemon} & the session server in the foreground \\
 \code{nodwyn run \ldots} & carry a task to its end with no conversation, for scripts and benchmarks \\
 \code{nodwyn repl}, \code{nodwyn eval} & the Scheme interpreter on its own, no session \\
@@ -82,7 +82,12 @@ conversation's model and the choices, and \code{:model NAME [EFFORT]} moves
 it from its next turn; \code{:attach PATH} adds a file. In a git
 repository's top folder the chooser offers a new session in a worktree of its
 own first, and \code{-{}-worktree} opens one directly. \key{Ctrl+C} aborts busy
-work or an attachment, \key{Ctrl+Q} detaches, \key{Ctrl+R} reconnects.
+work or an attachment, \key{Ctrl+Q} detaches, \key{Ctrl+R} reconnects, and
+\code{:close} closes the task. The TUI is a client of the daemon, as the
+console is: it uses the one running, or starts one in its own process (then
+quitting ends its tasks), and asks for a locked keychain's passphrase before
+its full screen opens. A task open in it stays open to the console and runs
+on its schedule.
 
 \section{Runs, for scripts and benchmarks}
 
