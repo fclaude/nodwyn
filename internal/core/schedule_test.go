@@ -406,6 +406,13 @@ func TestScheduleHistorySaysWhatEachTimeCameTo(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(extended)
+	// Both runs started on one local day: today's sum is theirs, follow-ups
+	// included, and not the spend before the first run.
+	if day := due.Add(time.Hour).In(time.Local).Format(schedule.DateLayout); day == due.Add(2*time.Hour).In(time.Local).Format(schedule.DateLayout) {
+		if extended.Today.Day != day || extended.Today.Runs != 2 || math.Abs(extended.Today.Cost-2.25) > 1e-9 {
+			t.Fatalf("today: %+v", extended.Today)
+		}
+	}
 	if err := os.Remove(indexPath(o.Paths.SessionsDir, id)); err != nil {
 		t.Fatal(err)
 	}

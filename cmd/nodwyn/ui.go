@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -67,28 +68,62 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 		return nil, options, err
 	}
 	if r.cert != "" {
-		pair, err := tls.LoadX509KeyPair(r.cert, r.key)
+		certificate, err := certificateFiles(r.cert, r.key)
 		if err != nil {
 			listener.Close()
 			return nil, options, err
 		}
-		listener = tls.NewListener(listener, &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12})
+		listener = tls.NewListener(listener, &tls.Config{GetCertificate: certificate, MinVersion: tls.VersionTLS12})
 		options.TLS = true
 	}
 	options.Hosts = r.hosts
 	if r.listen != "" || len(r.hosts) > 0 {
 		options.Devices = webui.OpenDevices(devicesFile(paths))
+		options.Audit = os.Stderr
+		fmt.Fprintln(os.Stderr, "Other devices pair with an invitation: nodwyn devices invite prints one.")
 		if options.ReadOnly {
-			fmt.Fprintln(os.Stderr, "Other devices can pair by name and read tasks.")
+			fmt.Fprintln(os.Stderr, "They can read tasks.")
 		} else {
-			fmt.Fprintln(os.Stderr, "WARNING: a device paired with the code can read every task, send messages and answer approvals")
-			fmt.Fprintln(os.Stderr, "(never settings, keys or policy files). Revoke one with: nodwyn devices revoke NAME")
+			fmt.Fprintln(os.Stderr, "WARNING: a paired device can read every task, send messages and answer approvals; one signed in")
+			fmt.Fprintln(os.Stderr, "with your passkey over https can also change settings and keys. Revoke one with: nodwyn devices revoke NAME")
 		}
 		if !options.TLS && !allHTTPS(r.hosts) {
 			fmt.Fprintln(os.Stderr, "Without --tls-cert traffic is unencrypted unless the network encrypts it (a tailnet does).")
 		}
 	}
 	return listener, options, nil
+}
+
+// certificateFiles serves the certificate in certFile and keyFile, read again
+// whenever either file changes, so a renewal (certbot, acme.sh, a local CA)
+// is served without a restart. A pair that fails to load leaves the one
+// served before.
+func certificateFiles(certFile, keyFile string) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
+	stamp := func() string {
+		var s strings.Builder
+		for _, f := range []string{certFile, keyFile} {
+			if info, err := os.Stat(f); err == nil {
+				fmt.Fprintf(&s, "%d.%d;", info.ModTime().UnixNano(), info.Size())
+			}
+		}
+		return s.String()
+	}
+	loaded := stamp()
+	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	var mu sync.Mutex
+	return func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if now := stamp(); now != loaded {
+			if renewed, err := tls.LoadX509KeyPair(certFile, keyFile); err == nil {
+				pair, loaded = renewed, now
+			}
+		}
+		return &pair, nil
+	}, nil
 }
 
 // allHTTPS reports whether every name is reached over https through a proxy.
@@ -154,13 +189,19 @@ func runUI(paths config.Paths, args []string) error {
 		}
 		fmt.Fprintln(os.Stderr, "Also at:", h)
 	}
-	fmt.Fprintln(os.Stderr, "Pairing code (for another browser; keep it off chats and screenshots):", code)
+	// A console other machines reach takes no code: devices pair with an
+	// invitation, and this computer with the launch ticket below.
+	if options.Devices == nil {
+		fmt.Fprintln(os.Stderr, "Pairing code (for another browser; keep it off chats and screenshots):", code)
+	}
 	if *readOnly {
 		fmt.Fprintln(os.Stderr, "Read-only session view. Ctrl-C stops the bridge; daemon sessions keep running.")
 	} else {
 		fmt.Fprintln(os.Stderr, "Browser conversation and prompt replies enabled. Ctrl-C stops only the bridge.")
 	}
-	if !*noOpen && remote.listen == "" {
+	// On loopback, whether or not other machines reach it too.
+	addr, _ := listener.Addr().(*net.TCPAddr)
+	if !*noOpen && addr != nil && addr.IP.IsLoopback() {
 		// The page this command opens pairs itself with a one-time ticket in
 		// the URL fragment, which the browser never sends to a server.
 		ticket, err := console.Ticket()
@@ -174,7 +215,8 @@ func runUI(paths config.Paths, args []string) error {
 	return console.Serve(ctx, listener)
 }
 
-// devices lists or revokes the browsers paired from other machines.
+// devices lists or revokes the browsers paired from other machines, or
+// invites one.
 func (c *cli) devices() error {
 	if err := c.rejectGlobals("devices: put %s after the command"); err != nil {
 		return err
@@ -191,8 +233,25 @@ func (c *cli) devices() error {
 			fmt.Println("No devices are paired.")
 		}
 		for _, d := range list {
-			fmt.Printf("%-20s paired %s  last seen %s\n", d.Name, d.Paired.Local().Format("2006-01-02"), d.LastSeen.Local().Format("2006-01-02 15:04"))
+			signed := ""
+			if d.Passkey != "" {
+				signed = "  passkey " + d.Passkey
+			}
+			fmt.Printf("%-20s paired %s  last seen %s%s\n", d.Name, d.Paired.Local().Format("2006-01-02"), d.LastSeen.Local().Format("2006-01-02 15:04"), signed)
 		}
+		return nil
+	case len(args) == 1 && args[0] == "invite":
+		// Printed here, to the terminal of whoever ran it, never to the
+		// console's log. One from the terminal may register a passkey: it is
+		// how the first one is made, and how the person gets in again if
+		// every passkey is lost.
+		code, expires, err := store.Invite(webui.Terminal, true)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Invitation:", code)
+		fmt.Printf("Good once, until %s. On the other device, open nodwyn's address, enter it and name the device;\n", expires.Local().Format("15:04"))
+		fmt.Println("over https it also makes a passkey there, which other devices can then sign in with.")
 		return nil
 	case len(args) == 2 && args[0] == "revoke":
 		if err := store.Revoke(args[1]); err != nil {
@@ -201,7 +260,7 @@ func (c *cli) devices() error {
 		fmt.Println("Revoked", args[1]+"; its next request is refused.")
 		return nil
 	}
-	return fmt.Errorf("devices: expected list or revoke NAME")
+	return fmt.Errorf("devices: expected list, invite or revoke NAME")
 }
 
 // loopbackListener listens on this computer's loopback address, on the port

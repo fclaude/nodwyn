@@ -125,6 +125,13 @@ top right and the edit form folded behind **Edit**; the transcript shows a
 `session.schedule` record by its `words`. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,
 as do edits and removal. Runs discard Don’t ask and use normal approvals.
+The **Workflows** page (`#/workflows`, `workflows.js`) lists every schedule
+from the desk's list with its sentence, next time or why not, `today` (runs
+and cost against `day_cost`) and the latest `history` entry, with Pause or
+Resume, Run now and Schedule…; it follows the list as runs start and end.
+**New workflow** goes to Home and opens its Schedule dialog once Home is
+drawn. The dialog has a daily spend limit beside the one per run and says
+what today's runs came to.
 Home lists each schedule's sentence and next time, or Paused, each card with Pause or Resume and
 Run now. The daemon coalesces missed times,
 records skips and closes idle scheduled sessions after 15 minutes; see the
@@ -276,10 +283,12 @@ unsaved changes keeps those made in every tab. The tabs:
   8-character minimum, check it before sending, and keep what was typed when
   the daemon refuses, so a wrong current passphrase does not empty the new
   one; what is typed is forgotten once it worked, and an unlock forgets it as
-  it sends); **Credentials over remote HTTP**; and the
-  paired devices, each with **Revoke**, which asks first, and, when none is
-  paired, how to pair one (`nodwyn ui --listen`, which prints the pairing code
-  in the terminal it runs in).
+  it sends); **Credentials over remote HTTP**; and **Other devices**:
+  **Invite a device** (an invitation's code, and its link where the address
+  is not this computer's loopback), the paired devices, each with whether it
+  signed in with a passkey and who let it in, and **Revoke**, which asks
+  first; the passkeys, each with **Remove**, which asks first; and, on a
+  device that only answers where passkeys work, **Sign in with a passkey**.
 - **This browser** — its appearance, whether it shows the model's thinking,
   its notifications, and this connection.
 
@@ -644,31 +653,69 @@ changes nothing.
 ## Other devices (ADR 30)
 
 ```sh
-nodwyn ui --listen 100.101.102.103:7777          # a tailnet address
-nodwyn ui --listen 100.101.102.103:7777 --name desk.tail1234.ts.net:7777
-nodwyn ui --listen 0.0.0.0:7777 --name desk.local:7777 --tls-cert cert.pem --tls-key key.pem
-# behind a proxy that ends TLS (tailscale serve): the console stays on loopback
-nodwyn ui --listen 127.0.0.1:7777 --name https://desk.tail1234.ts.net
-tailscale serve --bg 127.0.0.1:7777              # see `tailscale serve --help` for your version's syntax
+nodwyn ui --listen 127.0.0.1:7777 --name https://desk.example.net   # behind your proxy that ends TLS
+nodwyn ui --listen 0.0.0.0:7777 --name desk.example.net:7777 --tls-cert cert.pem --tls-key key.pem
+nodwyn ui --listen 100.101.102.103:7777          # a VPN address, plain http: devices only answer
+nodwyn devices invite                            # an invitation for another device
 nodwyn devices                                   # list paired devices
 nodwyn devices revoke phone
 ```
 
-A browser on another machine pairs with the code **and a device name**. It
-gets a device cookie (HttpOnly, SameSite=Strict, Secure over TLS, 180 days);
-`devices.toml` in the config directory keeps only the token's SHA-256, so the
-file cannot pair anything. Revoking takes effect without a restart: new
-requests are refused at once, and a console the device already has open is
-closed before its next request, or within five seconds if it is only
-watching. The console answers only to the names it listens on, so a wildcard
+A console other machines reach (`--listen`, `--name`) takes no pairing code
+and prints none (ADR 30, amended 2026-10-17). A browser on another machine
+pairs with an **invitation** and a device name: `nodwyn devices invite`
+prints one on the computer nodwyn runs on, and a paired device makes one in
+Settings › Keys & devices, with a link (`/#invite=CODE`) that fills it in.
+An invitation is twenty characters, good once and for ten minutes; it is
+typed in any case, with or without its dashes. It names a new device: a name
+a paired device or a passkey has already is refused, and the invitation stays
+good for another. This computer's browser pairs
+with the launch ticket `nodwyn ui` opens it with, when it listens on
+loopback; nothing on such a console pairs this computer by code, so neither
+a forward to its loopback address nor another account on the computer can.
+
+**Over https, the person signs in with a passkey.** Where passkeys work
+(https, through `--tls-cert` or a proxy named `--name https://NAME`, or a
+`localhost` name), the invitation from the terminal, from this computer or
+from a device signed in with a passkey makes a passkey on the device that
+uses it (**Connect and make a passkey**; **Connect without a passkey** pairs
+one that only answers). Any other browser then signs in with that passkey,
+with no invitation (**Sign in with a passkey** on the pairing page): a passkey
+synced to the person's other devices, or the one on their phone through the
+browser's QR code. A device paired without one signs in with it from Settings
+› Keys & devices. The person's device makes the choices this computer makes:
+a task's model, judge and helpers, its turn limits, its schedule, a key the
+model asks for, unlocking the keychain. To change setup (Settings, providers
+and models, credentials and OAuth sign-in, the keychain's creation and
+passphrase, MCP servers, workspaces, the index, the policy files and
+bindings, devices and passkeys) or delete a task, it asks for a touch of the
+passkey in a dialog, **Use your passkey**, once: the touch lasts until 15
+minutes after the device's last setup change, and the request it held back
+is sent after it. The console's standard error says each sign-in,
+invitation, touch and setup change a device made, never a value.
+
+A device stays signed in while it is used. Its cookie (HttpOnly,
+SameSite=Strict, Secure over https) is set again for 90 days whenever its
+console loads or connects; a device not seen for 90 days is forgotten.
+`devices.toml` in the config directory keeps each token's and invitation's
+SHA-256 and each passkey's public key, so the file cannot pair anything, and
+a restart or an upgrade signs nobody out. Revoking takes effect without a
+restart: new requests are refused at once, and a console the device already
+has open is closed before its next request, or within five seconds if it is
+only watching. Removing a passkey (a lost phone's) signs nothing in with it
+again, and the devices signed in with it only answer; the last one stays.
+
+The console answers only to the names it listens on, so a wildcard
 `--listen` (`0.0.0.0`, `::`) needs `--name` with the name browsers use. A name
 is `host:port` as the browser's address bar has it; a proxy that ends TLS in
-front of the console (`tailscale serve` serves https by default) sends the
-bare name and an `https://` origin, which `--name https://NAME` says: the
-console then expects that origin for that name, marks the device cookie
-Secure, and still speaks http to the proxy. A refused origin is answered with
-the one expected. Every answer from a device is recorded as the bridge's
-kernel identity followed by `via web:NAME`.
+front of the console sends the bare name and an `https://` origin, which
+`--name https://NAME` says: the console then expects that origin for that
+name, marks the device cookie Secure, and still speaks http to the proxy. A
+refused origin is answered with the one expected. `--tls-cert` and
+`--tls-key` are read again when either file changes, so a renewed certificate
+is served without a restart. Every answer from a device is recorded as the
+bridge's kernel identity followed by `via web:NAME`, and `passkey:NAME` for
+the person's device.
 
 The console pings an open page every 30 seconds and closes a connection that
 has not answered within a minute: a proxy such as `tailscale serve`, or a
@@ -679,27 +726,26 @@ a sleep, a change of network or a restart of `nodwyn ui` or the daemon, a
 paired device comes back without pairing again, and a revoked one goes to
 pairing and stops trying.
 
-A device can read tasks, start and steer them, and answer approvals — one-time,
-for this turn, or for the session, as the core offers; it can also restore a
-kept file version, save project notes, read the policy files, see the
-credentials, and stop a run. Its tasks ask what Settings › General › Approvals, chosen
-on the computer nodwyn runs on, says they ask. It cannot start or resume a
-run that answers its own requests (unattended, judged, or saying yes), turn
-on "don't ask", turn a task's limits off or on (its tasks start with them on),
-save a credential binding,
+A device that only answers (paired by a plain invitation, or over plain
+http, where browsers allow no passkeys) can read tasks, start and steer them,
+and answer approvals — one-time, for this turn, or for the session, as the
+core offers; it can also restore a kept file version, save project notes,
+read the policy files, see the credentials, stop a run and invite another
+device that only answers. Its tasks ask what Settings › General › Approvals
+says they ask. It cannot start or resume a run that answers its own requests
+(unattended, judged, or saying yes), turn on "don't ask", turn a task's
+limits off or on (its tasks start with them on), save a credential binding,
 write a policy file, unlock or create the keychain or change its passphrase,
 add, replace, allow, authorize or remove a credential (a key the model asks
-for included: the device shows the request, and the key is typed on the
-computer), change Settings, the
-model or how
-uploads to Google Docs are handled (it can answer the first upload's
+for included: the device shows the request), change Settings, the model or
+how uploads to Google Docs are handled (it can answer the first upload's
 question with "allow by hand" or "deny", never "always allow"), edit
-workspaces, add, review, approve, pull or remove MCP servers, evaluate Scheme, or
-list and revoke devices: those stay with the computer nodwyn runs on. A request counts as remote when it comes from another address or names
-this console by anything but its loopback address (a proxy such as
-`tailscale serve` connects from loopback on a phone's behalf). Launch tickets
-pair only local browsers. Without `--tls-cert`, traffic is unencrypted unless
-the network encrypts it; a tailnet does.
+workspaces, add, review, approve, pull or remove MCP servers, evaluate
+Scheme, or list and revoke devices. A request counts as remote when it comes
+from another address or names this console by anything but its loopback
+address (a proxy connects from loopback on a phone's behalf). Launch tickets
+pair only local browsers. Without https, traffic is unencrypted unless the
+network encrypts it, and the cookie can be read on the way.
 
 **On a phone, the console is an app** (ADR 52). The page links a manifest
 (`manifest.json`, its icons in `icons/`) and registers a service worker
@@ -733,7 +779,9 @@ the same computer can read in the process list; it is good once and for a
 minute, but on a computer other people log in to, start with `--no-open` and
 paste the pairing code instead (the code is never on a command line). It
 also prints a random pairing code for another browser on this computer;
-paste that code into its page. The code is never put in a URL or session log.
+paste that code into its page. With `--listen` or `--name` it prints none:
+other machines reach that console, which pairs devices by invitation and
+this computer only by the launch ticket (Other devices, above). The code is never put in a URL or session log.
 Keep it in the terminal rather than sharing it. The browser receives an
 HttpOnly, SameSite=Strict session cookie holding a token made for this run,
 never the code; no credential is written to browser local/session storage.

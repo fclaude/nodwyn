@@ -89,7 +89,7 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "app: other devices can pair at", shared.Addr().String(), "with code", code)
+		fmt.Fprintln(os.Stderr, "app: other devices can pair at", shared.Addr().String(), "with an invitation: nodwyn devices invite prints one")
 		go func() { _ = webui.New(options).Serve(ctx, shared) }()
 	}
 	fmt.Fprintln(os.Stderr, "app: console at", base, "(pairing code for another browser here:", code+")")

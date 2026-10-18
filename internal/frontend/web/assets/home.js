@@ -1,6 +1,7 @@
 // Home: start anything, and see what needs you across every task.
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, toastError, basename } from "./dom.js";
 import { newSchedule, nextLine, scheduleTime, scheduleActions } from "./schedule.js";
+import { takeNewWorkflow } from "./workflows.js";
 import { summary } from "./prompts.js";
 import { keychainForm } from "./setup.js";
 import { firstModel } from "./models.js";
@@ -270,7 +271,7 @@ export function renderHome(root, ctx) {
       ),
     );
 
-  const schedules = h("section", { class: "home-section", "aria-label": "Scheduled tasks" }, h("h2", { class: "eyebrow" }, "Scheduled"));
+  const schedules = h("section", { class: "home-section", "aria-label": "Scheduled tasks" }, h("h2", { class: "eyebrow" }, "Scheduled", " ", h("a", { class: "eyebrow-link", href: "#/workflows" }, "All workflows")));
   for (const item of desk.sessions.values()) if (item.schedule?.definition && !item.archived) {
     const s = item.schedule;
     const update = async (method, params = {}) => {
@@ -288,7 +289,7 @@ export function renderHome(root, ctx) {
   // run: said once here, where the schedules are, and unlocked above. This
   // part of Home is drawn again when the list changes; the top is not while
   // a passphrase is being typed.
-  else if ([...desk.sessions.values()].some((item) => item.schedule?.held && !item.archived)) schedules.querySelector("h2").after(h("p", { class: "hint warn", id: "schedules-held" }, "Your keys are locked, so scheduled runs are skipped until you unlock them."));
+  else if ([...desk.sessions.values()].some((item) => item.schedule?.held && !item.archived)) schedules.querySelector("h2").after(h("p", { class: "hint warn", id: "schedules-held" }, "Your keys are locked, so scheduled runs wait until you unlock them, and then run once, late."));
   const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, schedules, done));
   // The ask being typed survives updates: while focus is in the top half,
   // only the lists below are replaced. This is decided before the composer
@@ -669,6 +670,9 @@ export function renderHome(root, ctx) {
   // the field to land in.
   if (!draft && canStart && !settingUp && document.activeElement === document.body) focus();
   if (canChoose) drawPicker();
+  // New workflow on the Workflows page comes here for the Schedule dialog,
+  // which starts a task with every choice above.
+  if (takeNewWorkflow() && scheduleButton && !scheduleButton.disabled) scheduleButton.click();
   current = {
     focus,
     // Redrawn when the desk changes under a page being typed into.

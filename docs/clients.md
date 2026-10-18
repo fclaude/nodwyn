@@ -23,8 +23,9 @@ nodwyn has four ways in, over one core:
 
 This page records what each one can do as of 2026-10-17 (the judge choice,
 ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49,
-retrieval, ADR 50, the TUI and line mode on the daemon, ADR 30 amended
-2026-10-17, and the console as a phone's app, ADR 52, included), so work on a
+retrieval, ADR 50, the TUI and line mode on the daemon, the console as a phone's
+app, ADR 52, and devices that pair by invitation and sign in with a passkey,
+ADR 30 amended 2026-10-17 twice, included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -46,10 +47,11 @@ it can see the thing but not change it.
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
 | Told when a task needs an answer while looking elsewhere | yes, Settings › This browser › Notifications; on a phone through the console's service worker (ADR 52); with no window open, the daemon's desktop notices (Settings › General › While you're away, ADR 53 §11) | not built | — | — |
 | Installed on a phone's Home Screen (ADR 52) | yes, over https: the console is a web app | deliberate gap: a terminal client | — | — |
-| Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu): set times on chosen weekdays, an interval within hours of the day, monthly dates or weekday, once, a first minute and a last day; the daemon's sentence, next times and zone name; Home’s cards pause and run now; paired devices can pause or run now | not built, and it does not show a `session.schedule` record or a run's marker either | not built | not built |
+| Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu): set times on chosen weekdays, an interval within hours of the day, monthly dates or weekday, once, a first minute and a last day; the daemon's sentence, next times and zone name; Home’s cards pause and run now; a device signed in with a passkey creates and changes them, and other paired devices can pause or run now | not built, and it does not show a `session.schedule` record or a run's marker either | not built | not built |
 | A schedule's recent runs: when, how each ended or why it was skipped, cost (`history` in `schedule.read`, ADR 49 amended 2026-10-17) | yes, **Recent runs** in a task's **Schedule…** | not built | — | `replay` shows the records |
+| Every workflow in one place, with today's runs and spend and a daily spend limit (ADR 53, slice 2) | yes, the **Workflows** page; New workflow opens Home's Schedule dialog | not built | — | — |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
-| Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
+| Archive, delete (ADR 39) | yes; delete on this computer, or on a device signed in with a passkey after a touch of it | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | Ctrl+Q detaches and the turn goes on; when the TUI's own process serves the daemon, quitting ends its tasks, as closing `nodwyn app` does | aborts it | — |
 | Come back after the connection drops | yes, by itself after a wait that grows to 30 s, at once when the page is shown again or the network returns; reloads the open task from its log and sends nothing again; a revoked device stops trying; back to an upgraded daemon (another version in `hello`), says so and offers Reload, keeping the reply drafts until the reader reloads | Ctrl+R reconnects; not built: reconnecting by itself | ends, saying it lost the daemon; not built: reconnecting | — |
 | Close a task: its log released, a worktree with nothing unlanded removed (`session.close`) | yes, the task's **⋯** menu, Close | yes, `:close`, which then quits | quitting closes a task it opened; one another client had open stays open | — |
@@ -82,7 +84,7 @@ it can see the thing but not change it.
 | Masked secret prompts | yes | yes | yes | — |
 | Budget checkpoints | yes | yes | yes | — |
 | Don't ask (`session.approve_all`) | yes, when Settings offers it; a paired device sees it while on and turns it off | not built | `--yolo` turns it on at start, when Settings offers it | `nodwyn run --yolo` answers a run's confirms itself |
-| A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: a task opens with Settings' limits, and `--budget-*` are refused | `nodwyn run`: not built, its run limits are its own |
+| A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer or a device signed in with a passkey | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: a task opens with Settings' limits, and `--budget-*` are refused | `nodwyn run`: not built, its run limits are its own |
 | Edit `allow.toml` (`session.policy.write`) | yes, the policy editor | deliberate gap: `:bindings` reads only | — | — |
 
 ## Models (ADR 40, ADR 41)
@@ -94,9 +96,9 @@ it can see the thing but not change it.
 | Choose a model as a task opens | yes, New task's picker | not built: it opens on `[control]`; use `:model` before the first message | `--model NAME`: a `[models.NAME]`, or a model on `[control]`'s server (with `--resume`, moves the task to it); `--url` is refused | `nodwyn run`: not built |
 | A model on a server with no `[models.NAME]` entry (`server` + `model`) | not offered: the picker lists names | not offered | — | — |
 | A choice while a turn runs is queued | yes | yes, and the conversation says so | — | — |
-| Choosing from a paired device | refused (ADR 30) | — | — | — |
+| Choosing from a paired device | yes, signed in with a passkey; refused to one paired by a plain invitation (ADR 30, amended 2026-10-17) | — | — | — |
 | Edit a model's labels (ADR 27, amended 2026-10-09) | yes, Settings › Models; reaches open tasks | not built | — | edit `config.toml` |
-| Let a task's model hand work to other models (`delegates`) | yes, New task's Helpers fold, this computer only | not built: a task opens with none | none | `nodwyn run`: none |
+| Let a task's model hand work to other models (`delegates`) | yes, New task's Helpers fold, on this computer or a device signed in with a passkey | not built: a task opens with none | none | `nodwyn run`: none |
 
 ## Changing a task while a turn runs
 
@@ -126,7 +128,7 @@ every client's picker, not in the core's guard.
 | Move a task to another judge, or none | yes, between turns | yes, `:judge NAME`, `:judge none` | not built | — |
 | Set a judge up: Jev's key, an OpenAI API key | Settings › Judge, in place | — | — | edit `config.toml`, `:eval (credential-register …)` |
 | The default judge | Settings › Judge (Models links to it) | — | — | `[judge] server` |
-| Choosing from a paired device | refused (ADR 30, ADR 47) | — | — | — |
+| Choosing from a paired device | yes, signed in with a passkey; refused to one paired by a plain invitation (ADR 30, ADR 47, both amended 2026-10-17) | — | — | — |
 
 ## Memory (ADR 51)
 
@@ -182,7 +184,9 @@ but `:replay`. Both read the same log.
 
 All deliberate gaps outside the console. They are forms over `config.toml`,
 the keychain and the config directory, and the CLI covers what a terminal
-needs.
+needs. The console's column is this computer's, and that of a device signed
+in with the person's passkey after a touch of it (ADR 30, amended
+2026-10-17); a device paired by a plain invitation has none of it.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
@@ -193,8 +197,8 @@ needs.
 | Named workspaces and mounts | Workspaces | — | — | edit `workspaces.toml` |
 | Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor; a task's Workspace tab says which | yes, `:earlier`, `:earlier on`, `:earlier off` | — | edit `workspaces.toml` (`earlier_tasks = true`) |
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
-| Pair devices | no: `nodwyn ui --listen` prints the pairing code in its terminal (Settings › Keys & devices says so) | — | — | `nodwyn ui --listen` |
-| List and revoke devices | yes, on this computer, Revoke after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME` |
+| Pair devices | yes: Settings › Keys & devices › **Invite a device** (a code and a link, good once for ten minutes); over https an invitation makes a passkey, which signs other browsers in with no invitation | — | — | `nodwyn devices invite` |
+| List and revoke devices, remove a passkey | yes, on this computer or after a passkey touch, each after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME`; a passkey only in the console |
 | Start the daemon at login (`startup.read`, `startup.set`; ADR 53 §11) | Settings › General › While you're away, on this computer | — | — | `nodwyn startup`, `nodwyn startup on`, `nodwyn startup off` |
 | The daemon's desktop notices (`notify.desktop`) | Settings › General › While you're away; the daemon shows them whichever client is in use, when no window of this computer watches | — | — | edit `config.toml` (`[notify] desktop = true`) |
 | Home says when locked keys hold back a scheduled run (`held`) | yes, the Scheduled section and the card, unlocked from Home's callout | not built | — | — |

@@ -70,3 +70,10 @@ name, and nothing ever left the list.
 - Not built: `nodwyn sessions` and the TUI's session list still show each
   session's first message, and leave nothing out for being archived; only
   the console reads names and the archive.
+
+## Amendment 2026-10-17: the person's device deletes, after a touch
+
+Deleting a task stays out of a paired device's reach, since a log is the
+record of what devices did. A device signed in with the person's passkey
+deletes one after a touch of that passkey, as it changes setup (ADR 30,
+amended 2026-10-17).

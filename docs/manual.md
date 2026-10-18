@@ -2297,7 +2297,10 @@ holds. Under **Repeat**, choose when it runs:
 **Starts** is the first minute it may run (empty: now), and **Last day** its
 last day, if it has one. Times are this computer's, and the zone is named in
 the dialog (America/Los_Angeles, not "Local"). Set the dollar spend limit per
-run (0 means none). The daemon says the rule back in words ("Every 30 minutes
+run and per day (0 means none for either): once the day's runs, their
+follow-ups included, cost the day's limit, the rest of that day's times are
+skipped, in one line in the task, and runs go on the next day; Run now is
+not held to it. The daemon says the rule back in words ("Every 30 minutes
 from 09:00 to 18:00 on weekdays") with the next times, and refuses what a
 schedule cannot be (an interval under 5 minutes, hours that end before they
 start) before anything is saved. A new schedule's first run is its first time
@@ -2306,6 +2309,13 @@ Saving opens the task immediately; its message is sent when due. Scheduled
 tasks appear on Home with their next time or Paused, and a card has **Pause
 schedule** (or **Resume schedule**) and **Run now**; Home says "Nothing
 scheduled." when there is none.
+
+The **Workflows** page (in the sidebar, and **All workflows** on Home's
+Scheduled section) lists every schedule: its task, the rule in words, when
+it runs next (or Paused, or held by locked keys), what today's runs cost
+and how the latest ended, with Pause, Run now and Schedule…. **New
+workflow** opens Home's Schedule dialog, beside the task's folder, model
+and limits.
 
 On an existing task, **Schedule…** in its **⋯** menu adds a schedule, or
 shows the rule in words, its message, when it runs next and its **Recent
@@ -2765,6 +2775,45 @@ once when a locked keychain stops a scheduled run, until it is unlocked.
 Their words are fixed ("nodwyn needs your answer", "nodwyn can't run a
 scheduled task"), never the task's. It uses `notify-send` on Linux and
 `osascript` on macOS.
+
+## A server you reach from other devices
+
+nodwyn can run on a computer nobody sits at, such as a home server, and be
+used from a laptop and a phone (ADR 30, amended 2026-10-17). Run the daemon
+and the console as services of your own account, with lingering on so they
+outlive your login (the daemon's socket is in `$XDG_RUNTIME_DIR`, which goes
+at logout without it):
+
+```sh
+loginctl enable-linger "$USER"
+nodwyn startup on                   # the daemon at login: a user service, locked until you unlock it
+nodwyn ui --no-open --listen 127.0.0.1:7777 --name https://nodwyn.example.net
+```
+
+Give the console https in one of two ways: your own proxy that ends TLS in
+front of it (Caddy, nginx with certbot, a VPN's https), named with `--name
+https://NAME`; or `--tls-cert` and `--tls-key` with a certificate from any ACME
+client or a CA of your own, which the console reads again when they are
+renewed. Over plain http devices pair and answer, but the person cannot sign
+in with a passkey, so setup stays on the server.
+
+Pairing takes no code. Once, on the server, `nodwyn devices invite` prints
+an invitation; open the console's address on your laptop or phone, name the
+device and enter it, and **Connect and make a passkey**. Your other devices
+sign in with that passkey (**Sign in with a passkey**), with no invitation,
+or are invited from Settings › Keys & devices. A device stays signed in for
+as long as it is used, and 90 days without use sign it out; restarting or
+upgrading nodwyn signs nobody out. A device signed in with the passkey makes
+the choices the computer makes (a task's model, judge, limits, schedule,
+unlocking the keychain), and asks for a touch of the passkey before it
+changes setup, once for a sitting of changes. The console's journal says
+each sign-in, invitation and setup change a device made. After a restart,
+unlock the keychain from any device signed in with the passkey: a schedule
+due meanwhile waits for it and then runs once, late. `nodwyn devices`
+lists and revokes devices on the server; Settings removes a lost phone's
+passkey. A provider's OAuth sign-in and `nodwyn trust` still need the server
+([the browser view](browser.md), "Other devices").
+
 ## Downloadable builds and books
 
 Download portable binaries and both books from the repository's Gitea

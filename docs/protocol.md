@@ -804,7 +804,14 @@ connection, matching `^[a-z][a-z0-9]*:[a-z0-9][a-z0-9._-]{0,31}$`. It is
 appended to the kernel identity — `unix:uid=501,gid=20,pid=4242 via web:phone`
 — in `peer` and in every recorded actor. It is a claim by a same-user process,
 not an authentication; the browser bridge makes it only for a device paired by
-name.
+name. With `via`, an optional `passkey` (a device name, such as `laptop`)
+says the device's person signed in with that passkey (ADR 30, amended
+2026-10-17): the actor reads `… via web:tablet passkey:laptop`, and the
+daemon refuses that connection nothing it refuses a paired device, since a
+client that claims nothing at all may already call every method. Below, "a
+paired device" is an actor relayed `via` without `passkey`. The bridge asks
+the person's device for a touch of its passkey before relaying a setup
+method, and refuses one before it with code -32030.
 
 ## Workspaces, file history, attachments and MCP servers (ADR 22, 23, 30)
 
@@ -843,8 +850,10 @@ its approved manifest; any other change needs approval again.
 the web console (browser.md); `mcp.runtime` and `credentials.list` only read. The console never
 offers `session.eval`, and its bridge relays no run method (ADR 35). The
 daemon also refuses `run.start` and `run.resume` with `auto_approve`,
-`judge` or `unattended` to an actor that carries `via`, as the bridge's
-actor for a paired device does.
+`judge` or `unattended` to an actor that carries `via` without `passkey`, as
+the bridge's actor for a paired device does. A device signed in with a
+passkey may call all of them, the setup methods after a touch of its passkey;
+`session.eval` and the run methods stay out of every browser's reach.
 
 An MCP server is remote (its `url` HTTPS, or plain HTTP to this machine
 only) or contained (ADR 23 W3b): the daemon runs it in podman or docker from
@@ -1136,8 +1145,11 @@ reading old run previews or replaying the whole log.
 
 ## Scheduled tasks (ADR 49)
 
-- A definition is `{message,rule,cost,paused}`: `cost` is dollars per run, 0
-  for none. `rule` says when, in the daemon's local civil time:
+- A definition is `{message,rule,cost,day_cost,paused}`: `cost` is dollars
+  per run and `day_cost` dollars per day, each 0 for none. Once the day's
+  runs (by the daemon's local date of their start, follow-ups included)
+  cost `day_cost`, the day's remaining automatic times are skipped in one
+  `schedule.skip`; `schedule.run` is not held to it. `rule` says when, in the daemon's local civil time:
   - `{once:"YYYY-MM-DDTHH:MM"}` runs once, and has nothing else;
   - otherwise the times of a day are `at` (up to 48 `"HH:MM"`) or `every`
     minutes (5 to 1440), counted from `between[0]` (midnight without it)
@@ -1169,7 +1181,9 @@ reading old run previews or replaying the whole log.
 - `schedule.read {id}` returns `definition` when present, its log `sequence`,
   automatic `cursor`, optional `last_run` and `last_skip`, plus `rule`,
   `sentence`, `next`, `next_words`, `timezone`, `archived`, `scheduler`
-  (whether this daemon owns the lock) and `history`: the latest twenty
+  (whether this daemon owns the lock), `today` (`{day,runs,cost}`: the
+  runs started today and what they cost; empty on another day) and
+  `history`: the latest twenty
   scheduled times, newest first, each with `seq` (its `schedule.run` or
   `schedule.skip`), `due`, `started`, `missed`, `manual`, `skipped` (the
   reason, for a time not run), `outcome` (the run's turn's `turn.end`
@@ -1231,8 +1245,10 @@ sessions close after 15 idle minutes without pending prompts, freeing the
 same resources as session.close.
 
 `schedule.read` and `session.list`'s schedule view add `held` when the next
-run would be skipped as things are: the task is closed, the keychain is
-locked and the default model needs a key from it.
+run waits for the keychain: the task is closed, the keychain is locked and
+the default model needs a key from it. A time that is due then is neither run
+nor recorded as skipped; the first tick after an unlock runs it once, late,
+standing for every time it held (ADR 49, amended 2026-10-17).
 
 ## Starting at login and desktop notices (ADR 53 §11)
 

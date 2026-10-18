@@ -177,7 +177,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     searching ? h("div", { class: "search" }, search) : null,
     h("a", { class: "new-task", href: "#/", onclick: () => setTimeout(() => document.getElementById("task")?.focus(), 0) }, icon("plus"), h("span", {}, "New task"), h("kbd", {}, "⌘N")),
     tasks,
-    h("div", { class: "nav-links" }, link("#/connections", "plug", "Connections"), link("#/workspaces", "folder", "Workspaces"), link("#/settings", "sliders", "Settings")),
+    h("div", { class: "nav-links" }, link("#/connections", "plug", "Connections"), link("#/workspaces", "folder", "Workspaces"), link("#/workflows", "clock", "Workflows"), link("#/settings", "sliders", "Settings")),
     h(
       "div",
       { class: "model-line", title: control?.detail || "" },

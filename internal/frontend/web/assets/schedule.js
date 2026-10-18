@@ -123,6 +123,7 @@ export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "S
   const text = h("textarea", { id: "schedule-message", class: "input", rows: 3, required: true });
   text.value = d.message;
   const cost = h("input", { id: "schedule-cost", class: "input", type: "number", min: 0, max: 1000000000, step: "any", required: true, value: d.cost });
+  const dayCost = h("input", { id: "schedule-day-cost", class: "input", type: "number", min: 0, max: 1000000000, step: "any", value: d.day_cost || 0 });
   const preview = h("div", { class: "schedule-preview", role: "status" });
   const error = h("p", { class: "error", role: "alert" });
   let revision = 0;
@@ -137,7 +138,7 @@ export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "S
     } catch (e) { if (version === revision) preview.replaceChildren(h("p", { class: "hint" }, e.message)); }
   };
   const rule = timetable(state?.rule, () => refresh());
-  const value = () => ({ message: text.value, rule: rule.value(), cost: Number(cost.value), paused: !!d.paused });
+  const value = () => ({ message: text.value, rule: rule.value(), cost: Number(cost.value), day_cost: Number(dayCost.value) || 0, paused: !!d.paused });
   const submit = h("button", { type: "submit", class: "btn dark" }, submitLabel);
   const form = h("form", { class: "schedule-form", onsubmit: async (event) => {
     event.preventDefault(); submit.disabled = true;
@@ -146,7 +147,7 @@ export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "S
   } },
   h("label", { for: "schedule-message" }, "Message for each run", text),
   rule.node,
-  h("label", { for: "schedule-cost" }, "Spend limit per run ($; 0 means none)", cost),
+  h("div", { class: "schedule-row schedule-bounds" }, h("label", { for: "schedule-cost" }, "Spend limit per run ($; 0 means none)", cost), h("label", { for: "schedule-day-cost" }, "Spend limit per day ($; 0 means none)", dayCost)),
   h("p", { class: "hint" }, "Times are this computer's, and the daemon must be running. Runs use normal approvals. Missed times run once, late; busy tasks skip their time."), preview, error, submit);
   form.addEventListener("input", refresh);
   form.addEventListener("change", refresh);
@@ -208,6 +209,7 @@ export async function manageSchedule(conn, id, done) {
       body.replaceChildren(h("p", { class: "schedule-status" }, d ? `${d.paused ? "Paused" : state.archived ? "Archived" : "Scheduled"} · ${state.timezone}` : "No schedule"));
       if (d) {
         body.append(h("p", { class: "schedule-sentence" }, state.sentence), h("p", {}, d.message), h("p", { class: "hint", title: state.next_words.length ? `${state.timezone}: ${state.next_words.join(" · ")}` : "" }, nextLine(state)));
+        if (state.today?.runs || d.day_cost) body.append(h("p", { class: "hint", id: "schedule-today" }, state.today?.runs ? `Today: ${state.today.runs} run${state.today.runs === 1 ? "" : "s"} · ${usd(state.today.cost || 0)}${d.day_cost ? ` of ${usd(d.day_cost)} a day` : ""}` : `Up to ${usd(d.day_cost)} a day`));
         if (!state.scheduler) body.append(h("p", { class: "hint" }, "This daemon does not hold the scheduler lock."));
         body.append(h(
           "div",

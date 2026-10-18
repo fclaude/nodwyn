@@ -25,6 +25,7 @@ type scheduleSetParams struct {
 	At      string         `json:"at,omitempty"`
 	Rule    *schedule.Rule `json:"rule,omitempty"`
 	Cost    float64        `json:"cost,omitempty"`
+	DayCost float64        `json:"day_cost,omitempty"`
 	Paused  bool           `json:"paused,omitempty"`
 	Remove  bool           `json:"remove,omitempty"`
 }
@@ -45,8 +46,9 @@ type scheduleState struct {
 	Next      []time.Time       `json:"next"`
 	NextWords []string          `json:"next_words"`
 	History   []scheduleHistory `json:"history,omitempty"`
-	// Held says why the next run will be skipped as things are now: the
-	// keychain is locked and the model needs a key from it.
+	// Held says why a due time waits rather than running or being
+	// skipped: the keychain is locked and the model needs a key from it, so
+	// the time runs once it is unlocked (errHeld).
 	Held      string `json:"held,omitempty"`
 	Timezone  string `json:"timezone"`
 	Archived  bool   `json:"archived"`
@@ -58,6 +60,14 @@ type scheduleHistory struct {
 	When string `json:"when"`
 	What string `json:"what"`
 }
+
+// errHeld is a due time that waits for the keychain: a closed task's model
+// needs a key the locked keychain holds. Skipping it, as a busy task's time
+// is skipped, lost every run due after a reboot until someone unlocked.
+var errHeld = errors.New("the keychain is locked")
+
+// heldNote is what a schedule whose next time waits for the keychain says.
+const heldNote = "Waiting for the keychain: the time that is due runs once it is unlocked"
 
 type deferredSkip struct {
 	sequence uint64
@@ -146,6 +156,9 @@ func (s *server) scheduleState(id string) (scheduleState, error) {
 	}
 	now := time.Now()
 	result := scheduleState{ScheduleInfo: state, Next: []time.Time{}, NextWords: []string{}, Timezone: zoneName(), Archived: info.Archived, Scheduler: s.schedulerLock != nil}
+	if result.Today.Day != now.Format(schedule.DateLayout) {
+		result.Today = core.ScheduleDay{}
+	}
 	if d := state.Definition; d != nil && d.Definition.Validate() == nil {
 		shown := preview(d.Definition, state.Cursor, now)
 		result.Rule, result.Sentence = shown.Rule, shown.Sentence
@@ -157,7 +170,7 @@ func (s *server) scheduleState(id string) (scheduleState, error) {
 	// A closed task is resumed for its run, and a resume needs the key an
 	// open task already has (executeSchedule).
 	if len(result.Next) > 0 && !open && s.lockedKeyRefusal(core.ModelChoice{}) != "" {
-		result.Held = "Skipped while your keys are locked: the model needs one"
+		result.Held = heldNote
 	}
 	busy := open && (owned.session.Busy() || owned.driver.Active())
 	newest := true
@@ -204,14 +217,14 @@ func (s *server) setSchedule(req request, client *peer) (any, *rpcError) {
 		return nil, why
 	}
 	var p scheduleSetParams
-	if err := params(req.Params, &p, "id", "message", "repeat", "at", "rule", "cost", "paused", "remove"); err != nil {
+	if err := params(req.Params, &p, "id", "message", "repeat", "at", "rule", "cost", "day_cost", "paused", "remove"); err != nil {
 		return nil, err
 	}
 	if p.ID == "" {
 		return nil, failure(-32602, "id is required")
 	}
 	now := time.Now()
-	definition := schedule.Definition{Message: p.Message, Repeat: p.Repeat, At: p.At, Rule: p.Rule, Cost: p.Cost, Paused: p.Paused}
+	definition := schedule.Definition{Message: p.Message, Repeat: p.Repeat, At: p.At, Rule: p.Rule, Cost: p.Cost, DayCost: p.DayCost, Paused: p.Paused}
 	if !p.Remove {
 		if err := settle(&definition, now); err != nil {
 			return nil, failure(-32602, err.Error())
@@ -394,9 +407,26 @@ func (s *server) scheduleTick(now time.Time) {
 		}
 		if !def.Paused && !info.Archived {
 			due, through, missed := def.Definition.Due(state.Cursor, now, time.Local)
+			if !due.IsZero() && spentToday(def.Definition, state, now) {
+				// The rest of the day's times are skipped in one record, so
+				// a run every few minutes does not leave one for each.
+				day := now.In(time.Local)
+				end := time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, time.Local).Add(-time.Second)
+				_, last, rest := def.Definition.Due(state.Cursor, end, time.Local)
+				skip := log.ScheduleSkip{Due: due, Through: last, Started: now, Missed: rest, Reason: fmt.Sprintf("the daily spend limit of $%g is reached; runs go on tomorrow", def.DayCost)}
+				if s.recordSkip(info.ID, skip) != nil {
+					s.scheduleSkips[info.ID] = deferredSkip{state.Sequence, skip}
+				}
+				due = time.Time{}
+			}
 			if !due.IsZero() {
 				run := log.ScheduleRun{Due: due, Through: through, Started: now, Missed: missed, Cost: def.Cost, Actor: "scheduler"}
-				if err := s.executeSchedule(info.ID, *def, state.Sequence, run); err != nil {
+				// A locked keychain holds the time instead of skipping it:
+				// nothing is recorded and the cursor stays, so the first tick
+				// after an unlock runs it once, late, standing for every time
+				// it held, as a time missed while the computer slept does
+				// (ADR 49 §5, ADR 30 amended 2026-10-17).
+				if err := s.executeSchedule(info.ID, *def, state.Sequence, run); err != nil && !errors.Is(err, errHeld) {
 					skip := log.ScheduleSkip{Due: due, Through: through, Started: now, Missed: missed, Reason: err.Error()}
 					// Resume releases the lifecycle lock. A skip for the old
 					// definition must not consume the replacement's times.
@@ -449,6 +479,12 @@ func (s *server) recordSkip(id string, rec log.ScheduleSkip) error {
 	return s.store().SkipSchedule(id, rec)
 }
 
+// spentToday says the schedule's runs started today have reached its daily
+// spend limit. Run now is a person's choice and is not held to it.
+func spentToday(d schedule.Definition, state core.ScheduleInfo, now time.Time) bool {
+	return d.DayCost > 0 && state.Today.Day == now.In(time.Local).Format(schedule.DateLayout) && state.Today.Cost >= d.DayCost
+}
+
 // executeSchedule sends def's message as a run, unless the schedule changed
 // since sequence was read: resuming the task releases the lifecycle lock.
 func (s *server) executeSchedule(id string, def log.SessionSchedule, sequence uint64, run log.ScheduleRun) error {
@@ -465,14 +501,17 @@ func (s *server) executeSchedule(id string, def log.SessionSchedule, sequence ui
 	owned, open := s.sessions[id]
 	if !open {
 		if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
+			// A person who chose Run now is looking, and is told why.
+			if run.Manual {
+				return errors.New(why)
+			}
 			// Nobody may be at the computer for a scheduled time, so it says
-			// so on the desktop, once until the keychain is unlocked; a
-			// person who chose Run now is looking.
-			if !run.Manual && !s.keysTold {
+			// so on the desktop, once until the keychain is unlocked.
+			if !s.keysTold {
 				s.keysTold = true
 				s.tell(keysTitle, keysBody)
 			}
-			return errors.New(why)
+			return errHeld
 		}
 		options := s.options
 		options.Repo = ""
@@ -540,7 +579,7 @@ func settle(d *schedule.Definition, now time.Time) error {
 
 func (s *server) nextSchedule(req request, _ *peer) (any, *rpcError) {
 	var d schedule.Definition
-	if err := params(req.Params, &d, "message", "repeat", "at", "rule", "cost", "paused"); err != nil {
+	if err := params(req.Params, &d, "message", "repeat", "at", "rule", "cost", "day_cost", "paused"); err != nil {
 		return nil, err
 	}
 	now := time.Now()

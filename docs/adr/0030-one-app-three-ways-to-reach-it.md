@@ -467,3 +467,112 @@ The phone view (§4, §6) installs: over https the console serves a manifest,
 icons and a service worker that caches nothing, a phone adds it to its Home
 Screen, and its notices are shown through the worker, the only way a phone
 shows them. ADR 52 records the choice of a web app over a native shell.
+
+## Amendment 2026-10-17: a computer nobody sits at
+
+The person runs nodwyn on a server nobody sits at and reaches it from a
+laptop and a phone. Everything this computer alone may do (Settings, keys,
+the keychain, a task's model, judge, helpers, limits and schedule, a key the
+model asks for, deleting a task) took a terminal on the server, and so did
+pairing: the code was printed on the console's standard error, which under
+systemd is the journal, for as long as the console ran, and it paired any
+number of devices. A run built from HEAD on 2026-10-17 (`nodwyn ui --name
+https://NAME`, paired by a probe) showed that, and that a request to the
+console's own loopback address with the code paired as this computer, with
+every setup method: what an `ssh -L` forward delivers, and what any account
+on the server can send. The person asked for no hand-made tunnel, nothing
+that depends on one VPN, and no sign-in that lapses while a device is used.
+
+1. **A console other machines reach takes no pairing code.** Started with
+   `--listen` or `--name`, it prints none and takes none, from another
+   machine or from its own loopback address. This computer pairs with its
+   launch ticket, which `nodwyn ui` now mints whenever its listener is on
+   loopback, `--name` or not; a device pairs with an **invitation**: twenty
+   characters, good once and for ten minutes, kept in `devices.toml` as its
+   SHA-256. `nodwyn devices invite` prints one to the terminal that ran it,
+   never to the console's log; a paired device makes one in Settings › Keys &
+   devices, shown with a link that carries it in the fragment. It names a
+   new device, never one whose name a device or a passkey has already, which
+   it would lock out; only the person, signing in with their passkey,
+   replaces a device of the same name. A console on
+   loopback alone (`nodwyn ui` without those flags, `nodwyn app`'s window)
+   keeps its code: its loopback address is this computer, and a forward to it
+   takes an account that already reaches the daemon's socket.
+2. **The person is a passkey.** Over https, or at a `localhost` name, an
+   invitation from the terminal, from this computer or from a device whose
+   person touched their passkey also makes a passkey on the device that uses
+   it (WebAuthn, attestation `none`, user verification required); any
+   browser then signs in with that passkey, synced or through a phone's QR
+   code, with no invitation. A device paired without one becomes the
+   person's by signing in with one in Settings. The bridge checks each
+   ceremony with the standard library alone (`passkey.go`): the challenge it
+   issued, once; the origin, and not from a frame; the RP ID's hash; presence
+   and verification; and an assertion's signature with the registered key,
+   which the page sent as `getPublicKey()` gives it, so nothing is CBOR. A
+   plain-http console has no passkeys, since browsers allow them only in a
+   secure context: its devices answer, and setup stays where keys do not
+   cross the network in clear.
+3. **What the person's device may do.** All a paired device may; the choices
+   this computer alone made (a task's model, judge and helpers, its turn
+   limits, its schedule, a key the model asks for, unlocking the keychain,
+   the folder last picked); and, after a **touch** of the passkey, setup:
+   Settings, providers and models and their tests, credentials and OAuth
+   sign-in, the keychain's creation and passphrase, MCP servers, workspaces,
+   forgetting an index, policy files and bindings, devices and passkeys, and
+   deleting a task. A touch lasts 15 minutes after the device's last setup
+   action, in the bridge's memory, so a sitting asks once. A setup request
+   before one is refused with code -32030; the console asks for the passkey
+   in a dialog (a browser starts a passkey prompt only from a click) and sends
+   the request again, which never reached the daemon. A device paired by a
+   plain invitation may do what a paired device always could, and invite
+   another such device. `session.eval` and runs nobody answers stay the
+   terminal's.
+4. **Who did it.** For the person's device the bridge's daemon connection
+   says `hello {via, passkey}`, and the actor is `… via web:laptop
+   passkey:laptop`; the daemon lets it make this computer's choices. It does
+   not check the claim: a same-user client that claims nothing has every
+   method already, so the claim raises nobody. The bridge enforces the touch,
+   as it enforced a device's limits before. Setup writes are recorded in no
+   log, so the bridge writes a line to its standard error (`Options.Audit`)
+   for each sign-in, invitation, touch and setup action of a device, with
+   the method and the names, never a value.
+5. **A device stays signed in while it is used.** Its cookie is set again,
+   for 90 days, whenever its console loads or connects, and `Devices.Check`
+   forgets a device not seen for 90 days. It used to be set once, for 180 days
+   from pairing however often the device was used, and nothing on the server
+   expired it. Sign-ins are kept in `devices.toml`, so a restart or an upgrade
+   signs nobody out; a restart forgets touches.
+6. **A passkey can be removed,** a lost phone's: it signs nothing in again,
+   and the devices signed in with it only answer. The last one stays, since
+   without it only the terminal could let the person in again.
+7. **A renewed certificate is served without a restart:** `--tls-cert` and
+   `--tls-key` are read again when either file changes, so certbot, acme.sh or
+   a local CA renew a console's certificate in place.
+8. **A schedule waits for the keychain** instead of skipping its time (ADR
+   49, amended 2026-10-17), so a server that restarts at night runs the night's
+   schedules once someone unlocks it from a phone.
+
+Network identity was considered and not chosen: a VPN's own (Tailscale's
+`whois` and app capabilities) is not everyone's, and it names a machine,
+not a person, so any process on an enrolled laptop, a coding agent or a
+package's install script, would speak for it; the Origin check binds only
+browsers. A VPN stays an extra layer in front of the console.
+
+Not built: pasting an OAuth provider's redirect address into the console (a
+sign-in to a provider still needs a browser on the computer nodwyn runs on,
+ADR 24); a console that installs as an app (a manifest); built-in ACME
+certificates (`--acme`); unlocking the keychain at boot from a systemd
+credential sealed to a TPM; reviewing project trust in the console (`nodwyn
+trust` stays the terminal's); a notification for a schedule that waits for
+the keychain (Home says it).
+
+Checks: `internal/frontend/web` (`TestAPasskeyPairsThePersonsDevices` with a
+software authenticator, the wrong origin, RP ID, unverified person,
+unregistered and forged keys, a removed passkey and an address refused;
+`TestThePersonsDeviceTouchesItsPasskeyForSetup` over the socket and a real
+daemon; `TestASharedConsolePairsThisComputerOnlyByTicket`;
+`TestRemoteDevicesPairByInvitationAndCannotWidenPolicy`;
+`TestADeviceInUseStaysSignedIn`; `TestAnInvitationIsGoodOnceAndExpires`),
+`internal/frontend/rpc` (`TestAPasskeyDeviceMakesThisComputersChoices`),
+`cmd/nodwyn` (`TestARenewedCertificateIsServed`), and the `remote` browser
+check with Chromium's virtual authenticator.

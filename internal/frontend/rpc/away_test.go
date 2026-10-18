@@ -93,7 +93,8 @@ func TestDesktopNoticesAreOffUnlessTurnedOn(t *testing.T) {
 }
 
 // A locked keychain stopping a scheduled run is said on the desktop once,
-// until the keychain is unlocked; the schedule says its next run is held.
+// until the keychain is unlocked; the schedule says its next run is held, and
+// the time waits for the unlock instead of being skipped.
 func TestALockedKeychainStoppingAScheduledRunIsSaidOnce(t *testing.T) {
 	notices, notify := told()
 	o := options(t)
@@ -121,12 +122,16 @@ func TestALockedKeychainStoppingAScheduledRunIsSaidOnce(t *testing.T) {
 	noticed(t, notices, keysTitle+": "+keysBody)
 	tickSchedule(s, now.Add(time.Hour))
 	quiet(t, notices, "a second time while the keychain stayed locked")
-	if state, err := s.store().Schedule(id); err != nil || state.LastSkip == nil || !strings.Contains(state.LastSkip.Reason, "Unlock the keychain") {
-		t.Fatalf("%+v %v", state.LastSkip, err)
+	// The time waits for the unlock: it is neither run nor recorded as
+	// skipped (ADR 49, amended 2026-10-17).
+	if state, err := s.store().Schedule(id); err != nil || state.LastSkip != nil || state.LastRun != nil {
+		t.Fatalf("%+v %v", state, err)
 	}
-	// Unlocked at a tick with nothing due, then locked again: said again.
+	// Unlocked at a tick with nothing due (a time held waits for the next
+	// tick that finds the keychain open, and would run then), then locked
+	// again: said again.
 	s.options.Keychain = keys
-	tickSchedule(s, now.Add(time.Hour))
+	tickSchedule(s, now.Add(-time.Hour))
 	s.options.Keychain = nil
 	tickSchedule(s, now.Add(2*time.Hour))
 	noticed(t, notices, keysTitle+": "+keysBody)

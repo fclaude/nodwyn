@@ -13,7 +13,7 @@ const (
 	answerTitle = "nodwyn needs your answer"
 	answerBody  = "Open nodwyn to review what it asks."
 	keysTitle   = "nodwyn can't run a scheduled task"
-	keysBody    = "Unlock your keys in nodwyn: the model needs one, and scheduled runs are skipped until you do."
+	keysBody    = "Unlock your keys in nodwyn: the model needs one, and scheduled runs wait until you do."
 )
 
 // tell shows a notice on this computer's desktop when Settings has it on.

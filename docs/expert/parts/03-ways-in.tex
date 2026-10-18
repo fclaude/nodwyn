@@ -119,19 +119,26 @@ task as a chat.
 
 \section{From another device}
 
-The console can also serve other machines, typically your phone over a
-tailnet (Tailscale or similar):
+The console can also serve other machines: your phone, or, when nodwyn runs
+on a server nobody sits at, every device you use it from:
 
 \begin{sh}
-nodwyn ui --listen 100.101.102.103:7777      # this machine's tailnet address
+nodwyn ui --listen 127.0.0.1:7777 --name https://nodwyn.example.net  # behind your proxy that ends TLS
+nodwyn devices invite                        # an invitation for another device
 nodwyn devices                               # who is paired
 nodwyn devices revoke phone
 \end{sh}
 
-The phone opens the address, enters the pairing code the command printed
-\emph{and a device name}, and gets a cookie that keeps it paired for 180
-days. Only a hash of its token is stored. Every answer from it is recorded
-with its name, \code{via web:phone}, so the log says which screen said yes.
+Such a console takes no pairing code. The device opens the address and
+enters an invitation, from \code{nodwyn devices invite} or from Invite a
+device in Settings on a device already paired, \emph{and a device name}.
+Over https the invitation also makes a passkey there; your other devices
+then sign in with that passkey, with no invitation. A device stays signed
+in for as long as it is used, and only 90 days without use sign it out.
+Only hashes of its token and of invitations, and the passkey's public key,
+are stored. Every answer from it is recorded with its name, \code{via
+web:phone}, and \code{passkey:NAME} when it signed in with one, so the log
+says which screen said yes.
 
 Served over https (\code{--tls-cert}, or a proxy that ends TLS with
 \code{--name https://NAME}), the console is also an app. On an iPhone,
@@ -159,10 +166,13 @@ written lives only in the page and a reload loses it.
 \begin{careful}
 A paired device can answer approvals, and approving a command \emph{is}
 running a command as you. Pair only devices you would hand a terminal. A
-remote device can never change settings, keys, policy files or the
-workspace registry: those need a console on the computer itself. So what
-asks, Settings \textrightarrow{} Approvals, is chosen there, and a device's
-tasks get what was chosen.
+device paired without a passkey can never change settings, keys, policy
+files or the workspace registry. A device signed in with your passkey can,
+after a touch of the passkey that lasts until 15 minutes after its last
+change, since the passkey proves it is you: it needs your face, finger or
+PIN and never leaves the device. So what asks, Settings
+\textrightarrow{} Approvals, is chosen by you, and a device's tasks get
+what was chosen.
 \end{careful}
 
 \section{Sharing with people who will never open a terminal}

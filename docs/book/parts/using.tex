@@ -281,9 +281,12 @@ provider that cannot read one refuses that request, and the turn says so
   program. It attaches to a daemon if one is running, and otherwise serves
   one itself until you close it.
 \item[A phone] \code{nodwyn ui --listen ADDR} serves other devices as well.
-  Each pairs with the printed code and a name, may send messages and answer
-  prompts, and may not change settings, policy files, the keychain,
-  workspaces or MCP servers, or delete a task. \code{nodwyn devices revoke NAME} unpairs one.
+  Each pairs with an invitation (\code{nodwyn devices invite}, or Invite a
+  device in Settings) and a name, and may send messages and answer prompts.
+  Over https the invitation makes a passkey on it, and a device signed in
+  with that passkey makes the computer's choices too, and changes settings,
+  keys and policy after a touch of it; one paired without may not.
+  \code{nodwyn devices revoke NAME} unpairs one.
   A phone that sleeps or changes network connects again by itself and
   reloads the open task; nothing that was on its way is sent again. If
   nodwyn was upgraded meanwhile, the page says so and offers \textbf{Reload},
@@ -1028,7 +1031,9 @@ caps each run. The daemon says the rule back in words with its next times,
 in this computer's named zone, and refuses what a schedule cannot be before it
 is saved. A new schedule first runs at its first time after now. The task's
 \textbf{Schedule\ldots} also lists recent runs: when, how each ended or why
-it was skipped, and its cost.
+it was skipped, and its cost. The \textbf{Workflows} page lists every
+schedule with what today's runs cost, beside a daily spend limit that skips
+the rest of a day's times once reached (\adr{53}).
 The task opens immediately, without sending until due. On a task,
 \textbf{Schedule\ldots} in its menu adds a schedule, or edits,
 pauses, resumes, runs now or removes it. Run now leaves the automatic time

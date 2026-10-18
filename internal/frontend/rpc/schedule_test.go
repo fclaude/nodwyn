@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/schedule"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -119,6 +121,70 @@ func TestSchedulerCoalescesPersistsAndClosesIdle(t *testing.T) {
 	state, err = second.store().Schedule(id)
 	if err != nil || state.LastRun == nil || !state.Definition.Paused {
 		t.Fatalf("restart: %+v %v", state, err)
+	}
+}
+
+// A time due while the keychain holds the model's key locked waits for it:
+// nothing is recorded, the schedule says it waits, and the first tick after
+// the unlock runs it once, standing for every time it held. It used to be
+// recorded as skipped and lost, so a reboot at night lost every run until
+// someone unlocked.
+func TestALockedKeychainHoldsAScheduledTime(t *testing.T) {
+	fakeModel := fake.NewT(t, fake.Turn{Content: "done"})
+	defer fakeModel.Close()
+	o := options(t)
+	o.Provider = llm.NewOllama(fakeModel.URL)
+	o.Config.Control.Credential = "model-key"
+	must.MkdirAll(t, o.Paths.ConfigDir, 0o700)
+	store, err := keychain.Create(o.Paths.Keychain, keychain.FastKDF, []byte("correct horse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := schedulerServer(t, o)
+	now := time.Now().Truncate(time.Minute)
+	id := scheduledTask(t, s, now.Add(-3*time.Hour))
+	tickSchedule(s, now)
+	tickSchedule(s, now.Add(time.Minute))
+	state, err := s.store().Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.LastRun != nil || state.LastSkip != nil || !state.Cursor.IsZero() {
+		t.Fatalf("a locked keychain recorded the time: %+v", state)
+	}
+	// Read as a client reads it, so this compiles against a daemon without
+	// the field and fails there on what it records.
+	says := func() string {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		view, err := s.scheduleState(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(view)
+		var fields struct {
+			Held string `json:"held"`
+		}
+		json.Unmarshal(raw, &fields)
+		return fields.Held
+	}
+	if held := says(); !strings.Contains(held, "Waiting for the keychain") {
+		t.Fatalf("the schedule does not say it waits: %q", held)
+	}
+	s.mu.Lock()
+	s.options.Keychain = store
+	s.mu.Unlock()
+	tickSchedule(s, now.Add(2*time.Minute))
+	scheduleIdle(t, s, id)
+	state, err = s.store().Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.LastRun == nil || state.LastRun.Missed != 3 || state.LastSkip != nil {
+		t.Fatalf("after the unlock: %+v", state)
+	}
+	if held := says(); held != "" {
+		t.Fatalf("an unlocked keychain still holds the schedule: %q", held)
 	}
 }
 
@@ -234,6 +300,42 @@ func TestScheduleControlsAndDeviceAuthority(t *testing.T) {
 	}
 	if removed.Definition != nil {
 		t.Fatal("schedule was not removed")
+	}
+}
+
+// A device whose person proved themself with a passkey makes this computer's
+// choices, a schedule among them, and the log names both the device and the
+// passkey. The claim goes with a device's via and a passkey's name, or not
+// at all.
+func TestAPasskeyDeviceMakesThisComputersChoices(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	id := opened(t, c, t.TempDir())
+	for _, hello := range []map[string]any{
+		{"protocol": 1, "passkey": "laptop"},
+		{"protocol": 1, "via": "web:laptop", "passkey": "My Laptop"},
+	} {
+		if r := connect(t, path).call("hello", hello); r.Error == nil {
+			t.Fatalf("hello %v was taken", hello)
+		}
+	}
+	laptop := connect(t, path)
+	var hello struct {
+		Peer string `json:"peer"`
+	}
+	into(t, laptop.ok("hello", map[string]any{"protocol": 1, "via": "web:tablet", "passkey": "laptop"}), &hello)
+	if !strings.HasSuffix(hello.Peer, " via web:tablet passkey:laptop") {
+		t.Fatalf("peer %q", hello.Peer)
+	}
+	laptop.ok("schedule.set", map[string]any{"id": id, "message": "check", "repeat": "daily", "at": time.Now().Add(48 * time.Hour).Format(schedule.Layout)})
+	state, err := core.Store{Dir: o.Paths.SessionsDir}.Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Definition == nil || state.Definition.Actor != hello.Peer {
+		t.Fatalf("the schedule's actor: %+v", state.Definition)
 	}
 }
 
@@ -393,5 +495,55 @@ func TestTheZoneIsNamed(t *testing.T) {
 	}
 	if got := zoneName(); got == "" || got == "Local" {
 		t.Fatalf("the computer's zone is named %q", got)
+	}
+}
+
+// A daily spend limit stops the automatic runs of a day once what that day's
+// runs cost reaches it, with one skip standing for the rest of the day's
+// times, and they go on the next day.
+func TestADailySpendLimitSkipsTheRestOfTheDay(t *testing.T) {
+	o := options(t)
+	s := schedulerServer(t, o)
+	y, m, d := time.Now().Date()
+	noon := time.Date(y, m, d, 12, 0, 0, 0, time.Local)
+	id := scheduledTask(t, s, noon.Add(-time.Hour))
+	session, err := core.Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := 1.5
+	if _, err := session.Record(log.KindScheduleRun, log.ScheduleRun{Due: noon.Add(-time.Hour), Through: noon.Add(-time.Hour), Started: noon.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.Record(log.KindLLMResp, log.LLMResp{Usage: log.Usage{Cost: &cost}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.store().Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := *state.Definition
+	def.DayCost, def.After = 1, state.Cursor
+	if err := s.store().SetSchedule(id, def); err != nil {
+		t.Fatal(err)
+	}
+	tickSchedule(s, noon)
+	state, err = s.store().Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.LastSkip == nil || !strings.Contains(state.LastSkip.Reason, "daily spend limit") || state.LastSkip.Through.Format("15:04") != "23:00" || state.LastRun.Manual || !state.LastRun.Started.Equal(noon.Add(-time.Hour)) {
+		t.Fatalf("skip %+v, run %+v", state.LastSkip, state.LastRun)
+	}
+	skips := len(state.History)
+	tickSchedule(s, noon.Add(3*time.Hour))
+	if state, err = s.store().Schedule(id); err != nil || len(state.History) != skips {
+		t.Fatalf("the rest of the day was skipped again: %+v %v", state.History, err)
+	}
+	if def.Definition.Validate() != nil || (schedule.Definition{Message: "x", Repeat: "daily", At: "2026-10-20T09:00", DayCost: -1}).Validate() == nil {
+		t.Fatal("a negative daily limit was taken")
 	}
 }
