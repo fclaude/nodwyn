@@ -758,7 +758,9 @@ does not offer declines.
   `find` without `-exec` or `-delete`, `which`), reading or `source`-ing
   what is in such an environment (conda's activation script) and a `for`
   loop's list ask nothing; reading a file elsewhere, writing or running
-  something outside, and `cd` outside still ask.
+  something outside, and `cd` outside still ask. A glob pattern
+  (`/tmp/run-*/log`) counts by where it can match: its leading folder and
+  every path it matches, links followed.
 
 ### Unattended runs
 

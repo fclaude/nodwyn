@@ -11,6 +11,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -485,4 +486,55 @@ func TestLeanSessionPrimitivesAreDocumented(t *testing.T) {
 			t.Errorf("primitive %q is not documented in docs/scheme.md", p.Name)
 		}
 	}
+}
+
+// The line a lean session on commit-bench was refused (task 6e18b7ba,
+// 2026-10-17), its $TMPDIR the scratch directory the core made under /tmp: a
+// pattern over /tmp's scratch directories was read as naming another
+// session's, though it matched its own alone. A session nobody approves runs
+// it now; the shell's time limit is a second, so the sleep is not waited for.
+func TestALeanSessionInTmpMayNameItsScratchDirectoryByAPattern(t *testing.T) {
+	useProfile(t, "")
+	if guard.TempDir() == "" {
+		t.Skip("no /tmp")
+	}
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", "/tmp")
+	const line = `sleep 110; ls /tmp/vd3.done 2>/dev/null || echo RUNNING; D=$(ls -td /tmp/nodwyn-scratch-*/nodwyn-validate-* 2>/dev/null | head -n1); echo "$D"`
+	r := profileRigIn(t, repo, func(o *Options) { o.AutoApprove = true; o.Config.Loop.ShellTimeout = "1s" }, "",
+		shellArgs("poll", "bash", "-c", line), fake.Turn{Content: "It is still running."}, fake.Turn{Content: "Nothing was to change."})
+	if !strings.HasPrefix(r.s.scratch, guard.TempDir()+"/nodwyn-scratch-") {
+		t.Fatalf("the scratch directory %s is not in /tmp", r.s.scratch)
+	}
+	if err := os.Mkdir(filepath.Join(r.s.scratch, "nodwyn-validate-1"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := filepath.Glob("/tmp/nodwyn-scratch-*/nodwyn-validate-*")
+	for _, m := range matches {
+		if real, _ := filepath.EvalSymlinks(m); !strings.HasPrefix(real, r.s.scratch+"/") {
+			t.Skipf("%s is another session's: the pattern reaches it, and is refused for that", m)
+		}
+	}
+	if e := r.turn("validate"); e != "" {
+		t.Fatal(e)
+	}
+	if got := resultOf(r, "poll"); got.Error != "" || !strings.Contains(got.Value, "after 1s") {
+		t.Errorf("the command was not run to the time limit: %+v", got)
+	}
+}
+
+// resultOf is the logged result of the call with id.
+func resultOf(r *rig, id string) log.ToolResult {
+	r.t.Helper()
+	for _, ev := range r.logged() {
+		var res log.ToolResult
+		if ev.Kind == log.KindToolResult && ev.Decode(&res) == nil && res.ID == id {
+			return res
+		}
+	}
+	r.t.Fatalf("no result for call %s", id)
+	return log.ToolResult{}
 }

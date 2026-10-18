@@ -2776,3 +2776,59 @@ their recovery, escape repairs, notes of other copies, test runs piped through
 `tail`, no-change reminders, empty patches); then Qwen on the nine
 commit-bench tasks after the shell2 build's nine. `recall` still renders a
 shell result without its note.
+
+## Amendment 2026-10-17: the lean profile after its first commit-bench session
+
+Commit-bench task 6e18b7ba is nodwyn's own repository at an older commit,
+trusted, run with Muse under the lean profile on 2026-10-17. The model made
+the change in 4 minutes and then spent 50 on `validate`, which the
+repository's AGENTS.md asks for. Three things went wrong, and none is the
+model's:
+
+- The repository registers its own tools in `.nodwyn/init.scm` (`validate`,
+  which runs `make validate` through `shell-start` and reads it with
+  `shell-read` until it exits) and the `dev/*.scm` files it loads (`go-test`,
+  `go-build`, `go-vet`, `go-fmt-check`, `run-make`, `git-log`, `grep-repo`),
+  and the lean profile offered none of them: all 104 requests offered
+  `shell-exec` and `fs-edit` alone. Under the full profile (dsl23, dsl24) the
+  model called `validate` 5 to 8 times and finished in 8 to 13 minutes.
+- `go run ./scripts/validate 2>&1 | tail -n 60` and `go test -count=1
+  ./internal/prim/ ./cmd/nodwyn/ 2>&1 | tail -n 10` each came back
+  `{"status":"timed out after 10m0s","stdout":"","stderr":""}`: `shell-exec`
+  killed them at its ten minutes, and `tail` prints at its end, so nothing
+  came back for 20 minutes. The model then started the check itself with
+  `setsid nohup bash -c '...; echo EXIT:$? >> /tmp/vd.done' &` and polled it
+  with `sleep 115; ls /tmp/vd.done || echo RUNNING; tail /tmp/vd.log` ten
+  times.
+- The guard refused `sleep 110; ls /tmp/vd3.done 2>/dev/null || echo RUNNING;
+  D=$(ls -td /tmp/nodwyn-scratch-*/nodwyn-validate-* 2>/dev/null | head -n1);
+  ...` as naming a path "outside the repository, $TMPDIR and /tmp", though the
+  session's `$TMPDIR` was `/tmp/nodwyn-scratch-20261018T030629Z-60251800-878901457`.
+  The pattern was judged as written: its first component, `nodwyn-scratch-*`,
+  read as the name of another session's scratch directory, which `/tmp`'s
+  allowance excludes. `ls -td /tmp/nodwyn-validate-*` had been allowed.
+
+**Decision:**
+
+3. *A glob pattern in a command line is judged by where it can match*, in
+   both profiles, since the refusal was a false one. A word with `*`, `?` or
+   `[` in a path component reaches its leading directory (the path up to the
+   first such component, cleaned) and every path it matches when the call is
+   judged (`filepath.Glob`, a relative word's in the repository root); each
+   is judged as that path written out would be, its links resolved as a
+   plain path's are, and the word is inside only when all of them are inside
+   the repository, the scratch directory, or `/tmp` where that allowance
+   applies (`guard.ArgvTrigger`, `globPlaces`). Nothing else is loosened. A
+   match through a link in `/tmp` or in the repository that points outside is
+   outside, which a pattern used to hide (`cat /tmp/l*/hosts` was judged by
+   `/tmp` alone); another session's scratch directory is outside when a
+   pattern matches it; a pattern in `/tmp` named as a credential file is
+   (`/tmp/*.pem`) is outside, as the name is; a word with a parent component
+   is judged as written, as every path with one is (`/tmp/../etc/*` is
+   outside either way, and cleaning `src/../*` to the root would hide a link
+   that `src` is); an option (`-*`) and a word Go cannot read as a pattern are
+   judged as before. Every path of a word is judged, a flag's value after `=`
+   included: the trigger used to judge only the first one outside the
+   repository, and let the rest go when that one was in `/tmp`. The
+   commit-bench line is the test, run in an unattended lean session whose
+   `$TMPDIR` is under `/tmp`; it is refused on the unchanged code.

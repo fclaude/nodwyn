@@ -370,18 +370,20 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 	}
 	var flagged []string
 	// outside asks about tok when it names a path outside the repository
-	// and the scratch directory, unless ok, given the path, lets it be.
+	// and the scratch directory, unless ok, given the path, lets it be. Each
+	// of its paths (a flag's value after =) is judged.
 	outside := func(tok string, ok func(string) bool) {
 		if devices[tok] {
 			return
 		}
-		path := argumentPath(a.spelled(tok), a.Root, false)
-		if path == "" || a.inScratch(path) || InTemp(a.Temp, a.Scratch, path) || (ok != nil && ok(path)) {
-			return
+		for _, part := range strings.Split(a.spelled(tok), "=") {
+			if path := a.outsidePart(part, ok); path != "" {
+				reasons = append(reasons, "command line names a path outside the repository: "+path)
+				flagged = append(flagged, path)
+				security = true
+				return
+			}
 		}
-		reasons = append(reasons, "command line names a path outside the repository: "+path)
-		flagged = append(flagged, path)
-		security = true
 	}
 	for _, command := range commands {
 		programs, patterns := programs(command.words), patternWords(command.words)
@@ -439,6 +441,78 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		return Decision{Verdict: Confirm, Security: security, Reason: strings.Join(reasons, "; "), Detail: line}
 	}
 	return Decision{Verdict: Allow}
+}
+
+// outsidePart is part, one path of a command-line word, when it reaches
+// outside the repository, the scratch directory and /tmp where that is
+// allowed (and what ok lets be), else "". A glob pattern reaches its
+// leading directory and what it matches (globPlaces), and each is judged as
+// that path written out would be, links resolved. Read as written, a
+// pattern's components were judged as names: /tmp/nodwyn-scratch-*/x as
+// another session's scratch directory, and /tmp/l*/hosts by /tmp alone when
+// /tmp/link points at /etc (ADR 32, amended 2026-10-17).
+func (a ArgvTrigger) outsidePart(part string, ok func(string) bool) string {
+	inside := func(path string) bool {
+		return argumentPath(path, a.Root, false) == "" || a.inScratch(path) || InTemp(a.Temp, a.Scratch, path) || (ok != nil && ok(path))
+	}
+	places, pattern := globPlaces(part, a.Root)
+	if !pattern {
+		if inside(part) {
+			return ""
+		}
+		return part
+	}
+	// What ok allows of a pattern it judges whole (a Python environment's,
+	// every match in it) stays allowed.
+	if ok != nil && ok(part) {
+		return ""
+	}
+	for _, p := range places {
+		if !inside(p) {
+			return part
+		}
+	}
+	// A pattern in /tmp named as a credential file is (*.pem, id_*) is
+	// outside, as such a name is there (InTemp).
+	if lead := places[0]; argumentPath(lead, a.Root, false) != "" && !a.inScratch(lead) && DefaultDenylist().credentialName(filepath.Base(part)) != "" {
+		return part
+	}
+	return ""
+}
+
+// globPlaces is where a command-line word with a glob pattern (* ? or [ in
+// a component) can reach: its leading directory, the path up to the first
+// component with one, cleaned, and each path the pattern matches now, a
+// relative word's in the repository root. False for a word without a
+// pattern, one that starts with - (an option), one Go cannot read as a
+// pattern (the shell then passes it as it is), or one with a parent
+// component, which is judged as written, as every path with one is: cleaning
+// src/../* to the root would hide a link that src is.
+func globPlaces(word, root string) ([]string, bool) {
+	if !strings.ContainsAny(word, "*?[") || strings.HasPrefix(word, "-") {
+		return nil, false
+	}
+	parts := strings.Split(word, string(filepath.Separator))
+	if slices.Contains(parts, "..") {
+		return nil, false
+	}
+	first := slices.IndexFunc(parts, func(p string) bool { return strings.ContainsAny(p, "*?[") })
+	lead := strings.Join(parts[:first], string(filepath.Separator))
+	switch {
+	case lead == "" && filepath.IsAbs(word):
+		lead = string(filepath.Separator)
+	case lead == "":
+		lead = "."
+	}
+	pattern := word
+	if !filepath.IsAbs(pattern) {
+		pattern = filepath.Join(root, pattern)
+	}
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, false
+	}
+	return append([]string{filepath.Clean(lead)}, matches...), true
 }
 
 // declares are the shell builtins whose NAME=value arguments are
