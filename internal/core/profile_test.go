@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/llm"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -431,10 +432,22 @@ func TestShellCommandsThatOnlyLookCountAsLookingInTheLeanProfile(t *testing.T) {
 // line, written to the same path outside the repository, is refused as the
 // model's own call is, and so is a write there; the file is never made. The
 // tool is the lean profile's.
+//
+// The path is outside /tmp too: a lean session nobody approves may use /tmp as
+// it uses its scratch directory (ADR 32, amended 2026-10-17), so a probe there
+// would be made on purpose. /var/tmp is the system's other temporary directory,
+// which that rule does not name; a machine without a usable one skips the test.
 func TestTheSchemeToolDoesNotGoRoundTheGuard(t *testing.T) {
 	useProfile(t, config.ProfileLean)
-	outside := filepath.Join(os.TempDir(), "nodwyn-guard-probe-"+filepath.Base(t.TempDir()))
-	defer os.Remove(outside)
+	dir, err := os.MkdirTemp("/var/tmp", "nodwyn-guard-probe-")
+	if err != nil {
+		t.Skipf("no /var/tmp to probe with: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	if real, err := filepath.EvalSymlinks(dir); err != nil || guard.InTemp(guard.TempDir(), "", real) {
+		t.Skipf("/var/tmp is inside /tmp here, which a lean session may write: %s", dir)
+	}
+	outside := filepath.Join(dir, "probe")
 	scheme := func(id, code string) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "scheme", Args: map[string]any{"code": code}}}}
 	}
