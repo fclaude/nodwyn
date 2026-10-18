@@ -7518,6 +7518,9 @@
     },
     "rpc.helloParams": {
       "properties": {
+        "passkey": {
+          "type": "string"
+        },
         "protocol": {
           "const": 1,
           "type": "integer"
@@ -8758,6 +8761,9 @@
               "type": "null"
             }
           ]
+        },
+        "held": {
+          "type": "string"
         },
         "last_run": {
           "anyOf": [

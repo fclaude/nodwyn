@@ -2627,6 +2627,44 @@ console needs besides: model and keychain setup, credentials, workspaces,
 attachments, file versions and MCP servers. See [the protocol guide](protocol.md) for the handshake, methods,
 permissions and reconnect semantics. `nodwyn app` starts one itself when none
 is running ([the app](app.md)).
+
+## A server you reach from other devices
+
+nodwyn can run on a computer nobody sits at, such as a home server, and be
+used from a laptop and a phone (ADR 30, amended 2026-10-17). Run the daemon
+and the console as services of your own account, with lingering on so they
+outlive your login (the daemon's socket is in `$XDG_RUNTIME_DIR`, which goes
+at logout without it):
+
+```sh
+loginctl enable-linger "$USER"
+nodwyn daemon                       # starts with the keychain locked, as a service
+nodwyn ui --no-open --listen 127.0.0.1:7777 --name https://nodwyn.example.net
+```
+
+Give the console https in one of two ways: your own proxy that ends TLS in
+front of it (Caddy, nginx with certbot, a VPN's https), named with `--name
+https://NAME`; or `--tls-cert` and `--tls-key` with a certificate from any ACME
+client or a CA of your own, which the console reads again when they are
+renewed. Over plain http devices pair and answer, but the person cannot sign
+in with a passkey, so setup stays on the server.
+
+Pairing takes no code. Once, on the server, `nodwyn devices invite` prints
+an invitation; open the console's address on your laptop or phone, name the
+device and enter it, and **Connect and make a passkey**. Your other devices
+sign in with that passkey (**Sign in with a passkey**), with no invitation,
+or are invited from Settings › Keys & devices. A device stays signed in for
+as long as it is used, and 90 days without use sign it out; restarting or
+upgrading nodwyn signs nobody out. A device signed in with the passkey makes
+the choices the computer makes (a task's model, judge, limits, schedule,
+unlocking the keychain), and asks for a touch of the passkey before it
+changes setup, once for a sitting of changes. The console's journal says
+each sign-in, invitation and setup change a device made. After a restart,
+unlock the keychain from any device signed in with the passkey: a schedule
+due meanwhile waits for it and then runs once, late. `nodwyn devices`
+lists and revokes devices on the server; Settings removes a lost phone's
+passkey. A provider's OAuth sign-in and `nodwyn trust` still need the server
+([the browser view](browser.md), "Other devices").
 ## Downloadable builds and books
 
 Download portable binaries and both books from the repository's Gitea

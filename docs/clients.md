@@ -17,9 +17,10 @@ nodwyn has four ways in, over one core:
   `replay`, `versions`, `undo`, `credential`, `keychain`, `mcp`, `trust`,
   `devices`, `run`, `summary`, `eval`, `repl`).
 
-This page records what each one can do as of 2026-10-15 (the judge choice,
-ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49, and
-retrieval, ADR 50, included), so work on a
+This page records what each one can do as of 2026-10-17 (the judge choice,
+ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49,
+retrieval, ADR 50, and devices that pair by invitation and sign in with a
+passkey, ADR 30 amended 2026-10-17, included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -39,9 +40,9 @@ it can see the thing but not change it.
 | Resume a stored session | yes, the sidebar | yes, the chooser (paged, typing filters it) or `--resume` | yes, `--resume` | — |
 | Switch between open tasks | yes, the sidebar; several open at once | one session per process; quit and choose again | one session | — |
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
-| Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu); Home’s cards pause and run now; paired devices can pause or run now | not built | not built | not built |
+| Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu); Home’s cards pause and run now; a device signed in with a passkey creates and changes them, and other paired devices can pause or run now | not built | not built | not built |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
-| Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
+| Archive, delete (ADR 39) | yes; delete on this computer, or on a device signed in with a passkey after a touch of it | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | daemon mode detaches and the turn goes on; local mode aborts it | aborts it | — |
 
 ## The conversation
@@ -71,7 +72,7 @@ it can see the thing but not change it.
 | Masked secret prompts | yes | yes | yes | — |
 | Budget checkpoints | yes | yes | yes | — |
 | Don't ask (`session.approve_all`) | yes, when Settings offers it; a paired device sees it while on and turns it off | not built | `--yolo` at start | `nodwyn run --yolo` |
-| A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: `--budget-*` set limits, none removes them | `nodwyn run`: not built, its run limits are its own |
+| A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer or a device signed in with a passkey | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: `--budget-*` set limits, none removes them | `nodwyn run`: not built, its run limits are its own |
 | Edit `allow.toml` (`session.policy.write`) | yes, the policy editor | deliberate gap: `:bindings` reads only | — | — |
 
 ## Models (ADR 40, ADR 41)
@@ -83,9 +84,9 @@ it can see the thing but not change it.
 | Choose a model as a task opens | yes, New task's picker | not built: it opens on `[control]`; use `:model` before the first message | `--model`/`--url` override `[control]` | `nodwyn run`: not built |
 | A model on a server with no `[models.NAME]` entry (`server` + `model`) | not offered: the picker lists names | not offered | — | — |
 | A choice while a turn runs is queued | yes | yes, and the conversation says so | — | — |
-| Choosing from a paired device | refused (ADR 30) | — | — | — |
+| Choosing from a paired device | yes, signed in with a passkey; refused to one paired by a plain invitation (ADR 30, amended 2026-10-17) | — | — | — |
 | Edit a model's labels (ADR 27, amended 2026-10-09) | yes, Settings › Models; reaches open tasks | not built | — | edit `config.toml` |
-| Let a task's model hand work to other models (`delegates`) | yes, New task's Helpers fold, this computer only | not built: a task opens with none | none | `nodwyn run`: none |
+| Let a task's model hand work to other models (`delegates`) | yes, New task's Helpers fold, on this computer or a device signed in with a passkey | not built: a task opens with none | none | `nodwyn run`: none |
 
 ## Changing a task while a turn runs
 
@@ -115,7 +116,7 @@ every client's picker, not in the core's guard.
 | Move a task to another judge, or none | yes, between turns | yes, `:judge NAME`, `:judge none` | not built | — |
 | Set a judge up: Jev's key, an OpenAI API key | Settings › Judge, in place | — | — | edit `config.toml`, `:eval (credential-register …)` |
 | The default judge | Settings › Judge (Models links to it) | — | — | `[judge] server` |
-| Choosing from a paired device | refused (ADR 30, ADR 47) | — | — | — |
+| Choosing from a paired device | yes, signed in with a passkey; refused to one paired by a plain invitation (ADR 30, ADR 47, both amended 2026-10-17) | — | — | — |
 
 ## Memory (ADR 51)
 
@@ -171,7 +172,9 @@ but `:replay`. Both read the same log.
 
 All deliberate gaps outside the console. They are forms over `config.toml`,
 the keychain and the config directory, and the CLI covers what a terminal
-needs.
+needs. The console's column is this computer's, and that of a device signed
+in with the person's passkey after a touch of it (ADR 30, amended
+2026-10-17); a device paired by a plain invitation has none of it.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
@@ -182,8 +185,8 @@ needs.
 | Named workspaces and mounts | Workspaces | — | — | edit `workspaces.toml` |
 | Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor; a task's Workspace tab says which | yes, `:earlier`, `:earlier on`, `:earlier off` | — | edit `workspaces.toml` (`earlier_tasks = true`) |
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
-| Pair devices | no: `nodwyn ui --listen` prints the pairing code in its terminal (Settings › Keys & devices says so) | — | — | `nodwyn ui --listen` |
-| List and revoke devices | yes, on this computer, Revoke after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME` |
+| Pair devices | yes: Settings › Keys & devices › **Invite a device** (a code and a link, good once for ten minutes); over https an invitation makes a passkey, which signs other browsers in with no invitation | — | — | `nodwyn devices invite` |
+| List and revoke devices, remove a passkey | yes, on this computer or after a passkey touch, each after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME`; a passkey only in the console |
 
 ## Runs (ADR 35)
 

@@ -1,5 +1,10 @@
-// nodwyn ui --listen with another host name: a phone pairs by name, answers,
-// and the log records "via web:phone"; a launch ticket is refused remotely.
+// nodwyn ui --listen with other host names (ADR 30, amended 2026-10-17): it
+// prints no pairing code; a phone pairs with an invitation from nodwyn devices
+// invite, answers, and the log records "via web:phone"; a launch ticket is
+// refused remotely. A laptop at a name where passkeys work (desk.localhost
+// stands in for https) makes a passkey with its invitation, keeps its sign-in across
+// a restart of the console, and confirms with the passkey before it revokes
+// the phone; a tablet then signs in with that passkey, with no invitation.
 const assert = require("assert");
 const fs = require("fs");
 const { execFileSync } = require("child_process");
@@ -23,16 +28,21 @@ check(async () => {
   // The console's address has to be known before it starts, since the phone
   // reaches it by the name --name gives with its port: a port the system
   // picked, tried again in the rare case something took it meanwhile.
-  let port, code;
-  for (let attempt = 1; !code; attempt++) {
+  let port, ui;
+  const console_ = () => start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--name", `desk.test:${port}`, "--name", `desk.localhost:${port}`, "--no-open"], { env });
+  for (let attempt = 1; !ui; attempt++) {
     port = await freePort();
-    const ui = start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--name", `desk.test:${port}`, "--no-open"], { env });
+    const started = console_();
     try {
-      [code] = await line(ui, /Pairing code[^:]*: (\S+)/, "stderr");
+      await line(started, /(Browser view)/, "stderr");
+      ui = started;
     } catch (e) {
-      if (attempt === 3 || !/address already in use/.test(ui.stderrText)) throw e;
+      if (attempt === 3 || !/address already in use/.test(started.stderrText)) throw e;
     }
   }
+  assert.doesNotMatch(ui.stderrText, /Pairing code/, "a console other machines reach printed a pairing code");
+  const invite = () => /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env }).toString())[1];
+  const code = invite();
   const browser = await launch({ args: ["--host-resolver-rules=MAP desk.test 127.0.0.1"] });
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = watch(await phone.newPage());
@@ -40,13 +50,15 @@ check(async () => {
   // An unpaired browser learns it is one when its socket is refused.
   expectError(/^WebSocket connection to 'ws:\/\/desk\.test:\d+\/socket' failed: .*403$/);
   await page.goto(`http://desk.test:${port}/`);
-  await page.waitForSelector("#pair-device");
-  step("pairing asks for a device name");
+  await page.waitForSelector("#pair-invite");
+  step("pairing asks for an invitation and a device name");
+  // Plain http is no place for a passkey: the page offers none.
+  assert.strictEqual(await page.$("text=Connect without a passkey"), null, "a passkey offered over plain http");
   await page.screenshot({ path: `${out}/phone-pair.png` });
   // The browser holds back a name the daemon would refuse.
   await page.fill("#pair-device", "Phone Two");
   assert.strictEqual(await page.$eval("#pair-device", (i) => i.checkValidity()), false, "the device field takes 'Phone Two'");
-  await page.fill("#pair-code", code);
+  await page.fill("#pair-invite", code);
   await page.fill("#pair-device", "phone");
   await page.click("button[type=submit]");
   await ready(page);
@@ -117,30 +129,117 @@ check(async () => {
   const devices = execFileSync(process.env.NODWYN, ["devices"], { env }).toString().trim();
   assert.match(devices, /^phone\s+paired /m, "nodwyn devices lists the phone");
 
-  // A browser on this computer, paired with the code, lists the phone under
-  // Keys & devices. Revoking locks it out at once and pairing it again needs
-  // a terminal, so Revoke asks first: Cancel sends nothing, the confirm does.
-  const desk = watch(await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage(), "computer");
+  // A laptop where passkeys work opens an invitation's link, which makes a
+  // passkey there with Chromium's virtual authenticator, the person always
+  // present and verified.
+  const authenticator = async (context, page) => {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("WebAuthn.enable");
+    const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+    return { cdp, authenticatorId };
+  };
+  const laptopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const desk = watch(await laptopContext.newPage(), "laptop");
   const deskSent = requests(desk);
-  // Unpaired, its socket is refused first.
-  expectError(/^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/socket' failed: .*403$/);
-  await desk.goto(`http://127.0.0.1:${port}/`);
-  await desk.fill("#pair-code", code);
-  await desk.click("button[type=submit]");
+  const laptopKey = await authenticator(laptopContext, desk);
+  expectError(/^WebSocket connection to 'ws:\/\/desk\.localhost:\d+\/socket' failed: .*403$/);
+  await desk.goto(`http://desk.localhost:${port}/#invite=${invite()}`);
+  await desk.waitForSelector("#pair-invite");
+  assert.notStrictEqual(await desk.inputValue("#pair-invite"), "", "the invitation's link did not fill it in");
+  await desk.fill("#pair-device", "laptop");
+  await desk.screenshot({ path: `${out}/laptop-pair.png` });
+  await desk.click("button[type=submit]:has-text('Connect and make a passkey')");
   await desk.waitForSelector("html[data-ready]", { timeout: 10000 });
+  const devicesFile = () => fs.readFileSync(`${root}/config/nodwyn/devices.toml`, "utf8");
+  assert.match(devicesFile(), /name = "laptop"[^[]*passkey = "laptop"/, "devices.toml has the laptop signed in with its passkey");
+  assert.match(devicesFile(), /\[\[passkey\]\]\s+name = "laptop"/, "devices.toml has the laptop's passkey");
+  // The person's device chooses a task's model, as this computer does.
+  await desk.waitForSelector("#new-task-model-model");
+  step("a laptop made a passkey with its invitation, and chooses a task's model");
+
+  // Restarting the console signs nobody out, though it forgets the touch.
+  ui.kill("SIGTERM");
+  await ui.exited;
+  ui = console_();
+  await line(ui, /(Browser view)/, "stderr");
+  await desk.reload();
+  await desk.waitForSelector("html[data-ready]", { timeout: 10000 });
+  step("the laptop is still signed in after the console restarted");
+
+  // Revoke asks first, and then for the passkey: Cancel sends nothing, the
+  // confirm sends it, the bridge holds it for the touch, and the console
+  // sends it again once the passkey answered.
   await desk.evaluate(() => (location.hash = "#/settings/keys"));
   await desk.waitForSelector("#devices .list-row:has-text('phone')");
+  await shows(desk, "#devices", "laptop (this device)", "signed in with the passkey laptop", "answers only", "Passkey laptop");
   await desk.click("#devices .list-row:has-text('phone') button:text-is('Revoke')");
-  await shows(desk, "#devices", "Revoke phone? It is locked out at once, and pairing it again needs a terminal.");
+  await shows(desk, "#devices", "Revoke phone? It is locked out at once, and pairs again only with an invitation.");
   assert.strictEqual(deskSent.of("devices.revoke").length, 0, "Revoke locked the phone out before it was confirmed");
   await desk.click("#devices button:text-is('Cancel')");
   assert.strictEqual(deskSent.of("devices.revoke").length, 0, "Cancel revoked the phone");
   await desk.click("#devices .list-row:has-text('phone') button:text-is('Revoke')");
   await desk.screenshot({ path: `${out}/revoke-confirm.png` });
   await desk.click("#devices button:text-is('Revoke')");
-  await until("the phone gone from the list", async () => (await desk.locator("#devices .list-row").count()) === 0);
-  assert.deepStrictEqual(deskSent.of("devices.revoke"), [{ name: "phone" }]);
-  // With none paired, the page says how to pair one.
-  await shows(desk, "#devices", "No other device is paired.", "nodwyn ui --listen ADDRESS:PORT", "pairing code");
-  step("Revoke asks first and then locks the phone out; with none paired, the page says how to pair one");
+  await desk.waitForSelector("#touch-confirm");
+  await desk.screenshot({ path: `${out}/touch.png` });
+  assert.ok(fs.readFileSync(`${root}/config/nodwyn/devices.toml`, "utf8").includes('name = "phone"'), "the phone was revoked before the touch");
+  await desk.click("#touch-confirm");
+  await until("the phone gone from the list", async () => (await desk.locator("#devices .list-row:has-text('phone')").count()) === 0);
+  assert.deepStrictEqual(deskSent.of("devices.revoke"), [{ name: "phone" }, { name: "phone" }], "the revocation was not sent once before the touch and once after");
+  assert.ok(!devicesFile().includes('name = "phone"'), "devices.toml still has the phone");
+  await until("the console's log says who revoked it", () => /web: devices\.revoke by laptop with the passkey laptop: done/.test(ui.stderrText));
+  step("Revoke asks first, then for the passkey, and then locks the phone out, said in the console's log");
+
+  // Within the touch, the laptop invites a device that may make a passkey,
+  // and is shown the invitation's code and link.
+  await desk.click("#devices-invite");
+  await desk.waitForSelector("#invitation");
+  assert.deepStrictEqual(deskSent.of("devices.invite"), [{ passkey: true }], "the invitation asked for");
+  const minted = (await desk.textContent("#invitation strong")).trim();
+  await shows(desk, "#invitation", `http://desk.localhost:${port}/#invite=${minted}`, "Good once, until");
+  assert.ok(!(await desk.textContent("#devices")).includes("null"), "the devices list shows a null");
+  await desk.screenshot({ path: `${out}/invite.png` });
+  step("the laptop makes an invitation, with its code and link");
+
+  // A tablet signs in with the passkey made on the laptop, with no
+  // invitation: it is the same passkey, as a synced one would be.
+  const { credentials } = await laptopKey.cdp.send("WebAuthn.getCredentials", { authenticatorId: laptopKey.authenticatorId });
+  assert.strictEqual(credentials.length, 1, "the laptop's authenticator holds one passkey");
+  const tabletContext = await browser.newContext({ viewport: { width: 820, height: 1180 } });
+  const tablet = watch(await tabletContext.newPage(), "tablet");
+  const tabletKey = await authenticator(tabletContext, tablet);
+  await tabletKey.cdp.send("WebAuthn.addCredential", { authenticatorId: tabletKey.authenticatorId, credential: credentials[0] });
+  expectError(/^WebSocket connection to 'ws:\/\/desk\.localhost:\d+\/socket' failed: .*403$/);
+  await tablet.goto(`http://desk.localhost:${port}/`);
+  await tablet.waitForSelector("#pair-passkey");
+  await tablet.fill("#pair-device", "tablet");
+  await tablet.click("#pair-passkey");
+  await tablet.waitForSelector("html[data-ready]", { timeout: 10000 });
+  assert.match(devicesFile(), /name = "tablet"[^[]*passkey = "laptop"/, "devices.toml has the tablet signed in with the laptop's passkey");
+  await until("the console's log says the tablet signed in", () => /web: tablet signed in with the passkey laptop/.test(ui.stderrText));
+  step("a tablet signs in with the passkey alone");
+
+  // A desktop uses the laptop's invitation without making a passkey, so it
+  // only answers; signing in with the passkey from Settings then makes it
+  // the person's, and it chooses a task's model.
+  const desktopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const desktop = watch(await desktopContext.newPage(), "desktop");
+  const desktopKey = await authenticator(desktopContext, desktop);
+  await desktopKey.cdp.send("WebAuthn.addCredential", { authenticatorId: desktopKey.authenticatorId, credential: credentials[0] });
+  expectError(/^WebSocket connection to 'ws:\/\/desk\.localhost:\d+\/socket' failed: .*403$/);
+  await desktop.goto(`http://desk.localhost:${port}/#invite=${minted}`);
+  await desktop.waitForSelector("#pair-invite");
+  await desktop.fill("#pair-device", "desktop");
+  await desktop.click("text=Connect without a passkey");
+  await desktop.waitForSelector("html[data-ready]", { timeout: 10000 });
+  const desktopEntry = () => /name = "desktop"[^[]*/.exec(devicesFile())?.[0] || "";
+  assert.match(desktopEntry(), /by = "laptop"/, "the desktop was not let in by the laptop");
+  assert.doesNotMatch(desktopEntry(), /passkey = /, "the desktop has a passkey without making one");
+  assert.strictEqual(await desktop.$("#new-task-model-model"), null, "a device that only answers is offered a model picker");
+  await desktop.evaluate(() => (location.hash = "#/settings/keys"));
+  await desktop.click("#devices-sign-in");
+  await until("the desktop signed in with the passkey", () => /passkey = "laptop"/.test(desktopEntry()));
+  await desktop.evaluate(() => (location.hash = "#/"));
+  await desktop.waitForSelector("#new-task-model-model", { timeout: 10000 });
+  step("a device that only answered signs in with the passkey from Settings, and chooses a task's model");
 });

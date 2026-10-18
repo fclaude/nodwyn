@@ -1036,8 +1036,10 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 
 .earlier-run[open][data-loaded] .run-preview { display: none; }
 
-.schedule-dialog { width: min(580px, calc(100vw - 32px)); max-height: 90vh; overflow: auto; padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); }
-.schedule-dialog::backdrop { background: #0006; }
+.schedule-dialog, .passkey-dialog { width: min(580px, calc(100vw - 32px)); max-height: 90vh; overflow: auto; padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); }
+.schedule-dialog::backdrop, .passkey-dialog::backdrop { background: #0006; }
+.passkey-dialog { display: grid; gap: 14px; }
+.passkey-dialog:not([open]) { display: none; }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dialog-head h2 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: 24px; }
 .schedule-edit > summary { cursor: pointer; font-weight: 500; font-size: 13.5px; }

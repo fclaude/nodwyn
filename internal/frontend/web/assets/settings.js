@@ -14,6 +14,7 @@ import { keychainForm, passphraseForm, noPassphraseWarning } from "./setup.js";
 import { modelsRows, resetModelsUi, stagedDefault, discardDefault } from "./models.js";
 import { judgeStateWords, judgeKinds, judgeLabel } from "./modelpicker.js";
 import { uploadLabels } from "./transcript.js";
+import { pairing, passkeysHere, assert } from "./passkey.js";
 
 // ---------- theme (a per-browser convenience; dark unless chosen) ----------
 const themes = ["dark", "light", "system"];
@@ -352,7 +353,7 @@ export function renderSettings(root, ctx) {
   page.scrollTop = scrolled;
   refreshBar();
   const devices = root.querySelector("#devices");
-  if (devices && conn.has("devices.list")) showDevices(devices, ctx);
+  if (devices) showDevices(devices, ctx);
   if (focus) {
     const node = document.getElementById(focus.id);
     node?.focus({ preventScroll: true });
@@ -856,7 +857,8 @@ function windowSection(ctx) {
 function keysSection(ctx, root, redraw) {
   const { conn } = ctx;
   const known = !!ctx.desk.settings?.values;
-  if (!conn.has("keychain.status") && !conn.has("devices.list") && !known) return null;
+  const devices = conn.has("devices.list") || conn.has("devices.invite");
+  if (!conn.has("keychain.status") && !devices && !known) return null;
   return section(
     "keys",
     "Keys & devices",
@@ -872,7 +874,7 @@ function keysSection(ctx, root, redraw) {
           h("p", { class: "hint" }, "Off by default. Allow HTTP only for servers you trust on an unencrypted connection: anyone on the route can read or change credentials and content. Localhost is always available, and certificate checks, bindings and redirect refusals still apply."),
         )
       : [],
-    conn.has("devices.list") ? [h("div", { class: "label" }, "Other devices"), h("div", { class: "value", id: "devices" }, h("p", { class: "hint" }, "Loading…"))] : [],
+    devices ? [h("div", { class: "label" }, "Other devices"), h("div", { class: "value", id: "devices" }, h("p", { class: "hint" }, "Loading…"))] : [],
   );
 }
 
@@ -941,47 +943,131 @@ function connectionSection(ctx) {
   );
 }
 
-// revoking is the device whose Revoke waits for its confirm. A device that
-// is revoked is locked out at once, and pairing it again needs a terminal,
-// so a click is not enough.
+// revoking is the device, and removing the passkey, whose button waits for
+// its confirm: a device revoked is locked out at once and pairs again only
+// with an invitation, and a passkey removed signs nothing in again.
 let revoking = "";
+let removing = "";
+// invitation is the last one made here, shown until it expires.
+let invitation = null;
 
 async function showDevices(node, ctx) {
   const { conn } = ctx;
-  let list;
+  const peer = conn.hello?.peer || "";
+  const me = /via web:([a-z0-9._-]+)/.exec(peer)?.[1] || "";
+  const person = / passkey:/.test(peer);
+  let list = [];
+  let keys = [];
+  let way = { passkey: false, passkeys: false };
   try {
-    list = await conn.call("devices.list");
+    [list, keys, way] = await Promise.all([conn.has("devices.list") ? conn.call("devices.list") : [], conn.has("passkeys.list") ? conn.call("passkeys.list") : [], pairing()]);
   } catch (error) {
     node.replaceChildren(h("p", { class: "error" }, error.message));
     return;
   }
-  const revoke = async (name) => {
-    revoking = "";
+  const redraw = () => showDevices(node, ctx);
+  const act = async (work) => {
     try {
-      await conn.call("devices.revoke", { name });
-      toast(`${name} can no longer reach nodwyn.`);
+      await work();
     } catch (error) {
       toast(error.message);
     }
-    showDevices(node, ctx);
+    redraw();
   };
+  const revoke = (name) =>
+    act(async () => {
+      revoking = "";
+      await conn.call("devices.revoke", { name });
+      toast(`${name} can no longer reach nodwyn.`);
+    });
+  const removeKey = (name) =>
+    act(async () => {
+      removing = "";
+      await conn.call("passkeys.remove", { name });
+      toast(`The passkey ${name} signs nothing in from now on.`);
+    });
+  // An invitation from the person's device, or from this computer, may make
+  // a passkey on the device that uses it, after a touch; one from a device
+  // that only answers lets in another such device.
+  const invite = () =>
+    act(async () => {
+      const made = await conn.call("devices.invite", { passkey: !me || person });
+      invitation = { ...made, at: Date.now() };
+    });
+  // A device paired before it had a passkey, here where passkeys work,
+  // becomes the person's with a touch of one made on another device.
+  const signIn = () =>
+    act(async () => {
+      const answer = await assert();
+      if (answer.promoted) conn.connect();
+    });
+  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
+  const live = invitation && new Date(invitation.expires).getTime() > Date.now();
+  // replaceChildren writes a null as the text "null", where h() leaves it out.
   const draw = () =>
     node.replaceChildren(
-      list.length
-        ? h(
-            "div",
-            { class: "list" },
-            list.map((d) =>
-              h(
+      ...[
+        me && !person && way.passkey && way.passkeys && passkeysHere()
+          ? h("div", { class: "callout plain" }, h("div", {}, "This device only answers. Sign it in with your passkey, made on another device, and it can make this computer's choices too."), h("button", { type: "button", class: "btn small", id: "devices-sign-in", onclick: signIn }, "Sign in with a passkey"))
+          : null,
+        conn.has("devices.invite")
+          ? h(
+              "div",
+              { class: "stack-md" },
+              h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "devices-invite", onclick: invite }, "Invite a device")),
+              live
+                ? h(
+                    "div",
+                    { class: "box", id: "invitation" },
+                    h("p", {}, "Invitation: ", h("strong", { class: "mono" }, invitation.code)),
+                    loopback ? null : h("p", { class: "hint" }, "Or open this link on the device: ", h("span", { class: "mono" }, `${location.origin}/#invite=${invitation.code}`)),
+                    h("p", { class: "hint" }, `Good once, until ${new Date(invitation.expires).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Keep it off chats and screenshots.`),
+                  )
+                : null,
+            )
+          : null,
+        conn.has("devices.list")
+          ? list.length
+            ? h(
                 "div",
-                { class: "list-row" },
-                h("div", { class: "main" }, h("strong", {}, d.name), h("span", {}, `paired ${ago(d.paired)} · last seen ${ago(d.last_seen)}`)),
-                h("div", { class: "end" }, removal({ label: "Revoke", consequence: `Revoke ${d.name}? It is locked out at once, and pairing it again needs a terminal.`, asking: revoking === d.name, ask: () => ((revoking = d.name), draw()), cancel: () => ((revoking = ""), draw()), run: () => revoke(d.name) })),
+                { class: "list" },
+                list.map((d) =>
+                  h(
+                    "div",
+                    { class: "list-row" },
+                    h("div", { class: "main" }, h("strong", {}, d.name, d.name === me ? " (this device)" : ""), h("span", {}, [`paired ${ago(d.paired)}`, `last seen ${ago(d.last_seen)}`, d.passkey ? `signed in with the passkey ${d.passkey}` : "answers only", d.by ? `let in by ${d.by}` : ""].filter(Boolean).join(" · "))),
+                    h("div", { class: "end" }, removal({ label: "Revoke", consequence: `Revoke ${d.name}? It is locked out at once, and pairs again only with an invitation.`, asking: revoking === d.name, ask: () => ((revoking = d.name), draw()), cancel: () => ((revoking = ""), draw()), run: () => revoke(d.name) })),
+                  ),
+                ),
+              )
+            : h("p", { class: "hint" }, "No other device is paired.")
+          : null,
+        keys.length
+          ? h(
+              "div",
+              { class: "list", id: "passkeys" },
+              keys.map((k) =>
+                h(
+                  "div",
+                  { class: "list-row" },
+                  h("div", { class: "main" }, h("strong", {}, `Passkey ${k.name}`), h("span", {}, `added ${ago(k.added)} · last used ${ago(k.last_used)}`)),
+                  h("div", { class: "end" }, removal({ label: "Remove", consequence: `Remove the passkey ${k.name}? It signs nothing in from then on, and the devices signed in with it only answer.`, asking: removing === k.name, ask: () => ((removing = k.name), draw()), cancel: () => ((removing = ""), draw()), run: () => removeKey(k.name) })),
+                ),
               ),
-            ),
-          )
-        : h("p", { class: "hint" }, "No other device is paired."),
-      h("p", { class: "hint" }, "Paired browsers on other machines, such as your phone. They can answer and send messages, never change settings, keys or policy. To pair one, run ", h("span", { class: "mono" }, "nodwyn ui --listen ADDRESS:PORT"), " in a terminal on this computer (a tailnet address is typical; a wildcard one also needs --name): it prints a pairing code there, and the other browser opens that address and enters the code and a name for itself."),
+            )
+          : null,
+        h(
+          "p",
+          { class: "hint" },
+          "Browsers on other machines, such as your phone, reach nodwyn when it runs with ",
+          h("span", { class: "mono" }, "nodwyn ui --listen ADDRESS:PORT"),
+          " or ",
+          h("span", { class: "mono" }, "--name"),
+          ", and pair with an invitation: from ",
+          h("span", { class: "mono" }, "nodwyn devices invite"),
+          " on its computer, or Invite a device here. A paired device answers and sends messages. Over https the invitation also makes a passkey on the device, and a device signed in with one makes this computer's choices too, and changes settings and keys after a touch of it.",
+        ),
+      ].filter(Boolean),
     );
   draw();
 }

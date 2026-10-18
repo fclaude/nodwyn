@@ -126,3 +126,9 @@ changes the effort alone, without sizing or fitting anything again.
 
 The TUI's command, "still not built" above, is built: `:model` and
 `:model NAME [EFFORT]` (ADR 41, amended 2026-10-08).
+
+## Amendment 2026-10-17: the person's device chooses (ADR 30)
+
+A device signed in with the person's passkey chooses a conversation's model,
+as this computer does (ADR 30, amended 2026-10-17); a device paired by a plain
+invitation still only sees it.

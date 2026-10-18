@@ -467,7 +467,7 @@ func TestLaunchTicketPairsOnceAndExpires(t *testing.T) {
 	}
 }
 
-func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
+func TestRemoteDevicesPairByInvitationAndCannotWidenPolicy(t *testing.T) {
 	devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
 	s := New(Options{PairingCode: testCode, Devices: devices, Hosts: []string{"desk.tailnet.ts.net:7777"}})
 	s.b.ctx = context.Background()
@@ -486,33 +486,48 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 		return w
 	}
 	host := "desk.tailnet.ts.net:7777"
-	if w := request("POST", host, "/pair", `{"code":"`+testCode+`"}`, ""); w.Code != http.StatusBadRequest {
-		t.Fatalf("unnamed remote pairing: %d %s", w.Code, w.Body)
+	// A console other machines reach takes no pairing code, named or not.
+	for _, body := range []string{`{"code":"` + testCode + `"}`, `{"code":"` + testCode + `","device":"phone"}`} {
+		if w := request("POST", host, "/pair", body, ""); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "nodwyn devices invite") {
+			t.Fatalf("pairing with the code: %d %s", w.Code, w.Body)
+		}
 	}
 	ticket, _ := s.Ticket()
 	if w := request("POST", host, "/pair", `{"ticket":"`+ticket+`"}`, ""); w.Code != http.StatusForbidden {
 		t.Fatalf("remote ticket: %d", w.Code)
 	}
-	if w := request("POST", host, "/pair", `{"code":"wrong","device":"phone"}`, ""); w.Code != http.StatusForbidden {
-		t.Fatalf("wrong code: %d", w.Code)
+	code, _, err := devices.Invite(Terminal, false)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if w := request("POST", host, "/pair", `{"code":"`+testCode+`","device":"Phone Of Mine"}`, ""); w.Code != http.StatusBadRequest {
+	if w := request("POST", host, "/pair", `{"invite":"`+code+`"}`, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("unnamed remote pairing: %d %s", w.Code, w.Body)
+	}
+	if w := request("POST", host, "/pair", `{"invite":"wrong","device":"phone"}`, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("wrong invitation: %d", w.Code)
+	}
+	if w := request("POST", host, "/pair", `{"invite":"`+code+`","device":"Phone Of Mine"}`, ""); w.Code != http.StatusBadRequest {
 		t.Fatalf("bad name: %d", w.Code)
 	}
-	w := request("POST", host, "/pair", `{"code":"`+testCode+`","device":"phone"}`, "")
+	// The code as shown, in capitals and with spaces for its dashes, pairs.
+	typed := strings.ToUpper(strings.ReplaceAll(code, "-", " "))
+	w := request("POST", host, "/pair", `{"invite":"`+typed+`","device":"phone"}`, "")
 	cookies := w.Result().Cookies()
-	if w.Code != http.StatusNoContent || len(cookies) != 1 || cookies[0].Name != deviceCookie || !cookies[0].HttpOnly || cookies[0].MaxAge <= 0 {
-		t.Fatalf("pairing: %d %v", w.Code, cookies)
+	if w.Code != http.StatusNoContent || len(cookies) != 1 || cookies[0].Name != deviceCookie || !cookies[0].HttpOnly || cookies[0].MaxAge != int(idleLife/time.Second) {
+		t.Fatalf("pairing: %d %s %v", w.Code, w.Body, cookies)
+	}
+	if w := request("POST", host, "/pair", `{"invite":"`+code+`","device":"tablet"}`, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("an invitation used twice: %d", w.Code)
 	}
 	raw, _ := os.ReadFile(devices.path)
-	if strings.Contains(string(raw), cookies[0].Value) || !strings.Contains(string(raw), `name = "phone"`) {
+	if strings.Contains(string(raw), cookies[0].Value) || strings.Contains(string(raw), code) || !strings.Contains(string(raw), `name = "phone"`) {
 		t.Fatalf("device file:\n%s", raw)
 	}
 	r := httptest.NewRequest("GET", "http://"+host+"/socket", nil)
 	r.RemoteAddr = "100.64.0.9:40000"
 	r.Header.Set("Cookie", deviceCookie+"="+cookies[0].Value)
-	if name, ok := s.b.authenticated(r); !ok || name != "phone" {
-		t.Fatalf("device cookie: %q %v", name, ok)
+	if device, ok := s.b.authenticated(r); !ok || device.Name != "phone" || device.Passkey != "" || device.By != Terminal {
+		t.Fatalf("device cookie: %+v %v", device, ok)
 	}
 	// The local cookie means nothing from another machine.
 	r.Header.Set("Cookie", s.b.cookieName()+"="+s.b.session)
@@ -525,7 +540,7 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	local.RemoteAddr = "127.0.0.1:40000"
 	local.Host = "100.64.0.5:7777"
 	local.Header.Set("Cookie", deviceCookie+"="+cookies[0].Value)
-	if name, ok := s.b.authenticated(local); !ok || !s.b.remoteFor(local, name) {
+	if device, ok := s.b.authenticated(local); !ok || !s.b.remoteFor(local, device.Name) {
 		t.Fatal("a device counted as this machine")
 	}
 	if err := devices.Revoke("phone"); err != nil {
@@ -535,25 +550,41 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	if _, ok := s.b.authenticated(r); ok {
 		t.Fatal("revoked device still paired")
 	}
-	for _, method := range []string{"session.binding.create", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
-		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "session.secret", "session.delete", "session.model.set", "session.limits.set"} {
-		if s.b.allowed(method, true) {
-			t.Fatalf("remote device may call %s", method)
+	device, person, touched := caller{}, caller{person: true}, caller{person: true, touched: true}
+	setup := []string{"session.binding.create", "session.policy.write", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "passkeys.remove", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
+		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "session.delete", "workspace.save", "index.forget"}
+	choices := []string{"session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "devices.list", "passkeys.list"}
+	for _, method := range append(append([]string{"session.eval"}, setup...), choices...) {
+		if s.b.access(method, device) != refused {
+			t.Fatalf("a device that only answers may call %s", method)
 		}
 	}
-	// ... and this computer may: choosing a conversation's model is its
-	// act (ADR 30, ADR 40), so the refusal above is a boundary, not a
-	// method the bridge never allowed anyone.
-	for _, method := range []string{"session.model.set", "session.approve_all", "settings.control.write", "session.limits.set"} {
-		if !s.b.allowed(method, false) {
+	// The person's device makes this computer's choices, and its setup
+	// actions wait for a touch of the passkey; the eval stays the terminal's.
+	for _, method := range choices {
+		if s.b.access(method, person) != granted {
+			t.Fatalf("the person's device may not call %s", method)
+		}
+	}
+	for _, method := range setup {
+		if s.b.access(method, person) != needsTouch || s.b.access(method, touched) != granted {
+			t.Fatalf("%s: %v before a touch, %v after", method, s.b.access(method, person), s.b.access(method, touched))
+		}
+	}
+	if s.b.access("session.eval", touched) != refused {
+		t.Fatal("a touched device may evaluate Scheme")
+	}
+	// ... and this computer may do all of it at once.
+	for _, method := range append(setup, choices...) {
+		if !s.b.allowed(method, caller{local: true}) {
 			t.Fatalf("this computer may not call %s", method)
 		}
 	}
 	// A device may start a task in a worktree, as it may start one (ADR 34);
 	// a console that cannot reach worktree.open shows no way to ask for one.
-	for _, method := range []string{"session.answer", "session.approval.create", "session.approve_all", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "credentials.list", "session.rename", "session.archive", "session.open", "worktree.open", "worktree.diff", "worktree.review"} {
-		if !s.b.allowed(method, true) {
-			t.Fatalf("remote device may not call %s", method)
+	for _, method := range []string{"session.answer", "session.approval.create", "session.approve_all", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "credentials.list", "session.rename", "session.archive", "session.open", "worktree.open", "worktree.diff", "worktree.review", "devices.invite"} {
+		if !s.b.allowed(method, device) {
+			t.Fatalf("a device may not call %s", method)
 		}
 	}
 	// Reading a review's diff changes nothing, so it stays open to a
@@ -569,6 +600,42 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	defer listener.Close()
 	if err := New(Options{PairingCode: testCode, Hosts: []string{"x:1"}}).Serve(context.Background(), listener); err == nil {
 		t.Fatal("served extra hosts without device pairing")
+	}
+}
+
+// On a console other machines reach, the pairing code pairs nothing: not a
+// device, and not this computer either, from the console's own loopback
+// address, which is what an ssh forward to it delivers. The code was printed
+// to the journal of a computer nobody sits at, for as long as the console
+// ran, and any account there can reach loopback. A launch ticket, which only
+// a launcher on this computer mints, still pairs this computer.
+func TestASharedConsolePairsThisComputerOnlyByTicket(t *testing.T) {
+	s := New(Options{PairingCode: testCode, Devices: OpenDevices(filepath.Join(t.TempDir(), "devices.toml")), Hosts: []string{"https://desk.example"}})
+	s.b.ctx = context.Background()
+	s.b.listensAt("127.0.0.1:7777")
+	post := func(body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://127.0.0.1:7777/pair", strings.NewReader(body))
+		r.RemoteAddr = "127.0.0.1:50000"
+		r.Header.Set("Origin", "http://127.0.0.1:7777")
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		s.b.ServeHTTP(w, r)
+		return w
+	}
+	if w := post(`{"code":"` + testCode + `"}`); w.Code != http.StatusForbidden {
+		t.Fatalf("the code paired this computer on a shared console: %d", w.Code)
+	}
+	ticket, _ := s.Ticket()
+	if w := post(`{"ticket":"` + ticket + `"}`); w.Code != http.StatusNoContent {
+		t.Fatalf("a launch ticket: %d %s", w.Code, w.Body)
+	}
+	r := httptest.NewRequest("GET", "http://127.0.0.1:7777/pair", nil)
+	r.RemoteAddr = "127.0.0.1:50000"
+	w := httptest.NewRecorder()
+	s.b.ServeHTTP(w, r)
+	var info pairingInfo
+	if err := json.Unmarshal(w.Body.Bytes(), &info); err != nil || !info.Shared || info.Passkey || info.Passkeys {
+		t.Fatalf("pairing info at an address: %s", w.Body)
 	}
 }
 
@@ -643,7 +710,7 @@ func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 		t.Fatalf("stored copies: %v", matches)
 	}
 	// A page cannot name a path for the daemon to read.
-	if b.allowed("session.attach", false) {
+	if b.allowed("session.attach", caller{local: true}) {
 		t.Fatal("session.attach reachable from the page")
 	}
 }
@@ -676,7 +743,11 @@ func TestRevokingADeviceClosesItsOpenConsole(t *testing.T) {
 	defer server.Close()
 	open := func(name string) *websocket.Conn {
 		t.Helper()
-		token, err := devices.Pair(name)
+		code, _, err := devices.Invite(Terminal, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		token, err := devices.Join(code, name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -870,7 +941,7 @@ func TestEveryAdvertisedMethodIsClassifiedByTheBridge(t *testing.T) {
 	terminalOnly := []string{"run.start", "run.info", "run.stop", "run.resume", "session.eval", "session.attach"}
 	b := &bridge{}
 	for _, method := range hello.Methods {
-		switch allowed := b.allowed(method, false); {
+		switch allowed := b.allowed(method, caller{local: true}); {
 		case slices.Contains(terminalOnly, method) && allowed:
 			t.Errorf("%s is allowed by the bridge, but this test lists it as never offered to a browser", method)
 		case !slices.Contains(terminalOnly, method) && !allowed:
@@ -890,7 +961,11 @@ func TestAHostBehindATLSProxyPairsOverHTTPS(t *testing.T) {
 	s.b.ctx = context.Background()
 	s.b.listensAt("127.0.0.1:7777")
 	pair := func(host, origin string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", "http://"+host+"/pair", strings.NewReader(`{"code":"`+testCode+`","device":"phone"}`))
+		code, _, err := devices.Invite(Terminal, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest("POST", "http://"+host+"/pair", strings.NewReader(`{"invite":"`+code+`","device":"phone"}`))
 		r.RemoteAddr = "127.0.0.1:40000" // the proxy, on the phone's behalf
 		r.Header.Set("Origin", origin)
 		r.Header.Set("Content-Type", "application/json")

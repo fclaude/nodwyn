@@ -43,8 +43,10 @@ commands:
   daemon [--socket PATH] serve local sessions, turns and events
   app [--browser]      nodwyn as one program: a window, and a daemon if none runs
   ui [--socket PATH]    interactive browser view (optional --read-only)
-  ui --listen ADDR     also serve other machines; devices pair by name
+  ui --listen ADDR     also serve other machines; devices pair with an invitation
   devices [revoke NAME] list or revoke browsers paired from other machines
+  devices invite       print a one-time invitation for another device (over https
+                       it also registers a passkey there)
   tui [--socket PATH]   interactive terminal client (local or daemon)
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files

@@ -54,6 +54,11 @@ type Options struct {
 	Devices *Devices
 	Hosts   []string
 	TLS     bool
+
+	// Audit receives a line for each sign-in, invitation and setup action
+	// of another device (ADR 30, amended 2026-10-17): on a computer nobody
+	// sits at, the journal is where they are read. Nil writes none.
+	Audit io.Writer
 }
 
 type bridge struct {
@@ -72,9 +77,13 @@ type bridge struct {
 	hosts   map[string]bool // Host values this console answers to
 	https   map[string]bool // the hosts whose browsers reach it over https through a proxy
 
-	mu      sync.Mutex
-	tickets map[string]time.Time // launch tickets not yet used, by value, with their expiry
-	recheck time.Duration        // how often an open device console rechecks its pairing; 0 is deviceRecheck
+	audit io.Writer
+
+	mu         sync.Mutex
+	tickets    map[string]time.Time // launch tickets not yet used, by value, with their expiry
+	ceremonies map[string]ceremony  // passkey challenges not yet answered, by value
+	touches    map[string]time.Time // until when each device's last passkey touch lasts
+	recheck    time.Duration        // how often an open device console rechecks its pairing; 0 is deviceRecheck
 }
 
 // Server is a browser console not yet serving: it can mint launch tickets
@@ -87,7 +96,7 @@ type Server struct {
 func New(options Options) *Server {
 	session, _ := PairingCode() // crypto/rand does not fail
 	return &Server{b: &bridge{socket: options.Socket, code: options.PairingCode, session: session, readOnly: options.ReadOnly,
-		devices: options.Devices, extra: options.Hosts, tls: options.TLS, tickets: map[string]time.Time{}}}
+		devices: options.Devices, extra: options.Hosts, tls: options.TLS, audit: options.Audit, tickets: map[string]time.Time{}}}
 }
 
 // ticketLife bounds how long a launch ticket waits for its page to load.
@@ -241,7 +250,13 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.URL.Path {
 	case "/pair":
+		if r.Method == http.MethodGet {
+			b.pairing(w, r)
+			return
+		}
 		b.pair(w, r)
+	case "/passkey/options", "/passkey/register", "/passkey/assert":
+		b.passkey(w, r)
 	case "/attach":
 		device, ok := b.authenticated(r)
 		if r.Method != http.MethodPost || r.Header.Get("Origin") != origin || !ok || b.readOnly {
@@ -256,11 +271,21 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		token := ""
-		if c, err := r.Cookie(deviceCookie); err == nil && device != "" {
+		if c, err := r.Cookie(deviceCookie); err == nil && device.Name != "" {
 			token = c.Value
+			b.signIn(w, r, token)
 		}
 		b.connect(w, r, device, token)
 	default:
+		// The page renews a device's sign-in each time it loads, as the
+		// socket does each time it connects (idleLife).
+		if name := strings.TrimPrefix(r.URL.Path, "/"); name == "" || name == "index.html" {
+			if c, err := r.Cookie(deviceCookie); err == nil && b.devices != nil {
+				if _, ok := b.devices.Check(c.Value); ok {
+					b.signIn(w, r, c.Value)
+				}
+			}
+		}
 		b.asset(w, r)
 	}
 }
@@ -299,26 +324,62 @@ func (b *bridge) cookieName() string { return "nodwyn_ui_" + strings.ReplaceAll(
 // stays paired across restarts, which change the pairing code and port.
 const deviceCookie = "nodwyn_device"
 
-// authenticated returns the paired device's name, "" for this machine's
-// browser, and whether the request is paired at all. This machine's pairing
-// holds only for requests that are not remote.
-func (b *bridge) authenticated(r *http.Request) (string, bool) {
+// authenticated returns the paired device, the zero Device for this
+// machine's browser, and whether the request is paired at all. This
+// machine's pairing holds only for requests that are not remote.
+func (b *bridge) authenticated(r *http.Request) (Device, bool) {
 	if b.devices != nil {
 		if c, err := r.Cookie(deviceCookie); err == nil {
-			if name, ok := b.devices.Check(c.Value); ok {
-				return name, true
+			if device, ok := b.devices.Check(c.Value); ok {
+				return device, true
 			}
 		}
 	}
 	if b.remote(r) {
-		return "", false
+		return Device{}, false
 	}
 	cookie, err := r.Cookie(b.cookieName())
-	return "", err == nil && subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(b.session)) == 1
+	return Device{}, err == nil && subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(b.session)) == 1
 }
 
-// deviceLife is how long a paired device stays paired without pairing again.
-const deviceLife = 180 * 24 * time.Hour
+// signIn gives a device's browser the cookie that holds its token, good for
+// idleLife from now: set on pairing, and again on every load and connection
+// of its console, so a device in use stays signed in.
+func (b *bridge) signIn(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, &http.Cookie{Name: deviceCookie, Value: token, Path: "/", HttpOnly: true, Secure: b.secure(r.Host), SameSite: http.SameSiteStrictMode, MaxAge: int(idleLife / time.Second)})
+}
+
+// shared reports whether other machines reach this console, which then pairs
+// them by invitation and takes no pairing code at all (ADR 30, amended
+// 2026-10-17): on a computer nobody sits at the code sat in the journal for
+// as long as the console ran, and paired any number of devices, or, with
+// the console's own loopback address, this computer.
+func (b *bridge) shared() bool { return b.devices != nil }
+
+// logf writes an audit line (Options.Audit).
+func (b *bridge) logf(format string, args ...any) {
+	if b.audit != nil {
+		fmt.Fprintf(b.audit, "web: "+format+"\n", args...)
+	}
+}
+
+// pairingInfo tells the pairing page which way this browser can pair.
+type pairingInfo struct {
+	Shared   bool `json:"shared"`   // by invitation, or with a passkey
+	Passkey  bool `json:"passkey"`  // this address can use passkeys
+	Passkeys bool `json:"passkeys"` // one is registered, so one can sign in
+}
+
+// pairing answers GET /pair, before the browser is paired.
+func (b *bridge) pairing(w http.ResponseWriter, r *http.Request) {
+	info := pairingInfo{Shared: b.shared() && !b.readOnly, Passkey: b.shared() && !b.readOnly && passkeyHost(r.Host, b.secure(r.Host))}
+	if info.Passkey {
+		keys, _ := b.devices.Passkeys()
+		info.Passkeys = len(keys) > 0
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(info)
+}
 
 func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || r.Header.Get("Origin") != b.scheme(r.Host)+"://"+r.Host || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -329,6 +390,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 		Code   string `json:"code"`
 		Ticket string `json:"ticket"`
 		Device string `json:"device"`
+		Invite string `json:"invite"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	decoder.DisallowUnknownFields()
@@ -346,14 +408,10 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 	case p.Ticket != "":
 		http.Error(w, "A launch link pairs only a browser on this computer", http.StatusForbidden)
 		return
-	case subtle.ConstantTimeCompare([]byte(p.Code), []byte(b.code)) != 1:
-		http.Error(w, "Invalid pairing code", http.StatusForbidden)
-		return
-	}
-	if remote || p.Device != "" {
+	case p.Invite != "":
 		// Another machine pairs as a named device: its answers carry the
 		// name, and it can be revoked without restarting anything.
-		if b.devices == nil {
+		if !b.shared() || b.readOnly {
 			http.Error(w, "Device pairing is not enabled", http.StatusForbidden)
 			return
 		}
@@ -361,13 +419,26 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Name this device, for example phone", http.StatusBadRequest)
 			return
 		}
-		token, err := b.devices.Pair(p.Device)
-		if err != nil {
+		token, err := b.devices.Join(p.Invite, p.Device)
+		if errors.Is(err, errInvite) {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		} else if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		http.SetCookie(w, &http.Cookie{Name: deviceCookie, Value: token, Path: "/", HttpOnly: true, Secure: b.secure(r.Host), SameSite: http.SameSiteStrictMode, MaxAge: int(deviceLife / time.Second)})
+		b.signIn(w, r, token)
+		b.logf("%s paired with an invitation", p.Device)
 		w.WriteHeader(http.StatusNoContent)
+		return
+	case b.shared():
+		http.Error(w, "This console pairs other devices with an invitation: run nodwyn devices invite on the computer nodwyn runs on, or invite one from a device already paired", http.StatusForbidden)
+		return
+	case subtle.ConstantTimeCompare([]byte(p.Code), []byte(b.code)) != 1:
+		http.Error(w, "Invalid pairing code", http.StatusForbidden)
+		return
+	case p.Device != "":
+		http.Error(w, "Device pairing is not enabled", http.StatusForbidden)
 		return
 	}
 	// This machine: HttpOnly keeps the capability out of script; strict
@@ -409,18 +480,24 @@ const maxRequest = 1 << 20
 // only watching.
 const deviceRecheck = 5 * time.Second
 
-func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token string) {
+// relay is what the bridge tells the daemon of a device it relays for: its
+// name as via, and the passkey its person proved themself with, if any.
+func relay(device Device) (via, passkey string) {
+	if device.Name == "" {
+		return "", ""
+	}
+	return "web:" + device.Name, device.Passkey
+}
+
+func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, token string) {
 	ctx, cancel := context.WithCancel(b.ctx)
 	defer cancel()
 	// A device token is another machine's authority wherever it arrives
 	// from: only this machine's pairing grants local powers.
-	remote := b.remoteFor(r, device)
-	via := ""
-	if device != "" {
-		via = "web:" + device
-	}
+	remote := b.remoteFor(r, device.Name)
+	via, passkey := relay(device)
 	dialCtx, stop := context.WithTimeout(ctx, 5*time.Second)
-	client, err := rpc.DialAs(dialCtx, b.socket, via)
+	client, err := rpc.DialAs(dialCtx, b.socket, via, passkey)
 	stop()
 	if err != nil {
 		// A refused handshake is all a browser learns of an HTTP error,
@@ -441,18 +518,24 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 	// A paired device stays paired only while its token is in devices.toml:
 	// revoking it ends this console within deviceRecheck, and before any
 	// further request is relayed.
-	paired := func() bool {
-		if device == "" {
-			return true
+	paired := func() (Device, bool) {
+		if device.Name == "" {
+			return device, true
 		}
-		name, ok := b.devices.Check(token)
-		return ok && name == device
+		now, ok := b.devices.Check(token)
+		return now, ok && now.Name == device.Name
+	}
+	// Who the requests come from now: a passkey removed meanwhile makes the
+	// device one that only answers at once, though its daemon connection
+	// still carries the passkey; one that touches a passkey reconnects.
+	who := func(now Device) caller {
+		return caller{local: !remote, person: now.Passkey != "" && now.Passkey == device.Passkey, touched: now.Name != "" && b.touched(now.Name)}
 	}
 	revoked := func() {
 		conn.Close(websocket.StatusPolicyViolation, "this device was revoked")
 		cancel()
 	}
-	if device != "" {
+	if device.Name != "" {
 		go func() {
 			every := b.recheck
 			if every <= 0 {
@@ -465,7 +548,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 				case <-ctx.Done():
 					return
 				case <-tick.C:
-					if !paired() {
+					if _, ok := paired(); !ok {
 						revoked()
 						return
 					}
@@ -497,9 +580,18 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 		if err := wsjson.Read(ctx, conn, &req); err != nil {
 			return
 		}
-		if !paired() {
+		current, ok := paired()
+		if !ok {
 			revoked()
 			return
+		}
+		c := who(current)
+		access := b.access(req.Method, c)
+		// A setup action a device takes renews its touch, and is said in
+		// the audit (Options.Audit), whether it worked or not.
+		audited := access == granted && current.Name != "" && b.tierOf(req.Method) == tierSetup
+		if audited {
+			b.touch(current.Name)
 		}
 		var result json.RawMessage
 		var callErr error
@@ -508,20 +600,25 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 			callErr = errors.New("invalid request")
 		case len(req.Params) >= maxRequest:
 			callErr = errors.New("that message is too large to send: a request is at most 1 MB")
-		case !b.allowed(req.Method, remote):
+		case access == needsTouch:
+			callErr = errTouch
+		case access == refused:
 			callErr = errors.New("operation unavailable in this browser mode; use the terminal client")
 			if b.readOnly {
 				callErr = errors.New("this browser view is read-only; use the terminal client for this operation")
 			} else if remote {
-				callErr = errors.New("this is not available from another device; use nodwyn on its own computer")
+				callErr = errors.New("this is not available from this device: sign in with your passkey, or use nodwyn on its own computer")
 			}
-		case strings.HasPrefix(req.Method, "devices."):
-			result, callErr = b.deviceMethod(req)
+		case strings.HasPrefix(req.Method, "devices.") || strings.HasPrefix(req.Method, "passkeys."):
+			result, callErr = b.deviceMethod(req, current, c)
 		case slowCalls[req.Method] > 0:
 			// Answered when it is done; the console's next requests are
 			// read meanwhile.
 			go func(req request) {
-				result, err := b.slowCall(ctx, via, req)
+				result, err := b.slowCall(ctx, via, passkey, req)
+				if audited {
+					b.audited(current, req.Method, err)
+				}
 				if write(ctx, conn, reply(req.ID, result, err)) != nil {
 					cancel()
 				}
@@ -533,9 +630,11 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 				var hello rpc.HelloResult
 				callErr = client.Call(callCtx, req.Method, req.Params, &hello)
 				if callErr == nil {
+					// A setup method waiting for a touch is offered: the
+					// console asks for the passkey when it is used.
 					methods := []string{}
-					for _, method := range append(hello.Methods, "devices.list", "devices.revoke") {
-						if b.allowed(method, remote) {
+					for _, method := range append(hello.Methods, "devices.list", "devices.revoke", "devices.invite", "passkeys.list", "passkeys.remove") {
+						if b.access(method, c) != refused {
 							methods = append(methods, method)
 						}
 					}
@@ -547,16 +646,30 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 			}
 			stop()
 		}
+		if audited {
+			b.audited(current, req.Method, callErr)
+		}
 		if err := write(ctx, conn, reply(req.ID, result, callErr)); err != nil {
 			return
 		}
 	}
 }
 
+// audited says in the audit that device took a setup action.
+func (b *bridge) audited(device Device, method string, err error) {
+	outcome := "done"
+	if err != nil {
+		outcome = "failed: " + err.Error()
+	}
+	b.logf("%s by %s with the passkey %s: %s", method, device.Name, device.Passkey, outcome)
+}
+
 // reply is a relayed call's answer.
 func reply(id uint64, result json.RawMessage, err error) map[string]any {
 	r := map[string]any{"jsonrpc": "2.0", "id": id}
-	if err != nil {
+	if errors.Is(err, errTouch) {
+		r["error"] = map[string]any{"code": touchCode, "message": err.Error()}
+	} else if err != nil {
 		r["error"] = map[string]any{"code": -32000, "message": err.Error()}
 	} else {
 		r["result"] = result
@@ -575,10 +688,10 @@ var slowCalls = map[string]time.Duration{
 }
 
 // slowCall relays one of slowCalls over a daemon connection of its own.
-func (b *bridge) slowCall(ctx context.Context, via string, req request) (json.RawMessage, error) {
+func (b *bridge) slowCall(ctx context.Context, via, passkey string, req request) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, slowCalls[req.Method])
 	defer cancel()
-	client, err := rpc.DialAs(ctx, b.socket, via)
+	client, err := rpc.DialAs(ctx, b.socket, via, passkey)
 	if err != nil {
 		return nil, err
 	}
@@ -593,56 +706,111 @@ func write(ctx context.Context, c *websocket.Conn, v any) error {
 	return wsjson.Write(ctx, c, v)
 }
 
-// Only operations with a complete browser view join this allowlist.
-// Core remains authoritative for every answer and its live prompt ID.
-// Another device answers and steers, but never widens policy or changes
-// nodwyn's setup (ADR 30): those stay with the computer nodwyn runs on.
-func (b *bridge) allowed(method string, remote bool) bool {
+// A caller is who a console's requests come from.
+type caller struct {
+	local   bool // this computer's browser (ADR 30)
+	person  bool // a device signed in with a passkey still registered
+	touched bool // such a device whose person touched it within touchLife
+}
+
+// tier is who may call a method, from the widest.
+type tier int
+
+const (
+	tierNone   tier = iota // no browser
+	tierRead               // every console, a read-only one too
+	tierAnswer             // every paired device: answers and steers
+	tierPerson             // the person's device: this computer's choices
+	tierSetup              // the person's device after a touch: setup and secrets
+)
+
+// tierOf places a method. Only operations with a complete browser view join
+// this list; core remains authoritative for every answer and its live
+// prompt ID. A device paired by invitation answers and steers, but never
+// widens policy or changes nodwyn's setup (ADR 30). A device signed in with
+// a passkey is the person's, and makes the choices this computer makes;
+// what changes setup or touches a secret asks it for a touch of the passkey
+// first, once per sitting (amended 2026-10-17).
+func (b *bridge) tierOf(method string) tier {
 	if readOnly(method) {
-		return true
-	}
-	if b.readOnly {
-		return false
+		return tierRead
 	}
 	switch method {
 	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.approval.create", "session.friction", "session.policy.read",
 		"schedule.pause", "schedule.run", "session.notes.write", "session.restore", "session.rename", "session.archive":
-		return true
+		return tierAnswer
 	// "Don't ask" can be turned off from a device, the safe direction; the
 	// daemon refuses to turn it on for one (ADR 30), so a device can stop a
 	// task that is skipping its questions without aborting it.
 	case "session.approve_all":
-		return true
+		return tierAnswer
 	// Choosing a conversation's model, or the judge its plans and commands
-	// go to, decides where its content goes next, so it stays with the
-	// computer nodwyn runs on (ADR 30, ADR 40, ADR 47).
-	case "session.model.set", "session.judge.set":
-		return !remote
-	// A task's turn limits are what stops a turn nobody is watching, so
-	// lifting them stays with this computer too, as Settings' limits do
-	// (ADR 49); the daemon refuses limits: false in session.open from a
-	// device.
-	case "schedule.set", "session.limits.set":
-		return !remote
-	// A log is the record of what a session did, devices included: only
-	// this computer removes one (ADR 39).
-	case "session.delete":
-		return !remote
-	case "session.binding.create", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write",
+	// go to, decides where its content goes next (ADR 40, ADR 47); lifting a
+	// task's turn limits and setting its schedule decide what runs with
+	// nobody watching (ADR 49). A key the model asks for (session.secret)
+	// and the keychain's passphrase are secrets the person types, and the
+	// passphrase is its own proof. The folder last picked only remembers.
+	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active":
+		return tierPerson
+	// A log is the record of what a session did, devices included (ADR 39).
+	case "session.delete", "session.binding.create", "session.policy.write", "keychain.create", "keychain.passphrase", "settings.control.write", "settings.docs.write", "settings.write",
 		"settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test",
-		"workspace.save", "workspace.active", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
-		return !remote
-	// Keys and the passphrase are typed here, and an OAuth2 provider sends
-	// the person back to a listener on this computer's loopback. A key the
-	// model asks for (session.secret) is a key typed too: a device shows the
-	// request, and it is answered here.
-	case "keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "session.secret":
-		return !remote
-	case "devices.list", "devices.revoke":
-		return !remote && b.devices != nil
+		"workspace.save", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull",
+		"credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize":
+		return tierSetup
 	}
-	return false
+	if b.devices == nil {
+		return tierNone
+	}
+	// The console's own methods (deviceMethod). A plain invitation lets in
+	// a device that only answers, so a device may make one; one that may
+	// register a passkey is a setup action (deviceMethod).
+	switch method {
+	case "devices.invite":
+		return tierAnswer
+	case "devices.list", "passkeys.list":
+		return tierPerson
+	case "devices.revoke", "passkeys.remove":
+		return tierSetup
+	}
+	return tierNone
 }
+
+// access is what a caller may do with a method.
+type access int
+
+const (
+	refused    access = iota
+	needsTouch        // offered: the call waits for a touch of the passkey
+	granted
+)
+
+func (b *bridge) access(method string, c caller) access {
+	t := b.tierOf(method)
+	switch {
+	case t == tierRead:
+		return granted
+	case t == tierNone || b.readOnly:
+		return refused
+	case c.local || t == tierAnswer:
+		return granted
+	case !c.person:
+		return refused
+	case t == tierPerson || c.touched:
+		return granted
+	}
+	return needsTouch
+}
+
+// allowed reports whether c may call method now.
+func (b *bridge) allowed(method string, c caller) bool { return b.access(method, c) == granted }
+
+// errTouch refuses a setup action from the person's device before its
+// touch: the console asks for the passkey and sends the request again.
+var errTouch = errors.New("confirm with your passkey to change nodwyn's setup from this device")
+
+// touchCode is errTouch's JSON-RPC error code, which the console looks for.
+const touchCode = -32030
 
 // maxUpload bounds one attached file.
 const maxUpload = 20 << 20
@@ -651,7 +819,7 @@ const maxUpload = 20 << 20
 // the file as the body). The bridge stages it in a private directory, asks
 // the daemon to attach that path, and removes it: a page never names a path
 // the daemon reads.
-func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device string) {
+func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device Device) {
 	id, name := r.URL.Query().Get("id"), r.URL.Query().Get("name")
 	if id == "" || name == "" || len(name) > 255 {
 		http.Error(w, "id and name are required", http.StatusBadRequest)
@@ -677,15 +845,12 @@ func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device string) {
 		http.Error(w, fmt.Sprintf("The file is larger than %d MB or did not arrive whole", maxUpload>>20), http.StatusRequestEntityTooLarge)
 		return
 	}
-	via := ""
-	if device != "" {
-		via = "web:" + device
-	}
+	via, passkey := relay(device)
 	// An image waits for its confirm, which the daemon gives up on after
 	// ten minutes; the call waits a little longer than that.
 	ctx, cancel := context.WithTimeout(b.ctx, 11*time.Minute)
 	defer cancel()
-	client, err := rpc.DialAs(ctx, b.socket, via)
+	client, err := rpc.DialAs(ctx, b.socket, via, passkey)
 	if err != nil {
 		http.Error(w, "Daemon unavailable", http.StatusServiceUnavailable)
 		return
@@ -703,28 +868,74 @@ func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device string) {
 }
 
 // deviceMethod answers the console's own methods, which the daemon does
-// not know: the devices paired with this console.
-func (b *bridge) deviceMethod(req request) (json.RawMessage, error) {
-	if req.Method == "devices.list" {
-		devices, err := b.devices.List()
-		if err != nil {
-			return nil, err
+// not know: the devices paired with this console, invitations, and the
+// passkeys their person signs in with. device is the caller's, the zero
+// Device for this computer.
+func (b *bridge) deviceMethod(req request, device Device, c caller) (json.RawMessage, error) {
+	var p struct {
+		Name    string `json:"name"`
+		Passkey bool   `json:"passkey"`
+	}
+	if len(req.Params) > 0 {
+		decoder := json.NewDecoder(strings.NewReader(string(req.Params)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&p); err != nil {
+			return nil, errors.New("invalid parameters")
 		}
+	}
+	by := Terminal
+	if device.Name != "" {
+		by = device.Name
+	}
+	switch req.Method {
+	case "devices.list":
+		devices, err := b.devices.List()
 		if devices == nil {
 			devices = []Device{}
 		}
-		return json.Marshal(devices)
+		return marshal(devices, err)
+	case "passkeys.list":
+		keys, err := b.devices.Passkeys()
+		if keys == nil {
+			keys = []Passkey{}
+		}
+		return marshal(keys, err)
+	case "devices.invite":
+		// An invitation that may register a passkey makes a device the
+		// person's, so it is a setup action; a plain one lets in a device
+		// that only answers, as the one inviting does.
+		if p.Passkey && !c.local {
+			if !c.person {
+				return nil, errors.New("only a device signed in with a passkey invites one that may register a passkey")
+			}
+			if !c.touched {
+				return nil, errTouch
+			}
+			b.touch(device.Name)
+		}
+		code, expires, err := b.devices.Invite(by, p.Passkey)
+		if err != nil {
+			return nil, err
+		}
+		b.logf("%s made an invitation (passkey: %v)", by, p.Passkey)
+		return json.Marshal(map[string]any{"code": code, "expires": expires})
 	}
-	var p struct {
-		Name string `json:"name"`
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(req.Params)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&p); err != nil || p.Name == "" {
+	if p.Name == "" {
 		return nil, errors.New("name is required")
 	}
-	if err := b.devices.Revoke(p.Name); err != nil {
+	var err error
+	if req.Method == "devices.revoke" {
+		err = b.devices.Revoke(p.Name)
+	} else {
+		err = b.devices.RemovePasskey(p.Name)
+	}
+	return marshal(struct{}{}, err)
+}
+
+// marshal is v as JSON, or err.
+func marshal(v any, err error) (json.RawMessage, error) {
+	if err != nil {
 		return nil, err
 	}
-	return json.RawMessage("{}"), nil
+	return json.Marshal(v)
 }

@@ -152,3 +152,10 @@ default judge, so that a person could not tell what a click had saved. Now:
 - **Paths in words.** A reference to Settings names a tab (and, under General,
   a section): `TestSettingsPathsNameATabAndSection` reads the docs and the
   console's own strings for it.
+
+## Amendment 2026-10-17: the person's device chooses (ADR 30)
+
+§7 holds for a device paired by a plain invitation. A device signed in with
+the person's passkey chooses a task's judge, at open and between turns, as
+this computer does (ADR 30, amended 2026-10-17): the passkey says it is the
+person, which is what the choice was kept to this computer for.

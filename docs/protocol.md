@@ -796,7 +796,14 @@ connection, matching `^[a-z][a-z0-9]*:[a-z0-9][a-z0-9._-]{0,31}$`. It is
 appended to the kernel identity — `unix:uid=501,gid=20,pid=4242 via web:phone`
 — in `peer` and in every recorded actor. It is a claim by a same-user process,
 not an authentication; the browser bridge makes it only for a device paired by
-name.
+name. With `via`, an optional `passkey` (a device name, such as `laptop`)
+says the device's person signed in with that passkey (ADR 30, amended
+2026-10-17): the actor reads `… via web:tablet passkey:laptop`, and the
+daemon refuses that connection nothing it refuses a paired device, since a
+client that claims nothing at all may already call every method. Below, "a
+paired device" is an actor relayed `via` without `passkey`. The bridge asks
+the person's device for a touch of its passkey before relaying a setup
+method, and refuses one before it with code -32030.
 
 ## Workspaces, file history, attachments and MCP servers (ADR 22, 23, 30)
 
@@ -835,8 +842,10 @@ its approved manifest; any other change needs approval again.
 the web console (browser.md); `mcp.runtime` and `credentials.list` only read. The console never
 offers `session.eval`, and its bridge relays no run method (ADR 35). The
 daemon also refuses `run.start` and `run.resume` with `auto_approve`,
-`judge` or `unattended` to an actor that carries `via`, as the bridge's
-actor for a paired device does.
+`judge` or `unattended` to an actor that carries `via` without `passkey`, as
+the bridge's actor for a paired device does. A device signed in with a
+passkey may call all of them, the setup methods after a touch of its passkey;
+`session.eval` and the run methods stay out of every browser's reach.
 
 An MCP server is remote (its `url` HTTPS, or plain HTTP to this machine
 only) or contained (ADR 23 W3b): the daemon runs it in podman or docker from
@@ -1136,8 +1145,12 @@ reading old run previews or replaying the whole log.
   next valid minute; repeated minutes use their first occurrence.
 - `schedule.read {id}` returns `definition` when present, its log `sequence`,
   automatic `cursor`, optional `last_run` and `last_skip`, plus `next`,
-  `timezone`, `archived` and `scheduler` (whether this daemon owns the lock).
-  `session.list` includes the same `schedule` view for scheduled tasks.
+  `timezone`, `archived` and `scheduler` (whether this daemon owns the lock),
+  and `held` when a due time waits for the keychain: a closed task's model
+  needs a key the locked keychain holds, so the time is neither run nor
+  skipped, and runs once, late, after the unlock (ADR 49, amended
+  2026-10-17). `session.list` includes the same `schedule` view for scheduled
+  tasks.
 - `schedule.set {id,message,repeat,at,cost,paused}` writes `session.schedule`.
   Defaults are cost 0 and paused false; message, repeat and at must validate.
   `{id,remove:true}` removes the schedule while retaining its chat. Keeping

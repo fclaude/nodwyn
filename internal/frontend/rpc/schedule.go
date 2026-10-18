@@ -36,7 +36,18 @@ type scheduleState struct {
 	Timezone  string      `json:"timezone"`
 	Archived  bool        `json:"archived"`
 	Scheduler bool        `json:"scheduler"`
+	// Held says why a due time has not run yet when it waits rather than
+	// being skipped: the keychain is locked (errHeld).
+	Held string `json:"held,omitempty"`
 }
+
+// errHeld is a due time that waits for the keychain: a closed task's model
+// needs a key the locked keychain holds. Skipping it, as a busy task's time
+// is skipped, lost every run due after a reboot until someone unlocked.
+var errHeld = errors.New("the keychain is locked")
+
+// heldNote is what a schedule whose time waits for the keychain says.
+const heldNote = "Waiting for the keychain: the time that is due runs once it is unlocked"
 
 type deferredSkip struct {
 	sequence uint64
@@ -62,6 +73,11 @@ func (s *server) scheduleState(id string) (scheduleState, error) {
 			}
 			result.Next = append(result.Next, next)
 			after = next
+		}
+		if _, open := s.sessions[id]; !open && s.lockedKeyRefusal(core.ModelChoice{}) != "" {
+			if due, _, _ := d.Definition.Due(state.Cursor, time.Now(), time.Local); !due.IsZero() {
+				result.Held = heldNote
+			}
 		}
 	}
 	return result, nil
@@ -280,7 +296,12 @@ func (s *server) scheduleTick(now time.Time) {
 			due, through, missed := def.Definition.Due(state.Cursor, now, time.Local)
 			if !due.IsZero() {
 				run := log.ScheduleRun{Due: due, Through: through, Started: now, Missed: missed, Cost: def.Cost, Actor: "scheduler"}
-				if err := s.executeSchedule(info.ID, *def, run); err != nil {
+				// A locked keychain holds the time instead of skipping it:
+				// nothing is recorded and the cursor stays, so the first tick
+				// after an unlock runs it once, late, standing for every time
+				// it held, as a time missed while the computer slept does
+				// (ADR 49 §5, ADR 30 amended 2026-10-17).
+				if err := s.executeSchedule(info.ID, *def, run); err != nil && !errors.Is(err, errHeld) {
 					skip := log.ScheduleSkip{Due: due, Through: through, Started: now, Missed: missed, Reason: err.Error()}
 					// Resume releases the lifecycle lock. A skip for the old
 					// definition must not consume the replacement's times.
@@ -346,8 +367,8 @@ func (s *server) executeSchedule(id string, def log.SessionSchedule, run log.Sch
 	}
 	owned, open := s.sessions[id]
 	if !open {
-		if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
-			return errors.New(why)
+		if s.lockedKeyRefusal(core.ModelChoice{}) != "" {
+			return errHeld
 		}
 		options := s.options
 		options.Repo = ""

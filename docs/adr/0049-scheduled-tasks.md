@@ -449,3 +449,20 @@ a terminal, with a test in each), which is more than a bounded fix, and
 `:earlier` command, keeping `History` for a session whose log is not a file;
 until then `nodwyn replay` and the console are how to read a task whose log is
 that large.
+
+## Amendment 2026-10-17: a locked keychain holds a scheduled time
+
+A closed task whose model's key is in a locked keychain could not start a
+run, and the scheduler recorded that as a `schedule.skip` with its interval,
+so the time was used up. A server that restarted at night lost every run due
+until someone unlocked it, and those runs never happened. The time is now
+held: nothing is recorded and the cursor stays, so the first tick after an
+unlock runs it once, late, standing for every time it held, as §5 does for a
+computer that was asleep. `schedule.read` and the session list say so in
+`held`, and Home shows it on the schedule's card. A busy task still skips its
+time (§6).
+
+§12 also changes: the person's device, signed in with a passkey, sets and
+changes schedules and turns a task's limits off, as this computer does (ADR
+30, amended 2026-10-17); a device paired by a plain invitation still only
+pauses and runs now. The regression is `TestALockedKeychainHoldsAScheduledTime`.

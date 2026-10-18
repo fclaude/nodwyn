@@ -110,7 +110,7 @@ bin/nodwyn daemon               # local sessions, turns and event delivery
 bin/nodwyn tui                  # opt-in full-screen terminal client
 bin/nodwyn app                  # the whole thing in one program: a window, and a daemon if none runs
 bin/nodwyn ui                   # the browser console for a running daemon
-bin/nodwyn ui --listen IP:7777  # also for other devices (a phone on your tailnet)
+bin/nodwyn ui --listen IP:7777  # also for other devices, which pair with `nodwyn devices invite`
 make app                      # bin/Nodwyn.app for macOS (to share with people who never open a terminal)
 bin/nodwyn                      # chat in the current repository (plain front-end)
 bin/nodwyn --repo ~/src/x       # pin to another repository

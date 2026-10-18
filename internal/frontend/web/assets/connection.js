@@ -1,6 +1,12 @@
 // The browser's one connection to the bridge. It matches replies to
 // requests and hands notifications to listeners. A dropped connection fails
-// every outstanding request; nothing is ever retried (browser.md).
+// every outstanding request; nothing is ever retried (browser.md), but for a
+// setup request the bridge held back for a touch of the passkey, which is
+// sent again once the person gave it, since it never reached the daemon.
+
+// touchCode is the bridge's refusal of a setup request from the person's
+// device before its passkey touch (server.go).
+const touchCode = -32030;
 
 export class Connection {
   constructor() {
@@ -13,6 +19,9 @@ export class Connection {
     this.stateListeners = new Set();
     this.resultListeners = new Set();
     this.state = "idle"; // idle | connecting | live | down | unpaired
+    // confirmTouch, set by the page, asks the person for a touch of their
+    // passkey and resolves once it is accepted.
+    this.confirmTouch = null;
   }
   get live() {
     return this.socket?.readyState === WebSocket.OPEN && this.state === "live";
@@ -46,7 +55,22 @@ export class Connection {
     }
     this.waiting.clear();
   }
-  call(method, params = {}, timeout = 35000) {
+  async call(method, params = {}, timeout = 35000) {
+    try {
+      return await this.send(method, params, timeout);
+    } catch (error) {
+      if (error.code !== touchCode || !this.confirmTouch) throw error;
+      const answer = await this.confirmTouch();
+      // A touch that made this device the person's needs a connection that
+      // says so: the request is for the person to make again.
+      if (answer?.promoted) {
+        this.connect();
+        throw new Error("Confirmed. This device can now change nodwyn's setup: do it again.");
+      }
+      return this.send(method, params, timeout);
+    }
+  }
+  send(method, params, timeout) {
     return new Promise((resolve, reject) => {
       if (this.socket?.readyState !== WebSocket.OPEN) {
         reject(new Error("Disconnected. Reconnect to reload; nothing was retried."));
@@ -99,7 +123,7 @@ export class Connection {
         if (!wait) return;
         clearTimeout(wait.timer);
         this.waiting.delete(frame.id);
-        if (frame.error) wait.reject(new Error(frame.error.message));
+        if (frame.error) wait.reject(Object.assign(new Error(frame.error.message), { code: frame.error.code }));
         else {
           wait.resolve(frame.result);
           for (const fn of this.resultListeners) fn(wait.method);
@@ -122,8 +146,9 @@ export class Connection {
   }
 }
 
-// pair exchanges a pairing code (typed) or a launch ticket (from the URL
-// fragment, which is never sent to a server) for the bridge's cookie.
+// pair exchanges a pairing code (typed), an invitation or a launch ticket
+// (from the URL fragment, which is never sent to a server) for the bridge's
+// cookie.
 export async function pair(body) {
   const response = await fetch("/pair", {
     method: "POST",
@@ -135,6 +160,16 @@ export async function pair(body) {
     const text = (await response.text()).trim();
     throw new Error(text || "Pairing failed.");
   }
+}
+
+// takeInvite removes an invitation from the address bar and returns it: a
+// link an invitation came as carries it in the fragment, which is never sent
+// to a server.
+export function takeInvite() {
+  const match = /(?:^#|&)invite=([A-Za-z0-9-]+)/.exec(location.hash);
+  if (!match) return "";
+  history.replaceState(null, "", location.pathname + "#/");
+  return match[1];
 }
 
 // takeTicket removes a launch ticket from the address bar and returns it.
