@@ -130,7 +130,13 @@ with its name, \code{via web:phone}, so the log says which screen said yes.
 
 There is no relay in between: the phone talks straight to your computer, so
 your computer must be on and reachable, and the network path (a tailnet, or
-your home Wi-Fi) is yours to provide.
+your home Wi-Fi) is yours to provide. When the path breaks (the phone
+sleeps, changes network, or \code{nodwyn ui} restarts) the console connects
+again by itself, at once when the page is shown again, and reloads the open
+task from its log; nothing that was on its way is sent again. The console
+pings an open page every 30 seconds, so a proxy such as \code{tailscale
+serve} does not close a quiet connection. A revoked phone goes to pairing
+and stops trying.
 
 \begin{careful}
 A paired device can answer approvals, and approving a command \emph{is}

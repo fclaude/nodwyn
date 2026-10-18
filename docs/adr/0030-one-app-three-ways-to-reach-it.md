@@ -269,3 +269,45 @@ Not changed: the `settings.*` methods still hold the lock while they wait for
   runtime directory, and the console would then fail to open without saying
   why. It is documented instead, with `--no-open` and the pairing code (never
   on a command line) as the way on a shared computer.
+
+## Amendment 2026-10-17: the console comes back by itself
+
+A console reached from a laptop or a phone over a tailnet, with nodwyn
+always on a server, loses its connection often: the device sleeps, changes
+network, or a proxy (`tailscale serve`) closes a connection that carried
+nothing for a while. A dropped socket waited on a **Reconnect** button, and
+the bridge sent nothing to keep an idle one open. On loopback this rarely
+mattered.
+
+- **The console connects again by itself**, after a wait that doubles from
+  a second up to thirty, and no sooner than every five seconds while the
+  daemon is not running (1013). Coming back reloads the desk and the open
+  task from the log, as the button did, and no operation is sent again: a
+  request waiting when the connection dropped fails, saying so. **Reconnect
+  now** skips the wait.
+- **The page shown again, or the network back, tries at once**, and a
+  connection that looks live then is asked to answer `hello` within ten
+  seconds, since after a sleep a socket can look open with nobody at the
+  other end. It is not asked while a request waits, because the bridge
+  relays one request at a time and the answer would wait behind it.
+- **A browser the console does not take stops trying.** A revoked device's
+  open socket is closed with 1008, as before. A socket refused before it
+  opened tells a browser nothing of why, and the same refusal comes from a
+  device revoked while it was away, from this computer's browser after
+  `nodwyn ui` restarted (its cookie holds the stopped run's session), or
+  from no console at all, so the page asks `GET /paired`, which answers
+  whether the console takes the cookies the request carries and nothing
+  else; the Host and fetch-site checks of every request apply to it. Not
+  taken, the page pairs again; unreachable, or a proxy's 5xx, it tries
+  again.
+- **The bridge pings an open console every 30 seconds** and closes one that
+  has not answered within a minute, longer than a relayed call holds up the
+  reading of its pong. A proxy keeps a connection that carries pings open,
+  and a page that slept gives back its daemon connection.
+
+Not built: a page reconnected to a console of a newer version keeps its old
+code until it is reloaded; project notes being edited and a worktree
+review's unsent comments are lost on a reconnect, as on a reload; the TUI's
+daemon mode still reconnects only on Ctrl+R. Evidence: the `reconnect`
+browser check, and `TestPairedSaysWhetherTheConsoleTakesThisBrowser` and
+`TestASilentConsoleIsPingedAndClosed`.

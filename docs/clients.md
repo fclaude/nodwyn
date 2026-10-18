@@ -43,6 +43,7 @@ it can see the thing but not change it.
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | daemon mode detaches and the turn goes on; local mode aborts it | aborts it | — |
+| Come back after the connection drops | yes, by itself after a wait that grows to 30 s, at once when the page is shown again or the network returns; reloads the open task from its log and sends nothing again; a revoked device stops trying | daemon mode: Ctrl+R reconnects; not built: reconnecting by itself | owns its session | — |
 
 ## The conversation
 
