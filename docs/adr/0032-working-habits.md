@@ -2885,3 +2885,80 @@ its 34 sessions reached shell-exec's limit. This build, without the project
 tools, is not measured yet; both changes apply to the 121 SWE-bench tasks as
 well, where a check piped into `tail` past ten minutes and a pattern in
 `/tmp` can show them.
+
+## Amendment 2026-10-18: this repository's completeness rules are its own (experiment E)
+
+On commit-bench, this repository at each task's parent run trusted and
+unattended, the lean profile's patches leave out more of what AGENTS.md asks
+a change here to carry than the full loop's: of 96 lean patches 88% had a
+test and 61% a document, against 100% and 78% under the full loop, with
+correctness and the blind reviews' overall scores about equal. The lean loop
+says nothing as a turn ends (`lean-quiet`), and was measured on SWE-bench,
+whose repositories ask for none of it. A test, a document, a decision record
+and a regenerated source catalogue are this repository's rules, not every
+repository's: they belong in its own customisation, which a session loads
+once the person trusts the revision (ADR 45), not in the loop nodwyn ships.
+The commits the tasks were made from carry them as follows: all 73 a test,
+63 a document, 50 a change under `docs/adr`, and 18 of the 19 whose parent
+has a source catalogue regenerated it.
+
+What was found first, of the validate reminder `.nodwyn/init.scm` already
+had: it runs in a lean session too, since the file redefines
+`default-agent-turn`, which `agent-turn` calls in either profile, but the
+lean profile does not offer `validate` (`lean-tools` is `shell-exec` and
+`fs-edit`, and the file adds nothing to it), so the reminder names a tool the
+model cannot call. The model runs `go run ./scripts/validate` through
+`shell-exec` instead. The evidence loop counts such a run as validate's
+(`validated-run`), but the reminder's own continuation (`validate-continue`,
+the chat loop) does not, so the second reminder follows a validate run made
+after the first whatever it found: in the lean run
+cb-landed-d635ad3-or-muse13c-el-trusted-home-r3 the reminder came twice in
+each of 3 of its 9 sessions, and on 48f90ea8 the second came after a validate
+run with no edit since ("No code changes this turn; re-ran validate").
+Neither is changed here.
+
+**Decision.** `.nodwyn/init.scm` gains a finish check of its own, in both
+profiles, after the validate reminder and last before a turn ends. It reads
+the change with `git-diff` against the commit the session's worktree started
+from, else the one HEAD named when the turn began, and adds the files git
+does not track. When the turn changed code (a `.go` file that is not a test,
+or a `.scm` file outside `test/`, in the change now and not, or not so, when
+the turn began) and the repository has an AGENTS.md, which the message cites,
+the turn is told in one message each of these the change lacks:
+
+- a test: no `_test.go` file and nothing under `test/exfil/` or
+  `test/browser/checks/`, as scripts/validate counts tests;
+- a document: nothing under `docs/` but the generated catalogue and wire
+  schema, and no Markdown file;
+- a decision record: nothing under `docs/adr/`;
+- the regenerated source catalogue, where `docs/book/source/catalogue.tex`
+  exists: it is not in the change, and a Go or Scheme file was added or
+  deleted, or the lines added and removed differ for the Go files, the Go
+  test files or the Scheme files, which is what `generate.py` counts.
+
+The message ends "Add what the change needs, or say in your answer why it
+needs none of it.": not every change needs each, and a third of the commits
+above changed nothing under `docs/adr`. The turn then goes on as the chat
+loop does. It is said at most once a session, and not while the turn is
+stopping (`turn-stopping`). A diff cut at the tools' output limit is not
+judged; a directory git does not track is one entry, its contents unread
+(one of the 73 commits adds a directory), and an untracked file the turn
+edited again is not seen, as with the validate reminder.
+`scripts/validate/repo_finish_test.go` runs the repository's own init.scm in
+a full chat and a lean run: what is missing is said, and only that; nothing
+is said of a whole change or where there is no AGENTS.md; and it is said once
+in a run of two turns.
+
+The section uses nothing else in init.scm, only the loop the binary carries,
+so the measurement can lay the same text over the older revisions the tasks
+start from, whose init.scm lacks it: commit-bench's run.py `--extra-init`
+copies the file into the attempt's `.nodwyn/`, loads it from the end of the
+parent's init.scm (or an init.scm of its own where the parent has none) and
+keeps both out of git's view, so neither the model's `git diff` nor the patch
+holds them.
+
+**To be measured** (experiment E): the lean profile with the check against
+the lean profile without it, the same build, tasks and model: how often the
+patches carry a test, a document, an ADR change and the regenerated
+catalogue, the reviews' scores, cost and calls per task, how often the check
+is said, and what the model does after it.

@@ -268,6 +268,25 @@ comparison base, \src{scripts/validate/checks.go} for check selection,
 and \src{scripts/validate/runner.go} for process results. The Scheme
 wrapper arranges when to ask for evidence; this Go program gathers it.
 
+\section{The completeness check}
+
+The init file's last section wraps the turn once more, outside the
+validation wrapper, so it speaks last before a turn ends. It asks for no
+evidence that the code works; it reads what the change holds.
+\code{repo-finish-change} parses the diff \code{git-diff} gives against the
+turn's base into one entry per file: its path, its status, the lines its
+hunks add and remove, and its part of the diff. Files git does not track are
+added by their status lines. A turn whose change gained or altered a Go file
+that is not a test, or Scheme outside \file{test/}, is told once a session
+what the change lacks of what AGENTS.md asks for: a test, a document, a
+decision record and, when the counts the catalogue prints moved, the
+regenerated catalogue. The model may add them or say why the change needs
+none, and \code{repo-finish-continue} carries the conversation on as the
+validation wrapper's continuation does. The section calls only procedures the
+binary's loop defines, which is why it chooses the base commit itself rather
+than reusing \code{validation-against}: commit-bench loads the same text over
+older revisions of this file to measure it (ADR 32, amended 2026-10-18).
+
 \section{Reload is a lifecycle boundary}
 
 Read \src{internal/core/reload.go} before experimenting. Reload can
