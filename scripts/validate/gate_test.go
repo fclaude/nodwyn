@@ -143,6 +143,12 @@ func turn(t *testing.T, s *core.Session, text string) {
 	if err := s.Send(text); err != nil {
 		t.Fatal(err)
 	}
+	idle(t, s)
+}
+
+// idle waits for the turn under way to end, answering any confirm with yes.
+func idle(t *testing.T, s *core.Session) {
+	t.Helper()
 	timeout := time.After(60 * time.Second)
 	for {
 		select {

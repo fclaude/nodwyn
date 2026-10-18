@@ -108,3 +108,188 @@
           (add-message validate-reminder)
           (validate-continue request)
           (remind (- left 1)))))))
+
+;; The change's completeness. A turn that changed Go or Scheme code and is
+;; about to end is told, once a session, what its change lacks of what
+;; AGENTS.md asks a change here to carry: a test, a document, a decision
+;; record, the regenerated source catalogue. It may add them or say why the
+;; change needs none, and goes on. These are this repository's rules, so
+;; they are here and hold in both profiles: the loop nodwyn ships says
+;; nothing of them in the lean profile (lean-quiet), and on commit-bench,
+;; this repository at each task's parent, 96 lean patches had a test 88% of
+;; the time and a document 61%, against 100% and 78% under the full loop
+;; (ADR 32, amended 2026-10-18). It comes after the validate reminder, last
+;; before the turn ends. Nothing in it uses the rest of this file, only the
+;; loop the binary carries, so commit-bench can load it over an older
+;; revision's init.scm to measure it.
+(define repo-finish-told #f)
+
+;; Code is Go and Scheme outside test/, which holds the exfiltration
+;; scenarios (Scheme), the browser checks and the fakes. A test is what
+;; scripts/validate counts as one; a document is anything under docs/ but
+;; the two files a generator writes, or Markdown anywhere.
+(define (repo-finish-code? p)
+  (and (not (string-prefix? "test/" p))
+       (or (and (string-suffix? ".go" p) (not (string-suffix? "_test.go" p)))
+           (string-suffix? ".scm" p))))
+
+(define (repo-finish-test? p)
+  (or (string-suffix? "_test.go" p) (string-prefix? "test/exfil/" p) (string-prefix? "test/browser/checks/" p)))
+
+(define repo-finish-catalogue "docs/book/source/catalogue.tex")
+
+(define (repo-finish-doc? p)
+  (or (string-suffix? ".md" p)
+      (and (string-prefix? "docs/" p) (not (member p (list repo-finish-catalogue "docs/protocol.schema.json"))))))
+
+(define (repo-finish-adr? p) (string-prefix? "docs/adr/" p))
+
+;; What the catalogue counts a file as (docs/book/source/generate.py): the
+;; Go files and their lines, the test files' apart, and the Scheme files and
+;; their lines, every one git tracks.
+(define (repo-finish-class p)
+  (cond ((string-suffix? "_test.go" p) 'go-test)
+        ((string-suffix? ".go" p) 'go)
+        ((string-suffix? ".scm" p) 'scheme)
+        (else #f)))
+
+;; The files a unified diff shows, each (path status added removed text):
+;; status "A" for a new file, "D" for a deleted one, "M" otherwise; added
+;; and removed count the lines of its hunks, and text is its part of the
+;; diff. A file is built as a vector while its lines are read.
+(define (repo-finish-diff-files diff)
+  (let walk ((lines (string-split diff "\n")) (file #f) (out '()))
+    (let ((out (if (and file (or (null? lines) (string-prefix? "diff --git " (car lines))))
+                   (cons (repo-finish-file-entry file) out)
+                   out)))
+      (cond ((null? lines) (reverse out))
+            ((string-prefix? "diff --git " (car lines))
+             (walk (cdr lines) (repo-finish-file-start (car lines)) out))
+            (file (repo-finish-file-line! file (car lines)) (walk (cdr lines) file out))
+            (else (walk (cdr lines) #f out))))))
+
+;; "diff --git a/P b/P" names P; a rename names its new path on a line of
+;; its own, "rename to P".
+(define (repo-finish-file-start line)
+  (let* ((rest (substring line 13 (string-length line)))
+         (n (string-length rest))
+         (half (quotient (- n 3) 2))
+         (path (and (> n 3) (= n (+ half half 3))
+                    (equal? (substring rest half (+ half 3)) " b/")
+                    (equal? (substring rest 0 half) (substring rest (+ half 3) n))
+                    (substring rest 0 half))))
+    (vector (or path rest) "M" 0 0 #f (list line))))
+
+(define (repo-finish-file-line! file line)
+  (vector-set! file 5 (cons line (vector-ref file 5)))
+  (cond ((vector-ref file 4)
+         (cond ((string-prefix? "+" line) (vector-set! file 2 (+ (vector-ref file 2) 1)))
+               ((string-prefix? "-" line) (vector-set! file 3 (+ (vector-ref file 3) 1)))))
+        ((string-prefix? "@@" line) (vector-set! file 4 #t))
+        ((string-prefix? "new file mode" line) (vector-set! file 1 "A"))
+        ((string-prefix? "deleted file mode" line) (vector-set! file 1 "D"))
+        ((string-prefix? "rename to " line) (vector-set! file 0 (substring line 10 (string-length line))))))
+
+(define (repo-finish-file-entry file)
+  (list (vector-ref file 0) (vector-ref file 1) (vector-ref file 2) (vector-ref file 3)
+        (string-join (reverse (vector-ref file 5)) "\n")))
+
+;; The change against base: the files the diff shows, and those git does
+;; not track, status "?", as git's status names them (a directory it does
+;; not track is one entry, its contents unread). #f without git, or when the
+;; diff was cut at the tools' output limit and cannot be read whole.
+(define (repo-finish-change base)
+  (guard (e (else #f))
+    (let ((state (git-state))
+          (diff (format "~a" (git-diff "." #f base))))
+      (and state (not (string-contains? diff "[output truncated at "))
+           (append (repo-finish-diff-files diff)
+                   (map (lambda (l) (let ((p (substring l 3 (string-length l)))) (list p "?" 0 0 p)))
+                        (filter (lambda (l) (string-prefix? "?? " l)) state)))))))
+
+;; What the change is measured against: the commit a session's worktree
+;; started from, else the one HEAD named when the turn began, so a commit
+;; made in the turn moves nothing out of it.
+(define (repo-finish-base head)
+  (or (guard (e (else #f)) (let ((w (worktree))) (and w (assoc-ref w "base-commit" #f))))
+      head
+      "HEAD"))
+
+;; Whether the catalogue's counts moved: a Go or Scheme file was added or
+;; deleted, or the lines added and removed differ for the Go files, the Go
+;; test files or the Scheme files.
+(define (repo-finish-counts-moved? change)
+  (let walk ((es change) (go 0) (go-test 0) (scheme 0))
+    (if (null? es)
+        (not (and (= go 0) (= go-test 0) (= scheme 0)))
+        (let* ((e (car es))
+               (class (repo-finish-class (car e)))
+               (delta (- (list-ref e 2) (list-ref e 3))))
+          (cond ((not class) (walk (cdr es) go go-test scheme))
+                ((member (cadr e) '("A" "D" "?")) #t)
+                ((eq? class 'go) (walk (cdr es) (+ go delta) go-test scheme))
+                ((eq? class 'go-test) (walk (cdr es) go (+ go-test delta) scheme))
+                (else (walk (cdr es) go go-test (+ scheme delta))))))))
+
+(define (repo-finish-exists? path)
+  (guard (e (else #f)) (fs-read path 1 1) #t))
+
+;; What the change lacks, as symbols, or () when the turn edited no code
+;; (its files as they were when it began are before) or the repository has
+;; no AGENTS.md to cite. The catalogue is asked for only where there is one.
+(define (repo-finish-points before now)
+  (let* ((edited (map car (filter (lambda (e) (not (member e before))) now)))
+         (paths (map car now))
+         (has? (lambda (pred) (pair? (filter pred paths)))))
+    (if (or (null? (filter repo-finish-code? edited)) (not (repo-finish-exists? "AGENTS.md")))
+        '()
+        (filter identity
+                (list (and (not (has? repo-finish-test?)) 'test)
+                      (and (not (has? repo-finish-doc?)) 'docs)
+                      (and (not (has? repo-finish-adr?)) 'adr)
+                      (and (not (member repo-finish-catalogue paths))
+                           (repo-finish-counts-moved? now)
+                           (repo-finish-exists? repo-finish-catalogue)
+                           'catalogue))))))
+
+(define repo-finish-intro
+  "This turn changed Go or Scheme code, and AGENTS.md says a change carries everything that belongs with it. The change has")
+
+(define repo-finish-lines
+  '((test . "- no test: no test file changed, and AGENTS.md asks for a test that fails on the unchanged code and passes on yours.")
+    (docs . "- no document: nothing under docs/ changed, and AGENTS.md puts behaviour a person sees in docs/manual.md and wherever the book or the expert guide describe it.")
+    (adr . "- no decision record: nothing under docs/adr changed, and AGENTS.md puts a decision in docs/adr, as a new ADR or an amendment of the ADR it changes.")
+    (catalogue . "- an old source catalogue: Go or Scheme files or their line counts changed and docs/book/source/catalogue.tex did not, and AGENTS.md asks you to regenerate it with python3 docs/book/source/generate.py.")))
+
+(define repo-finish-close
+  "Add what the change needs, or say in your answer why it needs none of it.")
+
+(define (repo-finish-message points)
+  (string-join (append (list repo-finish-intro)
+                       (map (lambda (p) (assoc-ref repo-finish-lines p)) points)
+                       (list repo-finish-close))
+               "\n"))
+
+;; After the message, the turn goes on as the default chat loop does.
+(define (repo-finish-continue request)
+  (let loop ((reply (ask-model)) (reading 0))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls)
+        (run-calls calls)
+        (maybe-compact request reply)
+        (loop (ask-model) (reading-rounds calls reading))))))
+
+(define repo-finish-base-turn default-agent-turn)
+
+(define (default-agent-turn request)
+  (if repo-finish-told
+      (repo-finish-base-turn request)
+      (let* ((base (repo-finish-base (guard (e (else #f)) (git-head))))
+             (before (repo-finish-change base)))
+        (repo-finish-base-turn request)
+        (let* ((now (and before (not turn-stopping) (repo-finish-change base)))
+               (points (if now (repo-finish-points before now) '())))
+          (when (pair? points)
+            (set! repo-finish-told #t)
+            (add-message (repo-finish-message points))
+            (repo-finish-continue request))))))
