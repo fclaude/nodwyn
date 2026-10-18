@@ -158,6 +158,9 @@ check(async () => {
   step("a laptop made a passkey with its invitation, and chooses a task's model");
 
   // Restarting the console signs nobody out, though it forgets the touch.
+  // The phone's page is closed first: it would connect again by itself, and
+  // a try that came after its revocation below would be refused (403).
+  await page.close();
   ui.kill("SIGTERM");
   await ui.exited;
   ui = console_();

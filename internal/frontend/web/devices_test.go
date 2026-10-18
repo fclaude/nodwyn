@@ -9,6 +9,21 @@ import (
 	"time"
 )
 
+// join pairs a device named name with a plain invitation from the terminal
+// and returns its token.
+func join(t *testing.T, devices *Devices, name string) string {
+	t.Helper()
+	code, _, err := devices.Invite(Terminal, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := devices.Join(code, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
 // A device stays signed in while it is used and is signed out only after
 // idleLife without use, whatever time passed since it paired: it used to be
 // signed out 180 days after pairing, however often it was used, since its
