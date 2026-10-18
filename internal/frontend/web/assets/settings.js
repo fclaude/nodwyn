@@ -827,7 +827,7 @@ function judgeSection(ctx, redraw, root) {
   return page;
 }
 
-// awaySection is what goes on while nobody is at nodwyn (ADR 52 §11):
+// awaySection is what goes on while nobody is at nodwyn (ADR 53 §11):
 // whether the daemon starts at login, so scheduled runs need no window open,
 // and whether it says on this computer's desktop when a task needs an answer.
 // Both are this computer's: a paired device sees neither.
@@ -968,8 +968,13 @@ function browserSection(ctx) {
   const shown = storedThinking();
   const thinkingButton = (value, label) => h("button", { type: "button", class: "chip", "aria-pressed": String(shown === value), onclick: () => { applyThinking(value); rerender(); } }, label);
   const notifier = desk.notifier;
+  // Safari on an iPhone or iPad has no notifications for a page, only for an
+  // app added to the Home Screen (ADR 52); navigator.standalone is false
+  // there and nowhere else.
   const notifyNote = !notifier.available
-    ? "This browser can't show desktop notifications here (they need a secure page)."
+    ? navigator.standalone === false
+      ? "On an iPhone or iPad, add nodwyn to the Home Screen first (Share › Add to Home Screen): Safari shows notifications only to apps there."
+      : "This browser can't show notifications here (they need a secure page)."
     : typeof Notification !== "undefined" && Notification.permission === "denied"
       ? "Notifications are blocked for this page in the browser's settings."
       : "Only “nodwyn needs your answer”: never the task, the arguments or a diff. Kept in this browser; the app has them on until you turn them off.";
@@ -980,7 +985,7 @@ function browserSection(ctx) {
     ...row("Appearance", h("div", { class: "row-actions" }, themeButton("dark", "Dark"), themeButton("light", "Light"), themeButton("system", "Match the system")), h("p", { class: "hint" }, "Dark unless you choose otherwise. Kept in this browser only.")),
     ...row("The model's thinking", h("div", { class: "row-actions" }, thinkingButton(false, "Hidden"), thinkingButton(true, "Shown")), h("p", { class: "hint" }, "Hidden unless you choose otherwise: shown, it sits with the calls it led to, under its first line. The log keeps it either way. Kept in this browser only.")),
     ...row(
-      "Desktop notifications",
+      "Notifications",
       h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", disabled: !notifier.available || !conn.live, onclick: async () => { await notifier.toggle(); rerender(); } }, notifier.enabled ? "Turn off" : "Turn on")),
       h("p", { class: "hint" }, notifyNote),
     ),

@@ -1232,7 +1232,7 @@ same resources as session.close.
 run would be skipped as things are: the task is closed, the keychain is
 locked and the default model needs a key from it.
 
-## Starting at login and desktop notices (ADR 52 §11)
+## Starting at login and desktop notices (ADR 53 §11)
 
 - `startup.read {}` returns the login item: `offered` (false for a daemon
   given none, as a test's), `supported` (Linux and macOS), `on`, `path` (the

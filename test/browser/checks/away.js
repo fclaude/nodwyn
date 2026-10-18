@@ -1,4 +1,4 @@
-// While you're away (ADR 52 §11): Home with locked keys that hold back a
+// While you're away (ADR 53 §11): Home with locked keys that hold back a
 // scheduled run says so where its schedules are, and is unlocked there; Settings › General turns the
 // daemon's login item on and off, writing it in the demo's own home, and
 // saves the daemon's desktop notices.

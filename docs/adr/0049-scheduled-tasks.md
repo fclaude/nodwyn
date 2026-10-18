@@ -4,7 +4,7 @@
   index (§10), console history and totals (§11), and scheduler (§1, §4–§9, §12)
   implemented 2026-10-15; §4's five repeats replaced by rules, said in the
   daemon's words, with each schedule's recent runs, 2026-10-17 (amended);
-  login startup built 2026-10-17 as ADR 52's slice 0
+  login startup built 2026-10-17 as ADR 53's slice 0
 - Date: 2026-10-15
 - Amends: 18 (a task's turn limits can be off), 34 (a worktree made again
   records its new base), 9 (windows are built from a suffix of the log)

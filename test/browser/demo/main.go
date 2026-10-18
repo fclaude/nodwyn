@@ -189,7 +189,7 @@ func run(seed bool, port int, docs, locked bool, given string) error {
 	if locked {
 		// A task scheduled far ahead, made before the model needed a key,
 		// then a keychain the daemon starts without: what a daemon started
-		// at login finds when the keychain has a passphrase (ADR 52 §11).
+		// at login finds when the keychain has a passphrase (ADR 53 §11).
 		if err := scheduledTask(paths, cfg, filepath.Join(root, "work", "receipts")); err != nil {
 			return err
 		}

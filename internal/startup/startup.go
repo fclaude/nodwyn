@@ -1,5 +1,5 @@
 // Package startup starts nodwyn's daemon when the person logs in, so that
-// scheduled runs go on with no window open (ADR 52 §11): a systemd user unit
+// scheduled runs go on with no window open (ADR 53 §11): a systemd user unit
 // on Linux, a launchd agent on macOS. It writes or removes those files when a
 // person asks, on this computer, and never starts or stops a daemon: the one
 // it writes starts at the next login.

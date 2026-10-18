@@ -2697,7 +2697,9 @@ writes a systemd user unit (`~/.config/systemd/user/nodwyn.service`, wanted by
 (`~/Library/LaunchAgents/nodwyn.daemon.plist`) on macOS, which runs this
 nodwyn's `daemon` with the `PATH` and XDG homes it had then. It starts at
 your next login, and again if it fails; `nodwyn app` then uses it, and
-closing the window leaves it running. `nodwyn startup` says whether it is on
+closing the window leaves it running. On a Linux computer nobody logs in
+to, such as a server, `loginctl enable-linger $USER` has systemd start your
+user services, this one included, at boot. `nodwyn startup` says whether it is on
 and which nodwyn it runs; `nodwyn startup off` removes it. A file at that
 place nodwyn did not write is left alone, and a `go run` build is refused,
 since it is gone when it exits. A daemon started at login has no terminal to
@@ -2769,6 +2771,27 @@ workspace**, Home's **Add a folder**, or starting or resuming a task there,
 from the console, a paired device or a terminal. Forget is available only on
 the computer running nodwyn. A paired device cannot forget a folder, but can
 still choose a forgotten one by typing its path.
+
+## nodwyn on a phone
+
+A phone reaches the console that `nodwyn ui --listen` (or `nodwyn app
+--listen`) serves to other devices, and pairs with the printed code and a
+name ([the browser view](browser.md), "Other devices"). Served over https
+(`--tls-cert`, or a proxy that ends TLS and `--name https://NAME`), the
+console is also an app: Safari's **Share › Add to Home Screen** on an
+iPhone, or Chrome's **Install app** on Android, puts nodwyn on the Home
+Screen, where it opens full screen (ADR 52). It is the same console from the
+same server, so there is nothing to download or update but nodwyn itself. An
+iPhone keeps a Home Screen app's storage apart from Safari's: pair again in
+the app if it asks.
+
+Turn on Settings › This browser › Notifications in the app to be told when a
+task waits for an answer. The notice says only "nodwyn needs your answer",
+and tapping it opens the task. It comes while the app is open or in the
+background; a notice while the app is closed (Web Push) is not built.
+Safari shows notifications only to an app on the Home Screen, and Settings
+says so on an iPhone. Over plain http to another address the console works
+in a phone's browser but neither installs as an app nor notifies.
 
 ## The Wails desktop window
 

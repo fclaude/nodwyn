@@ -99,7 +99,7 @@ check(async () => {
   // ---------- notifications are remembered by the browser ----------
   await go("#/settings/browser");
   await page.waitForSelector("#section-browser");
-  await shows(page, "#section-browser", "Desktop notifications");
+  await shows(page, "#section-browser", "Notifications");
   await page.click("#section-browser button:text-is('Turn on')");
   await page.waitForSelector("#section-browser button:text-is('Turn off')");
   assert.strictEqual(await page.evaluate(() => localStorage.getItem("nodwyn-notify")), "on");

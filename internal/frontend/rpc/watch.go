@@ -26,7 +26,7 @@ type stateWatch struct {
 	clients  map[*peer]bool
 	// asked is told of a session that came to need an answer while no
 	// client of this computer watches, so that the daemon can say so on the
-	// desktop (ADR 52 §11). A console watching says so itself (desk.js); a
+	// desktop (ADR 53 §11). A console watching says so itself (desk.js); a
 	// paired device's page is not this computer's.
 	asked func(id string)
 }

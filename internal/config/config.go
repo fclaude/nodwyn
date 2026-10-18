@@ -90,7 +90,7 @@ type Config struct {
 	// Experimental are features offered to try, not supported: each may
 	// change or go away (ADR 48).
 	Experimental Experimental `toml:"experimental"`
-	// Notify is what the daemon tells this computer's desktop (ADR 52 §11).
+	// Notify is what the daemon tells this computer's desktop (ADR 53 §11).
 	Notify Notify `toml:"notify"`
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].

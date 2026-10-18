@@ -158,7 +158,7 @@ the current origin so navigating elsewhere cannot receive a selected path.
 Notifications carry only the fixed attention notice, and external links must
 be HTTP(S). The browser version receives no desktop capability.
 
-The daemon has notices of its own (ADR 52 §11), for when no window is open:
+The daemon has notices of its own (ADR 53 §11), for when no window is open:
 with Settings › General › **While you're away** › **Desktop notices from
 the daemon** on, it shows
 "nodwyn needs your answer" when a task comes to need one and no window of

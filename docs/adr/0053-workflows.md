@@ -1,4 +1,4 @@
-# ADR 0052: Workflows: a trigger, a filter, an instruction, where runs go, and what happens with them
+# ADR 0053: Workflows: a trigger, a filter, an instruction, where runs go, and what happens with them
 
 - Status: accepted 2026-10-17; the timetable (§3) built the same day as an
   amendment to ADR 49, and §11 (slice 0) the same day, amended below; the

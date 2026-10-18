@@ -11,7 +11,7 @@ import (
 )
 
 // startup says whether the daemon starts at login, or turns that on or off
-// (ADR 52 §11): nodwyn startup, nodwyn startup on, nodwyn startup off.
+// (ADR 53 §11): nodwyn startup, nodwyn startup on, nodwyn startup off.
 func (c *cli) startup() error {
 	if err := c.only("startup"); err != nil {
 		return err

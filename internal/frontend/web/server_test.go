@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"image/png"
 	"io"
 	"io/fs"
 	"net"
@@ -427,6 +429,90 @@ func TestEmbeddedAssetsReachable(t *testing.T) {
 		if response.Code != http.StatusNotFound {
 			t.Fatalf("%s returned %d", path, response.Code)
 		}
+	}
+}
+
+// The console installs as an app (ADR 52): the page links a manifest that
+// the bridge serves to whoever reaches it, as it serves the page, with its
+// icons at the sizes and types it names, and a service worker that handles
+// no fetch, so nothing the console shows is ever cached.
+func TestTheConsoleInstallsAsAnApp(t *testing.T) {
+	b := &bridge{ctx: context.Background(), code: testCode, session: testSession}
+	b.listensAt("127.0.0.1:34567")
+	get := func(path string) *httptest.ResponseRecorder {
+		t.Helper()
+		response := httptest.NewRecorder()
+		b.ServeHTTP(response, httptest.NewRequest("GET", "http://"+b.local+path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s returned %d", path, response.Code)
+		}
+		return response
+	}
+	size := func(path string) string {
+		t.Helper()
+		image, err := png.DecodeConfig(get(path).Body)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		return fmt.Sprintf("%dx%d", image.Width, image.Height)
+	}
+
+	page := get("/").Body.String()
+	for _, link := range []string{`rel="manifest" href="/manifest.json"`, `rel="apple-touch-icon" href="/icons/apple-touch-icon.png"`, `name="theme-color"`} {
+		if !strings.Contains(page, link) {
+			t.Errorf("the page has no %s", link)
+		}
+	}
+	if got := size("/icons/apple-touch-icon.png"); got != "180x180" {
+		t.Errorf("the Apple touch icon is %s, not 180x180", got)
+	}
+
+	response := get("/manifest.json")
+	if kind := response.Header().Get("Content-Type"); !strings.HasPrefix(kind, "application/json") {
+		t.Errorf("the manifest is served as %q", kind)
+	}
+	var manifest struct {
+		Name     string `json:"name"`
+		StartURL string `json:"start_url"`
+		Scope    string `json:"scope"`
+		Display  string `json:"display"`
+		Icons    []struct {
+			Src     string `json:"src"`
+			Sizes   string `json:"sizes"`
+			Type    string `json:"type"`
+			Purpose string `json:"purpose"`
+		} `json:"icons"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Name != "nodwyn" || manifest.StartURL != "/" || manifest.Scope != "/" || manifest.Display != "standalone" {
+		t.Errorf("the manifest opens %q at %q in %q, scope %q", manifest.Name, manifest.StartURL, manifest.Display, manifest.Scope)
+	}
+	sizes := map[string]bool{}
+	for _, icon := range manifest.Icons {
+		if kind := get(icon.Src).Header().Get("Content-Type"); kind != icon.Type {
+			t.Errorf("%s is served as %q, and the manifest says %q", icon.Src, kind, icon.Type)
+		}
+		if icon.Type == "image/png" {
+			if got := size(icon.Src); got != icon.Sizes {
+				t.Errorf("%s is %s, and the manifest says %s", icon.Src, got, icon.Sizes)
+			}
+		}
+		sizes[icon.Sizes+" "+icon.Purpose] = true
+	}
+	for _, want := range []string{"192x192 ", "512x512 ", "512x512 maskable"} {
+		if !sizes[want] {
+			t.Errorf("the manifest has no %q icon: %v", want, sizes)
+		}
+	}
+
+	worker := get("/sw.js")
+	if kind := worker.Header().Get("Content-Type"); !strings.HasPrefix(kind, "text/javascript") {
+		t.Errorf("the service worker is served as %q", kind)
+	}
+	if body := worker.Body.String(); strings.Contains(body, `"fetch"`) || strings.Contains(body, "caches.") {
+		t.Error("the service worker handles fetches or keeps a cache")
 	}
 }
 

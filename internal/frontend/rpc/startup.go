@@ -6,7 +6,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/startup"
 )
 
-// The daemon's desktop notices (ADR 52 §11) have fixed words, as the app's
+// The daemon's desktop notices (ADR 53 §11) have fixed words, as the app's
 // notification does (docs/app.md): a lock screen shows them, so they never
 // carry a task's title, its request or what it asks.
 const (

@@ -42,7 +42,7 @@ func quiet(t *testing.T, notices chan string, why string) {
 
 // The daemon says on the desktop that a task needs an answer when no window
 // of this computer watches, in fixed words: a paired phone's page is not
-// this computer's, and a console watching says so itself (ADR 52 §11).
+// this computer's, and a console watching says so itself (ADR 53 §11).
 func TestTheDaemonSaysOnTheDesktopThatATaskNeedsAnAnswer(t *testing.T) {
 	notices, notify := told()
 	o := options(t)
