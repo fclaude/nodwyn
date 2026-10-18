@@ -27,6 +27,84 @@ func TestTheLeanPromptIsShortAndGeneric(t *testing.T) {
 	}
 }
 
+// A repository's AGENTS.md is its maintainers' word, not the harness's, so the
+// lean prompt carries it as the full ones do (ADR 36; ADR 32, amended
+// 2026-10-18): after the last fixed sentence, which stays the cached prefix
+// byte for byte, under the same heading, capped and redacted as there, and
+// left out where a project redefines (project-instructions-section). The
+// agent's own notes from earlier sessions stay out of the lean prompt.
+func TestTheLeanPromptCarriesTheRepositorysAgentsFile(t *testing.T) {
+	useProfile(t, "")
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	profile := config.ProfileLean
+	system := func(init string) string {
+		t.Helper()
+		r := profileRigIn(t, repo, unattendedOptions, init, fake.Turn{Content: "done"})
+		if r.s.profile != profile {
+			t.Fatalf("profile %q, want %s", r.s.profile, profile)
+		}
+		return r.s.loop.WindowContext().System
+	}
+	writeAgents := func(text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const heading = "\nInstructions from the repository's AGENTS.md, written by its maintainers for coding agents. Follow them where they apply; where the request says otherwise, follow the request.\n"
+	fixed := system("")
+	if !strings.HasPrefix(fixed, leanPromptStart) || strings.Contains(fixed, "AGENTS.md") {
+		t.Fatalf("without AGENTS.md:\n%s", fixed)
+	}
+
+	const canary = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"
+	writeAgents("# Working here\n\n- Validate with make accept.\n- key: " + canary + "\n")
+	got := system("")
+	if !strings.HasPrefix(got, fixed+heading+"# Working here\n\n- Validate with make accept.\n- key: ") || strings.Count(got, "Instructions from the repository's AGENTS.md") != 1 {
+		t.Fatalf("a lean session in a repository with AGENTS.md:\n%s", got)
+	}
+	if strings.Contains(got, canary) {
+		t.Fatalf("a credential in AGENTS.md reached the lean prompt:\n%s", got)
+	}
+
+	writeAgents(strings.Repeat("- a rule that goes on\n", 2000))
+	if long := system(""); !strings.HasPrefix(long, fixed+heading+"- a rule that goes on\n") ||
+		!strings.HasSuffix(long, "\n[AGENTS.md is longer: read the rest with fs-read]") || len(long)-len(fixed) > 32<<10+300 {
+		t.Fatalf("a long AGENTS.md added %d bytes to the lean prompt", len(long)-len(fixed))
+	}
+
+	// The agent's notes stay out, though the same init gives them to a full
+	// session.
+	writeAgents("- Validate with make accept.\n")
+	notes := `(define (project-notes) "- tests: make check")`
+	if lean := system(notes); lean != fixed+heading+"- Validate with make accept." {
+		t.Fatalf("with notes, the lean prompt:\n%s", lean)
+	}
+	useProfile(t, config.ProfileFull)
+	profile = config.ProfileFull
+	if full := system(notes); !strings.Contains(full, "\n\nInstructions from the repository's AGENTS.md") || !strings.HasSuffix(full, "Notes kept from earlier sessions in this repository, written by the agent: useful leads, but check them before relying on them.\n- tests: make check") {
+		t.Fatalf("the full prompt with AGENTS.md and notes:\n%s", full)
+	}
+	useProfile(t, "")
+	profile = config.ProfileLean
+
+	// A project that wants it out redefines the section, and the lean prompt is
+	// the fixed one again; so it is when the file goes.
+	if out := system(`(define (project-instructions-section) "")`); out != fixed {
+		t.Fatalf("with the section redefined to nothing:\n%s", out)
+	}
+	if err := os.RemoveAll(filepath.Join(repo, ".nodwyn")); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(filepath.Join(repo, "AGENTS.md"))
+	if again := system(""); again != fixed {
+		t.Fatalf("AGENTS.md removed:\n%s", again)
+	}
+}
+
 // A lean run's requests carry no plan: no header, no plan-step, no plan-write,
 // though the one-line plan is recorded for the core and the person, hidden.
 // With lean-plan-hidden off (as full.scm has it) the same run shows it, as it
