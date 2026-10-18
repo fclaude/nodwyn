@@ -2773,6 +2773,29 @@ into the card nodwyn shows (**Finish**) completes it. `nodwyn trust` and the
 command line's `credential add --oauth2` still need the server
 ([the browser view](browser.md), "Other devices").
 
+To have the keychain open by itself after a restart, give the daemon's unit
+its passphrase as a systemd credential (opt-in; ADR 5, amended 2026-10-17):
+
+```sh
+# the passphrase, typed once; the file is useless on another computer
+systemd-ask-password -n | sudo systemd-creds encrypt --with-key=host+tpm2 --name=nodwyn-keychain - /etc/nodwyn/keychain.cred
+# in the daemon's unit, which must then be a system service (User=you):
+#   LoadCredentialEncrypted=nodwyn-keychain:/etc/nodwyn/keychain.cred
+```
+
+A user service (`nodwyn startup on`) has no TPM: `systemd-creds --user encrypt
+--name=nodwyn-keychain - ~/.config/nodwyn/keychain.cred` and a drop-in
+(`systemctl --user edit nodwyn.service`) with `LoadCredentialEncrypted=nodwyn-keychain:%h/.config/nodwyn/keychain.cred`
+work with a key kept in your home, which keeps the passphrase out of plain
+text but not out of a backup of your home. Know what this gives: the
+keychain's file is protected at rest (a copy, a backup, a disk taken out),
+but while nodwyn runs, any process of your account can read the decrypted
+passphrase, so against code running as you it is as open as a keychain with
+no passphrase. A task's own file tools refuse the credentials directory; a
+command you approved does not. A passphrase that does not open the keychain
+leaves the daemon locked, with a line in its journal, and you unlock it from
+a device as before.
+
 ## Downloadable builds and books
 
 Download portable binaries and both books from the repository's Gitea

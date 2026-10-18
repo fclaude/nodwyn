@@ -257,12 +257,25 @@ func (s *Session) rangeBytes() int {
 	return s.loop.ResultCap()*3 - 256
 }
 
+// privateDirs are the directories no path argument of a task may name:
+// nodwyn's own configuration and data, and the directory a service manager
+// put the daemon's credentials in, where the keychain's passphrase may be
+// (ADR 5, amended 2026-10-17), which any process of the same account can
+// otherwise read.
+func privateDirs(p config.Paths) []string {
+	dirs := []string{p.ConfigDir, p.DataDir}
+	if dir := os.Getenv("CREDENTIALS_DIRECTORY"); filepath.IsAbs(dir) {
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
 func (s *Session) primitiveOptions() prim.Options {
 	o := s.opts
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
 	po.Scratch = s.scratch
-	po.Private = []string{o.Paths.ConfigDir, o.Paths.DataDir}
+	po.Private = privateDirs(o.Paths)
 	po.Procs = s.procs
 	po.Terms = s.terms
 	// Notes are the project's, so a worktree's session shares them with
