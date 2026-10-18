@@ -664,3 +664,45 @@ picker, where it appears only when a judge is configured); the setup pages
 the old toast for their errors, and five of the ten inline column styles
 remain there; reading a saved worktree task's diff from its retained
 worktree, so that review would need no resume.
+
+## Amendment 2026-10-17: a daemon starts again over the socket a crash left
+
+The U2 daemon refused any existing socket, stale ones included, so that it
+could never unlink another daemon's endpoint. A daemon killed outright
+(SIGKILL, the out-of-memory killer, a power loss) leaves its socket, so the
+next one refused to start until someone removed the file by hand, and a
+service manager's restart (systemd's `Restart=on-failure`, for a daemon kept
+running on a server) failed every time. `nodwyn app` already removed a socket
+nothing answered on (ADR 30), with its own copy of the check.
+
+`rpc.Listen`, which `nodwyn daemon`, `nodwyn app` and the test daemons bind
+with, now makes that check itself, and the app's copy is gone. It removes the
+socket only when a connection to it is refused, which is how the kernel
+answers for a socket no process listens on. A connection, a timeout or any
+other error, and any file that is not a socket, still refuse: a running
+daemon's endpoint is still never unlinked.
+
+The check, the removal and the bind are made holding an exclusive `flock` on
+the socket's path with `.lock` appended. Without it, two daemons starting at
+once could both find the old socket stale, and the second unlink the socket
+the first had just bound, leaving the first serving its tasks and schedules
+where no client can reach them. The lock file is in the socket's directory,
+which `Listen` already requires to be this user's, mode 0700 and not a link,
+so only this user can create or replace it. It is never removed, since
+removing it would let a third daemon lock a new file while a second waits on
+the old one. The lock is held only while starting: once the socket is bound,
+a connection to it is the proof that a daemon runs.
+
+`scheduler.lock` in the data directory was not used for this. It guards
+dispatching schedules, per data directory, and is taken once serving starts;
+two daemons on different sockets may share a data directory (the second
+serves clients and dispatches nothing), and it is the socket that two
+starting daemons contend for.
+
+The app now binds before it reads the configuration, so a daemon it cannot
+use is still refused before anything else can fail; when the bind finds a
+daemon that started after the app's first dial, the app attaches to it.
+`TestCLIDaemonRestartsAfterAKill` kills a daemon with SIGKILL and starts
+another on its socket; `TestListenBindsUnderTheSocketLock` holds the lock and
+checks that `Listen` waits for it. Not built: a daemon that removes a stale
+socket does not say so in its output.

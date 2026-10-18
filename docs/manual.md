@@ -2620,6 +2620,10 @@ keychain without a passphrase at once, and asks for one at the terminal
 otherwise. Use
 `nodwyn daemon --no-keychain` to skip credential-store startup, and
 `--socket /absolute/private/directory/sock` to override its socket path.
+A daemon that was killed, or lost power, leaves its socket behind; the next
+`nodwyn daemon` finds nothing answering on it, removes it and starts, so a
+service manager can restart the daemon. A socket that still answers is never
+replaced: the second daemon refuses to start.
 The protocol supports session lifecycle, send/abort, subscriptions, paged
 log catch-up, answering prompts (`session.answer`, `session.secret`,
 `session.approval.create`, `session.binding.create`), runs, and what the

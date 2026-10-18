@@ -12,9 +12,14 @@ it is `<user cache directory>/nodwyn/run/sock` (on macOS,
 `~/Library/Caches/nodwyn/run/sock`). `--socket /absolute/private/directory/sock`
 overrides it. The immediate parent must be owned by the current user, mode
 0700, and not a symlink; missing directories are created privately. The socket
-is mode 0600. Existing paths are never replaced. After a crash, verify that no
-daemon owns the endpoint before removing a stale socket and restarting;
-`nodwyn app` does this itself, removing a socket nothing answers on.
+is mode 0600. A socket that accepts a connection, and any file that is not a
+socket, is never replaced: the daemon refuses to start beside it. A socket that
+refuses connections was left by a daemon that died without closing it (killed,
+out of memory, a power loss); `nodwyn daemon` and `nodwyn app` remove it and
+start, so a service manager can restart the daemon (systemd's
+`Restart=on-failure`) with nothing to clean up. The check and the bind are made
+holding a lock on the socket's path with `.lock` appended (`sock.lock`), so of
+two daemons starting at once the second finds the first listening and refuses.
 
 A connection has the authority of the local user. Opening or resuming a
 repository loads its currently trusted `.nodwyn/init.scm` and repository policy, just as the plain
