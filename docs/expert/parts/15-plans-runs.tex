@@ -422,7 +422,10 @@ which \code{[loop] profile = "auto"} gives a session nobody approves) the
 system prompt is \code{(lean-system-prompt repo)}, about 250 tokens, which says
 the session is unattended and names only the tools in \code{lean-tools}
 (\code{shell-exec} and \code{fs-edit}): \code{ask-model} offers the control
-model those and no others. \code{NODWYN\_PROFILE} overrides the configuration.
+model those and no others. It ends with the repository's \file{AGENTS.md},
+by \code{(project-instructions-section)}, as the full prompts do, but carries
+no project notes (ADR 32, amended 2026-10-18). \code{NODWYN\_PROFILE}
+overrides the configuration.
 The full profile evaluates \file{full.scm} after the default files and before
 \file{.nodwyn/init.scm}: \code{lean-prompt}, \code{plan-minimal}
 and \code{lean-quiet} false, \code{finish-reminders} and

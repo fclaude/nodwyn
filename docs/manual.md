@@ -677,9 +677,11 @@ nothing; the next search builds it again (ADR 50,
 
 A repository's `AGENTS.md` (or `agents.md`) at its root is its maintainers'
 instructions for coding agents: how to build, test and validate a change
-there, and the rules of the house. Both system prompts carry it after the
-working rules and before the project notes, under a heading that says to
-follow it where it applies and the request where the two differ (ADR 36).
+there, and the rules of the house. Every system prompt carries it, under a
+heading that says to follow it where it applies and the request where the
+two differ (ADR 36): the interactive and unattended ones after the working
+rules and before the project notes, and the lean profile's at its end,
+after its fixed sentences (ADR 32, amended 2026-10-18).
 It is read when a session starts, so an edit shows in the next session;
 at most 32 KiB of it, redacted. A link that leads outside the repository or
 to a file on the credential denylist reads as no file. A project that
