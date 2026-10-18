@@ -270,6 +270,88 @@ Not changed: the `settings.*` methods still hold the lock while they wait for
   why. It is documented instead, with `--no-open` and the pairing code (never
   on a command line) as the way on a shared computer.
 
+## Amendment 2026-10-17: the console comes back by itself
+
+A console reached from a laptop or a phone over a tailnet, with nodwyn
+always on a server, loses its connection often: the device sleeps, changes
+network, or a proxy (`tailscale serve`) closes a connection that carried
+nothing for a while. A dropped socket waited on a **Reconnect** button, and
+the bridge sent nothing to keep an idle one open. On loopback this rarely
+mattered.
+
+- **The console connects again by itself**, after a wait that doubles from
+  a second up to thirty, and no sooner than every five seconds while the
+  daemon is not running (1013). Coming back reloads the desk and the open
+  task from the log, as the button did, and no operation is sent again: a
+  request waiting when the connection dropped fails, saying so. **Reconnect
+  now** skips the wait.
+- **The page shown again, or the network back, tries at once**, and a
+  connection that looks live then is asked to answer `hello` within ten
+  seconds, since after a sleep a socket can look open with nobody at the
+  other end. It is not asked while a request waits, because the bridge
+  relays one request at a time and the answer would wait behind it.
+- **A browser the console does not take stops trying.** A revoked device's
+  open socket is closed with 1008, as before. A socket refused before it
+  opened tells a browser nothing of why, and the same refusal comes from a
+  device revoked while it was away, from this computer's browser after
+  `nodwyn ui` restarted (its cookie holds the stopped run's session), or
+  from no console at all, so the page asks `GET /paired`, which answers
+  whether the console takes the cookies the request carries and nothing
+  else; the Host and fetch-site checks of every request apply to it. Not
+  taken, the page pairs again; unreachable, or a proxy's 5xx, it tries
+  again.
+- **The bridge pings an open console every 30 seconds** and closes one that
+  has not answered within a minute, longer than a relayed call holds up the
+  reading of its pong. A proxy keeps a connection that carries pings open,
+  and a page that slept gives back its daemon connection.
+
+Not built: a page reconnected to a console of a newer version keeps its old
+code until it is reloaded; project notes being edited and a worktree
+review's unsent comments are lost on a reconnect, as on a reload; the TUI's
+daemon mode still reconnects only on Ctrl+R. Evidence: the `reconnect`
+browser check, and `TestPairedSaysWhetherTheConsoleTakesThisBrowser` and
+`TestASilentConsoleIsPingedAndClosed`.
+
+## Amendment 2026-10-17: a page reconnected to an upgrade says so
+
+On an always-on computer, `make promote` swaps the binary and the console
+and the daemon start again from it. A page that comes back by itself (the
+amendment above) keeps the code it loaded, against a bridge and a daemon
+that may now answer otherwise, until someone reloads it.
+
+- **The page compares the daemon's version.** `hello` returns it; the page
+  keeps the first it saw, and when a reconnect's `hello` reports another, a
+  banner says nodwyn was restarted as that version and offers **Reload**. A
+  reconnect to the same version (a restart, a sleep, another network) shows
+  nothing, and one back to the first version hides the banner.
+- **It never reloads by itself.** A reconnect keeps each task's reply draft
+  and the New task message, which live only in this tab's memory, and a
+  reload loses them. The banner says so, and the reader reloads once they
+  are sent.
+- **Drafts are not carried across that reload.** Handing them over in
+  `sessionStorage`, which is per tab and survives a reload, was weighed and
+  not built. ADR 21 keeps drafts in tab memory and `browser.md` says a
+  reload loses them; the console's storage holds choices (the theme, the
+  last folder, folded folders), never what a task says. A draft holds
+  whatever was pasted into it, a secret meant for a masked reply included,
+  and Chromium keeps session storage in the profile on disk to restore a
+  session, where removing the item later does not scrub it. Since the page
+  waits for the reader, keeping the rule costs only that wait.
+- **The version is the daemon's; the page's code is the console's**
+  (`nodwyn ui`). `make promote` starts both from one binary, whose version
+  is its commit, so there one changes with the other. A console restarted
+  from a new build in front of a daemon still on the old says nothing, and a
+  new daemon behind an old console offers a reload that brings back the same
+  code; neither is how nodwyn is upgraded. Two builds of one dirty checkout
+  both report `dev-COMMIT-dirty` and are not told apart.
+
+Not built: comparing the console's own build, which the bridge would have
+to add to `hello` (a protocol change). Evidence: the `reconnect` browser
+check, whose daemon comes back from a build reporting `check-next`: the
+pages say so and keep the reply being written, Reload runs the new code
+and writes nothing to the browser's storage, and the restart of `nodwyn ui`
+before it, to the same daemon, shows no banner.
+
 ## Amendment 2026-10-17: the TUI talks to the daemon too
 
 The TUI had two hosts: by default it ran the session in its own process,

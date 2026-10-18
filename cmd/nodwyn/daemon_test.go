@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 func TestCLIDaemonLifecycle(t *testing.T) {
@@ -110,4 +111,68 @@ func TestCLIDaemonLifecycle(t *testing.T) {
 		t.Fatal("CLI did not release session", err)
 	}
 	session.Close()
+}
+
+// A daemon killed outright (SIGKILL, the out-of-memory killer, a power loss)
+// leaves its socket. The next daemon on that socket used to refuse it, so a
+// service manager's restart failed until someone removed the file by hand.
+func TestCLIDaemonRestartsAfterAKill(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "nodwyn-daemon-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	socket := filepath.Join(dir, "sock")
+	start := func(name string) (*exec.Cmd, <-chan struct{}) {
+		t.Helper()
+		output, err := os.Create(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { output.Close() })
+		cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "daemon", "--no-keychain", "--socket", socket)
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "TMPDIR="+dir, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+		cmd.Stdout = output
+		cmd.Stderr = output
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		exited := make(chan struct{})
+		var waitErr error
+		go func() { waitErr = cmd.Wait(); close(exited) }()
+		t.Cleanup(func() {
+			cmd.Process.Kill()
+			<-exited
+		})
+		for until := time.Now().Add(10 * time.Second); time.Now().Before(until); time.Sleep(20 * time.Millisecond) {
+			select {
+			case <-exited:
+				data, _ := os.ReadFile(output.Name())
+				t.Fatalf("%s exited before it answered: %v\n%s", name, waitErr, data)
+			default:
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			client, err := rpc.Dial(ctx, socket)
+			cancel()
+			if err == nil {
+				client.Close()
+				return cmd, exited
+			}
+		}
+		t.Fatalf("%s did not answer on %s", name, socket)
+		return nil, nil
+	}
+	first, exited := start("first")
+	if err := first.Process.Signal(syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the killed daemon did not exit")
+	}
+	if info, err := os.Lstat(socket); err != nil || info.Mode()&os.ModeSocket == 0 {
+		t.Fatalf("the killed daemon left no socket to restart over: %v %v", info, err)
+	}
+	start("second")
 }

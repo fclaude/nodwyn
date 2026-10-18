@@ -355,7 +355,11 @@ another data directory, since that daemon's configuration chose its models
 and keys. Everywhere else a task is
 a chat: a request that takes long is a message like any other.
 [The clients](clients.md) lists what each of them can do, and what is
-still built in one and not another.
+still built in one and not another. The console connects again by itself
+when its connection drops, as a phone's does after a sleep, and reloads the
+open task from its log; nothing that was on its way is sent again. When
+nodwyn was upgraded meanwhile, the page says so and offers **Reload**; it
+never reloads by itself, since a reload loses the replies being written.
 `nodwyn -h` lists every command and flag.
 
 ### Programs that keep running
@@ -2646,6 +2650,10 @@ keychain without a passphrase at once, and asks for one at the terminal
 otherwise. Use
 `nodwyn daemon --no-keychain` to skip credential-store startup, and
 `--socket /absolute/private/directory/sock` to override its socket path.
+A daemon that was killed, or lost power, leaves its socket behind; the next
+`nodwyn daemon` finds nothing answering on it, removes it and starts, so a
+service manager can restart the daemon. A socket that still answers is never
+replaced: the second daemon refuses to start.
 The protocol supports session lifecycle, send/abort, subscriptions, paged
 log catch-up, answering prompts (`session.answer`, `session.secret`,
 `session.approval.create`, `session.binding.create`), runs, and what the

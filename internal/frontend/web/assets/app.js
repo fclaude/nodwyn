@@ -95,10 +95,18 @@ function showDown(detail) {
   gate([
     h("div", { class: "brand" }, "nodwyn", h("span", {}, ".")),
     h("h1", {}, "Connection lost"),
-    h("p", {}, "nodwyn isn't answering. Nothing was retried: when it's back, reconnect and the conversation reloads from its record."),
+    h("p", {}, "nodwyn isn't answering. This page connects again by itself, and the conversation reloads from its record; nothing that was on its way is sent again."),
     detail ? h("p", { class: "error" }, detail) : null,
-    h("button", { type: "button", class: "btn accent big", onclick: () => conn.connect() }, "Reconnect"),
+    h("p", { class: "retry-text", "aria-live": "off" }, retryText()),
+    h("button", { type: "button", class: "btn accent big", onclick: () => conn.connect() }, "Reconnect now"),
   ]);
+}
+// retryText says what a connection that is not live is doing: waiting
+// for its next try, or trying.
+function retryText() {
+  if (conn.state !== "down") return "Reconnecting…";
+  const seconds = Math.max(1, Math.ceil((conn.retryAt - Date.now()) / 1000));
+  return `Trying again in ${seconds} s.`;
 }
 
 // ---------- shell ----------
@@ -269,16 +277,45 @@ window.addEventListener("error", (event) => {
   if (event.message && !event.message.startsWith("ResizeObserver")) toastError(event.message);
 });
 desk.notifier.onOpen = (id) => navigate(`#/task/${id}`);
+// While the connection waits for its next try, the banner over the page (or
+// the gate, before it was ever live) counts down the seconds. The count is
+// not announced; the banner's reason is, when it changes.
+let retryTick = 0;
+function showRetry(detail = "") {
+  if (conn.state === "down") setText($("offline-text"), detail ? detail.replace(/\.?$/, ".") : "Disconnected; nothing that was on its way is sent again.");
+  for (const el of document.querySelectorAll(".retry-text")) setText(el, retryText());
+}
+// setText changes what el says only when it differs, so the banner's reason
+// is not read out again every second.
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
+// firstVersion is the daemon's version at this page's first connection. A
+// reconnect that finds another (nodwyn upgraded on an always-on computer,
+// its console restarted with it) leaves the page running the code it loaded
+// with, so the page says so and offers Reload. It never reloads by itself:
+// the drafts are only in this tab's memory (ADR 30, amended 2026-10-17).
+let firstVersion = null;
+function showUpdated() {
+  const version = conn.hello?.version || "";
+  firstVersion ??= version;
+  $("updated").hidden = version === firstVersion;
+  setText($("updated-text"), `nodwyn was restarted as ${version}, and this page still runs the console it loaded before. Reload to run the new one; a reload loses text you have not sent.`);
+}
 conn.onState(async (state, detail) => {
-  $("offline").hidden = state === "live" || state === "connecting" || $("shell").hidden;
+  // A page that was live keeps its banner while it reconnects.
+  $("offline").hidden = state === "live" || $("shell").hidden;
+  clearInterval(retryTick);
+  if (state === "down") retryTick = setInterval(() => showRetry(detail), 1000);
+  showRetry(detail);
   if (state === "unpaired") {
     desk.reset();
     showPairing(detail);
   } else if (state === "down") {
     desk.reset();
     if ($("shell").hidden) showDown(detail);
-    else $("offline").hidden = false;
   } else if (state === "live") {
+    showUpdated();
     dropViews();
     lastRoute = "";
     delete document.documentElement.dataset.ready;
@@ -319,6 +356,14 @@ document.addEventListener("click", (event) => {
 $("menu").append(icon("menu", 20));
 $("menu").addEventListener("click", openMenu);
 $("reconnect").addEventListener("click", () => conn.connect());
+$("reload").addEventListener("click", () => location.reload());
+// A phone that wakes, or a laptop back on a network, reconnects at once
+// rather than at its next try, and a connection that only looks live is
+// found out (Connection.wake).
+window.addEventListener("online", () => conn.wake());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") conn.wake();
+});
 
 // Wails can install the native bridge after the first console render.
 window.addEventListener("nodwyn-desktop-ready", () => render(true));

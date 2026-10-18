@@ -75,6 +75,7 @@ type bridge struct {
 	mu      sync.Mutex
 	tickets map[string]time.Time // launch tickets not yet used, by value, with their expiry
 	recheck time.Duration        // how often an open device console rechecks its pairing; 0 is deviceRecheck
+	ping    time.Duration        // how often an open console is pinged; 0 is pingEvery
 }
 
 // Server is a browser console not yet serving: it can mint launch tickets
@@ -249,6 +250,18 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.attach(w, r, device)
+	case "/paired":
+		// A socket refused before it opened tells the console nothing of
+		// why, so it asks here: a browser this console does not take pairs
+		// again, and one that could not reach it tries again. It learns no
+		// more than a refused socket would have told it.
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		_, ok := b.authenticated(r)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"paired":%t}`, ok)
 	case "/socket":
 		device, ok := b.authenticated(r)
 		if r.Method != http.MethodGet || r.Header.Get("Origin") != origin || !ok {
@@ -409,6 +422,15 @@ const maxRequest = 1 << 20
 // only watching.
 const deviceRecheck = 5 * time.Second
 
+// pingEvery is how often the bridge pings an open console, which has twice
+// that to answer: longer than a relayed call holds up the reading of its
+// answer. A proxy in front of the console (tailscale serve) or a network on
+// the way may close a connection that carries nothing for a while, and a
+// browser that slept or lost its network leaves one open with nobody at the
+// other end. The pings keep the first open and end the second, with the
+// daemon connection it holds.
+const pingEvery = 30 * time.Second
+
 func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token string) {
 	ctx, cancel := context.WithCancel(b.ctx)
 	defer cancel()
@@ -452,6 +474,30 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 		conn.Close(websocket.StatusPolicyViolation, "this device was revoked")
 		cancel()
 	}
+	go func() {
+		every := b.ping
+		if every <= 0 {
+			every = pingEvery
+		}
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				// The pong is read by the loop below, which reads the
+				// console's requests.
+				pingCtx, stop := context.WithTimeout(ctx, 2*every)
+				err := conn.Ping(pingCtx)
+				stop()
+				if err != nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
 	if device != "" {
 		go func() {
 			every := b.recheck

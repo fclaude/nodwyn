@@ -663,6 +663,15 @@ Secure, and still speaks http to the proxy. A refused origin is answered with
 the one expected. Every answer from a device is recorded as the bridge's
 kernel identity followed by `via web:NAME`.
 
+The console pings an open page every 30 seconds and closes a connection that
+has not answered within a minute: a proxy such as `tailscale serve`, or a
+network on the way, keeps a connection that carries pings open, and a phone
+that slept or lost its network gives back its connection to the daemon. The
+page connects again by itself when it can (the conversation, above): after
+a sleep, a change of network or a restart of `nodwyn ui` or the daemon, a
+paired device comes back without pairing again, and a revoked one goes to
+pairing and stops trying.
+
 A device can read tasks, start and steer them, and answer approvals — one-time,
 for this turn, or for the session, as the core offers; it can also restore a
 kept file version, save project notes, read the policy files, see the
@@ -743,9 +752,35 @@ first line. It reads a fixed log prefix in pages
 before applying live events, deduplicating durable sequence numbers. Reloading
 the page reads that prefix again. Statistics includes usage from the recorded
 replies in that history, just as it does for replies delivered live; nested
-shell decisions inside read-style wrappers do not interrupt replay. A reconnect
-never retries an operation. Browser reload retains pairing through the session
-cookie, and the address keeps the task, so the same task opens again.
+shell decisions inside read-style wrappers do not interrupt replay. Browser
+reload retains pairing through the session cookie, and the address keeps the
+task, so the same task opens again.
+
+A connection that drops comes back by itself. The banner over the page says
+it is disconnected and counts down to the next try: a second, then two, four
+and so on up to thirty seconds, and no sooner than every five while the
+daemon is not running, which the banner says. **Reconnect now** does not
+wait, and neither does the page when it is shown again or the network comes
+back; a connection that looks live then is asked to answer within ten
+seconds, since after a sleep a socket can look open with nobody at the other
+end. A page that was never live shows the same on its connection card.
+Coming back reads the desk and the open task again from the log, as a first
+connection does. Nothing that was on its way when the connection dropped is
+sent again: a request waiting then fails and says so, and the reply box
+keeps its draft. Project notes being edited and a worktree review's comments
+not yet sent are lost, as on a reload. A browser the console no longer takes
+goes to pairing and stops trying: the console closes a revoked device's
+socket saying so, and a socket refused before it opened is followed by `GET
+/paired`, which says whether the console takes this browser; a stopped
+console, or the 5xx a proxy in front of one answers, is tried again.
+A page that comes back to a daemon of another version than the one it first
+connected to (nodwyn upgraded, as `make promote` does on an always-on
+computer) still runs the console it loaded: a banner says nodwyn was
+restarted as that version and offers **Reload**. The page never reloads by
+itself, since the reply drafts and the New task message are only in this
+tab's memory and a reload loses them; they are not handed over through the
+browser's storage (ADR 30, amended 2026-10-17). A reconnect to the same
+version shows no banner.
 Untrusted text is rendered as literal text, never HTML or executable Markdown.
 Quotes and lists nest at most eight deep; deeper lines show as text. A record
 the console cannot draw shows a line saying so in its place, and the rest of

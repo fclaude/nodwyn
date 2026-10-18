@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"net"
@@ -761,6 +762,126 @@ func TestSocketSaysTheDaemonIsNotRunning(t *testing.T) {
 	_, _, err = conn.Read(ctx)
 	if status := websocket.CloseStatus(err); status != websocket.StatusTryAgainLater {
 		t.Fatalf("closed with %v (%v)", status, err)
+	}
+}
+
+// A socket refused before it opened tells the console nothing of why, so it
+// asks /paired whether the console takes it: one revoked, or paired with an
+// earlier run of the console, pairs again, and only one that cannot reach
+// the console keeps trying to.
+func TestPairedSaysWhetherTheConsoleTakesThisBrowser(t *testing.T) {
+	devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
+	phone, err := devices.Pair("phone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tablet, err := devices.Pair("tablet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := devices.Revoke("tablet"); err != nil {
+		t.Fatal(err)
+	}
+	b := &bridge{ctx: context.Background(), code: testCode, session: testSession, devices: devices, extra: []string{"desk.test:34567"}}
+	b.listensAt("127.0.0.1:34567")
+	for _, tt := range []struct {
+		name, host, from, cookie, site string
+		status                         int
+		body                           string
+	}{
+		{"this computer", "127.0.0.1:34567", "127.0.0.1:50000", b.cookieName() + "=" + testSession, "same-origin", 200, `{"paired":true}`},
+		{"an earlier run", "127.0.0.1:34567", "127.0.0.1:50000", b.cookieName() + "=test-only-an-earlier-run-000000000000000", "same-origin", 200, `{"paired":false}`},
+		{"never paired", "127.0.0.1:34567", "127.0.0.1:50000", "", "same-origin", 200, `{"paired":false}`},
+		{"a paired device", "desk.test:34567", "100.101.102.103:50000", deviceCookie + "=" + phone, "same-origin", 200, `{"paired":true}`},
+		{"a revoked device", "desk.test:34567", "100.101.102.103:50000", deviceCookie + "=" + tablet, "same-origin", 200, `{"paired":false}`},
+		{"this computer's cookie from another", "desk.test:34567", "100.101.102.103:50000", b.cookieName() + "=" + testSession, "same-origin", 200, `{"paired":false}`},
+		{"another site", "127.0.0.1:34567", "127.0.0.1:50000", b.cookieName() + "=" + testSession, "cross-site", 403, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "http://"+tt.host+"/paired", nil)
+			r.RemoteAddr = tt.from
+			r.Header.Set("Sec-Fetch-Site", tt.site)
+			if tt.cookie != "" {
+				r.Header.Set("Cookie", tt.cookie)
+			}
+			w := httptest.NewRecorder()
+			b.ServeHTTP(w, r)
+			if w.Code != tt.status || (tt.body != "" && strings.TrimSpace(w.Body.String()) != tt.body) {
+				t.Fatalf("%d %s, want %d %s", w.Code, w.Body.String(), tt.status, tt.body)
+			}
+		})
+	}
+}
+
+// The bridge pings an open console: a proxy in front of it (tailscale serve)
+// may close a connection that carries nothing for a while, and a browser
+// that slept or lost its network leaves one open, holding a daemon
+// connection, with nobody at the other end. One that answers the pings stays
+// open; one that does not is closed.
+func TestASilentConsoleIsPingedAndClosed(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	socket := filepath.Join(root, "run", "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	done := make(chan error, 1)
+	go func() { done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: paths}) }()
+	defer func() { cancel(); <-done }()
+
+	const every = 200 * time.Millisecond
+	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession, ping: every}
+	server := httptest.NewUnstartedServer(b)
+	b.listensAt(server.Listener.Addr().String())
+	server.Start()
+	defer server.Close()
+	open := func() *websocket.Conn {
+		t.Helper()
+		header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+		conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { conn.CloseNow() })
+		return conn
+	}
+	// A browser reads all the time, which answers the pings.
+	answering := open()
+	replies := make(chan error, 8)
+	go func() {
+		for {
+			var reply map[string]json.RawMessage
+			if err := wsjson.Read(ctx, answering, &reply); err != nil {
+				replies <- err
+				return
+			}
+			replies <- nil
+		}
+	}()
+	silent := open()
+	time.Sleep(6 * every)
+	select {
+	case err := <-replies:
+		t.Fatalf("the console that answers the pings got %v before it asked anything", err)
+	default:
+	}
+	if err := wsjson.Write(ctx, answering, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "attention.list", "params": map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-replies; err != nil {
+		t.Fatalf("the console that answers the pings was closed: %v", err)
+	}
+	readCtx, stop := context.WithTimeout(ctx, 2*time.Second)
+	defer stop()
+	if _, _, err := silent.Read(readCtx); err == nil || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("the console that answered no ping is still open (%v)", err)
 	}
 }
 

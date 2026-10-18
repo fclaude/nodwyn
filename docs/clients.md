@@ -48,6 +48,7 @@ it can see the thing but not change it.
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete only on this computer | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | Ctrl+Q detaches and the turn goes on; when the TUI's own process serves the daemon, quitting ends its tasks, as closing `nodwyn app` does | aborts it | — |
+| Come back after the connection drops | yes, by itself after a wait that grows to 30 s, at once when the page is shown again or the network returns; reloads the open task from its log and sends nothing again; a revoked device stops trying; back to an upgraded daemon (another version in `hello`), says so and offers Reload, keeping the reply drafts until the reader reloads | Ctrl+R reconnects; not built: reconnecting by itself | ends, saying it lost the daemon; not built: reconnecting | — |
 | Close a task: its log released, a worktree with nothing unlanded removed (`session.close`) | yes, the task's **⋯** menu, Close | yes, `:close`, which then quits | quitting closes a task it opened; one another client had open stays open | — |
 
 ## The conversation
