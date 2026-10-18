@@ -1,12 +1,15 @@
 package rpc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,13 +19,14 @@ import (
 )
 
 type scheduleSetParams struct {
-	ID      string  `json:"id"`
-	Message string  `json:"message,omitempty"`
-	Repeat  string  `json:"repeat,omitempty"`
-	At      string  `json:"at,omitempty"`
-	Cost    float64 `json:"cost,omitempty"`
-	Paused  bool    `json:"paused,omitempty"`
-	Remove  bool    `json:"remove,omitempty"`
+	ID      string         `json:"id"`
+	Message string         `json:"message,omitempty"`
+	Repeat  string         `json:"repeat,omitempty"`
+	At      string         `json:"at,omitempty"`
+	Rule    *schedule.Rule `json:"rule,omitempty"`
+	Cost    float64        `json:"cost,omitempty"`
+	Paused  bool           `json:"paused,omitempty"`
+	Remove  bool           `json:"remove,omitempty"`
 }
 
 type schedulePauseParams struct {
@@ -30,15 +34,30 @@ type schedulePauseParams struct {
 	Paused *bool  `json:"paused"`
 }
 
+// scheduleState is a schedule as clients show it. The daemon says it in
+// words, so that the console and the TUI print the same: the rule in a
+// sentence, each next time as a label, and each recent time with what came of
+// it. History, newest first, stands in for the folded one, oldest first.
 type scheduleState struct {
 	core.ScheduleInfo
-	Next      []time.Time `json:"next"`
-	Timezone  string      `json:"timezone"`
-	Archived  bool        `json:"archived"`
-	Scheduler bool        `json:"scheduler"`
-	// Held says why a due time has not run yet when it waits rather than
-	// being skipped: the keychain is locked (errHeld).
-	Held string `json:"held,omitempty"`
+	Rule      *schedule.Rule    `json:"rule,omitempty"`
+	Sentence  string            `json:"sentence,omitempty"`
+	Next      []time.Time       `json:"next"`
+	NextWords []string          `json:"next_words"`
+	History   []scheduleHistory `json:"history,omitempty"`
+	// Held says why a due time waits rather than running or being
+	// skipped: the keychain is locked and the model needs a key from it, so
+	// the time runs once it is unlocked (errHeld).
+	Held      string `json:"held,omitempty"`
+	Timezone  string `json:"timezone"`
+	Archived  bool   `json:"archived"`
+	Scheduler bool   `json:"scheduler"`
+}
+
+type scheduleHistory struct {
+	core.ScheduleEntry
+	When string `json:"when"`
+	What string `json:"what"`
 }
 
 // errHeld is a due time that waits for the keychain: a closed task's model
@@ -46,12 +65,83 @@ type scheduleState struct {
 // is skipped, lost every run due after a reboot until someone unlocked.
 var errHeld = errors.New("the keychain is locked")
 
-// heldNote is what a schedule whose time waits for the keychain says.
+// heldNote is what a schedule whose next time waits for the keychain says.
 const heldNote = "Waiting for the keychain: the time that is due runs once it is unlocked"
 
 type deferredSkip struct {
 	sequence uint64
 	record   log.ScheduleSkip
+}
+
+// zoneName names the zone the daemon's civil times are in. Go calls the
+// computer's own zone "Local"; its name is in TZ or where /etc/localtime
+// points.
+func zoneName() string {
+	if tz, set := os.LookupEnv("TZ"); set {
+		if tz = strings.TrimPrefix(tz, ":"); tz == "" {
+			return "UTC"
+		} else if !filepath.IsAbs(tz) {
+			return tz
+		}
+	}
+	if target, err := os.Readlink("/etc/localtime"); err == nil {
+		if _, name, found := strings.Cut(target, "zoneinfo/"); found {
+			return name
+		}
+	}
+	name, _ := time.Now().Zone()
+	return name
+}
+
+// preview is what a client shows of a definition before or after it is
+// saved: its rule, the sentence, and the next five times after `after`.
+func preview(d schedule.Definition, after, now time.Time) scheduleState {
+	rule := d.Timetable()
+	state := scheduleState{Rule: &rule, Sentence: d.Sentence(now), Next: []time.Time{}, NextWords: []string{}, Timezone: zoneName()}
+	for i := 0; i < 5; i++ {
+		next := d.Next(after, time.Local)
+		if next.IsZero() {
+			break
+		}
+		state.Next = append(state.Next, next)
+		state.NextWords = append(state.NextWords, schedule.Label(next, now))
+		after = next
+	}
+	return state
+}
+
+var outcomes = map[string]string{
+	"completed":   "Finished",
+	"canceled":    "Stopped",
+	"stopped":     "Stopped at a turn limit",
+	"hard_budget": "Stopped at a hard limit",
+	"spend_limit": "Stopped at the spend limit",
+	"error":       "Failed",
+}
+
+// historyWords says what came of one scheduled time. The newest run with no
+// outcome yet is running when its task is busy; an older one never finished.
+func historyWords(e core.ScheduleEntry, newest, busy bool) string {
+	what := ""
+	switch {
+	case e.Skipped != "":
+		what = "Skipped: " + e.Skipped
+	case e.Outcome == "" && newest && busy:
+		what = "Running"
+	case e.Outcome == "":
+		what = "Did not finish"
+	default:
+		what = cmp.Or(outcomes[e.Outcome], e.Outcome)
+	}
+	switch {
+	case e.Manual:
+		what += " (Run now)"
+	case e.Missed == 1:
+		what += " (late, standing for 1 missed time)"
+	case e.Missed > 1:
+		what += fmt.Sprintf(" (late, standing for %d missed times)", e.Missed)
+	}
+	return what
 }
 
 func (s *server) scheduleState(id string) (scheduleState, error) {
@@ -63,21 +153,28 @@ func (s *server) scheduleState(id string) (scheduleState, error) {
 	if err != nil {
 		return scheduleState{}, err
 	}
-	result := scheduleState{ScheduleInfo: state, Next: []time.Time{}, Timezone: time.Local.String(), Archived: info.Archived, Scheduler: s.schedulerLock != nil}
-	if d := state.Definition; d != nil && d.Definition.Validate() == nil && !d.Paused && !info.Archived {
-		after := state.Cursor
-		for i := 0; i < 5; i++ {
-			next := d.Definition.Next(after, time.Local)
-			if next.IsZero() {
-				break
-			}
-			result.Next = append(result.Next, next)
-			after = next
+	now := time.Now()
+	result := scheduleState{ScheduleInfo: state, Next: []time.Time{}, NextWords: []string{}, Timezone: zoneName(), Archived: info.Archived, Scheduler: s.schedulerLock != nil}
+	if d := state.Definition; d != nil && d.Definition.Validate() == nil {
+		shown := preview(d.Definition, state.Cursor, now)
+		result.Rule, result.Sentence = shown.Rule, shown.Sentence
+		if !d.Paused && !info.Archived {
+			result.Next, result.NextWords = shown.Next, shown.NextWords
 		}
-		if _, open := s.sessions[id]; !open && s.lockedKeyRefusal(core.ModelChoice{}) != "" {
-			if due, _, _ := d.Definition.Due(state.Cursor, time.Now(), time.Local); !due.IsZero() {
-				result.Held = heldNote
-			}
+	}
+	owned, open := s.sessions[id]
+	// A closed task is resumed for its run, and a resume needs the key an
+	// open task already has (executeSchedule).
+	if len(result.Next) > 0 && !open && s.lockedKeyRefusal(core.ModelChoice{}) != "" {
+		result.Held = heldNote
+	}
+	busy := open && (owned.session.Busy() || owned.driver.Active())
+	newest := true
+	for i := len(state.History) - 1; i >= 0; i-- {
+		e := state.History[i]
+		result.History = append(result.History, scheduleHistory{e, schedule.Label(e.Started.In(time.Local), now), historyWords(e, newest, busy)})
+		if e.Skipped == "" {
+			newest = false
 		}
 	}
 	return result, nil
@@ -98,7 +195,12 @@ func (s *server) readSchedule(req request, _ *peer) (any, *rpcError) {
 	return state, nil
 }
 
+// writeSchedule records a schedule with its timetable in words, as the daemon
+// says it now.
 func (s *server) writeSchedule(id string, rec log.SessionSchedule) error {
+	if !rec.Removed {
+		rec.Words = rec.Definition.Sentence(time.Now())
+	}
 	if owned, ok := s.sessions[id]; ok {
 		_, err := owned.session.Record(log.KindSessionSchedule, rec)
 		return err
@@ -111,15 +213,16 @@ func (s *server) setSchedule(req request, client *peer) (any, *rpcError) {
 		return nil, why
 	}
 	var p scheduleSetParams
-	if err := params(req.Params, &p, "id", "message", "repeat", "at", "cost", "paused", "remove"); err != nil {
+	if err := params(req.Params, &p, "id", "message", "repeat", "at", "rule", "cost", "paused", "remove"); err != nil {
 		return nil, err
 	}
 	if p.ID == "" {
 		return nil, failure(-32602, "id is required")
 	}
-	definition := schedule.Definition{Message: p.Message, Repeat: p.Repeat, At: p.At, Cost: p.Cost, Paused: p.Paused}
+	now := time.Now()
+	definition := schedule.Definition{Message: p.Message, Repeat: p.Repeat, At: p.At, Rule: p.Rule, Cost: p.Cost, Paused: p.Paused}
 	if !p.Remove {
-		if err := definition.Validate(); err != nil {
+		if err := settle(&definition, now); err != nil {
 			return nil, failure(-32602, err.Error())
 		}
 	}
@@ -127,11 +230,14 @@ func (s *server) setSchedule(req request, client *peer) (any, *rpcError) {
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}
+	// A change that keeps the timing keeps the schedule's progress. A new
+	// timing starts after now: under it, the times before now were never
+	// due, and running one late for each would be a run nobody asked for.
 	after := time.Time{}
-	if d := old.Definition; d != nil && d.At == p.At && d.Repeat == p.Repeat {
-		after = old.Cursor
-		if d.Paused && !p.Paused {
-			after = time.Now()
+	if d := old.Definition; d != nil {
+		after = now
+		if reflect.DeepEqual(d.Timetable(), definition.Timetable()) && !(d.Paused && !p.Paused) {
+			after = old.Cursor
 		}
 	}
 	rec := log.SessionSchedule{Definition: definition, Actor: client.actor, Removed: p.Remove, After: after}
@@ -198,7 +304,7 @@ func (s *server) runSchedule(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32000, "The scheduler is owned by another daemon")
 	}
 	now := time.Now()
-	if err := s.executeSchedule(p.ID, *state.Definition, log.ScheduleRun{Due: now, Started: now, Manual: true, Actor: client.actor, Cost: state.Definition.Cost}); err != nil {
+	if err := s.executeSchedule(p.ID, *state.Definition, state.Sequence, log.ScheduleRun{Due: now, Started: now, Manual: true, Actor: client.actor, Cost: state.Definition.Cost}); err != nil {
 		skip := log.ScheduleSkip{Due: now, Started: now, Reason: "Run now: " + err.Error()}
 		if recordErr := s.recordSkip(p.ID, skip); recordErr != nil {
 			return nil, failure(-32000, err.Error()+"; could not record the skip: "+recordErr.Error())
@@ -264,6 +370,9 @@ func (s *server) scheduleTick(now time.Time) {
 	if s.scheduleSkips == nil {
 		s.scheduleSkips = map[string]deferredSkip{}
 	}
+	if s.options.Keychain != nil {
+		s.keysTold = false
+	}
 	for _, info := range infos {
 		state, err := s.store().Schedule(info.ID)
 		if err != nil || state.Definition == nil {
@@ -301,7 +410,7 @@ func (s *server) scheduleTick(now time.Time) {
 				// after an unlock runs it once, late, standing for every time
 				// it held, as a time missed while the computer slept does
 				// (ADR 49 §5, ADR 30 amended 2026-10-17).
-				if err := s.executeSchedule(info.ID, *def, run); err != nil && !errors.Is(err, errHeld) {
+				if err := s.executeSchedule(info.ID, *def, state.Sequence, run); err != nil && !errors.Is(err, errHeld) {
 					skip := log.ScheduleSkip{Due: due, Through: through, Started: now, Missed: missed, Reason: err.Error()}
 					// Resume releases the lifecycle lock. A skip for the old
 					// definition must not consume the replacement's times.
@@ -354,7 +463,9 @@ func (s *server) recordSkip(id string, rec log.ScheduleSkip) error {
 	return s.store().SkipSchedule(id, rec)
 }
 
-func (s *server) executeSchedule(id string, def log.SessionSchedule, run log.ScheduleRun) error {
+// executeSchedule sends def's message as a run, unless the schedule changed
+// since sequence was read: resuming the task releases the lifecycle lock.
+func (s *server) executeSchedule(id string, def log.SessionSchedule, sequence uint64, run log.ScheduleRun) error {
 	info, err := s.store().Info(id)
 	if err != nil {
 		return err
@@ -367,7 +478,17 @@ func (s *server) executeSchedule(id string, def log.SessionSchedule, run log.Sch
 	}
 	owned, open := s.sessions[id]
 	if !open {
-		if s.lockedKeyRefusal(core.ModelChoice{}) != "" {
+		if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
+			// A person who chose Run now is looking, and is told why.
+			if run.Manual {
+				return errors.New(why)
+			}
+			// Nobody may be at the computer for a scheduled time, so it says
+			// so on the desktop, once until the keychain is unlocked.
+			if !s.keysTold {
+				s.keysTold = true
+				s.tell(keysTitle, keysBody)
+			}
 			return errHeld
 		}
 		options := s.options
@@ -406,7 +527,7 @@ func (s *server) executeSchedule(id string, def log.SessionSchedule, run log.Sch
 	if err != nil {
 		return err
 	}
-	if current.Definition == nil || *current.Definition != def {
+	if current.Definition == nil || current.Sequence != sequence {
 		return fmt.Errorf("schedule changed while the task resumed")
 	}
 	return owned.session.SendScheduled(def.Message, run)
@@ -414,23 +535,34 @@ func (s *server) executeSchedule(id string, def log.SessionSchedule, run log.Sch
 
 func mustID(id string) json.RawMessage { raw, _ := json.Marshal(idParams{ID: id}); return raw }
 
-func (s *server) nextSchedule(req request, _ *peer) (any, *rpcError) {
-	var d schedule.Definition
-	if err := params(req.Params, &d, "message", "repeat", "at", "cost", "paused"); err != nil {
-		return nil, err
+// settle fills in what a definition leaves to the daemon, the first minute
+// of a rule (now), and checks it. A rule is kept in its normal form.
+func settle(d *schedule.Definition, now time.Time) error {
+	if d.Rule != nil {
+		rule := *d.Rule
+		if rule.Once == "" && rule.From == "" {
+			rule.From = now.Format(schedule.Layout)
+		}
+		d.Rule = &rule
 	}
 	if err := d.Validate(); err != nil {
+		return err
+	}
+	if d.Rule != nil {
+		rule := d.Rule.Normal()
+		d.Rule = &rule
+	}
+	return nil
+}
+
+func (s *server) nextSchedule(req request, _ *peer) (any, *rpcError) {
+	var d schedule.Definition
+	if err := params(req.Params, &d, "message", "repeat", "at", "rule", "cost", "paused"); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	if err := settle(&d, now); err != nil {
 		return nil, failure(-32602, err.Error())
 	}
-	result := scheduleState{Next: []time.Time{}, Timezone: time.Local.String()}
-	after := time.Time{}
-	for i := 0; i < 5; i++ {
-		next := d.Next(after, time.Local)
-		if next.IsZero() {
-			break
-		}
-		result.Next = append(result.Next, next)
-		after = next
-	}
-	return result, nil
+	return preview(d, time.Time{}, now), nil
 }

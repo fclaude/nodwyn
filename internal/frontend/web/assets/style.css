@@ -92,8 +92,12 @@
 /* ---------- base ---------- */
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* The page asks for the whole screen (viewport-fit=cover), so on a phone it
+   keeps out of the notch and the home indicator itself: in an app on the
+   Home Screen nothing else does (ADR 52). The insets are zero elsewhere. */
 body {
   margin: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: var(--bg);
   color: var(--ink);
   font-family: var(--sans);
@@ -791,7 +795,7 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
 /* Messages stack at the top, over the page's heading rather than the composer
    at its foot (toast and toastError in dom.js). */
 .toasts {
-  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 32px));
+  position: fixed; top: calc(16px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 32px));
   display: flex; flex-direction: column; gap: 8px; z-index: 30; pointer-events: none;
 }
 .toast {
@@ -1047,6 +1051,25 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .schedule-form label { display: grid; gap: 6px; }
 .schedule-form textarea { min-height: 80px; width: 100%; }
 .schedule-dialog .row-actions { flex-wrap: wrap; }
+.schedule-timetable { display: grid; gap: 12px; margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.schedule-timetable legend { padding: 0 4px; font-weight: 500; font-size: 13.5px; }
+.schedule-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.schedule-row.schedule-bounds { align-items: end; }
+.schedule-bounds > label { flex: 1 1 180px; }
+.schedule-form .check { display: flex; }
+.schedule-field { display: grid; gap: 6px; justify-items: start; }
+.schedule-times, .schedule-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.schedule-time-row { display: inline-flex; align-items: center; gap: 2px; }
+#schedule-every { width: 90px; }
+#schedule-dates { width: 140px; }
+.schedule-sentence { font-family: var(--serif); font-size: 17px; margin: 0; }
+.hint.warn { color: var(--warn-ink); }
+.schedule-preview { display: grid; gap: 4px; }
+.schedule-preview p { margin: 0; }
+.schedule-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.schedule-history li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.schedule-when { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.schedule-cost { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); }
 
 .conversation-search-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 24px 0 12px; }
 .conversation-search-form label { display: grid; gap: 6px; flex: 1 1 220px; }
@@ -1066,7 +1089,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
    defined it, gives way to it at equal weight. */
 @media (max-width: 760px) {
   body { font-size: 15px; }
-  .toasts { top: 64px; }
+  .toasts { top: calc(64px + env(safe-area-inset-top)); }
   .shell { flex-direction: column; }
   .topbar {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1075,6 +1098,8 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .sidebar {
     position: fixed; inset: 0 auto 0 0; width: min(300px, 86vw); z-index: 20; transform: translateX(-102%);
     transition: transform 0.18s ease; box-shadow: var(--shadow);
+    /* The drawer is fixed to the screen's edges, outside the body's padding. */
+    padding: calc(18px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
   }
   .shell.menu-open .sidebar { transform: none; }
   .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 15; }

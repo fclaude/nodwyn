@@ -329,3 +329,105 @@ func TestScheduleIsReadOnceWhileTheLogIsUnchanged(t *testing.T) {
 		t.Fatalf("a reader changed the cached schedule: %q", third.Definition.Message)
 	}
 }
+
+// A schedule's history says what each recent time came to: a run's outcome
+// and what it cost, its follow-ups included, or why a time was skipped. It
+// is folded into the index, and a rebuilt index says the same as one
+// extended event by event.
+func TestScheduleHistorySaysWhatEachTimeCameTo(t *testing.T) {
+	srv := fake.NewT(t, fake.Turn{Content: "first run"}, fake.Turn{Content: "second run"})
+	defer srv.Close()
+	o := diskOptions(t)
+	o.NoConfirm = false
+	o.Provider = llm.NewOllama(srv.URL)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := log.SessionSchedule{Definition: schedule.Definition{Message: "check", Rule: &schedule.Rule{Every: 30, From: "2026-10-19T00:00"}}}
+	if _, err = s.Record(log.KindSessionSchedule, d); err != nil {
+		t.Fatal(err)
+	}
+	cost := func(c float64) {
+		t.Helper()
+		if _, err := s.Record(log.KindLLMResp, log.LLMResp{Usage: log.Usage{Cost: &c}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := Store{Dir: o.Paths.SessionsDir}
+	// Spend before any run is the task's, not a run's.
+	cost(4)
+	due := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
+	if err = s.SendScheduled("check", log.ScheduleRun{Due: due, Through: due.Add(time.Hour), Started: due.Add(time.Hour), Missed: 2}); err != nil {
+		t.Fatal(err)
+	}
+	followBudget(t, s, func(event.Checkpoint) {})
+	cost(1.5)
+	if _, err = s.Record(log.KindScheduleSkip, log.ScheduleSkip{Due: due.Add(90 * time.Minute), Through: due.Add(90 * time.Minute), Started: due.Add(90 * time.Minute), Reason: "task is waiting for an answer"}); err != nil {
+		t.Fatal(err)
+	}
+	// A follow-up after the skip still belongs to the run before it.
+	cost(0.5)
+	if err = s.SendScheduled("check", log.ScheduleRun{Due: due.Add(2 * time.Hour), Started: due.Add(2 * time.Hour), Manual: true}); err != nil {
+		t.Fatal(err)
+	}
+	followBudget(t, s, func(event.Checkpoint) {})
+	cost(0.25)
+	id := s.ID()
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	want := []ScheduleEntry{
+		{Due: due, Started: due.Add(time.Hour), Missed: 2, Outcome: "completed", Cost: 2},
+		{Due: due.Add(90 * time.Minute), Started: due.Add(90 * time.Minute), Skipped: "task is waiting for an answer"},
+		{Due: due.Add(2 * time.Hour), Started: due.Add(2 * time.Hour), Manual: true, Outcome: "completed", Cost: 0.25},
+	}
+	check := func(state ScheduleInfo) {
+		t.Helper()
+		if len(state.History) != len(want) {
+			t.Fatalf("history %+v", state.History)
+		}
+		for i, e := range state.History {
+			e.Seq = 0
+			if !e.Due.Equal(want[i].Due) || !e.Started.Equal(want[i].Started) {
+				t.Fatalf("entry %d at %s %s", i, e.Due, e.Started)
+			}
+			e.Due, e.Started = want[i].Due, want[i].Started
+			if math.Abs(e.Cost-want[i].Cost) < 1e-9 {
+				e.Cost = want[i].Cost
+			}
+			if e != want[i] {
+				t.Fatalf("entry %d: got %+v want %+v", i, e, want[i])
+			}
+		}
+	}
+	extended, err := store.Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(extended)
+	if err := os.Remove(indexPath(o.Paths.SessionsDir, id)); err != nil {
+		t.Fatal(err)
+	}
+	infoCache.mu.Lock()
+	clear(infoCache.entries)
+	infoCache.mu.Unlock()
+	rebuilt, err := store.Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(rebuilt)
+	// The history keeps the latest times only.
+	for n := 0; n < scheduleHistory+5; n++ {
+		if err := store.SkipSchedule(id, log.ScheduleSkip{Due: due.Add(time.Duration(n) * time.Minute), Reason: "test"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, err := store.Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.History) != scheduleHistory || !state.History[len(state.History)-1].Due.Equal(due.Add((scheduleHistory+4)*time.Minute)) {
+		t.Fatalf("%d entries, the newest due %s", len(state.History), state.History[len(state.History)-1].Due)
+	}
+}

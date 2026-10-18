@@ -30,6 +30,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -43,6 +44,9 @@ import (
 	webui "github.com/fclaude/nodwyn/internal/frontend/web"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/schedule"
+	"github.com/fclaude/nodwyn/internal/startup"
 	fakechat "github.com/fclaude/nodwyn/test/fakes/chat"
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
 	fakedrive "github.com/fclaude/nodwyn/test/fakes/drive"
@@ -71,6 +75,7 @@ func main() {
 	docs := flag.Bool("docs", false, "keep a Google credential in a throwaway keychain, bound to a fake Drive that takes uploads")
 	oauthOnly := flag.Bool("oauth-only", false, "run only a fake OAuth2 provider (client id demo-client) and print its endpoints")
 	chatOnly := flag.Bool("chat-only", false, "run only a fake chat-completions provider and print its address and key")
+	locked := flag.Bool("locked", false, "a keychain with a passphrase (demo-passphrase), left locked, holding the key the model needs, and a task scheduled for 2099")
 	flag.DurationVar(&pace, "pace", 400*time.Millisecond, "how long the scripted model waits before each reply")
 	flag.Parse()
 	if *oauthOnly {
@@ -112,13 +117,13 @@ func main() {
 		model.Close()
 		return
 	}
-	if err := run(*seed, *port, *docs, *dir); err != nil {
+	if err := run(*seed, *port, *docs, *locked, *dir); err != nil {
 		fmt.Fprintln(os.Stderr, "demo:", err)
 		os.Exit(1)
 	}
 }
 
-func run(seed bool, port int, docs bool, given string) error {
+func run(seed bool, port int, docs, locked bool, given string) error {
 	root, kept := given, given != ""
 	if !kept {
 		var err error
@@ -181,6 +186,41 @@ func run(seed bool, port int, docs bool, given string) error {
 		}
 		cfg.Docs.GoogleUploadURL = drive.UploadURL()
 	}
+	if locked {
+		// A task scheduled far ahead, made before the model needed a key,
+		// then a keychain the daemon starts without: what a daemon started
+		// at login finds when the keychain has a passphrase (ADR 53 §11).
+		if err := scheduledTask(paths, cfg, filepath.Join(root, "work", "receipts")); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(paths.Keychain), 0o700); err != nil {
+			return err
+		}
+		keys, err := keychain.Create(paths.Keychain, keychain.FastKDF, []byte("demo-passphrase"))
+		if err != nil {
+			return err
+		}
+		// The model is then a chat-completions one that wants a key, as
+		// an Ollama model never does, with its key bound to its host.
+		models := fakechat.New(chatKey, fakechat.Model{ID: "fast"})
+		defer models.Close()
+		if _, err := keys.Add("demo-model", []byte(chatKey)); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(paths.ConfigDir, 0o700); err != nil {
+			return err
+		}
+		for _, method := range []string{"POST", "GET"} {
+			row, err := binding.Exact("demo-model", "127.0.0.1", method, "header:Authorization:Bearer")
+			if err != nil {
+				return err
+			}
+			if err := binding.AppendExact(context.Background(), paths.Bindings, row); err != nil {
+				return err
+			}
+		}
+		cfg.Control = config.Model{Provider: "openai", URL: models.V1(), Model: "fast", Credential: "demo-model"}
+	}
 	// The demo's configuration is in its config.toml, as a daemon's is, so
 	// Settings changes it there as it would anyone's.
 	raw, _, err := config.SetControl(nil, cfg.Control)
@@ -214,7 +254,10 @@ func run(seed bool, port int, docs bool, given string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	daemonDone := make(chan error, 1)
-	go func() { daemonDone <- rpc.Serve(ctx, listener, options) }()
+	// Its login item goes in a home of its own, never the person's.
+	home := filepath.Join(root, "home")
+	login := rpc.WithStartup(startup.Place{GOOS: goruntime.GOOS, Home: home, ConfigHome: filepath.Join(home, ".config")}, filepath.Join(root, "bin", "nodwyn"))
+	go func() { daemonDone <- rpc.Serve(ctx, listener, options, login) }()
 
 	// A git repository with one commit, for tasks in worktrees of their
 	// own (ADR 34); the other folders stay plain folders, as the checks
@@ -648,4 +691,22 @@ func respond(req fake.Request) fake.Turn {
 	default:
 		return fake.Turn{Content: "Done. Each row now shows **when it last changed** and **whether it's running**:\n\n```js\nconst meta = [session.repo, when, state].join(\" · \");\n```\n\nHover a row to see its id.", Chunk: 20}
 	}
+}
+
+// scheduledTask makes a task in dir with a schedule whose first run is in
+// 2099, so that none runs while a check looks at it.
+func scheduledTask(paths config.Paths, cfg config.Config, dir string) error {
+	if err := writeRepo(dir, "receipts"); err != nil {
+		return err
+	}
+	session, err := core.New(core.Options{Config: cfg, Paths: paths, Version: "demo", Repo: dir})
+	if err != nil {
+		return err
+	}
+	id := session.ID()
+	if err := session.Close(); err != nil {
+		return err
+	}
+	rule := schedule.Rule{At: []string{"09:00"}, From: "2099-10-16T00:00"}
+	return core.Store{Dir: paths.SessionsDir}.SetSchedule(id, log.SessionSchedule{Definition: schedule.Definition{Message: "Summarize the new receipts", Rule: &rule}})
 }

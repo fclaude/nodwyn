@@ -704,11 +704,14 @@ type ImageGap struct {
 
 // SessionSchedule is chosen by a person on this computer, never by Scheme.
 // After preserves automatic progress when paused or edited without retiming.
+// Words is the timetable as the daemon said it when the record was written,
+// so that every client shows the record in the same words.
 type SessionSchedule struct {
 	schedule.Definition
 	Actor   string    `json:"actor"`
 	Removed bool      `json:"removed,omitempty"`
 	After   time.Time `json:"after"`
+	Words   string    `json:"words,omitempty"`
 }
 
 // ScheduleRun claims its due interval before starting work. A manual run does

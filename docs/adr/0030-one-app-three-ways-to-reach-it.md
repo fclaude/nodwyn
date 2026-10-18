@@ -461,6 +461,13 @@ its configuration and its keys. The selfcheck and `cmd/nodwyn`'s tests set
 their own, and line mode refuses a daemon whose tasks are not in its data
 directory, closing the task it opened there before any model is asked.
 
+## Amendment 2026-10-17: the phone view is an app on the Home Screen (ADR 52)
+
+The phone view (§4, §6) installs: over https the console serves a manifest,
+icons and a service worker that caches nothing, a phone adds it to its Home
+Screen, and its notices are shown through the worker, the only way a phone
+shows them. ADR 52 records the choice of a web app over a native shell.
+
 ## Amendment 2026-10-17: a computer nobody sits at
 
 The person runs nodwyn on a server nobody sits at and reaches it from a

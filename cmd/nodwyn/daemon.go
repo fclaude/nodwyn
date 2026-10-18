@@ -47,5 +47,5 @@ func runDaemon(paths config.Paths, args []string, noKeychain bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	fmt.Fprintln(os.Stderr, "daemon: listening on", *socket)
-	return rpc.Serve(ctx, listener, options)
+	return rpc.Serve(ctx, listener, options, daemonOptions()...)
 }

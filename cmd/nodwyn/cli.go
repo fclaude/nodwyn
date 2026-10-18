@@ -51,6 +51,7 @@ var commands = map[string]func(*cli) error{
 	"mcp":        (*cli).mcp,
 	"paths":      (*cli).showPaths,
 	"trust":      (*cli).trust,
+	"startup":    (*cli).startup,
 	"repl":       (*cli).repl,
 	"eval":       (*cli).eval,
 }

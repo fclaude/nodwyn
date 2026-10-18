@@ -2,7 +2,9 @@
 
 - Status: accepted; turn limits (§2), recorded worktree bases (§3), the log
   index (§10), console history and totals (§11), and scheduler (§1, §4–§9, §12)
-  implemented 2026-10-15; login startup not built
+  implemented 2026-10-15; §4's five repeats replaced by rules, said in the
+  daemon's words, with each schedule's recent runs, 2026-10-17 (amended);
+  login startup built 2026-10-17 as ADR 53's slice 0
 - Date: 2026-10-15
 - Amends: 18 (a task's turn limits can be off), 34 (a worktree made again
   records its new base), 9 (windows are built from a suffix of the log)
@@ -449,6 +451,109 @@ a terminal, with a test in each), which is more than a bounded fix, and
 `:earlier` command, keeping `History` for a session whose log is not a file;
 until then `nodwyn replay` and the console are how to read a task whose log is
 that large.
+
+## Amendment 2026-10-17: a timetable you can say, in the daemon's words
+
+§4 offered five repeats from one local minute. The person could not say
+"every 30 minutes", "every 30 minutes in working hours" or "Tuesdays and
+Thursdays at 15:00", and asked for those, for windows, monthly times and an
+end date, for the daemon to say when in words, for a schedule's run history,
+and for the zone the console names "Local" to be named. A review of the
+console (2026-10-17) also found the same next time written three ways (Home's
+"Next 2026-10-18 16:51 -07:00 · Local", the dialog's "tomorrow 4:51 PM, then
+every day" and its raw "daily"), the phrase built in the console's
+JavaScript, which the TUI would have had to build again.
+
+### Decision
+
+1. **A schedule's timing is a rule** (`schedule.Rule`), in the daemon's local
+   civil time. A rule runs once at a minute, or on days and at times of day:
+   the days are every day, chosen weekdays, dates of the month, or the nth
+   (or last) of one weekday in the month; the times are up to 48 set times,
+   or an interval of 5 minutes to 24 hours counted from a window's start
+   (midnight without one) through its end, inclusive. Counting from the
+   window's start each day makes every 30 minutes fall on :00 and :30 and
+   every 45 minutes from 09:00 fall at 09:00 again the next day, which a
+   person can predict; an interval counted from the last run drifts. `from`
+   is the first minute it may run, filled in with now when it is missing,
+   and `until` its last day. Five minutes is the shortest interval: each run
+   is a model's turn. A window that crosses midnight is refused rather than
+   given a day it belongs to. Cron expressions stay out, as §4's last
+   paragraph had them: every time the person named fits a rule, and a rule
+   reads as a sentence.
+2. **A schedule from before rules keeps its times.** Its `repeat` and `at`
+   are read as the rule they meant: once, every 60 minutes between the
+   minute's first and last hour of each day for hourly, and set times on
+   every day, weekdays or the first time's weekday. No log is rewritten.
+   `TestRepeatsFromBeforeRulesKeepTheirTimes` compares 400 times of each
+   against the old arithmetic, kept in the test as its oracle, across summer
+   time in Los Angeles, Lord Howe (half an hour), Santiago (at midnight),
+   London and Kolkata. The old arithmetic gave a skipped hour's minute twice
+   and its search for the next time gave it once; a rule gives it once.
+3. **Times are stepped through day by day in civil time**, each minute
+   resolved as before (a skipped minute to the next valid one, several
+   becoming one; a repeated minute to its first occurrence). Looking back
+   for a repeated minute is done only when the offset fell in the three
+   hours before it, so a week asleep with a 5-minute interval coalesces in
+   one pass.
+4. **A new timing starts after now.** A change that keeps the timing (the
+   same rule in normal form: days in the week's order, times and dates
+   sorted, each once) keeps the schedule's progress, as before; a new timing
+   used to start its series at its first minute, and a first minute in the
+   past ran once, late, for every time since. Under the new timing those
+   times were never due. A brand-new schedule still starts at its first
+   minute, which is now unless chosen, so the console no longer sets it a
+   minute ahead and runs a new daily schedule at once.
+5. **The daemon says it in words, and every client prints them.** `schedule.next`
+   and `schedule.read` return the rule's `sentence`, `next_words` (each next
+   time as a label in the daemon's zone, the year added when it is not this
+   one) and `timezone`, the zone's name from TZ or `/etc/localtime`: Go names
+   the computer's zone "Local". `session.schedule` records carry `words`,
+   the sentence when written, so a transcript shows a past record as it was
+   said then. The console prints these and works out no times; the TUI can
+   print the same when it shows schedules. The words are English with a
+   24-hour clock, whatever the browser's locale.
+6. **A schedule's recent runs are folded into the log index** beside the
+   schedule: the latest twenty scheduled times, each a run (when, how its
+   own turn ended, what its known requests cost, a person's follow-ups in
+   it included, since they share its spend limit) or a time skipped and why.
+   `schedule.read` gives them newest first with a label and words ("Finished
+   (Run now)", "Skipped: task is busy", "Running"). The index version moved
+   to 7, so older indexes rebuild. The index stays a revocable view: every
+   field is folded from `schedule.run`, `schedule.skip`, `turn.end` and the
+   requests' costs in the log.
+7. **A run is refused only when the schedule changed.** `executeSchedule`
+   compared the definition it was handed with the one read after resuming
+   the task, as values. A rule is held by pointer, so every schedule with a
+   rule would have been called changed and skipped: it now compares the
+   record's sequence. `TestSchedulerRunsARule` is the regression.
+
+### Not built
+
+A zone chosen per schedule (the rule runs in the daemon's zone); schedules
+in the TUI (it shows neither a `session.schedule` record nor a run's marker,
+`docs/clients.md`); a cost estimate per day in the editor; event triggers
+and workflows, which the proposal of the same day keeps for later slices.
+
+### Checks
+
+`internal/schedule` (the oracle above; each rule form, windows, the 31st,
+the last Friday, until, from, both summer-time edges; coalescing; refusals;
+sentences; normal form), `internal/core`
+(`TestScheduleHistorySaysWhatEachTimeCameTo`, an extended and a rebuilt
+index agreeing), `internal/frontend/rpc` (`TestScheduleRulesAreSaidInWords`,
+`TestSchedulerRunsARule`, `TestTheZoneIsNamed`, words in the busy, running
+and Run now histories), and the `schedule` browser check (creation at set
+days, the preview's words and refusal, the request sent, Home's card, the
+transcript's record, editing to an interval and a monthly rule, a last day,
+recent runs after Run now, and the phone layout).
+
+Found by validate's run of every browser check at once: a task's **⋯** menu
+closed itself when the heading was drawn again between the click that opened
+it and its toggle event, which comes a task later, so Schedule… could not be
+chosen until something drew the heading again. The heading now takes the
+menu's state from the page. The `schedule` check opens the menu and draws the
+heading again inside one task; it fails without the change.
 
 ## Amendment 2026-10-17: a locked keychain holds a scheduled time
 

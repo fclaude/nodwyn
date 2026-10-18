@@ -269,7 +269,7 @@ export class Desk {
   }
 }
 
-// Desktop notifications are generic: they never carry task text, arguments or
+// Notifications are generic: they never carry task text, arguments or
 // diffs. The choice is kept in this browser, so a person who turned them on
 // once is still told the next day that a task waits for an answer. A browser
 // asks permission only when it is turned on; a stored "on" counts only while
@@ -289,6 +289,10 @@ class Notifier {
     this.choice = storedNotify(); // "on", "off", or null when never chosen
     this.open = new Map();
     this.onOpen = null;
+    // The service worker's registration, once it is ready (ADR 52): a phone
+    // shows a notice only through it, since Android's Chrome refuses
+    // `new Notification` and an app on an iPhone's Home Screen has none.
+    this.worker = null;
   }
   get native() {
     return typeof window.nodwynNotify === "function";
@@ -335,8 +339,17 @@ class Notifier {
       return;
     }
     if (!document.hidden || Notification.permission !== "granted") return;
+    const tag = `nodwyn-${state.id}`;
+    if (this.worker) {
+      // The task's id is data, never shown: a click on the notice reaches the
+      // worker, which asks this page, or a new one, to open it.
+      const worker = this.worker;
+      worker.showNotification("nodwyn needs your answer", { body: "Open nodwyn to review what it asks.", tag, data: { id: state.id } }).catch(() => {});
+      this.open.set(state.id, { close: () => worker.getNotifications({ tag }).then((shown) => shown.forEach((n) => n.close()), () => {}) });
+      return;
+    }
     try {
-      const n = new Notification("nodwyn needs your answer", { body: "Open nodwyn to review what it asks.", tag: `nodwyn-${state.id}` });
+      const n = new Notification("nodwyn needs your answer", { body: "Open nodwyn to review what it asks.", tag });
       n.onclick = () => {
         window.focus();
         this.onOpen?.(state.id);

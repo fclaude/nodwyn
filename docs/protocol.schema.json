@@ -974,6 +974,43 @@
       ],
       "type": "object"
     },
+    "core.ScheduleEntry": {
+      "properties": {
+        "cost": {
+          "type": "number"
+        },
+        "due": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "manual": {
+          "type": "boolean"
+        },
+        "missed": {
+          "type": "integer"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "string"
+        },
+        "started": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "due",
+        "started"
+      ],
+      "type": "object"
+    },
     "core.SessionMark": {
       "properties": {
         "seq": {
@@ -2644,12 +2681,23 @@
         },
         "repeat": {
           "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schedule.Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "words": {
+          "type": "string"
         }
       },
       "required": [
         "message",
-        "repeat",
-        "at",
         "cost",
         "paused",
         "actor",
@@ -3741,6 +3789,12 @@
         },
         {
           "$ref": "#/$defs/request.settings.write"
+        },
+        {
+          "$ref": "#/$defs/request.startup.read"
+        },
+        {
+          "$ref": "#/$defs/request.startup.set"
         },
         {
           "$ref": "#/$defs/request.versions.diff"
@@ -6170,6 +6224,69 @@
       ],
       "type": "object"
     },
+    "request.startup.read": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "startup.read"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.startup.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "startup.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.startupParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.versions.diff": {
       "properties": {
         "id": {
@@ -6832,6 +6949,12 @@
     },
     "result.settings.write": {
       "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.startup.read": {
+      "$ref": "#/$defs/rpc.startupState"
+    },
+    "result.startup.set": {
+      "$ref": "#/$defs/rpc.startupState"
     },
     "result.versions.diff": {
       "$ref": "#/$defs/rpc.versionDiffResult"
@@ -8692,6 +8815,51 @@
       ],
       "type": "object"
     },
+    "rpc.scheduleHistory": {
+      "properties": {
+        "cost": {
+          "type": "number"
+        },
+        "due": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "manual": {
+          "type": "boolean"
+        },
+        "missed": {
+          "type": "integer"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "string"
+        },
+        "started": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "what": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "due",
+        "started",
+        "when",
+        "what"
+      ],
+      "type": "object"
+    },
     "rpc.schedulePauseParams": {
       "properties": {
         "id": {
@@ -8736,6 +8904,16 @@
         },
         "repeat": {
           "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schedule.Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -8764,6 +8942,15 @@
         },
         "held": {
           "type": "string"
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/rpc.scheduleHistory"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "last_run": {
           "anyOf": [
@@ -8795,8 +8982,30 @@
             "null"
           ]
         },
+        "next_words": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schedule.Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "scheduler": {
           "type": "boolean"
+        },
+        "sentence": {
+          "type": "string"
         },
         "sequence": {
           "minimum": 0,
@@ -8810,6 +9019,7 @@
         "sequence",
         "cursor",
         "next",
+        "next_words",
         "timezone",
         "archived",
         "scheduler"
@@ -9264,6 +9474,55 @@
       ],
       "type": "object"
     },
+    "rpc.startupParams": {
+      "properties": {
+        "on": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "on"
+      ],
+      "type": "object"
+    },
+    "rpc.startupState": {
+      "properties": {
+        "offered": {
+          "type": "boolean"
+        },
+        "on": {
+          "type": "boolean"
+        },
+        "other": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "program": {
+          "type": "string"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "supported",
+        "on",
+        "offered"
+      ],
+      "type": "object"
+    },
     "rpc.subscribeParams": {
       "properties": {
         "after": {
@@ -9631,15 +9890,80 @@
         },
         "repeat": {
           "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schedule.Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "message",
-        "repeat",
-        "at",
         "cost",
         "paused"
       ],
+      "type": "object"
+    },
+    "schedule.Rule": {
+      "properties": {
+        "at": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "between": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "dates": {
+          "items": {
+            "type": "integer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "days": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "every": {
+          "type": "integer"
+        },
+        "from": {
+          "type": "string"
+        },
+        "nth": {
+          "type": "integer"
+        },
+        "once": {
+          "type": "string"
+        },
+        "until": {
+          "type": "string"
+        }
+      },
+      "required": [],
       "type": "object"
     },
     "sessionEvent": {

@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"syscall"
 	"testing"
@@ -204,8 +205,22 @@ func TestSchedulerSkipsBusyAndExternallyOwnedTasks(t *testing.T) {
 	if state.LastSkip == nil || !strings.Contains(state.LastSkip.Reason, "busy") || !state.Cursor.Equal(now.Add(time.Hour)) {
 		t.Fatalf("%+v", state)
 	}
+	// The history says it in words, newest first: the time skipped, then the
+	// run that made the task busy, still running.
+	s.mu.Lock()
+	shown, err := s.scheduleState(id)
+	s.mu.Unlock()
+	if err != nil || len(shown.History) != 2 || shown.History[0].What != "Skipped: task is busy" || shown.History[1].What != "Running" || shown.History[1].When == "" {
+		t.Fatalf("history while running: %+v %v", shown.History, err)
+	}
 	close(held.release)
 	scheduleIdle(t, s, id)
+	s.mu.Lock()
+	shown, err = s.scheduleState(id)
+	s.mu.Unlock()
+	if err != nil || shown.History[1].What != "Finished" {
+		t.Fatalf("history once finished: %+v %v", shown.History, err)
+	}
 	// Another process owns this log. Its skip is appended only once the
 	// writer releases it; the scheduler must never steal that ownership.
 	external := scheduledTask(t, s, now)
@@ -273,6 +288,9 @@ func TestScheduleControlsAndDeviceAuthority(t *testing.T) {
 	into(t, c.ok("schedule.read", map[string]any{"id": id}), &state)
 	if !state.Definition.Paused || state.LastRun == nil || !state.LastRun.Manual || !state.Cursor.IsZero() {
 		t.Fatalf("%+v", state)
+	}
+	if len(state.History) != 1 || state.History[0].What != "Finished (Run now)" {
+		t.Fatalf("history: %+v", state.History)
 	}
 	c.ok("schedule.set", map[string]any{"id": id, "remove": true})
 	raw := c.ok("schedule.read", map[string]any{"id": id})
@@ -345,4 +363,137 @@ func TestDaemonDispatchesAnOverdueScheduleAtStartup(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("daemon did not dispatch its startup tick")
+}
+
+// A rule's schedule is dispatched by the tick like a repeat's. Comparing the
+// definition a tick read with the one read after resuming compared a rule's
+// pointers, and called every rule's schedule changed.
+func TestSchedulerRunsARule(t *testing.T) {
+	fakeModel := fake.NewT(t, fake.Turn{Content: "ruled"})
+	defer fakeModel.Close()
+	o := options(t)
+	o.Provider = llm.NewOllama(fakeModel.URL)
+	s := schedulerServer(t, o)
+	now := time.Now().Truncate(time.Minute)
+	id := scheduledTask(t, s, now)
+	rule := schedule.Rule{Every: 30, From: now.Add(-2 * time.Hour).Format(schedule.Layout)}.Normal()
+	if err := s.store().SetSchedule(id, log.SessionSchedule{Definition: schedule.Definition{Message: "check", Rule: &rule}}); err != nil {
+		t.Fatal(err)
+	}
+	tickSchedule(s, now)
+	scheduleIdle(t, s, id)
+	state, err := s.store().Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.LastRun == nil || state.LastSkip != nil || state.LastRun.Missed < 3 {
+		t.Fatalf("%+v %+v", state.LastRun, state.LastSkip)
+	}
+}
+
+// A schedule is set with a rule, and the daemon says it in words: the rule
+// in a sentence, the next times as labels, and the same sentence in the
+// record, for the transcript. A change that keeps the timing keeps its
+// progress; a new timing starts after now.
+func TestScheduleRulesAreSaidInWords(t *testing.T) {
+	t.Setenv("TZ", "America/Los_Angeles")
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	id := opened(t, c, t.TempDir())
+	// Closed, its log can be written here as a daemon that had run it would.
+	c.ok("session.close", map[string]any{"id": id})
+	weekdays := []string{"fri", "mon", "tue", "wed", "thu"}
+	set := func(rule map[string]any, message string) scheduleState {
+		t.Helper()
+		var state scheduleState
+		into(t, c.ok("schedule.set", map[string]any{"id": id, "message": message, "rule": rule}), &state)
+		return state
+	}
+	state := set(map[string]any{"every": 30, "between": []string{"9:00", "18:00"}, "days": weekdays}, "check")
+	if state.Sentence != "Every 30 minutes from 09:00 to 18:00 on weekdays" || len(state.Next) != 5 || len(state.NextWords) != 5 || state.Timezone != "America/Los_Angeles" {
+		t.Fatalf("%+v", state)
+	}
+	if state.Rule == nil || state.Rule.From == "" || state.Definition.Rule.Between[0] != "09:00" || state.Definition.Rule.Days[0] != "mon" {
+		t.Fatalf("the rule was not kept in its normal form, from now: %+v", state.Definition.Rule)
+	}
+	for i, next := range state.Next {
+		local := next.In(time.Local)
+		if local.Weekday() == time.Saturday || local.Weekday() == time.Sunday || local.Hour() < 9 || local.Hour()*60+local.Minute() > 18*60 || local.Minute()%30 != 0 {
+			t.Fatalf("next %d is %s", i, local)
+		}
+		if state.NextWords[i] != schedule.Label(local, time.Now()) {
+			t.Fatalf("next %d is said %q", i, state.NextWords[i])
+		}
+	}
+	var page core.LogPage
+	into(t, c.ok("log.read", map[string]any{"id": id, "limit": 100}), &page)
+	words := ""
+	for _, ev := range page.Events {
+		var rec log.SessionSchedule
+		if ev.Kind == log.KindSessionSchedule && ev.Decode(&rec) == nil {
+			words = rec.Words
+		}
+	}
+	if words != state.Sentence {
+		t.Fatalf("the record says %q", words)
+	}
+	// The same timing written another way keeps the progress recorded.
+	cursor := time.Now().Add(-time.Hour).Truncate(time.Minute)
+	kept := *state.Definition
+	kept.After = cursor
+	srv := &server{options: o}
+	if err := srv.store().SetSchedule(id, kept); err != nil {
+		t.Fatal(err)
+	}
+	state = set(map[string]any{"every": 30, "between": []string{"09:00", "18:00"}, "days": []string{"mon", "tue", "wed", "thu", "fri", "mon"}, "from": kept.Rule.From}, "check again")
+	if !state.Cursor.Equal(cursor) || state.Definition.Message != "check again" {
+		t.Fatalf("a change of message lost the progress: %s", state.Cursor)
+	}
+	// A new timing starts after now, even from a first minute long past.
+	state = set(map[string]any{"at": []string{"15:00"}, "days": []string{"tue", "thu"}, "from": "2020-01-01T00:00"}, "check")
+	if state.Sentence != "Tuesdays and Thursdays at 15:00" || time.Since(state.Cursor) > time.Minute || len(state.Next) != 5 {
+		t.Fatalf("%s from %s: %v", state.Sentence, state.Cursor, state.Next)
+	}
+	for _, next := range state.Next {
+		if local := next.In(time.Local); local.Hour() != 15 || (local.Weekday() != time.Tuesday && local.Weekday() != time.Thursday) {
+			t.Fatalf("next %s", local)
+		}
+	}
+	// The preview says the same before anything is saved, and refuses what
+	// a schedule could not be.
+	var preview scheduleState
+	into(t, c.ok("schedule.next", map[string]any{"message": "x", "cost": 0, "paused": false, "rule": map[string]any{"at": []string{"08:00"}, "dates": []int{15, 1}}}), &preview)
+	if preview.Sentence != "On the 1st and 15th of each month at 08:00" || len(preview.Next) != 5 {
+		t.Fatalf("%+v", preview)
+	}
+	for _, bad := range []map[string]any{
+		{"message": "x", "cost": 0, "paused": false, "rule": map[string]any{"every": 4}},
+		{"message": "x", "cost": 0, "paused": false, "rule": map[string]any{"every": 30, "at": []string{"09:00"}}},
+		{"message": "x", "cost": 0, "paused": false, "repeat": "daily", "at": "2026-10-20T09:00", "rule": map[string]any{"every": 30}},
+	} {
+		if r := c.call("schedule.next", bad); r.Error == nil {
+			t.Fatalf("accepted %v", bad)
+		}
+		bad["id"] = id
+		if r := c.call("schedule.set", bad); r.Error == nil {
+			t.Fatalf("saved %v", bad)
+		}
+	}
+}
+
+func TestTheZoneIsNamed(t *testing.T) {
+	for tz, want := range map[string]string{"America/Santiago": "America/Santiago", ":Europe/Lisbon": "Europe/Lisbon", "": "UTC"} {
+		t.Setenv("TZ", tz)
+		if got := zoneName(); got != want {
+			t.Errorf("TZ=%q: got %q want %q", tz, got, want)
+		}
+	}
+	if err := os.Unsetenv("TZ"); err != nil {
+		t.Fatal(err)
+	}
+	if got := zoneName(); got == "" || got == "Local" {
+		t.Fatalf("the computer's zone is named %q", got)
+	}
 }

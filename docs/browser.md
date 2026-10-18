@@ -111,14 +111,21 @@ button is disabled and says why. **Schedule…** in a task's **⋯** menu, with 
 saved definition and controls; **Remove schedule** asks first. The dialog is
 titled **Schedule** here and on Home: scheduling has that one name, and
 **Repeat** is only the field for how often.
-`schedule.next` supplies the preview, which reads as "Next: tomorrow 9:30 AM,
-then every day" on the schedule's own wall clock (the browser's zone does not
-move it); the full list, ISO times with the daemon’s local offset, is its
-tooltip. The dialog shows the status, the message and that line, with **Close**
-at its top right and the edit form folded behind **Edit**. Schedule creation and
+**Repeat** chooses the form of the rule (at set times, every few minutes or
+hours, monthly, once); days of the week are chips, times of day a list with
+**Add a time**, and **Starts** and **Last day** bound it. The page works out no
+times: `schedule.next` returns the rule's sentence and the next times as the
+daemon's labels ("Tuesdays and Thursdays at 15:00", "Next: Tue 20 Oct 15:00,
+then Thu 22 Oct 15:00", on the daemon's wall clock, which the browser's zone
+does not move), and its refusal of a rule shows in the same place. The five
+labels, with the daemon's zone name, are the line's tooltip. The dialog shows
+the status and zone, the sentence, the message, that line and **Recent runs**
+(the daemon's `history`: when, what came of it, cost), with **Close** at its
+top right and the edit form folded behind **Edit**; the transcript shows a
+`session.schedule` record by its `words`. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,
 as do edits and removal. Runs discard Don’t ask and use normal approvals.
-Home lists next times and paused schedules, each card with Pause or Resume and
+Home lists each schedule's sentence and next time, or Paused, each card with Pause or Resume and
 Run now. The daemon coalesces missed times,
 records skips and closes idle scheduled sessions after 15 minutes; see the
 manual and ADR 49 for log-lock deferral and startup requirements.
@@ -733,6 +740,19 @@ address (a proxy connects from loopback on a phone's behalf). Launch tickets
 pair only local browsers. Without https, traffic is unencrypted unless the
 network encrypts it, and the cookie can be read on the way.
 
+**On a phone, the console is an app** (ADR 52). The page links a manifest
+(`manifest.json`, its icons in `icons/`) and registers a service worker
+(`sw.js`), so a phone that reaches the console over https adds it to its Home
+Screen (Safari's Share › Add to Home Screen, Chrome's Install app) and opens
+it full screen. The worker handles no fetch and keeps no cache: every request
+reaches the bridge and its checks as before, and no task, prompt or diff is
+stored on the phone. It shows the console's notices (see "Cross-session
+attention" below). The page keeps out of the notch and the home indicator by
+the screen's safe areas, which are zero elsewhere. An iPhone's Home Screen
+app keeps its storage apart from Safari's, so it may ask to pair again. Over
+plain http to another address neither the app nor its notices are offered;
+the console still works in the phone's browser.
+
 # Local browser view
 
 The U3 session desk supports conversations, prompt replies and session lifecycle
@@ -1018,8 +1038,8 @@ its reasons, destination and diff are on the task's card. On a phone, where
 the sidebar is a drawer, the topbar's "N needs you" pill is a link: to the
 task when one waits, to Home when several do.
 
-Desktop notifications are optional. In Settings › This browser › Desktop
-notifications, **Turn on** asks this browser for permission; the choice is
+Notifications are optional. In Settings › This browser › Notifications,
+**Turn on** asks this browser for permission; the choice is
 kept in this browser (`nodwyn-notify` in local storage), so it holds across
 reloads, and counts only while the browser still allows them: a permission
 taken back turns them off, and nodwyn never asks for it again unprompted. In
@@ -1027,7 +1047,13 @@ the app window the system's notifications are used instead, with no browser
 permission to grant, and are on until turned off. When the page
 is hidden, a new needs-answer transition can produce a generic notification.
 It never includes task text, prompt arguments, diffs, credential classes or
-values. Clicking it opens the corresponding session for review. Resolution
+values. Clicking it opens the corresponding session for review. Where the
+console's service worker is registered (a secure page; ADR 52) the notice is
+shown through it, which is the only way a phone shows one: it carries the
+task's id as data it never shows, and a click on it brings an open console to
+the task, or opens the console there. On an iPhone's Safari, which shows
+notifications only to an app on the Home Screen, Settings says to add nodwyn
+there first. Resolution
 closes the notification where supported; reconnect snapshots do not re-notify old
 prompts. Blocked or unsupported browser notifications leave sidebar attention
 available. Browser/OS notification delivery still depends on their permission

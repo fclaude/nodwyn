@@ -56,7 +56,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/budget` | one turn's budgets and checkpoints | `budget.go` |
 | `internal/extract` | attachments: text by file type, images checked but never read as text | `extract.go`, `image.go` |
 | `internal/memory`, `internal/retrieval` | what a task remembers of its history (a card for each turn, an episode for each compaction note), and the words-only ranking `index-search` uses over the repository, the conversation and earlier tasks ([docs/memory.md](memory.md)) | `memory/card.go`; `retrieval/index.go` |
-| `internal/schedule` | the civil-time repeats of scheduled tasks; it owns no timers or files ([ADR 49](adr/0049-scheduled-tasks.md)) | `schedule.go` |
+| `internal/schedule` | the civil-time rules of scheduled tasks and the words they are said in; it owns no timers or files ([ADR 49](adr/0049-scheduled-tasks.md)) | `schedule.go` |
 | `internal/catalogue` | what providers publish about their models (context, effort, price), as models.dev collects it ([ADR 41](adr/0041-model-providers-and-efforts.md)) | `catalogue.go`, `modelsdev.go` |
 | `internal/termemu`, `internal/frontend/termvt` | the terminal primitives' emulator seam, and the Charm emulator behind it, kept under `frontend` by the boundary lint ([ADR 48](adr/0048-experimental-terminal.md)) | `termemu.go`; `termvt.go` |
 | `internal/policyfile` | atomic writes of the policy files the console edits | `update.go` |
@@ -2231,21 +2231,47 @@ On Home, describe the task and choose its folder, model, and, under
 **Options**, its worktree, helpers and turn limits, as usual. **Options ›
 Schedule…** opens **Schedule**, whether or not anything is typed yet: the
 message for each run is a required field there, started from what the box
-holds. Choose, under **Repeat**, Once, Every hour, Every day, Weekdays or Every
-week, its first
-local date and minute, and its dollar spend limit per run (0 means none).
-The preview comes from the daemon and shows its local times and offsets.
+holds. Under **Repeat**, choose when it runs:
+
+- **At set times**: one or more times of day, on the days of the week you
+  pick (none picked is every day): "Tuesdays and Thursdays at 15:00".
+- **Every few minutes or hours**: from 5 minutes to 24 hours, counted from
+  midnight, or from the start of **Only between** two times of day, on the
+  days you pick: "Every 30 minutes from 09:00 to 18:00 on weekdays". Every 45
+  minutes from 09:00 runs at 09:00, 09:45, 10:30 and so on, and starts again
+  at 09:00 the next day.
+- **Monthly**: at set times on dates of the month ("1, 15"; a month without
+  the 31st has no run that day) or on a weekday of the month (the first
+  Monday, the last Friday).
+- **Once**: a date and minute.
+
+**Starts** is the first minute it may run (empty: now), and **Last day** its
+last day, if it has one. Times are this computer's, and the zone is named in
+the dialog (America/Los_Angeles, not "Local"). Set the dollar spend limit per
+run (0 means none). The daemon says the rule back in words ("Every 30 minutes
+from 09:00 to 18:00 on weekdays") with the next times, and refuses what a
+schedule cannot be (an interval under 5 minutes, hours that end before they
+start) before anything is saved. A new schedule's first run is its first time
+after now, so try one with **Run now**.
 Saving opens the task immediately; its message is sent when due. Scheduled
 tasks appear on Home with their next time or Paused, and a card has **Pause
 schedule** (or **Resume schedule**) and **Run now**; Home says "Nothing
 scheduled." when there is none.
 
 On an existing task, **Schedule…** in its **⋯** menu adds a schedule, or
-shows its message, when it runs next and its last skip, and lets you save changes
-(behind **Edit**), pause, resume, run now or remove it (after a confirm). Run now also works while paused and leaves the automatic
-next time unchanged. Resuming a paused schedule starts after now, without
-catching up the paused interval. Retiming starts the new series; changing
-only its message or spend preserves the times already handled. Removing a
+shows the rule in words, its message, when it runs next and its **Recent
+runs**, and lets you save changes (behind **Edit**), pause, resume, run now or
+remove it (after a confirm). Recent runs lists the latest 20 scheduled times,
+newest first: when each started, how it ended (Finished, Failed, Stopped at
+the spend limit, Running, Run now, late for missed times) or why it was
+skipped, and what it cost with its follow-ups. Run now also works while
+paused and leaves the automatic next time unchanged. Resuming a paused
+schedule starts after now, without catching up the paused interval. A new
+timing starts after now, so the times before the change are not run late;
+changing only its message or spend, or writing the same timing another way,
+preserves the times already handled. A schedule made before rules (Every
+hour, Every day, Weekdays, Every week) runs at the same times as before and
+opens in the editor as the rule it always was. Removing a
 schedule keeps the chat. Close frees the task but leaves its schedule enabled;
 Archive pauses it, and Unarchive leaves it paused. Delete removes both.
 
@@ -2281,7 +2307,8 @@ covers it. A pending answer prevents preparation, and only a conversation
 prepares one, never an evaluation or a read in Settings.
 Creating, editing, resuming or removing schedules stays on this computer;
 paired devices can pause and run now. There is no scheduling Scheme primitive.
-Automatic daemon startup at login is not built.
+For runs with no window open, have the daemon start at login and turn on its
+desktop notices (Local daemon, below).
 
 Opening or reopening a task with run records loads its latest run, including
 all turns and human follow-ups in that run. **Earlier runs** fetches five
@@ -2662,6 +2689,34 @@ attachments, file versions and MCP servers. See [the protocol guide](protocol.md
 permissions and reconnect semantics. `nodwyn app` starts one itself when none
 is running ([the app](app.md)).
 
+A daemon that `nodwyn app`, `nodwyn tui` or line mode started stops when
+its window or terminal closes, and with it the scheduled runs. To keep it running, have it start at login: `nodwyn startup
+on` (or Settings › General › **While you're away** › **Start at login**)
+writes a systemd user unit (`~/.config/systemd/user/nodwyn.service`, wanted by
+`default.target`) on Linux, or a launchd agent
+(`~/Library/LaunchAgents/nodwyn.daemon.plist`) on macOS, which runs this
+nodwyn's `daemon` with the `PATH` and XDG homes it had then. It starts at
+your next login, and again if it fails; `nodwyn app` then uses it, and
+closing the window leaves it running. On a Linux computer nobody logs in
+to, such as a server, `loginctl enable-linger $USER` has systemd start your
+user services, this one included, at boot. `nodwyn startup` says whether it is on
+and which nodwyn it runs; `nodwyn startup off` removes it. A file at that
+place nodwyn did not write is left alone, and a `go run` build is refused,
+since it is gone when it exits. A daemon started at login has no terminal to
+ask for the keychain's passphrase: it starts locked, Home says when that
+holds back a scheduled run, and unlocking there (or in Settings) lets the
+runs go on. A daemon that finds the socket a crash left, which nobody
+listens on, removes it and listens.
+
+With `[notify] desktop = true` (Settings › General › **While you're away** ›
+**Desktop notices from the daemon**; off until you turn it on) the daemon shows a desktop
+notification when a task comes to need your answer and no nodwyn window on
+this computer is open (a window shows its own, Settings › This browser), and
+once when a locked keychain stops a scheduled run, until it is unlocked.
+Their words are fixed ("nodwyn needs your answer", "nodwyn can't run a
+scheduled task"), never the task's. It uses `notify-send` on Linux and
+`osascript` on macOS.
+
 ## A server you reach from other devices
 
 nodwyn can run on a computer nobody sits at, such as a home server, and be
@@ -2672,7 +2727,7 @@ at logout without it):
 
 ```sh
 loginctl enable-linger "$USER"
-nodwyn daemon                       # starts with the keychain locked, as a service
+nodwyn startup on                   # the daemon at login: a user service, locked until you unlock it
 nodwyn ui --no-open --listen 127.0.0.1:7777 --name https://nodwyn.example.net
 ```
 
@@ -2699,6 +2754,7 @@ due meanwhile waits for it and then runs once, late. `nodwyn devices`
 lists and revokes devices on the server; Settings removes a lost phone's
 passkey. A provider's OAuth sign-in and `nodwyn trust` still need the server
 ([the browser view](browser.md), "Other devices").
+
 ## Downloadable builds and books
 
 Download portable binaries and both books from the repository's Gitea
@@ -2754,6 +2810,27 @@ workspace**, Home's **Add a folder**, or starting or resuming a task there,
 from the console, a paired device or a terminal. Forget is available only on
 the computer running nodwyn. A paired device cannot forget a folder, but can
 still choose a forgotten one by typing its path.
+
+## nodwyn on a phone
+
+A phone reaches the console that `nodwyn ui --listen` (or `nodwyn app
+--listen`) serves to other devices, and pairs with the printed code and a
+name ([the browser view](browser.md), "Other devices"). Served over https
+(`--tls-cert`, or a proxy that ends TLS and `--name https://NAME`), the
+console is also an app: Safari's **Share › Add to Home Screen** on an
+iPhone, or Chrome's **Install app** on Android, puts nodwyn on the Home
+Screen, where it opens full screen (ADR 52). It is the same console from the
+same server, so there is nothing to download or update but nodwyn itself. An
+iPhone keeps a Home Screen app's storage apart from Safari's: pair again in
+the app if it asks.
+
+Turn on Settings › This browser › Notifications in the app to be told when a
+task waits for an answer. The notice says only "nodwyn needs your answer",
+and tapping it opens the task. It comes while the app is open or in the
+background; a notice while the app is closed (Web Push) is not built.
+Safari shows notifications only to an app on the Home Screen, and Settings
+says so on an iPhone. Over plain http to another address the console works
+in a phone's browser but neither installs as an app nor notifies.
 
 ## The Wails desktop window
 

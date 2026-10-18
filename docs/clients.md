@@ -19,13 +19,13 @@ nodwyn has four ways in, over one core:
   "Line mode and the daemon" below says what became of its per-run flags.
 - **The CLI**: the other subcommands in `cmd/nodwyn/cli.go` (`sessions`,
   `replay`, `versions`, `undo`, `credential`, `keychain`, `mcp`, `trust`,
-  `devices`, `run`, `summary`, `eval`, `repl`).
+  `devices`, `startup`, `run`, `summary`, `eval`, `repl`).
 
 This page records what each one can do as of 2026-10-17 (the judge choice,
 ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49,
-retrieval, ADR 50, the TUI and line mode on the daemon, and devices that pair
-by invitation and sign in with a passkey, both ADR 30 amended 2026-10-17,
-included), so work on a
+retrieval, ADR 50, the TUI and line mode on the daemon, the console as a phone's
+app, ADR 52, and devices that pair by invitation and sign in with a passkey,
+ADR 30 amended 2026-10-17 twice, included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -45,7 +45,10 @@ it can see the thing but not change it.
 | Resume a stored session | yes, the sidebar | yes, the chooser (paged, typing filters it) or `--resume` | yes, `--resume` | — |
 | Switch between open tasks | yes, the sidebar; several open at once | one session per process; quit and choose again | one session | — |
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
-| Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu); Home’s cards pause and run now; a device signed in with a passkey creates and changes them, and other paired devices can pause or run now | not built | not built | not built |
+| Told when a task needs an answer while looking elsewhere | yes, Settings › This browser › Notifications; on a phone through the console's service worker (ADR 52); with no window open, the daemon's desktop notices (Settings › General › While you're away, ADR 53 §11) | not built | — | — |
+| Installed on a phone's Home Screen (ADR 52) | yes, over https: the console is a web app | deliberate gap: a terminal client | — | — |
+| Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu): set times on chosen weekdays, an interval within hours of the day, monthly dates or weekday, once, a first minute and a last day; the daemon's sentence, next times and zone name; Home’s cards pause and run now; a device signed in with a passkey creates and changes them, and other paired devices can pause or run now | not built, and it does not show a `session.schedule` record or a run's marker either | not built | not built |
+| A schedule's recent runs: when, how each ended or why it was skipped, cost (`history` in `schedule.read`, ADR 49 amended 2026-10-17) | yes, **Recent runs** in a task's **Schedule…** | not built | — | `replay` shows the records |
 | Name a task | yes (`session.rename`) | not built; lists first messages | — | `nodwyn sessions` lists first messages |
 | Archive, delete (ADR 39) | yes; delete on this computer, or on a device signed in with a passkey after a touch of it | not built | — | — |
 | Quit while a turn runs | the task goes on in the daemon | Ctrl+Q detaches and the turn goes on; when the TUI's own process serves the daemon, quitting ends its tasks, as closing `nodwyn app` does | aborts it | — |
@@ -195,6 +198,9 @@ in with the person's passkey after a touch of it (ADR 30, amended
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
 | Pair devices | yes: Settings › Keys & devices › **Invite a device** (a code and a link, good once for ten minutes); over https an invitation makes a passkey, which signs other browsers in with no invitation | — | — | `nodwyn devices invite` |
 | List and revoke devices, remove a passkey | yes, on this computer or after a passkey touch, each after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME`; a passkey only in the console |
+| Start the daemon at login (`startup.read`, `startup.set`; ADR 53 §11) | Settings › General › While you're away, on this computer | — | — | `nodwyn startup`, `nodwyn startup on`, `nodwyn startup off` |
+| The daemon's desktop notices (`notify.desktop`) | Settings › General › While you're away; the daemon shows them whichever client is in use, when no window of this computer watches | — | — | edit `config.toml` (`[notify] desktop = true`) |
+| Home says when locked keys hold back a scheduled run (`held`) | yes, the Scheduled section and the card, unlocked from Home's callout | not built | — | — |
 
 ## Runs (ADR 35)
 

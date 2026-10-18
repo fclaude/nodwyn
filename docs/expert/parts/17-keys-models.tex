@@ -696,7 +696,14 @@ migration limits (ADR 45).
 
 \paragraph{Scheduler ownership and context (\adr{49}).}
 The daemon holds a data-directory flock and checks civil-time occurrences
-on startup and every 30 seconds. The log is the authority: session.schedule
+on startup and every 30 seconds. A definition's rule (once; set times or an
+interval within a daily window; weekdays, dates or the nth weekday of a month;
+a first minute and a last day) is stepped through day by day in civil time;
+the five repeats from before rules are read as the rules they meant, so old
+logs run at the same times. The daemon writes the rule's sentence into each
+session.schedule record and answers schedule.read with the sentence, labelled
+next times, its named zone and the latest twenty times, each with its outcome
+and cost, folded into the log index beside the schedule. The log is the authority: session.schedule
 holds the latest definition, schedule.run claims a due interval and pins its
 spend base, and schedule.skip consumes a skipped interval. Manual runs consume
 no automatic time. Pausing preserves progress; resuming sets it to now.
@@ -705,7 +712,14 @@ its skip is deferred in daemon memory until release; if the daemon stops
 first, restart handles that interval as missed. A task closes after 15 idle
 minutes with no pending answer. Nothing schedules through Scheme, and only
 this computer creates or changes a definition; paired devices may pause or
-run now. The daemon must already be running; login startup is not built.
+run now. A login item (\texttt{internal/startup}: a systemd user unit and
+its default.target.wants link, or a launchd agent) runs the daemon at login,
+written only on request (startup.set, nodwyn startup), never over a file
+nodwyn did not write, and never for a go run build; the daemon then clears
+a socket a crash left before listening. With notify.desktop on, a daemon
+given a notifier (WithNotify) shows fixed notices when a session's
+needs\_answer turns on with no local client in session.watch, and once per
+locked period when a locked keychain skips a scheduled run.
 
 A successful turn that added more than a quarter-window since its last note
 asks compact-note for a handover focused on the scheduled request. It keeps

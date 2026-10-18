@@ -90,6 +90,8 @@ type Config struct {
 	// Experimental are features offered to try, not supported: each may
 	// change or go away (ADR 48).
 	Experimental Experimental `toml:"experimental"`
+	// Notify is what the daemon tells this computer's desktop (ADR 53 §11).
+	Notify Notify `toml:"notify"`
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].
 	Models map[string]Model `toml:"models"`
@@ -113,6 +115,14 @@ type MCP struct {
 	// Egress is the nodwyn-egress proxy a server with a network list
 	// reaches the network through. Unset: next to the nodwyn executable.
 	Egress string `toml:"egress"`
+}
+
+// Notify is whether the daemon shows a desktop notification on this computer
+// when a task needs an answer and no nodwyn window here is watching, and when
+// a locked keychain stops a scheduled run. Off unless a person turns it on, as
+// a browser's notifications are; its words are fixed, never a task's.
+type Notify struct {
+	Desktop bool `toml:"desktop"`
 }
 
 // Experimental are features that are temporary: offered so that what they

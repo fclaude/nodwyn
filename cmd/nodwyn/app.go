@@ -166,7 +166,7 @@ func ensureDaemon(ctx context.Context, paths config.Paths, socket, command strin
 		fmt.Fprintln(os.Stderr, command+": the keychain has no passphrase; opened it")
 	}
 	done = make(chan error, 1)
-	go func() { done <- rpc.Serve(ctx, listener, options) }()
+	go func() { done <- rpc.Serve(ctx, listener, options, daemonOptions()...) }()
 	return true, done, nil
 }
 

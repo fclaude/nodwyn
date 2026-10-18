@@ -1,7 +1,9 @@
 package core
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/budget"
@@ -11,16 +13,65 @@ import (
 
 // ScheduleInfo is folded from the log alongside its other derived views.
 // Cursor is the last automatic due time handled, not the wall time of a run.
+// History is the latest scheduled times, run or skipped, oldest first.
 type ScheduleInfo struct {
 	Definition *log.SessionSchedule `json:"definition,omitempty"`
 	Sequence   uint64               `json:"sequence"`
 	Cursor     time.Time            `json:"cursor"`
 	LastRun    *log.ScheduleRun     `json:"last_run,omitempty"`
 	LastSkip   *log.ScheduleSkip    `json:"last_skip,omitempty"`
+	History    []ScheduleEntry      `json:"history,omitempty"`
+}
+
+// ScheduleEntry is one scheduled time as the schedule's history shows it: a
+// run (Seq is its schedule.run) or a time skipped, and why. A run's Cost is
+// what its requests cost as far as known, a person's follow-ups in it
+// included, and Outcome how its own turn ended, empty until it has.
+type ScheduleEntry struct {
+	Seq     uint64    `json:"seq"`
+	Due     time.Time `json:"due"`
+	Started time.Time `json:"started"`
+	Missed  int       `json:"missed,omitempty"`
+	Manual  bool      `json:"manual,omitempty"`
+	Skipped string    `json:"skipped,omitempty"`
+	Outcome string    `json:"outcome,omitempty"`
+	Cost    float64   `json:"cost,omitempty"`
+}
+
+// scheduleHistory is how many scheduled times the index keeps: enough to see
+// how a schedule has gone lately, while a listing of every task stays small.
+const scheduleHistory = 20
+
+func (s *ScheduleInfo) add(e ScheduleEntry) {
+	s.History = append(s.History, e)
+	if len(s.History) > scheduleHistory {
+		s.History = slices.Clone(s.History[len(s.History)-scheduleHistory:])
+	}
+}
+
+// latestRun is the newest run in the history, skips passed over: a time
+// skipped because a run was busy comes after that run began.
+func (s *ScheduleInfo) latestRun() *ScheduleEntry {
+	for i := len(s.History) - 1; i >= 0; i-- {
+		if s.History[i].Skipped == "" {
+			return &s.History[i]
+		}
+	}
+	return nil
 }
 
 func (s *ScheduleInfo) observe(ev log.Event) {
+	if cost, ok := knownCost(ev); ok {
+		if run := s.latestRun(); run != nil {
+			run.Cost += cost
+		}
+	}
 	switch ev.Kind {
+	case log.KindTurnEnd:
+		var p log.TurnEnd
+		if run := s.latestRun(); run != nil && run.Outcome == "" && ev.Decode(&p) == nil {
+			run.Outcome = cmp.Or(p.Outcome, "completed")
+		}
 	case log.KindSessionSchedule:
 		var p log.SessionSchedule
 		if ev.Decode(&p) == nil {
@@ -38,11 +89,13 @@ func (s *ScheduleInfo) observe(ev log.Event) {
 			if !p.Manual && p.Through.After(s.Cursor) {
 				s.Cursor = p.Through
 			}
+			s.add(ScheduleEntry{Seq: ev.Seq, Due: p.Due, Started: p.Started, Missed: p.Missed, Manual: p.Manual})
 		}
 	case log.KindScheduleSkip:
 		var p log.ScheduleSkip
 		if ev.Decode(&p) == nil {
 			s.LastSkip = &p
+			s.add(ScheduleEntry{Seq: ev.Seq, Due: p.Due, Started: p.Started, Missed: p.Missed, Skipped: p.Reason})
 			if p.Through.After(s.Cursor) {
 				s.Cursor = p.Through
 			}
@@ -65,6 +118,7 @@ func (s ScheduleInfo) clone() ScheduleInfo {
 		k := *s.LastSkip
 		s.LastSkip = &k
 	}
+	s.History = slices.Clone(s.History)
 	return s
 }
 

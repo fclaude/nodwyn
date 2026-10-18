@@ -53,6 +53,8 @@ var settable = map[string]settingKind{
 	"judge.price_input": number, "judge.price_output": number,
 
 	"mcp.runtime": text,
+
+	"notify.desktop": boolean,
 }
 
 // decode reads a setting's new value: nil (null) to remove it, else a
@@ -180,6 +182,7 @@ func (s *server) settingsWrite(req request, client *peer) (any, *rpcError) {
 		return nil, rerr
 	}
 	s.options.Config = next
+	s.notifyOn.Store(next.Notify.Desktop)
 	if !next.Approval.DontAsk {
 		for _, open := range s.sessions {
 			if on, _ := open.session.ApproveAll(); on {
@@ -210,6 +213,8 @@ func withTables(held, parsed config.Config, tables map[string]bool) config.Confi
 			held.Judge = parsed.Judge
 		case "mcp":
 			held.MCP = parsed.MCP
+		case "notify":
+			held.Notify = parsed.Notify
 		default:
 			panic("rpc: settable table without a copy: " + table)
 		}

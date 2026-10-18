@@ -38,7 +38,7 @@ func options(t *testing.T) core.Options {
 	cfg.Approval.Writes = config.ApproveAsk
 	return core.Options{Config: cfg, Paths: config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data")), Version: "test"}
 }
-func start(t *testing.T, o core.Options) (string, func()) {
+func start(t *testing.T, o core.Options, opts ...ServeOption) (string, func()) {
 	t.Helper()
 	path := filepath.Join(shortDir(t), "sock")
 	listener, err := Listen(path)
@@ -47,7 +47,7 @@ func start(t *testing.T, o core.Options) (string, func()) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Serve(ctx, listener, o) }()
+	go func() { done <- Serve(ctx, listener, o, opts...) }()
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {

@@ -9,17 +9,41 @@ import (
 	"syscall"
 
 	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/startup"
 )
+
+// A ServeOption gives a daemon what only a person's own computer has: its
+// desktop and its login item. Tests and the browser demo leave them out, or
+// give a place of their own, so that neither shows a notification or writes
+// a real login item.
+type ServeOption func(*server)
+
+// WithNotify shows the daemon's desktop notices with notify, when Settings'
+// notify.desktop is on.
+func WithNotify(notify func(title, body string) error) ServeOption {
+	return func(s *server) { s.notify = notify }
+}
+
+// WithStartup offers a login item at place that runs exe (startup.read,
+// startup.set).
+func WithStartup(place startup.Place, exe string) ServeOption {
+	return func(s *server) { s.login = &loginItem{place, exe} }
+}
 
 // Serve owns the listener and all sessions until shutdown. A client disconnect
 // closes only that connection. Cancelling ctx closes connections and session
 // writers, allowing another daemon (or the plain frontend) to resume the logs.
-func Serve(ctx context.Context, listener *net.UnixListener, options core.Options) error {
+func Serve(ctx context.Context, listener *net.UnixListener, options core.Options, opts ...ServeOption) error {
 	defer listener.Close()
 	if err := options.Config.Validate(); err != nil {
 		return err
 	}
 	s := &server{options: options, sessions: make(map[string]ownedSession)}
+	for _, opt := range opts {
+		opt(s)
+	}
+	s.notifyOn.Store(options.Config.Notify.Desktop)
+	s.watch.asked = func(string) { s.tell(answerTitle, answerBody) }
 	// Model keys saved before they were bound for their model lists get that
 	// binding now. One that cannot be written leaves the table as it was: the
 	// list is then refused with the binding's reason, which the window's note

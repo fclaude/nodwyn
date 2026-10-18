@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -43,6 +44,18 @@ type server struct {
 	// resuming holds, for each task being resumed without the lock, a
 	// channel closed when that resume is done.
 	resuming map[string]chan struct{}
+	// notify shows a notice on this computer's desktop (WithNotify): nil
+	// in tests and in the browser demo, so neither ever shows one.
+	// notifyOn is notify.desktop, read by the sessions' drain goroutines,
+	// which do not hold mu.
+	notify   func(title, body string) error
+	notifyOn atomic.Bool
+	// keysTold says a locked keychain stopping a scheduled run has been
+	// told on the desktop since the keychain was last unlocked.
+	keysTold bool
+	// login is where this computer's login item goes and the nodwyn it
+	// runs (WithStartup); a daemon without it offers none.
+	login *loginItem
 	// ctx ends when Serve is told to stop, and every wait on the network a
 	// method makes without the lock ends with it (base). closing is set once
 	// the sessions are being closed, which a session made after that does not
@@ -290,6 +303,8 @@ var methodTable = map[string]handler{
 	"schedule.set":             (*server).setSchedule,
 	"schedule.pause":           (*server).pauseSchedule,
 	"schedule.run":             (*server).runSchedule,
+	"startup.read":             (*server).startupMethod,
+	"startup.set":              (*server).startupMethod,
 	"session.close":            (*server).closeSession,
 	"session.rename":           (*server).rename,
 	"session.archive":          (*server).archive,

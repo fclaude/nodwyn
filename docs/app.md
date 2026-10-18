@@ -158,3 +158,13 @@ Other platforms' frame metadata is checked when present. Replies also check
 the current origin so navigating elsewhere cannot receive a selected path.
 Notifications carry only the fixed attention notice, and external links must
 be HTTP(S). The browser version receives no desktop capability.
+
+The daemon has notices of its own (ADR 53 §11), for when no window is open:
+with Settings › General › **While you're away** › **Desktop notices from
+the daemon** on, it shows
+"nodwyn needs your answer" when a task comes to need one and no window of
+this computer watches, and "nodwyn can't run a scheduled task" once when a
+locked keychain stops a run. A daemon `nodwyn app` starts closes with its
+window; Settings › General › **While you're away** › **Start at login**
+(`nodwyn startup on`) has one
+start at login instead, which the app then uses and leaves running.

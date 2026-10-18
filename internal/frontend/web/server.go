@@ -796,13 +796,15 @@ func (b *bridge) tierOf(method string) tier {
 	// nobody watching (ADR 49). A key the model asks for (session.secret)
 	// and the keychain's passphrase are secrets the person types, and the
 	// passphrase is its own proof. The folder last picked only remembers.
-	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active":
+	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "startup.read":
 		return tierPerson
 	// A log is the record of what a session did, devices included (ADR 39).
 	case "session.delete", "session.binding.create", "session.policy.write", "keychain.create", "keychain.passphrase", "settings.control.write", "settings.docs.write", "settings.write",
 		"settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test",
 		"workspace.save", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull",
-		"credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize":
+		"credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize",
+		// What starts at this computer's login is its setup (ADR 30, ADR 53).
+		"startup.set":
 		return tierSetup
 	}
 	if b.devices == nil {

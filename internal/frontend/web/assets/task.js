@@ -1017,6 +1017,12 @@ export class TaskView {
   }
   header() {
     if (!this.el || !this.item) return;
+    // A details element says it opened a task after the click, in its toggle
+    // event, and a redraw in between built the menu closed again, so a click
+    // on one of its entries waited on a menu nobody could see: the menu on
+    // the page is what counts.
+    const shown = this.root.querySelector(".task-actions .more");
+    if (shown) this.menuOpen = shown.open;
     const item = this.item;
     const home = this.desk.home;
     const st = this.status();

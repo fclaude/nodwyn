@@ -26,9 +26,10 @@ func TestSettingsPathsNameATabAndSection(t *testing.T) {
 	if len(tabs) != 5 {
 		t.Fatalf("found the tabs %q in settings.js, want its five", tabs)
 	}
-	// What General holds, under its tab: the approvals, and the fold of what
-	// most people never change with the sections inside it.
-	general := []string{"Approvals", "Advanced", "Limits", "Context window", "Containers"}
+	// What General holds, under its tab: the approvals, what goes on while
+	// nobody is at nodwyn, and the fold of what most people never change
+	// with the sections inside it.
+	general := []string{"Approvals", "While you're away", "Advanced", "Limits", "Context window", "Containers"}
 
 	// A path may wrap onto the next line of a comment or a paragraph.
 	ref := regexp.MustCompile("Settings ›[\\s/*#]+[_`\"“*]*([^\\n]*)")
