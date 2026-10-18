@@ -7,6 +7,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/frontend/workflows"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 )
@@ -67,5 +68,12 @@ type backend interface {
 	Retrieval(context.Context, string) (retrievalView, error)
 	SetEarlierTasks(context.Context, string, bool) error
 	ForgetIndex(context.Context, string) error
+	// Workflows reads the daemon's workflows and the answers they hold for
+	// the person (ADR 53). WorkflowAct pauses, resumes or checks the one a
+	// reference names, and Decide posts or discards a held answer; each says
+	// what was done. The words come from the daemon, laid out as the CLI does.
+	Workflows(context.Context) (workflows.Listing, error)
+	WorkflowAct(context.Context, string, string) (string, error)
+	Decide(context.Context, string, string) (string, error)
 	Close()
 }

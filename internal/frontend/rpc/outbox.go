@@ -193,8 +193,9 @@ func (s *server) deliver(ctx context.Context, id string, def workflow.Definition
 	return err
 }
 
-// outboxView is an outbox item as clients show it.
-type outboxView struct {
+// OutboxView is a held answer as clients show it, with the workflow it
+// belongs to and when it was written in a label.
+type OutboxView struct {
 	workflow.Outbox
 	Workflow string `json:"workflow"`
 	Name     string `json:"name"`
@@ -222,10 +223,10 @@ func (s *server) outboxMethod(req request, client *peer) (any, *rpcError) {
 			return nil, failure(-32000, err.Error())
 		}
 		now := time.Now()
-		items := []outboxView{}
+		items := []OutboxView{}
 		for _, state := range states {
 			for _, o := range state.Outbox {
-				items = append(items, outboxView{o, state.ID, state.Definition.Name, schedule.Label(o.At.In(time.Local), now)})
+				items = append(items, OutboxView{o, state.ID, state.Definition.Name, schedule.Label(o.At.In(time.Local), now)})
 			}
 		}
 		return items, nil

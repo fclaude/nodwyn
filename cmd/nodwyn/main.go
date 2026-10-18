@@ -41,6 +41,8 @@ commands:
                        --judge: the judge answers its confirms)
   run status|stop|resume [--socket PATH] SESSION  (resume also takes --yolo, --judge, --unattended)
   daemon [--socket PATH] serve local sessions, turns and events
+  workflows [pause|resume|check|run REF]  list the daemon's workflows and timetables, or act on one
+  outbox [post|discard REF]  list the answers workflows hold to be posted, or decide one
   startup [on|off]     whether the daemon starts at login, so scheduled runs go on
                        with no window open (a systemd user unit, a launchd agent)
   app [--browser]      nodwyn as one program: a window, and a daemon if none runs

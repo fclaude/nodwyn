@@ -327,26 +327,29 @@ func (s *server) fire(id string, def workflow.Definition, state workflow.State, 
 	return task, false, nil
 }
 
-// workflowView is a workflow as clients show it, in the daemon's words.
-type workflowView struct {
+// WorkflowView is a workflow as clients show it, in the daemon's words: the
+// folded log, its sentence and status, what today's runs cost and the latest
+// events. The terminal clients decode it as it is.
+type WorkflowView struct {
 	workflow.State
 	Sentence string           `json:"sentence"`
 	Status   string           `json:"status"`
 	Checked  *time.Time       `json:"checked,omitempty"`
 	Running  int              `json:"running"`
 	Today    core.ScheduleDay `json:"today"`
-	Recent   []fireView       `json:"recent"`
+	Recent   []FireView       `json:"recent"`
 }
 
-type fireView struct {
+// FireView is an event that started a run, with when in a label.
+type FireView struct {
 	workflow.Fire
 	When string `json:"when"`
 }
 
-func (s *server) workflowView(state workflow.State) workflowView {
+func (s *server) WorkflowView(state workflow.State) WorkflowView {
 	now := time.Now()
 	def := state.Definition.Definition
-	view := workflowView{State: state, Sentence: def.Sentence(), Today: s.workflowToday(state, now), Recent: []fireView{}}
+	view := WorkflowView{State: state, Sentence: def.Sentence(), Today: s.workflowToday(state, now), Recent: []FireView{}}
 	if t, ok := s.polled[state.ID]; ok {
 		view.Checked = &t
 	}
@@ -357,7 +360,7 @@ func (s *server) workflowView(state workflow.State) workflowView {
 	}
 	for i := len(state.Fires) - 1; i >= 0 && len(view.Recent) < 5; i-- {
 		f := state.Fires[i]
-		view.Recent = append(view.Recent, fireView{f, schedule.Label(f.At.In(time.Local), now)})
+		view.Recent = append(view.Recent, FireView{f, schedule.Label(f.At.In(time.Local), now)})
 	}
 	switch {
 	case def.Paused:
@@ -413,9 +416,9 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
-		views := []workflowView{}
+		views := []WorkflowView{}
 		for _, state := range states {
-			views = append(views, s.workflowView(state))
+			views = append(views, s.WorkflowView(state))
 		}
 		return views, nil
 	case "workflow.read":
@@ -427,7 +430,7 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		if err != nil || state.Definition == nil || state.Definition.Removed {
 			return nil, failure(-32000, fmt.Sprintf("no workflow %q", p.ID))
 		}
-		return s.workflowView(state), nil
+		return s.WorkflowView(state), nil
 	case "workflow.set":
 		if why := client.refuseDevice("Workflows are made and changed on this computer, not from a paired device"); why != nil {
 			return nil, why
@@ -451,7 +454,7 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		}
 		// A new or changed source is checked at the next tick.
 		delete(s.polled, id)
-		return s.workflowView(state), nil
+		return s.WorkflowView(state), nil
 	case "workflow.remove":
 		if why := client.refuseDevice("Workflows are removed on this computer, not from a paired device"); why != nil {
 			return nil, why
@@ -490,7 +493,7 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 			return nil, failure(-32000, err.Error())
 		}
 		delete(s.polled, state.ID)
-		return s.workflowView(state), nil
+		return s.WorkflowView(state), nil
 	case "workflow.check":
 		state, rerr := s.workflowFor(req)
 		if rerr != nil {
@@ -507,7 +510,7 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		s.slow("", func() { items, pollErr = poller.PollLook(s.serving(), def.Source, look) })
 		s.applyPoll(state.ID, items, pollErr, time.Now())
 		if state, err := s.flows().Read(state.ID); err == nil {
-			return s.workflowView(state), nil
+			return s.WorkflowView(state), nil
 		}
 		return nil, failure(-32000, "the workflow could not be read again")
 	case "workflow.test":

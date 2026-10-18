@@ -2,8 +2,9 @@
 
 - Status: accepted 2026-10-17; the timetable (§3) built the same day as an
   amendment to ADR 49, §11 (slice 0), slice 2, slice 3 (pull requests and
-  commands), slice 4 (the outbox) and slice 5 (Gmail) the same day, amended
-  below; the rest not built (see "Not built")
+  commands), slice 4 (the outbox), slice 5 (Gmail) and slice 6 (the TUI and the
+  command line) the same day, amended below; the rest not built (see "Not
+  built")
 - Date: 2026-10-17
 - Amends: 49 (a schedule becomes a workflow whose runs all go to one task;
   schedules stop being read from every task's log), 30 (a daemon may start at
@@ -476,4 +477,38 @@ Checks: `internal/watch` (`mail_test.go`: items and versions, what is fetched
 and what is not, the refusals explained, the draft's headers), `internal/frontend/rpc`
 (`TestAnEmailRunsATaskAndItsAnswerWaitsAsADraft`), and the `mail` browser
 check.
+
+## Amendment 2026-10-17: slice 6, the terminal clients
+
+Built (§12): `nodwyn workflows` and `nodwyn outbox`, and the TUI's
+`:workflows` and `:outbox`, list what the console's Workflows page and Needs you
+hold and act on it. One package, `internal/frontend/workflows`, reads the
+daemon's `session.list` (the timetables: scheduled tasks with a schedule that
+are not archived), `workflow.list` and `outbox.list` into a `Listing`, lays it
+out, and acts on it, so the command line and the TUI cannot say anything the
+other does not. It decodes the daemon's views as `rpc.WorkflowView` and
+`rpc.OutboxView`, which are now exported from `rpc` for that (as
+`rpc.SessionInfo` is for the TUI): the structs are the daemon's own, so they
+cannot drift from it. A workflow or held answer is named by a reference, the
+last eight characters of its id, shown in brackets in the list; a reference
+that matches none, or several, is refused. The actions are the console's
+requests: `workflow.pause`, `workflow.check`, `schedule.pause` and
+`schedule.run`, and `outbox.decide` post or discard, so what the daemon allows
+is what it allows to any client of the socket (this computer's).
+
+A deliberate gap, recorded in `docs/clients.md`: **a terminal makes and changes
+no workflow and edits no answer.** The builder's cards and its live Test the
+trigger, and the editor for an answer, are the console's; a terminal that
+could send other words than a run wrote would hold the one door a stranger's
+text might otherwise use. The TUI also still has no Needs you across tasks, so
+a held answer is seen with `:outbox`, not in the title (`clients.md`, not
+built, in order: item 1).
+
+Checks: `internal/frontend/workflows` (the layout, references that mean one
+thing, the requests sent and no body of its own, timetables listed and acted
+on), `cmd/nodwyn` (`TestWorkflowsAndTheOutboxFromTheCommandLine`, a real
+daemon: a timetable and a watching workflow listed, paused and resumed, a held
+answer discarded and recorded, a reference that means nothing refused, no
+daemon said), and `internal/frontend/tui`
+(`TestWorkflowsAndTheOutboxThroughTheDaemon`).
 

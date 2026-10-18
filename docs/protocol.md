@@ -1400,3 +1400,10 @@ draft, never sent. The credential needs the `gmail.readonly` scope to read and
 `gmail.compose` to save, and a binding at `gmail.googleapis.com` for GET and
 for POST.
 
+The views these methods answer with are exported from the Go package as
+`WorkflowView` (`workflow.list`, `workflow.read`, `workflow.set`,
+`workflow.pause`, `workflow.check`), `FireView` (its `recent` events) and
+`OutboxView` (`outbox.list`), so the terminal clients decode what the daemon
+sends rather than a copy of it; the generated schema names them so. The shapes
+are those described above.
+

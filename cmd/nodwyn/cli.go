@@ -52,6 +52,8 @@ var commands = map[string]func(*cli) error{
 	"paths":      (*cli).showPaths,
 	"trust":      (*cli).trust,
 	"startup":    (*cli).startup,
+	"workflows":  (*cli).workflows,
+	"outbox":     (*cli).outbox,
 	"repl":       (*cli).repl,
 	"eval":       (*cli).eval,
 	"outline":    (*cli).outline,

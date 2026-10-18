@@ -2317,6 +2317,23 @@ and how the latest ended, with Pause, Run now and Schedule…. **New
 timetable** opens Home's Schedule dialog, beside the task's folder, model
 and limits.
 
+### Workflows from a terminal
+
+`nodwyn workflows` lists what the console's Workflows page lists, in the
+daemon's words: each timetable (a scheduled task) and each workflow that
+watches a source, with a reference in brackets, when it runs next or what it
+watches, what today's runs cost and the latest events. `nodwyn workflows
+pause|resume|check|run REF` acts on one (REF is the reference or the end of
+it): pause or resume either kind, `check` polls a source now, `run` starts a
+timetable's run now. `nodwyn outbox` lists the answers held to be posted, each
+with the start of the answer, and `nodwyn outbox post REF` or `discard REF`
+decides one: the daemon posts a review comment, or saves a draft reply in the
+thread (never sent), with a key bound for exactly that call. The TUI has the
+same as `:workflows` and `:outbox`. A terminal makes and changes no workflow
+and edits no answer: those are the console's, since the cards, the live test
+and the editor are its. They need a running daemon (`nodwyn app`, `nodwyn tui`
+or `nodwyn daemon`; `nodwyn startup on` keeps one).
+
 ### A workflow that watches pull requests, email or a command
 
 **Workflows › Watch for events** builds one that runs a task when

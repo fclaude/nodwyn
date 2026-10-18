@@ -160,6 +160,10 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 | `:judge NAME`, `:judge none` | Ask that judge, or none, from the task's next question |
 | `:index`, `:earlier` | Show the folder's repository index (files, size, when it changed) and whether the model may search its earlier tasks (ADR 50) |
 | `:index forget` | Delete the folder's repository index; the next search builds it again |
+| `:workflows` | The daemon's workflows as the console's Workflows page lists them: timetables (scheduled tasks) and those that watch pull requests, email or a command, each with a reference in brackets, the daemon's sentence, when it runs next or what it watches, what today's runs cost and the latest events (ADR 53) |
+| `:workflows pause\|resume\|check\|run REF` | Act on the workflow or timetable whose reference is REF: pause or resume either, check polls a source now, run starts a timetable's run now |
+| `:outbox` | The answers workflows hold for you: a review for a pull request or a draft reply to an email, each with its reference and the start of the answer |
+| `:outbox post\|discard REF` | Decide one. The daemon posts it (a review comment, or a draft in the thread, never sent), with a key bound for exactly that call; a terminal does not change the words, which the console's Edit does |
 | `:earlier on`, `:earlier off` | Let the model search the folder's other tasks, or stop it, from its next call; kept with the folder's name in `workspaces.toml`, as the console's Workspaces page keeps it |
 | `:attach PATH` | Add a file to the conversation; an image asks first |
 | `:allow` | Open the bindings/current approvals inspector |

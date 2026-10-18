@@ -97,7 +97,7 @@ func TestARunsAnswerWaitsForThePersonToPostIt(t *testing.T) {
 		t.Fatal("the run's answer was posted without being asked")
 	}
 	s.mu.Lock()
-	view := s.workflowView(state)
+	view := s.WorkflowView(state)
 	s.mu.Unlock()
 	if !strings.HasSuffix(view.Sentence, "its answer is held for you to post as a review") || len(view.Outbox) != 1 {
 		t.Fatalf("%s %+v", view.Sentence, view.Outbox)

@@ -7240,7 +7240,7 @@
     },
     "result.outbox.list": {
       "items": {
-        "$ref": "#/$defs/rpc.outboxView"
+        "$ref": "#/$defs/rpc.OutboxView"
       },
       "type": [
         "array",
@@ -7450,11 +7450,11 @@
       ]
     },
     "result.workflow.check": {
-      "$ref": "#/$defs/rpc.workflowView"
+      "$ref": "#/$defs/rpc.WorkflowView"
     },
     "result.workflow.list": {
       "items": {
-        "$ref": "#/$defs/rpc.workflowView"
+        "$ref": "#/$defs/rpc.WorkflowView"
       },
       "type": [
         "array",
@@ -7462,10 +7462,10 @@
       ]
     },
     "result.workflow.pause": {
-      "$ref": "#/$defs/rpc.workflowView"
+      "$ref": "#/$defs/rpc.WorkflowView"
     },
     "result.workflow.read": {
-      "$ref": "#/$defs/rpc.workflowView"
+      "$ref": "#/$defs/rpc.WorkflowView"
     },
     "result.workflow.remove": {
       "properties": {},
@@ -7473,7 +7473,7 @@
       "type": "object"
     },
     "result.workflow.set": {
-      "$ref": "#/$defs/rpc.workflowView"
+      "$ref": "#/$defs/rpc.WorkflowView"
     },
     "result.workflow.test": {
       "$ref": "#/$defs/rpc.workflowTest"
@@ -7516,6 +7516,233 @@
     "result.worktree.review": {
       "properties": {},
       "required": [],
+      "type": "object"
+    },
+    "rpc.FireView": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "item": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item",
+        "version",
+        "kind",
+        "subject",
+        "task",
+        "summary",
+        "at",
+        "when"
+      ],
+      "type": "object"
+    },
+    "rpc.OutboxView": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "item": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "reply": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/watch.Reply"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subject": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "item",
+        "task",
+        "summary",
+        "body",
+        "at",
+        "workflow",
+        "name",
+        "when"
+      ],
+      "type": "object"
+    },
+    "rpc.WorkflowView": {
+      "properties": {
+        "checked": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "definition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/workflow.Define"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivered": {
+          "items": {
+            "$ref": "#/$defs/workflow.Delivered"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "fires": {
+          "items": {
+            "$ref": "#/$defs/workflow.Fire"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "last_skip": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/workflow.Skip"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outbox": {
+          "items": {
+            "$ref": "#/$defs/workflow.Outbox"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "recent": {
+          "items": {
+            "$ref": "#/$defs/rpc.FireView"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "running": {
+          "type": "integer"
+        },
+        "seeded": {
+          "type": "boolean"
+        },
+        "seen": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "sentence": {
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        },
+        "subjects": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "today": {
+          "$ref": "#/$defs/core.ScheduleDay"
+        }
+      },
+      "required": [
+        "id",
+        "sequence",
+        "seeded",
+        "outbox",
+        "sentence",
+        "status",
+        "running",
+        "today",
+        "recent"
+      ],
       "type": "object"
     },
     "rpc.answerParams": {
@@ -8161,46 +8388,6 @@
       "required": [
         "id",
         "source"
-      ],
-      "type": "object"
-    },
-    "rpc.fireView": {
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "type": "string"
-        },
-        "item": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string"
-        },
-        "subject": {
-          "type": "string"
-        },
-        "summary": {
-          "type": "string"
-        },
-        "task": {
-          "type": "string"
-        },
-        "version": {
-          "type": "string"
-        },
-        "when": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "item",
-        "version",
-        "kind",
-        "subject",
-        "task",
-        "summary",
-        "at",
-        "when"
       ],
       "type": "object"
     },
@@ -9023,70 +9210,6 @@
         "workflow",
         "id",
         "decision"
-      ],
-      "type": "object"
-    },
-    "rpc.outboxView": {
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "type": "string"
-        },
-        "body": {
-          "type": "string"
-        },
-        "id": {
-          "type": "string"
-        },
-        "item": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "reply": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/watch.Reply"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "subject": {
-          "type": "string"
-        },
-        "summary": {
-          "type": "string"
-        },
-        "task": {
-          "type": "string"
-        },
-        "url": {
-          "type": "string"
-        },
-        "when": {
-          "type": "string"
-        },
-        "workflow": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "kind",
-        "item",
-        "task",
-        "summary",
-        "body",
-        "at",
-        "workflow",
-        "name",
-        "when"
       ],
       "type": "object"
     },
@@ -10513,129 +10636,6 @@
       },
       "required": [
         "definition"
-      ],
-      "type": "object"
-    },
-    "rpc.workflowView": {
-      "properties": {
-        "checked": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "definition": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/workflow.Define"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "delivered": {
-          "items": {
-            "$ref": "#/$defs/workflow.Delivered"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "fires": {
-          "items": {
-            "$ref": "#/$defs/workflow.Fire"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "id": {
-          "type": "string"
-        },
-        "last_skip": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/workflow.Skip"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "outbox": {
-          "items": {
-            "$ref": "#/$defs/workflow.Outbox"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "recent": {
-          "items": {
-            "$ref": "#/$defs/rpc.fireView"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "running": {
-          "type": "integer"
-        },
-        "seeded": {
-          "type": "boolean"
-        },
-        "seen": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": [
-            "object",
-            "null"
-          ]
-        },
-        "sentence": {
-          "type": "string"
-        },
-        "sequence": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "status": {
-          "type": "string"
-        },
-        "subjects": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": [
-            "object",
-            "null"
-          ]
-        },
-        "today": {
-          "$ref": "#/$defs/core.ScheduleDay"
-        }
-      },
-      "required": [
-        "id",
-        "sequence",
-        "seeded",
-        "outbox",
-        "sentence",
-        "status",
-        "running",
-        "today",
-        "recent"
       ],
       "type": "object"
     },

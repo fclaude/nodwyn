@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/frontend/plain"
+	"github.com/fclaude/nodwyn/internal/frontend/workflows"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/scheme"
@@ -41,7 +42,7 @@ func isInspectorCommand(s string) bool {
 	switch fields[0] {
 	case ":log", ":bindings", ":replay", ":friction", ":tools", ":allow", ":plan", ":budget":
 		return true
-	case ":model", ":judge", ":index", ":earlier":
+	case ":model", ":judge", ":index", ":earlier", ":workflows", ":outbox":
 		// With a name or an action it is a choice, not a view.
 		return len(fields) == 1
 	}
@@ -102,6 +103,14 @@ func (m *model) inspect(command string) tea.Cmd {
 			view, err = b.Judges(ctx, id)
 			if err == nil {
 				content = formatJudges(view)
+			}
+		} else if kind == ":workflows" || kind == ":outbox" {
+			var listing workflows.Listing
+			listing, err = b.Workflows(ctx)
+			if err == nil && kind == ":workflows" {
+				content = listing.Workflows()
+			} else if err == nil {
+				content = listing.HeldAnswers()
 			}
 		} else if kind == ":index" || kind == ":earlier" {
 			var view retrievalView
@@ -265,6 +274,13 @@ const helpText = `Commands
 :index forget          Delete it; the next search builds it again.
 :earlier               Whether the model may search this folder's other tasks.
 :earlier on|off        Let it, or stop it, from the model's next call.
+:workflows             The daemon's workflows: when each runs, what it did lately.
+:workflows pause|resume|check|run REF
+                       Act on the workflow or timetable whose reference [in
+                       brackets] is REF (run now is for a timetable).
+:outbox                Answers workflows hold for you to post or save as drafts.
+:outbox post|discard REF
+                       Decide one by its reference; the daemon posts, never a run.
 :attach PATH           Add a file to the conversation; an image asks first.
                        ~/ is home; a relative path is from where nodwyn started.
 :replay                Read-only transcript from the durable log.

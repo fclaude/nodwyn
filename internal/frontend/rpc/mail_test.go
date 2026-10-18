@@ -114,7 +114,7 @@ func TestAnEmailRunsATaskAndItsAnswerWaitsAsADraft(t *testing.T) {
 		t.Fatalf("%+v", after)
 	}
 	s.mu.Lock()
-	view := s.workflowView(after)
+	view := s.WorkflowView(after)
 	s.mu.Unlock()
 	if !strings.HasPrefix(view.Sentence, `When an email matching "from:(@acme.com)" arrives or gets a reply in Gmail, if from does not contain "me@example.com"`) || !strings.HasSuffix(view.Sentence, "its answer is held for you to save as a draft reply") {
 		t.Fatal(view.Sentence)

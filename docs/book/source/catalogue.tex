@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 302 of 653 tracked Go files: every non-test Go file, 75,363 of 143,835 Go source lines (52.4\% by lines). It also includes all 37 tracked Scheme files (6,256 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 305 of 659 tracked Go files: every non-test Go file, 75,884 of 144,764 Go source lines (52.4\% by lines). It also includes all 37 tracked Scheme files (6,256 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -145,6 +145,8 @@ Begin with \src{cmd/nodwyn/main.go} and its command dispatch. The mode files ass
 \sourcefile{cmd/nodwyn/ui.go}{Go}
 
 \sourcefile{cmd/nodwyn/versions.go}{Go}
+
+\sourcefile{cmd/nodwyn/workflows.go}{Go}
 
 \chapter{The Scheme interpreter}
 
@@ -712,6 +714,8 @@ The subdirectories are independent entry routes to core. Plain implements line-o
 
 \sourcefile{internal/frontend/tui/tools.go}{Go}
 
+\sourcefile{internal/frontend/tui/workflows.go}{Go}
+
 \sourcefile{internal/frontend/web/devices.go}{Go}
 
 \sourcefile{internal/frontend/web/licenses.go}{Go}
@@ -719,6 +723,8 @@ The subdirectories are independent entry routes to core. Plain implements line-o
 \sourcefile{internal/frontend/web/passkey.go}{Go}
 
 \sourcefile{internal/frontend/web/server.go}{Go}
+
+\sourcefile{internal/frontend/workflows/workflows.go}{Go}
 
 \chapter{Calling MCP servers}
 

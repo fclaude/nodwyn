@@ -70,7 +70,7 @@ func setWorkflow(t *testing.T, s *server, d workflow.Definition) string {
 	if rerr != nil {
 		t.Fatal(rerr.Message)
 	}
-	return result.(workflowView).ID
+	return result.(WorkflowView).ID
 }
 
 func flowState(t *testing.T, s *server, id string) workflow.State {
@@ -155,7 +155,7 @@ func TestAWorkflowRunsATaskForEachPullRequest(t *testing.T) {
 	}
 	scheduleIdle(t, s, task)
 	s.mu.Lock()
-	view := s.workflowView(state)
+	view := s.WorkflowView(state)
 	s.mu.Unlock()
 	if view.Today.Runs != 2 || view.Recent[0].Kind != "updated" || !strings.HasPrefix(view.Sentence, "When a pull request on fc/nodwyn (127.0.0.1:") {
 		t.Fatalf("%+v", view)
@@ -254,13 +254,13 @@ func TestWorkflowsAreMadeOnThisComputer(t *testing.T) {
 	if r := c.call("workflow.set", map[string]any{"definition": bad}); r.Error == nil {
 		t.Fatal("a workflow on a model that is not configured was made")
 	}
-	var view workflowView
+	var view WorkflowView
 	into(t, c.ok("workflow.set", map[string]any{"definition": d}), &view)
 	id := view.ID
 	if !strings.HasSuffix(view.Sentence, `if author is not "me", checked every 2 minutes; each in a task of its own`) {
 		t.Fatal(view.Sentence)
 	}
-	var list []workflowView
+	var list []WorkflowView
 	into(t, phone.ok("workflow.list", map[string]any{}), &list)
 	if len(list) != 1 || list[0].ID != id {
 		t.Fatalf("%+v", list)
@@ -317,7 +317,7 @@ func TestAWorkflowsDailySpendLimitHoldsItsEvents(t *testing.T) {
 	cost := 1.5
 	s.mu.Lock()
 	_, err := s.sessions[task].session.Record(log.KindLLMResp, log.LLMResp{Usage: log.Usage{Cost: &cost}})
-	view := s.workflowView(flowState(t, s, id))
+	view := s.WorkflowView(flowState(t, s, id))
 	s.mu.Unlock()
 	if err != nil || view.Today.Runs != 1 || view.Today.Cost < 1.5 {
 		t.Fatalf("today: %+v %v", view.Today, err)

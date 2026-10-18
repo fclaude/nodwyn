@@ -551,6 +551,8 @@ func (m *model) submit() tea.Cmd {
 		return m.chooseJudge(fields[1:])
 	case fields[0] == ":earlier" || fields[0] == ":index":
 		return m.retrieval(fields)
+	case fields[0] == ":workflows" || fields[0] == ":outbox":
+		return m.workflows(fields)
 	case fields[0] == ":attach":
 		return m.attachFile(strings.TrimPrefix(strings.TrimSpace(text), ":attach"))
 	case text == ":q" || text == ":quit" || text == ":exit":
@@ -688,6 +690,32 @@ func (m *model) retrieval(fields []string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 		defer cancel()
 		return actionResult{kind: "retrieval", err: work(ctx), done: done}
+	}
+}
+
+// workflows acts on a workflow or a held answer by the reference the list
+// shows (ADR 53): :workflows pause|resume|check REF, :outbox post|discard REF.
+// The daemon decides what is allowed, and does the posting.
+func (m *model) workflows(fields []string) tea.Cmd {
+	b := m.backend
+	var work func(context.Context) (string, error)
+	switch {
+	case fields[0] == ":workflows" && len(fields) == 3 && (fields[1] == "pause" || fields[1] == "resume" || fields[1] == "check" || fields[1] == "run"):
+		work = func(ctx context.Context) (string, error) { return b.WorkflowAct(ctx, fields[2], fields[1]) }
+	case fields[0] == ":outbox" && len(fields) == 3 && (fields[1] == "post" || fields[1] == "discard"):
+		work = func(ctx context.Context) (string, error) { return b.Decide(ctx, fields[2], fields[1]) }
+	default:
+		m.status = "usage: :workflows lists them, :workflows pause|resume|check|run REF acts; :outbox lists held answers, :outbox post|discard REF decides one (REF is in brackets in the list)"
+		return nil
+	}
+	m.composer.Reset()
+	m.operations++
+	m.working = true
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(m.ctx, 2*time.Minute)
+		defer cancel()
+		done, err := work(ctx)
+		return actionResult{kind: "workflows", err: err, done: done}
 	}
 }
 
