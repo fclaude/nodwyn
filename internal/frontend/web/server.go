@@ -805,7 +805,7 @@ func (b *bridge) tierOf(method string) tier {
 		return tierPerson
 	// A workflow decides what runs with nobody watching, as a schedule does,
 	// and its source is asked with this computer's keys (ADR 53 §9).
-	case "workflow.set", "workflow.remove", "workflow.test":
+	case "workflow.write", "workflow.remove", "workflow.test":
 		return tierPerson
 	// Trusting a project lets its Scheme run as the person: it needs the
 	// passkey, though this computer's own console may do the rest of setup,
@@ -820,7 +820,7 @@ func (b *bridge) tierOf(method string) tier {
 		"workspace.save", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull",
 		"credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "credentials.authorize.finish",
 		// What starts at this computer's login is its setup (ADR 30, ADR 53).
-		"startup.set":
+		"startup.write":
 		return tierSetup
 	}
 	if b.devices == nil {

@@ -25,7 +25,7 @@ func WithNotify(notify func(title, body string) error) ServeOption {
 }
 
 // WithStartup offers a login item at place that runs exe (startup.read,
-// startup.set).
+// startup.write).
 func WithStartup(place startup.Place, exe string) ServeOption {
 	return func(s *server) { s.login = &loginItem{place, exe} }
 }

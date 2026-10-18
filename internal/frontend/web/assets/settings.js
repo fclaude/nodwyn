@@ -859,7 +859,7 @@ async function showStartup(node, ctx) {
   let state;
   const set = async (on) => {
     try {
-      state = await conn.call("startup.set", { on });
+      state = await conn.call("startup.write", { on });
       toast(on ? "Turned on: nodwyn's daemon starts at your next login." : "Turned off: nodwyn's daemon no longer starts at login.");
     } catch (error) {
       toastError(error.message);

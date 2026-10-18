@@ -60,12 +60,12 @@ func pullsWorkflow(f *forge.Forge, repo string) workflow.Definition {
 // setWorkflow makes a workflow as the console does, on this computer.
 func setWorkflow(t *testing.T, s *server, d workflow.Definition) string {
 	t.Helper()
-	raw, err := json.Marshal(workflowSetParams{Definition: d})
+	raw, err := json.Marshal(workflowWriteParams{Definition: d})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.mu.Lock()
-	result, rerr := s.workflowMethod(request{Method: "workflow.set", Params: raw}, &peer{actor: "test"})
+	result, rerr := s.workflowMethod(request{Method: "workflow.write", Params: raw}, &peer{actor: "test"})
 	s.mu.Unlock()
 	if rerr != nil {
 		t.Fatal(rerr.Message)
@@ -239,23 +239,23 @@ func TestWorkflowsAreMadeOnThisComputer(t *testing.T) {
 	}
 	phone := connect(t, path)
 	phone.ok("hello", map[string]any{"protocol": 1, "via": "web:phone"})
-	for _, method := range []string{"workflow.set", "workflow.test"} {
+	for _, method := range []string{"workflow.write", "workflow.test"} {
 		if r := phone.call(method, map[string]any{"definition": d}); r.Error == nil {
 			t.Fatalf("a device called %s", method)
 		}
 	}
 	bad := d
 	bad.Repo = "relative"
-	if r := c.call("workflow.set", map[string]any{"definition": bad}); r.Error == nil {
+	if r := c.call("workflow.write", map[string]any{"definition": bad}); r.Error == nil {
 		t.Fatal("a workflow without a folder was made")
 	}
 	bad = d
 	bad.Model = "no-such-model"
-	if r := c.call("workflow.set", map[string]any{"definition": bad}); r.Error == nil {
+	if r := c.call("workflow.write", map[string]any{"definition": bad}); r.Error == nil {
 		t.Fatal("a workflow on a model that is not configured was made")
 	}
 	var view WorkflowView
-	into(t, c.ok("workflow.set", map[string]any{"definition": d}), &view)
+	into(t, c.ok("workflow.write", map[string]any{"definition": d}), &view)
 	id := view.ID
 	if !strings.HasSuffix(view.Sentence, `if author is not "me", checked every 2 minutes; each in a task of its own`) {
 		t.Fatal(view.Sentence)
@@ -281,7 +281,7 @@ func TestWorkflowsAreMadeOnThisComputer(t *testing.T) {
 		t.Fatalf("%+v", view)
 	}
 	d.Name = "Renamed"
-	into(t, c.ok("workflow.set", map[string]any{"id": id, "definition": d}), &view)
+	into(t, c.ok("workflow.write", map[string]any{"id": id, "definition": d}), &view)
 	if view.ID != id || view.Definition.Name != "Renamed" || !view.Seeded {
 		t.Fatalf("a change lost what was seen: %+v", view)
 	}

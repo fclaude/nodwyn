@@ -102,9 +102,9 @@ export function renderWorkflows(root, ctx) {
       h(
         "div",
         { class: "row-actions" },
-        conn.has("workflow.pause") && (!d.paused || conn.has("workflow.set")) ? h("button", { type: "button", class: "btn", onclick: () => act("workflow.pause", { paused: !d.paused }) }, d.paused ? "Resume" : "Pause") : null,
+        conn.has("workflow.pause") && (!d.paused || conn.has("workflow.write")) ? h("button", { type: "button", class: "btn", onclick: () => act("workflow.pause", { paused: !d.paused }) }, d.paused ? "Resume" : "Pause") : null,
         conn.has("workflow.check") ? h("button", { type: "button", class: "btn", onclick: () => act("workflow.check") }, "Check now") : null,
-        conn.has("workflow.set") ? h("a", { class: "btn", href: `#/workflows/${view.id}` }, "Edit") : null,
+        conn.has("workflow.write") ? h("a", { class: "btn", href: `#/workflows/${view.id}` }, "Edit") : null,
         conn.has("workflow.remove")
           ? removal({ label: "Remove", consequence: "Remove the workflow? The tasks it opened and what they did stay.", asking: removing === view.id, ask: () => ((removing = view.id), redraw()), cancel: () => ((removing = ""), redraw()), run: () => ((removing = ""), act("workflow.remove")) })
           : null,
@@ -127,7 +127,7 @@ export function renderWorkflows(root, ctx) {
   const start = h(
     "div",
     { class: "row-actions" },
-    conn.has("workflow.set") ? h("a", { class: "btn dark", id: "new-watcher", href: "#/workflows/new" }, "Watch for events") : null,
+    conn.has("workflow.write") ? h("a", { class: "btn dark", id: "new-watcher", href: "#/workflows/new" }, "Watch for events") : null,
     conn.has("schedule.set") ? h("button", { type: "button", class: "btn", id: "new-workflow", onclick: () => { newWorkflow = true; navigate("#/"); } }, "New timetable") : null,
   );
   root.replaceChildren(
@@ -324,7 +324,7 @@ function renderBuilder(root, ctx) {
     save.disabled = true;
     error.textContent = "";
     try {
-      await conn.call("workflow.set", { id: editingId, definition: definition() });
+      await conn.call("workflow.write", { id: editingId, definition: definition() });
       draft = null;
       toast(editingId ? "Saved." : "Saved. It records what is there at its first check, and runs on what comes after.");
       navigate("#/workflows");

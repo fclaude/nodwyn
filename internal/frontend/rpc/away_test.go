@@ -154,7 +154,7 @@ func TestStartingAtLoginIsThisComputersSetting(t *testing.T) {
 	}
 	phone := connect(t, path)
 	phone.ok("hello", map[string]any{"protocol": 1, "via": "web:phone"})
-	for _, method := range []string{"startup.read", "startup.set"} {
+	for _, method := range []string{"startup.read", "startup.write"} {
 		if r := phone.call(method, map[string]any{"on": true}); r.Error == nil {
 			t.Fatalf("a device called %s", method)
 		}
@@ -162,14 +162,14 @@ func TestStartingAtLoginIsThisComputersSetting(t *testing.T) {
 	if _, err := os.Stat(unit); !os.IsNotExist(err) {
 		t.Fatal("a device turned it on")
 	}
-	if r := c.call("startup.set", map[string]any{}); r.Error == nil {
-		t.Fatal("startup.set without on was taken")
+	if r := c.call("startup.write", map[string]any{}); r.Error == nil {
+		t.Fatal("startup.write without on was taken")
 	}
-	into(t, c.ok("startup.set", map[string]any{"on": true}), &state)
+	into(t, c.ok("startup.write", map[string]any{"on": true}), &state)
 	if raw, err := os.ReadFile(unit); !state.On || state.Other || err != nil || !strings.Contains(string(raw), `ExecStart="/opt/nodwyn/bin/nodwyn" daemon`) {
 		t.Fatalf("%+v %s %v", state, raw, err)
 	}
-	into(t, c.ok("startup.set", map[string]any{"on": false}), &state)
+	into(t, c.ok("startup.write", map[string]any{"on": false}), &state)
 	if _, err := os.Stat(unit); state.On || !os.IsNotExist(err) {
 		t.Fatalf("still on: %+v %v", state, err)
 	}
@@ -178,7 +178,7 @@ func TestStartingAtLoginIsThisComputersSetting(t *testing.T) {
 	c = connect(t, none)
 	c.hello()
 	into(t, c.ok("startup.read", map[string]any{}), &state)
-	if state.Offered || c.call("startup.set", map[string]any{"on": true}).Error == nil {
+	if state.Offered || c.call("startup.write", map[string]any{"on": true}).Error == nil {
 		t.Fatalf("a daemon without a login item offered one: %+v", state)
 	}
 
@@ -186,7 +186,7 @@ func TestStartingAtLoginIsThisComputersSetting(t *testing.T) {
 	c = connect(t, temporary)
 	c.hello()
 	into(t, c.ok("startup.read", map[string]any{}), &state)
-	if state.Why == "" || c.call("startup.set", map[string]any{"on": true}).Error == nil {
+	if state.Why == "" || c.call("startup.write", map[string]any{"on": true}).Error == nil {
 		t.Fatalf("a temporary build was offered: %+v", state)
 	}
 	if _, err := os.Stat(unit); !os.IsNotExist(err) {

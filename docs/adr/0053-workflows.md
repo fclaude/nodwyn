@@ -195,7 +195,7 @@ Built, as §11 and §13 slice 0 have it:
    macOS, running this nodwyn's `daemon` with the `PATH` and XDG homes it
    has: a daemon started at login has the system's short `PATH`, and the
    tools tasks run are often elsewhere. `nodwyn startup [on|off]` and
-   Settings › General › While you're away (`startup.read`, `startup.set`)
+   Settings › General › While you're away (`startup.read`, `startup.write`)
    turn it on and off; both are this computer's, refused to a paired device
    by the daemon and the bridge (ADR 30). It never starts or stops a daemon:
    the one it writes starts at the next login, so it does not race the
@@ -519,3 +519,17 @@ answer discarded and recorded, a reference that means nothing refused, no
 daemon said), and `internal/frontend/tui`
 (`TestWorkflowsAndTheOutboxThroughTheDaemon`).
 
+
+## Amendment 2026-10-17: the settings methods are `.write`
+
+`startup.set` and `workflow.set` are `startup.write` and `workflow.write`
+(and `workflowSetParams` is `workflowWriteParams`). They had followed
+`schedule.set`, the nearest neighbour; the rule in `docs/protocol.md` (Naming)
+is that a change to a setting or to a definition is `.write`, and a method
+that came first and breaks the rule is not a reason to break it again. They
+were renamed in the commit that ends the programme, before any released client
+could call them: the console, the line mode, the TUI and the checks are
+all this repository's, and `grep` for the old names finds none. The acts that
+are neither a read nor a write keep their verbs (`workflow.pause`,
+`workflow.check`, `workflow.test`, `outbox.decide`), as `schedule.pause`,
+`models.test` and `session.answer` do.

@@ -3851,7 +3851,7 @@
           "$ref": "#/$defs/request.startup.read"
         },
         {
-          "$ref": "#/$defs/request.startup.set"
+          "$ref": "#/$defs/request.startup.write"
         },
         {
           "$ref": "#/$defs/request.trust.read"
@@ -3881,10 +3881,10 @@
           "$ref": "#/$defs/request.workflow.remove"
         },
         {
-          "$ref": "#/$defs/request.workflow.set"
+          "$ref": "#/$defs/request.workflow.test"
         },
         {
-          "$ref": "#/$defs/request.workflow.test"
+          "$ref": "#/$defs/request.workflow.write"
         },
         {
           "$ref": "#/$defs/request.workspace.active"
@@ -6434,7 +6434,7 @@
       ],
       "type": "object"
     },
-    "request.startup.set": {
+    "request.startup.write": {
       "properties": {
         "id": {
           "type": [
@@ -6447,7 +6447,7 @@
           "const": "2.0"
         },
         "method": {
-          "const": "startup.set"
+          "const": "startup.write"
         },
         "params": {
           "allOf": [
@@ -6745,37 +6745,6 @@
       ],
       "type": "object"
     },
-    "request.workflow.set": {
-      "properties": {
-        "id": {
-          "type": [
-            "string",
-            "number",
-            "null"
-          ]
-        },
-        "jsonrpc": {
-          "const": "2.0"
-        },
-        "method": {
-          "const": "workflow.set"
-        },
-        "params": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/rpc.workflowSetParams"
-            }
-          ],
-          "unevaluatedProperties": false
-        }
-      },
-      "required": [
-        "jsonrpc",
-        "method",
-        "params"
-      ],
-      "type": "object"
-    },
     "request.workflow.test": {
       "properties": {
         "id": {
@@ -6795,6 +6764,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.workflowTestParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.workflow.write": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workflow.write"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.workflowWriteParams"
             }
           ],
           "unevaluatedProperties": false
@@ -7428,7 +7428,7 @@
     "result.startup.read": {
       "$ref": "#/$defs/rpc.startupState"
     },
-    "result.startup.set": {
+    "result.startup.write": {
       "$ref": "#/$defs/rpc.startupState"
     },
     "result.trust.read": {
@@ -7472,11 +7472,11 @@
       "required": [],
       "type": "object"
     },
-    "result.workflow.set": {
-      "$ref": "#/$defs/rpc.WorkflowView"
-    },
     "result.workflow.test": {
       "$ref": "#/$defs/rpc.workflowTest"
+    },
+    "result.workflow.write": {
+      "$ref": "#/$defs/rpc.WorkflowView"
     },
     "result.workspace.active": {
       "$ref": "#/$defs/rpc.workspaceActiveResult"
@@ -10590,20 +10590,6 @@
       ],
       "type": "object"
     },
-    "rpc.workflowSetParams": {
-      "properties": {
-        "definition": {
-          "$ref": "#/$defs/workflow.Definition"
-        },
-        "id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "definition"
-      ],
-      "type": "object"
-    },
     "rpc.workflowTest": {
       "properties": {
         "items": {
@@ -10632,6 +10618,20 @@
       "properties": {
         "definition": {
           "$ref": "#/$defs/workflow.Definition"
+        }
+      },
+      "required": [
+        "definition"
+      ],
+      "type": "object"
+    },
+    "rpc.workflowWriteParams": {
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/workflow.Definition"
+        },
+        "id": {
+          "type": "string"
         }
       },
       "required": [

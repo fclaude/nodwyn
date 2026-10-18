@@ -716,7 +716,7 @@ minutes with no pending answer. Nothing schedules through Scheme, and only
 this computer creates or changes a definition; paired devices may pause or
 run now. A login item (\texttt{internal/startup}: a systemd user unit and
 its default.target.wants link, or a launchd agent) runs the daemon at login,
-written only on request (startup.set, nodwyn startup), never over a file
+written only on request (startup.write, nodwyn startup), never over a file
 nodwyn did not write, and never for a go run build; the daemon then clears
 a socket a crash left before listening. With notify.desktop on, a daemon
 given a notifier (WithNotify) shows fixed notices when a session's

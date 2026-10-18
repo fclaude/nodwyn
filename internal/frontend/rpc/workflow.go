@@ -377,7 +377,7 @@ func (s *server) WorkflowView(state workflow.State) WorkflowView {
 	return view
 }
 
-type workflowSetParams struct {
+type workflowWriteParams struct {
 	ID         string              `json:"id,omitempty"`
 	Definition workflow.Definition `json:"definition"`
 }
@@ -431,11 +431,11 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 			return nil, failure(-32000, fmt.Sprintf("no workflow %q", p.ID))
 		}
 		return s.WorkflowView(state), nil
-	case "workflow.set":
+	case "workflow.write":
 		if why := client.refuseDevice("Workflows are made and changed on this computer, not from a paired device"); why != nil {
 			return nil, why
 		}
-		var p workflowSetParams
+		var p workflowWriteParams
 		if err := params(req.Params, &p, "id", "definition"); err != nil {
 			return nil, err
 		}

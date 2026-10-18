@@ -31,7 +31,7 @@ type loginItem struct {
 	exe   string
 }
 
-// startupState is the login item as startup.read and startup.set answer.
+// startupState is the login item as startup.read and startup.write answer.
 // Offered is false for a daemon that has none to offer; Why says why it
 // cannot be turned on.
 type startupState struct {
@@ -59,7 +59,7 @@ func (s *server) startupState() startupState {
 	return state
 }
 
-// startupMethod answers startup.read and startup.set. Both are this
+// startupMethod answers startup.read and startup.write. Both are this
 // computer's: what starts at its login is its setup (ADR 30).
 func (s *server) startupMethod(req request, client *peer) (any, *rpcError) {
 	if why := client.refuseDevice("Starting at login is set on this computer, not from a paired device"); why != nil {

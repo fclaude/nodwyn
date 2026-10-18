@@ -56,7 +56,7 @@ export function outboxCard(conn, desk, item) {
       "div",
       { class: "card-actions" },
       can ? h("button", { type: "button", class: "btn small dark", onclick: (event) => { event.target.disabled = true; decide("post").finally(() => (event.target.disabled = false)); } }, draft ? "Save draft" : "Post review") : null,
-      can && conn.has("workflow.set") ? h("button", { type: "button", class: "btn small", onclick: edit }, "Edit") : null,
+      can && conn.has("workflow.write") ? h("button", { type: "button", class: "btn small", onclick: edit }, "Edit") : null,
       can ? h("button", { type: "button", class: "btn small ghost", onclick: () => decide("discard") }, "Discard") : null,
       h("a", { class: "btn small ghost", href: `#/task/${item.task}` }, "Open task"),
     ),

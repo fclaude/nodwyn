@@ -43,13 +43,13 @@ check(async () => {
   assert.strictEqual(fs.existsSync(file), false);
   await page.click('#startup-toggle');
   await until('turned on', async () => (await hint()).startsWith('On:'), hint);
-  assert.deepStrictEqual(sent.of('startup.set').at(-1), { on: true });
+  assert.deepStrictEqual(sent.of('startup.write').at(-1), { on: true });
   assert.ok(fs.readFileSync(file, 'utf8').includes(path.join(root, 'bin', 'nodwyn')), 'the login item does not run the daemon this console talks to');
   assert.strictEqual(await page.textContent('#startup-toggle'), 'Turn off');
   await page.screenshot({ path: `${out}/away-settings.png` });
   await page.click('#startup-toggle');
   await until('turned off', async () => (await hint()).startsWith('Off:'), hint);
-  assert.deepStrictEqual(sent.of('startup.set').at(-1), { on: false });
+  assert.deepStrictEqual(sent.of('startup.write').at(-1), { on: false });
   assert.strictEqual(fs.existsSync(file), false, 'turning it off left the login item');
   step("start at login turned on and off, in the demo's home");
 

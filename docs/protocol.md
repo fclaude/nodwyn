@@ -79,12 +79,12 @@ exceptions are `.set` (`session.model.set`, `session.judge.set`,
 `notes.read` beside `session.notes.write`, and `session.approve_all`, which
 has no verb. Prefer the rule over the nearest neighbour.
 
-The methods of ADR 53 do not all follow the rules either, and are not renamed
-for that reason alone: `startup.set` and `workflow.set` take `.set` after
-`schedule.set` (the rule's `.write` would be the nearest of the settings
-methods, which they are not), and `workflow.pause`, `workflow.check`,
-`workflow.test` and `outbox.decide` name what they do. A rename is cheap until
-a client ships them.
+The methods of ADR 53 follow the rules where a rule applies: `startup.write`
+and `workflow.write` change a setting or a definition, as `.write` says. They
+were called `.set` for a day, after `schedule.set`, and were renamed before
+any client shipped them. `workflow.pause`, `workflow.check`, `workflow.test`
+and `outbox.decide` name an act that is not a read or a write, as
+`schedule.pause`, `models.test` and `session.answer` do.
 
 ## Lifecycle methods
 
@@ -876,7 +876,7 @@ passkey may call all of them, the setup methods after a touch of its passkey;
 The methods that decide what runs with nobody watching are this computer's
 too, and the bridge and the daemon refuse them to a paired remote device:
 `schedule.set` (and resuming a paused schedule through `schedule.pause`),
-`startup.read` and `startup.set`, `workflow.set`, `workflow.remove` and
+`startup.read` and `startup.write`, `workflow.write`, `workflow.remove` and
 `workflow.test` (and resuming a workflow through `workflow.pause`), and
 `outbox.decide` with words other than the run's. A device may pause, run a
 schedule now, check a workflow now, list the held answers and post or discard
@@ -1292,7 +1292,7 @@ standing for every time it held (ADR 49, amended 2026-10-17).
   given none, as a test's), `supported` (Linux and macOS), `on`, `path` (the
   unit or agent file), `other` (it runs another nodwyn), `program` (the nodwyn
   it would run) and `why` it cannot be turned on (a `go run` build).
-- `startup.set {on}` writes or removes the login item and returns the same.
+- `startup.write {on}` writes or removes the login item and returns the same.
   Writing replaces one nodwyn wrote; a file at that place nodwyn did not
   write is refused, either way. It starts nothing now: the daemon starts at
   the next login.
@@ -1338,7 +1338,7 @@ run: item, version, kind, subject, task, summary) and `workflow.skip`.
   ("Watching 3 items, checked Sat 17 Oct 14:02", "Paused", "Could not check
   the source: …"), `checked`, `running`, `today` (`{day,runs,cost}` over its
   tasks) and `recent` (the latest five fires, newest first, each with `when`).
-- `workflow.set {id?, definition}` makes a workflow (no `id`) or replaces a
+- `workflow.write {id?, definition}` makes a workflow (no `id`) or replaces a
   definition (the same `id`), keeping what it has seen. The daemon refuses a
   definition that does not validate, a folder a task may not work in, and a
   model that is not configured. `workflow.remove {id}` removes it; the tasks
@@ -1348,7 +1348,7 @@ run: item, version, kind, subject, task, summary) and `workflow.skip`.
   `{sentence, items, note}`: each item with `passes` and, if not, `why`. It
   runs no model and records nothing.
 
-`workflow.set`, `workflow.remove` and `workflow.test` are this computer's, or a
+`workflow.write`, `workflow.remove` and `workflow.test` are this computer's, or a
 device that signed in with a passkey and is the person's; an invited device may
 `workflow.list`, `workflow.read`, `workflow.pause` (not resume) and
 `workflow.check`.
@@ -1418,7 +1418,7 @@ draft, never sent. The credential needs the `gmail.readonly` scope to read and
 for POST.
 
 The views these methods answer with are exported from the Go package as
-`WorkflowView` (`workflow.list`, `workflow.read`, `workflow.set`,
+`WorkflowView` (`workflow.list`, `workflow.read`, `workflow.write`,
 `workflow.pause`, `workflow.check`), `FireView` (its `recent` events) and
 `OutboxView` (`outbox.list`), so the terminal clients decode what the daemon
 sends rather than a copy of it; the generated schema names them so. The shapes

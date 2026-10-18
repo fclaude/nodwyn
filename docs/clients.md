@@ -201,7 +201,7 @@ in with the person's passkey after a touch of it (ADR 30, amended
 | Project trust (ADR 45) | Workspaces › **Review…**: both files whole, **Trust this revision** and **Revoke trust**, on a device signed in with a passkey after a touch of it; deliberate gap on this computer's own console and on a device paired by invitation (this computer's cookie reaches every loopback server; ADR 45 amended 2026-10-17) | — | — | `nodwyn trust` |
 | Pair devices | yes: Settings › Keys & devices › **Invite a device** (a code and a link, good once for ten minutes); over https an invitation makes a passkey, which signs other browsers in with no invitation | — | — | `nodwyn devices invite` |
 | List and revoke devices, remove a passkey | yes, on this computer or after a passkey touch, each after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME`; a passkey only in the console |
-| Start the daemon at login (`startup.read`, `startup.set`; ADR 53 §11) | Settings › General › While you're away, on this computer | — | — | `nodwyn startup`, `nodwyn startup on`, `nodwyn startup off` |
+| Start the daemon at login (`startup.read`, `startup.write`; ADR 53 §11) | Settings › General › While you're away, on this computer | — | — | `nodwyn startup`, `nodwyn startup on`, `nodwyn startup off` |
 | The daemon's desktop notices (`notify.desktop`) | Settings › General › While you're away; the daemon shows them whichever client is in use, when no window of this computer watches | — | — | edit `config.toml` (`[notify] desktop = true`) |
 | Home says when locked keys hold back a scheduled run (`held`) | yes, the Scheduled section and the card, unlocked from Home's callout | not built | — | — |
 

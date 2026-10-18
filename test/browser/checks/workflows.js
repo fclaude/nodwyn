@@ -47,7 +47,7 @@ check(async () => {
   const tested = await page.textContent('.builder-test');
   assert.ok(tested.includes('#1 old change') && tested.includes('would run') && tested.includes('records them and acts on what comes after'), `Test the trigger does not say what is there: ${tested}`);
   assert.ok(/When a pull request on fc\/nodwyn \(127\.0\.0\.1:\d+\) is opened or gets new commits, if author is not "me", checked every 2 minutes; each in a task of its own/.test(tested), `the sentence is not the daemon's: ${tested}`);
-  assert.strictEqual(sent.of('workflow.set').length, 0, 'Test the trigger saved something');
+  assert.strictEqual(sent.of('workflow.write').length, 0, 'Test the trigger saved something');
   const probe = sent.of('workflow.test').at(-1).definition;
   assert.deepStrictEqual([probe.source.kind, probe.source.repo, probe.source.credential, probe.filters], ['gitea-pulls', 'fc/nodwyn', 'forge', [{ field: 'author', op: 'is_not', value: 'me' }]]);
   assert.ok(tested.includes('its answer is held for you to post as a review'), `the sentence does not say the answer is held: ${tested}`);
@@ -63,7 +63,7 @@ check(async () => {
 
   await page.click('#wf-save');
   await page.waitForSelector('.workflow-row');
-  const created = sent.of('workflow.set').at(-1).definition;
+  const created = sent.of('workflow.write').at(-1).definition;
   assert.strictEqual(created.name, 'Review pull requests'); assert.strictEqual(created.routing, 'subject'); assert.strictEqual(created.repo, repo);
   let row = await page.textContent('.workflow-row');
   assert.ok(row.includes('Review pull requests') && row.includes('checked every 2 minutes'), `the row does not say it: ${row}`);
@@ -159,7 +159,7 @@ check(async () => {
   await page.click('#wf-save');
   await page.waitForSelector('.workflow-row');
   assert.ok((await page.textContent('.workflow-row')).includes('Review PRs') && (await page.locator('.workflow-fires li').count()) === 2, 'a change lost what the workflow had done');
-  assert.ok(sent.of('workflow.set').at(-1).id, 'a change made another workflow');
+  assert.ok(sent.of('workflow.write').at(-1).id, 'a change made another workflow');
   assert.strictEqual(await page.evaluate(() => window.__rowsGone), false, 'the workflow\'s row disappeared while the page was redrawn');
   await page.evaluate(() => (window.__removing = true));
   await page.click('.workflow-row button:text-is("Remove")');
