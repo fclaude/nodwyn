@@ -15,7 +15,7 @@ nodwyn has four ways in, over one core:
   owns its session and is scriptable.
 - **The CLI**: the other subcommands in `cmd/nodwyn/cli.go` (`sessions`,
   `replay`, `versions`, `undo`, `credential`, `keychain`, `mcp`, `trust`,
-  `devices`, `run`, `summary`, `eval`, `repl`).
+  `devices`, `startup`, `run`, `summary`, `eval`, `repl`).
 
 This page records what each one can do as of 2026-10-15 (the judge choice,
 ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49, and
@@ -185,6 +185,9 @@ needs.
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
 | Pair devices | no: `nodwyn ui --listen` prints the pairing code in its terminal (Settings › Keys & devices says so) | — | — | `nodwyn ui --listen` |
 | List and revoke devices | yes, on this computer, Revoke after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME` |
+| Start the daemon at login (`startup.read`, `startup.set`; ADR 52 §11) | Settings › General › While you're away, on this computer | — | — | `nodwyn startup`, `nodwyn startup on`, `nodwyn startup off` |
+| The daemon's desktop notices (`notify.desktop`) | Settings › General › While you're away; the daemon shows them whichever client is in use, when no window of this computer watches | — | — | edit `config.toml` (`[notify] desktop = true`) |
+| Home says when locked keys hold back a scheduled run (`held`) | yes, the Scheduled section and the card, unlocked from Home's callout | not built | — | — |
 
 ## Runs (ADR 35)
 

@@ -115,6 +115,30 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 	return err
 }
 
+// clearStaleSocket says whether a daemon answers on socket, and removes a
+// socket file nobody listens on (the connection is refused), which a crash
+// leaves. A daemon that listens but cannot be used (an older protocol, a
+// hello it refuses, a slow answer) is still running its tasks and schedules:
+// its socket stays, and the error says so.
+func clearStaleSocket(ctx context.Context, socket string) (answered bool, err error) {
+	dialCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	client, dialErr := rpc.Dial(dialCtx, socket)
+	cancel()
+	if dialErr == nil {
+		client.Close()
+		return true, nil
+	}
+	if info, statErr := os.Lstat(socket); statErr == nil && info.Mode()&os.ModeSocket != 0 {
+		if !errors.Is(dialErr, syscall.ECONNREFUSED) {
+			return false, fmt.Errorf("a daemon is running on %s, but this build cannot use it (%w); stop it, or run the nodwyn it came with", socket, dialErr)
+		}
+		if err := os.Remove(socket); err != nil {
+			return false, fmt.Errorf("stale socket %s: %w", socket, err)
+		}
+	}
+	return false, nil
+}
+
 // ensureDaemon attaches to a daemon that answers on socket, or starts one
 // in this process. A socket file nobody listens on (the connection is
 // refused) is left by a crash, and is removed. A daemon that listens but
@@ -122,20 +146,12 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 // still running its tasks and schedules: its socket stays, and the app
 // says so instead of starting a second daemon beside it.
 func ensureDaemon(ctx context.Context, paths config.Paths, socket string) (owned bool, done chan error, err error) {
-	dialCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	client, dialErr := rpc.Dial(dialCtx, socket)
-	cancel()
-	if dialErr == nil {
-		client.Close()
-		return false, nil, nil
+	answered, err := clearStaleSocket(ctx, socket)
+	if err != nil {
+		return false, nil, fmt.Errorf("app: %w", err)
 	}
-	if info, statErr := os.Lstat(socket); statErr == nil && info.Mode()&os.ModeSocket != 0 {
-		if !errors.Is(dialErr, syscall.ECONNREFUSED) {
-			return false, nil, fmt.Errorf("app: a daemon is running on %s, but this build cannot use it (%w); stop it, or run the nodwyn it came with", socket, dialErr)
-		}
-		if err := os.Remove(socket); err != nil {
-			return false, nil, fmt.Errorf("app: stale socket %s: %w", socket, err)
-		}
+	if answered {
+		return false, nil, nil
 	}
 	cfg, err := config.Load(paths.ConfigFile)
 	if err != nil {
@@ -156,7 +172,7 @@ func ensureDaemon(ctx context.Context, paths config.Paths, socket string) (owned
 		return false, nil, err
 	}
 	done = make(chan error, 1)
-	go func() { done <- rpc.Serve(ctx, listener, options) }()
+	go func() { done <- rpc.Serve(ctx, listener, options, daemonOptions()...) }()
 	return true, done, nil
 }
 

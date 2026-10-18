@@ -2277,7 +2277,8 @@ covers it. A pending answer prevents preparation, and only a conversation
 prepares one, never an evaluation or a read in Settings.
 Creating, editing, resuming or removing schedules stays on this computer;
 paired devices can pause and run now. There is no scheduling Scheme primitive.
-Automatic daemon startup at login is not built.
+For runs with no window open, have the daemon start at login and turn on its
+desktop notices (Local daemon, below).
 
 Opening or reopening a task with run records loads its latest run, including
 all turns and human follow-ups in that run. **Earlier runs** fetches five
@@ -2653,6 +2654,32 @@ console needs besides: model and keychain setup, credentials, workspaces,
 attachments, file versions and MCP servers. See [the protocol guide](protocol.md) for the handshake, methods,
 permissions and reconnect semantics. `nodwyn app` starts one itself when none
 is running ([the app](app.md)).
+
+A daemon `nodwyn app` started stops when its window closes, and with it the
+scheduled runs. To keep it running, have it start at login: `nodwyn startup
+on` (or Settings › General › **While you're away** › **Start at login**)
+writes a systemd user unit (`~/.config/systemd/user/nodwyn.service`, wanted by
+`default.target`) on Linux, or a launchd agent
+(`~/Library/LaunchAgents/nodwyn.daemon.plist`) on macOS, which runs this
+nodwyn's `daemon` with the `PATH` and XDG homes it had then. It starts at
+your next login, and again if it fails; `nodwyn app` then uses it, and
+closing the window leaves it running. `nodwyn startup` says whether it is on
+and which nodwyn it runs; `nodwyn startup off` removes it. A file at that
+place nodwyn did not write is left alone, and a `go run` build is refused,
+since it is gone when it exits. A daemon started at login has no terminal to
+ask for the keychain's passphrase: it starts locked, Home says when that
+holds back a scheduled run, and unlocking there (or in Settings) lets the
+runs go on. A daemon that finds the socket a crash left, which nobody
+listens on, removes it and listens.
+
+With `[notify] desktop = true` (Settings › General › **While you're away** ›
+**Desktop notices from the daemon**; off until you turn it on) the daemon shows a desktop
+notification when a task comes to need your answer and no nodwyn window on
+this computer is open (a window shows its own, Settings › This browser), and
+once when a locked keychain stops a scheduled run, until it is unlocked.
+Their words are fixed ("nodwyn needs your answer", "nodwyn can't run a
+scheduled task"), never the task's. It uses `notify-send` on Linux and
+`osascript` on macOS.
 ## Downloadable builds and books
 
 Download portable binaries and both books from the repository's Gitea

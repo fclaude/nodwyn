@@ -281,9 +281,14 @@ export function renderHome(root, ctx) {
         toast(error.message);
       }
     };
-    schedules.append(h("article", { class: "card" }, h("a", { href: `#/task/${item.id}` }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.sentence || s.definition.repeat), h("p", { class: "hint", title: s.timezone }, s.definition.paused ? "Paused" : s.next_words ? nextLine(s) : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending"), h("div", { class: "row-actions" }, ...scheduleActions(conn, s.definition, item.archived, update))));
+    schedules.append(h("article", { class: "card" }, h("a", { href: `#/task/${item.id}` }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.sentence || s.definition.repeat), h("p", { class: s.held ? "hint warn" : "hint", title: s.timezone }, s.definition.paused ? "Paused" : s.held || (s.next_words ? nextLine(s) : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending")), h("div", { class: "row-actions" }, ...scheduleActions(conn, s.definition, item.archived, update))));
   }
   if (!schedules.querySelector("article")) schedules.append(h("p", { class: "empty-note" }, "Nothing scheduled."));
+  // The daemon says of each schedule whether locked keys hold back its next
+  // run: said once here, where the schedules are, and unlocked above. This
+  // part of Home is drawn again when the list changes; the top is not while
+  // a passphrase is being typed.
+  else if ([...desk.sessions.values()].some((item) => item.schedule?.held && !item.archived)) schedules.querySelector("h2").after(h("p", { class: "hint warn", id: "schedules-held" }, "Your keys are locked, so scheduled runs are skipped until you unlock them."));
   const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, schedules, done));
   // The ask being typed survives updates: while focus is in the top half,
   // only the lists below are replaced. This is decided before the composer
@@ -632,7 +637,12 @@ export function renderHome(root, ctx) {
         "div",
         { class: "home-col" },
         h("h1", {}, "What should we get done?"),
-        locked ? h("details", { class: "callout", open: true }, h("summary", {}, desk.keysLocked ? "Unlock your keys to start a task: the model needs one." : "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(ctx, { onDone: () => renderHome(root, { ...ctx, keepTop: false }) })) : null,
+        locked ? h("details", { class: "callout", open: true }, h("summary", {}, desk.keysLocked ? "Unlock your keys to start a task: the model needs one." : "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(ctx, { onDone: async () => {
+          // The daemon said of each schedule whether locked keys hold back
+          // its next run; unlocked, the list read before is out of date.
+          await desk.reload();
+          renderHome(root, { ...ctx, keepTop: false });
+        } })) : null,
         canStart ? form : h("div", { class: "callout plain" }, "This view can't start tasks. Use an interactive view or the terminal."),
         canStart ? chips : null,
         canStart ? adding : null,

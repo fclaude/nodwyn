@@ -1,10 +1,12 @@
 # ADR 0052: Workflows: a trigger, a filter, an instruction, where runs go, and what happens with them
 
 - Status: accepted 2026-10-17; the timetable (§3) built the same day as an
-  amendment to ADR 49; the rest not built (see "Not built")
+  amendment to ADR 49, and §11 (slice 0) the same day, amended below; the
+  rest not built (see "Not built")
 - Date: 2026-10-17
 - Amends: 49 (a schedule becomes a workflow whose runs all go to one task;
-  schedules stop being read from every task's log)
+  schedules stop being read from every task's log), 30 (a daemon may start at
+  login, and then outlives the app's window; see the amendment)
 
 ## Context
 
@@ -169,5 +171,67 @@ amendment here.
 
 ## Not built
 
-Everything but §3, in §13's order. Not proposed: one workflow starting
-another, a zone chosen per workflow, a cron line turned into a rule.
+Everything but §3 and §11, in §13's order. Not proposed: one workflow
+starting another, a zone chosen per workflow, a cron line turned into a
+rule.
+
+## Amendment 2026-10-17: slice 0, the daemon keeps running and says when it needs the person
+
+Built, as §11 and §13 slice 0 have it:
+
+1. **A login item, written only when asked.** `internal/startup` writes a
+   systemd user unit (`nodwyn.service`, wanted by `default.target` through
+   the link `systemctl --user enable` would make) on Linux, or a launchd
+   agent (`nodwyn.daemon.plist`, run at load and again on a failure) on
+   macOS, running this nodwyn's `daemon` with the `PATH` and XDG homes it
+   has: a daemon started at login has the system's short `PATH`, and the
+   tools tasks run are often elsewhere. `nodwyn startup [on|off]` and
+   Settings › General › While you're away (`startup.read`, `startup.set`)
+   turn it on and off; both are this computer's, refused to a paired device
+   by the daemon and the bridge (ADR 30). It never starts or stops a daemon:
+   the one it writes starts at the next login, so it does not race the
+   app's. A file at its place nodwyn did not write is left alone, both ways,
+   and a `go run` build is refused, since it is gone when it exits. Who
+   writes the file: nodwyn, on the person's request, in the person's own
+   home; nothing in a repository and no model reaches it, and the daemon
+   offers it only when its command gives it a place (`WithStartup`), so
+   tests and the browser demo never write a real one.
+2. **ADR 30's lifecycle, amended.** A daemon the app starts still closes
+   with its window. A daemon started at login is the one the app finds and
+   uses, and closing the window leaves it running with its schedules.
+   `nodwyn daemon` now removes a socket nobody listens on before it listens,
+   as the app always did, since a login item that restarts a failed daemon
+   would otherwise find the crash's socket and fail again
+   (`TestADaemonStartedAgainClearsTheSocketACrashLeft`, which fails on the
+   code before this).
+3. **The daemon's own desktop notices**, off unless a person turns on
+   `[notify] desktop` (Settings › General), as a browser's are. With fixed
+   words, never a task's, as the app's notification has (a lock screen shows
+   them): "nodwyn needs your answer" when an open task's state turns to
+   needing one while no client of this computer (one without `via`) is in
+   `session.watch` (a console watching notifies by itself; a paired phone's
+   page is not this computer's), and "nodwyn can't run a scheduled task"
+   once when a locked keychain makes a scheduled run skip, until the
+   keychain is unlocked; a person's Run now says nothing, since they are
+   there. `notify-send` on Linux, `osascript` with the words as its
+   arguments on macOS. Only a daemon its command gives a notifier
+   (`WithNotify`) shows any, so tests and the demo never do.
+4. **Locked keys holding back a run are said where the schedules are.** A
+   daemon started at login has no terminal to ask for the passphrase, so its
+   keychain starts locked. `schedule.read` and the listing add `held` when
+   the next run would be skipped for it (the task is closed, the keychain
+   locked, the model needs a key); Home's Scheduled section and the card say
+   so, and the unlock form at Home's top unlocks it and reads the list again.
+
+Not built: notices pushed to a paired phone (its page shows them while open,
+as before); Windows; starting the login daemon at once; the TUI saying a run
+is held. Checks: `internal/startup` (both kinds, quoting of specifiers and
+variables, a file nodwyn did not write, relative and temporary programs),
+`internal/frontend/rpc` (`away_test.go`: a notice when no local client
+watches, none while a console does, a phone not counting; off by default and
+saved by `settings.write`; the locked-keychain notice once per locked
+period and `held`; `startup.*` refused to a device, on and off, none offered
+without a place or for a temporary build), `cmd/nodwyn` (the stale socket),
+and the `away` browser check (Home's held schedule and its unlock, start at
+login turned on and off in the demo's own home, the notices saved and read
+back).

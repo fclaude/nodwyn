@@ -712,7 +712,14 @@ its skip is deferred in daemon memory until release; if the daemon stops
 first, restart handles that interval as missed. A task closes after 15 idle
 minutes with no pending answer. Nothing schedules through Scheme, and only
 this computer creates or changes a definition; paired devices may pause or
-run now. The daemon must already be running; login startup is not built.
+run now. A login item (\texttt{internal/startup}: a systemd user unit and
+its default.target.wants link, or a launchd agent) runs the daemon at login,
+written only on request (startup.set, nodwyn startup), never over a file
+nodwyn did not write, and never for a go run build; the daemon then clears
+a socket a crash left before listening. With notify.desktop on, a daemon
+given a notifier (WithNotify) shows fixed notices when a session's
+needs\_answer turns on with no local client in session.watch, and once per
+locked period when a locked keychain skips a scheduled run.
 
 A successful turn that added more than a quarter-window since its last note
 asks compact-note for a handover focused on the scheduled request. It keeps

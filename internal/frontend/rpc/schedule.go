@@ -45,9 +45,12 @@ type scheduleState struct {
 	Next      []time.Time       `json:"next"`
 	NextWords []string          `json:"next_words"`
 	History   []scheduleHistory `json:"history,omitempty"`
-	Timezone  string            `json:"timezone"`
-	Archived  bool              `json:"archived"`
-	Scheduler bool              `json:"scheduler"`
+	// Held says why the next run will be skipped as things are now: the
+	// keychain is locked and the model needs a key from it.
+	Held      string `json:"held,omitempty"`
+	Timezone  string `json:"timezone"`
+	Archived  bool   `json:"archived"`
+	Scheduler bool   `json:"scheduler"`
 }
 
 type scheduleHistory struct {
@@ -151,6 +154,11 @@ func (s *server) scheduleState(id string) (scheduleState, error) {
 		}
 	}
 	owned, open := s.sessions[id]
+	// A closed task is resumed for its run, and a resume needs the key an
+	// open task already has (executeSchedule).
+	if len(result.Next) > 0 && !open && s.lockedKeyRefusal(core.ModelChoice{}) != "" {
+		result.Held = "Skipped while your keys are locked: the model needs one"
+	}
 	busy := open && (owned.session.Busy() || owned.driver.Active())
 	newest := true
 	for i := len(state.History) - 1; i >= 0; i-- {
@@ -353,6 +361,9 @@ func (s *server) scheduleTick(now time.Time) {
 	if s.scheduleSkips == nil {
 		s.scheduleSkips = map[string]deferredSkip{}
 	}
+	if s.options.Keychain != nil {
+		s.keysTold = false
+	}
 	for _, info := range infos {
 		state, err := s.store().Schedule(info.ID)
 		if err != nil || state.Definition == nil {
@@ -454,6 +465,13 @@ func (s *server) executeSchedule(id string, def log.SessionSchedule, sequence ui
 	owned, open := s.sessions[id]
 	if !open {
 		if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
+			// Nobody may be at the computer for a scheduled time, so it says
+			// so on the desktop, once until the keychain is unlocked; a
+			// person who chose Run now is looking.
+			if !run.Manual && !s.keysTold {
+				s.keysTold = true
+				s.tell(keysTitle, keysBody)
+			}
 			return errors.New(why)
 		}
 		options := s.options

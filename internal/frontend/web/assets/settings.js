@@ -9,7 +9,7 @@
 // passphrase (a secret is never staged), a provider or a model, each its own
 // form with its own Save, and the choices of This browser, which change
 // nothing on the computer.
-import { h, icon, toast, ago, tablist, removal } from "./dom.js";
+import { h, icon, toast, toastError, ago, tablist, removal } from "./dom.js";
 import { keychainForm, passphraseForm, noPassphraseWarning } from "./setup.js";
 import { modelsRows, resetModelsUi, stagedDefault, discardDefault } from "./models.js";
 import { judgeStateWords, judgeKinds, judgeLabel } from "./modelpicker.js";
@@ -62,6 +62,7 @@ export function applyThinking(shown) {
 // What a task does without asking: [approval] in config.toml (ADR 35).
 const writeChoices = [["allow", "Without asking"], ["ask", "Ask me"]];
 const dontAskChoices = [[false, "Not offered"], [true, "Offered in each task"]];
+const notifyChoices = [[false, "Off"], [true, "When no nodwyn window is open"]];
 const commandChoices = [["judge", "The judge, then me"], ["ask", "Ask me"], ["allow", "Without asking"]];
 
 function writesHint(writes) {
@@ -84,6 +85,7 @@ const specs = {
   "approval.writes": { kind: "choice", label: "Writing files" },
   "approval.commands": { kind: "choice", label: "Running commands" },
   "approval.dont_ask": { kind: "choice", label: "Don't ask in tasks" },
+  "notify.desktop": { kind: "choice", label: "Desktop notices from the daemon" },
   "budget.tool_calls_soft": { kind: "count", label: "Tool calls, ask at", follows: true },
   "budget.tool_calls_hard": { kind: "count", label: "Tool calls, stop at" },
   "budget.tokens_soft": { kind: "count", label: "Tokens used, ask at", follows: true },
@@ -323,7 +325,7 @@ export function renderSettings(root, ctx) {
   // Only the tab shown is drawn; the edits waiting in the bar are kept across
   // tabs, so a change made in one is saved with one made in another.
   const build = {
-    general: () => (known ? [approvalSection(ctx, redraw), advancedFold(ctx, redraw)] : [unknown("This daemon's settings live in config.toml.")]),
+    general: () => (known ? [approvalSection(ctx, redraw), awaySection(ctx, redraw), advancedFold(ctx, redraw)] : [unknown("This daemon's settings live in config.toml.")]),
     models: () => [modelsSection(ctx, root)],
     judge: () => (known ? [judgeSection(ctx, redraw, root)] : [unknown("This daemon's judge is set in config.toml.")]),
     keys: () => [keysSection(ctx, root, redraw)],
@@ -341,7 +343,7 @@ export function renderSettings(root, ctx) {
       "div",
       { class: "page-col" },
       h("h1", {}, "Settings"),
-      h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys and the passphrase act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
+      h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys, the passphrase and starting at login act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
       known && !editable(conn) ?h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
       nav,
       h("div", { class: "settings-panel", role: "tabpanel", "aria-labelledby": `settings-tab-${tab}`, id: `settings-panel-${tab}` }, ...sections),
@@ -353,6 +355,8 @@ export function renderSettings(root, ctx) {
   refreshBar();
   const devices = root.querySelector("#devices");
   if (devices && conn.has("devices.list")) showDevices(devices, ctx);
+  const login = root.querySelector("#startup");
+  if (login) showStartup(login, ctx);
   if (focus) {
     const node = document.getElementById(focus.id);
     node?.focus({ preventScroll: true });
@@ -821,6 +825,64 @@ function judgeSection(ctx, redraw, root) {
     ),
   );
   return page;
+}
+
+// awaySection is what goes on while nobody is at nodwyn (ADR 52 §11):
+// whether the daemon starts at login, so scheduled runs need no window open,
+// and whether it says on this computer's desktop when a task needs an answer.
+// Both are this computer's: a paired device sees neither.
+function awaySection(ctx, redraw) {
+  const { conn } = ctx;
+  const notices = choice(ctx, "notify.desktop", notifyChoices, redraw);
+  if (!conn.has("startup.read") && !notices) return null;
+  return section(
+    "away",
+    "While you're away",
+    "Scheduled runs happen in nodwyn's daemon. These keep it running and let it tell you when a task waits for you.",
+    ...(conn.has("startup.read") ? row("Start at login", h("div", { id: "startup" }, h("p", { class: "hint" }, "Reading…"))) : []),
+    ...(notices
+      ? row(
+          "Desktop notices from the daemon",
+          notices,
+          h("p", { class: "hint" }, "Only “nodwyn needs your answer” and “nodwyn can't run a scheduled task”, never the task. Shown when no nodwyn window here is open: an open window gives its own (This browser). On Linux it uses notify-send."),
+        )
+      : []),
+  );
+}
+
+// showStartup fills in whether the daemon starts at login (startup.read),
+// with the button that turns it on or off at once: a file in this computer's
+// home, which only this computer is offered.
+async function showStartup(node, ctx) {
+  const { conn } = ctx;
+  let state;
+  const set = async (on) => {
+    try {
+      state = await conn.call("startup.set", { on });
+      toast(on ? "Turned on: nodwyn's daemon starts at your next login." : "Turned off: nodwyn's daemon no longer starts at login.");
+    } catch (error) {
+      toastError(error.message);
+    }
+    draw();
+  };
+  const draw = () => {
+    if (!state.offered) return node.replaceChildren(h("p", { class: "hint" }, "This daemon offers no login item: start nodwyn from the terminal with nodwyn startup on."));
+    const on = state.on && !state.other;
+    node.replaceChildren(
+      h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "startup-toggle", disabled: !conn.live || (!on && !!state.why), onclick: () => set(!on) }, on ? "Turn off" : "Turn on")),
+      h("p", { class: "hint" }, on
+        ? `On: ${state.path} starts nodwyn's daemon when you log in, so scheduled runs go on with no window open.`
+        : state.why || (state.on
+          ? `${state.path} starts another nodwyn at login; Turn on makes it start this one (${state.program}).`
+          : "Off: scheduled runs happen only while nodwyn is open. Turned on, the daemon starts at your next login.")),
+    );
+  };
+  try {
+    state = await conn.call("startup.read");
+  } catch (error) {
+    return node.replaceChildren(h("p", { class: "error" }, error.message));
+  }
+  draw();
 }
 
 function containersSection(ctx, redraw) {

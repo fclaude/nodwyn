@@ -1057,6 +1057,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 #schedule-every { width: 90px; }
 #schedule-dates { width: 140px; }
 .schedule-sentence { font-family: var(--serif); font-size: 17px; margin: 0; }
+.hint.warn { color: var(--warn-ink); }
 .schedule-preview { display: grid; gap: 4px; }
 .schedule-preview p { margin: 0; }
 .schedule-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }

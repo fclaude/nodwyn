@@ -640,6 +640,9 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		return !remote
 	case "devices.list", "devices.revoke":
 		return !remote && b.devices != nil
+	// What starts at this computer's login is its setup (ADR 30, ADR 52).
+	case "startup.read", "startup.set":
+		return !remote
 	}
 	return false
 }

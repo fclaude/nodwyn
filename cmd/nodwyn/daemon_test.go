@@ -111,3 +111,60 @@ func TestCLIDaemonLifecycle(t *testing.T) {
 	}
 	session.Close()
 }
+
+// A daemon started at login, or by the login item again after it failed,
+// finds the socket the crash left, which nobody listens on: it removes it
+// and listens, where Listen alone refused it and the daemon stopped again.
+func TestADaemonStartedAgainClearsTheSocketACrashLeft(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "nodwyn-daemon-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	socket := filepath.Join(dir, "sock")
+	stale, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.SetUnlinkOnClose(false)
+	stale.Close()
+	if _, err := net.Dial("unix", socket); err == nil {
+		t.Fatal("the stale socket answered")
+	}
+	output, err := os.Create(filepath.Join(dir, "output"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCLIHelper$", "--", "daemon", "--no-keychain", "--socket", socket)
+	cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+	cmd.Stdout, cmd.Stderr = output, output
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+		}
+	}()
+	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); time.Sleep(10 * time.Millisecond) {
+		select {
+		case err := <-done:
+			data, _ := os.ReadFile(output.Name())
+			t.Fatalf("the daemon stopped: %v\n%s", err, data)
+		default:
+		}
+		if conn, err := net.Dial("unix", socket); err == nil {
+			conn.Close()
+			return
+		}
+	}
+	data, _ := os.ReadFile(output.Name())
+	t.Fatalf("the daemon is not listening on the socket a crash left\n%s", data)
+}

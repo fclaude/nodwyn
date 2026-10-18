@@ -29,6 +29,8 @@ func contracts() map[string]methodContract {
 		"schedule.set":             {scheduleSetParams{}, scheduleState{}},
 		"schedule.pause":           {schedulePauseParams{}, scheduleState{}},
 		"schedule.run":             {idParams{}, scheduleState{}},
+		"startup.read":             {struct{}{}, startupState{}},
+		"startup.set":              {startupParams{}, startupState{}},
 		"run.start":                {runParams{}, runResult{}},
 		"run.info":                 {idParams{}, run.State{}},
 		"run.stop":                 {idParams{}, struct{}{}},

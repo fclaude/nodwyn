@@ -3791,6 +3791,12 @@
           "$ref": "#/$defs/request.settings.write"
         },
         {
+          "$ref": "#/$defs/request.startup.read"
+        },
+        {
+          "$ref": "#/$defs/request.startup.set"
+        },
+        {
           "$ref": "#/$defs/request.versions.diff"
         },
         {
@@ -6218,6 +6224,69 @@
       ],
       "type": "object"
     },
+    "request.startup.read": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "startup.read"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.startup.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "startup.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.startupParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.versions.diff": {
       "properties": {
         "id": {
@@ -6880,6 +6949,12 @@
     },
     "result.settings.write": {
       "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.startup.read": {
+      "$ref": "#/$defs/rpc.startupState"
+    },
+    "result.startup.set": {
+      "$ref": "#/$defs/rpc.startupState"
     },
     "result.versions.diff": {
       "$ref": "#/$defs/rpc.versionDiffResult"
@@ -8862,6 +8937,9 @@
             }
           ]
         },
+        "held": {
+          "type": "string"
+        },
         "history": {
           "items": {
             "$ref": "#/$defs/rpc.scheduleHistory"
@@ -9390,6 +9468,55 @@
       },
       "required": [
         "set"
+      ],
+      "type": "object"
+    },
+    "rpc.startupParams": {
+      "properties": {
+        "on": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "on"
+      ],
+      "type": "object"
+    },
+    "rpc.startupState": {
+      "properties": {
+        "offered": {
+          "type": "boolean"
+        },
+        "on": {
+          "type": "boolean"
+        },
+        "other": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "program": {
+          "type": "string"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "supported",
+        "on",
+        "offered"
       ],
       "type": "object"
     },

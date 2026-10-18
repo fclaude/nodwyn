@@ -31,7 +31,7 @@ check(async () => {
   await go("#/settings");
   await page.waitForSelector("#section-approval");
   assert.deepStrictEqual(await page.$$eval("[id^='settings-tab-']", (tabs) => tabs.map((t) => t.textContent)), ["General", "Models", "Judge", "Keys & devices", "This browser"]);
-  await shows(page, "#save-rule", "waits in the bar at the foot of the page and is saved with the others", "Keys and the passphrase act at once");
+  await shows(page, "#save-rule", "waits in the bar at the foot of the page and is saved with the others", "Keys, the passphrase and starting at login act at once");
   // What a task does without asking leads the page; the transport exception
   // is a key matter and sits on Keys & devices.
   const labels = await page.$$eval("#section-approval .label", (ls) => ls.map((l) => l.textContent));

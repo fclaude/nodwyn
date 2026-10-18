@@ -1035,5 +1035,8 @@ the unrecorded skip, so restart treats it as a missed time. Runs use normal
 approvals, discard Don't ask and reset the spend limit for each run and its
 human follow-ups; Statistics keeps whole-task Totals and adds This run for the loaded scheduled run. Idle scheduled tasks close after 15 minutes. Long turns prepare a warm
 handover note for the next scheduled message without replacing the current
-human conversation. The daemon must be running: automatic startup at login
-is not built.
+human conversation. The daemon must be running: \texttt{nodwyn startup on}
+(Settings › General › While you're away) starts it at login, from a systemd
+user unit or a launchd agent, and the daemon's desktop notices, off until
+turned on, say when a task needs an answer and no nodwyn window is open, and
+when a locked keychain stops a scheduled run, which Home also says.

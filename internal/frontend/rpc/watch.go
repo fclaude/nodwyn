@@ -24,6 +24,11 @@ type stateWatch struct {
 	revision uint64
 	states   map[string]sessionState
 	clients  map[*peer]bool
+	// asked is told of a session that came to need an answer while no
+	// client of this computer watches, so that the daemon can say so on the
+	// desktop (ADR 52 §11). A console watching says so itself (desk.js); a
+	// paired device's page is not this computer's.
+	asked func(id string)
 }
 
 func (w *stateWatch) update(session *core.Session, open bool, running ...bool) {
@@ -33,6 +38,14 @@ func (w *stateWatch) update(session *core.Session, open bool, running ...bool) {
 		pending, err := session.PendingPrompts()
 		state.NeedsAnswer = err != nil || len(pending) > 0
 	}
+	if w.publish(state, open) && w.asked != nil {
+		w.asked(state.ID)
+	}
+}
+
+// publish sends a changed state to the watching clients, and says whether
+// the session came to need an answer with none of this computer's watching.
+func (w *stateWatch) publish(state sessionState, open bool) (unwatched bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.states == nil {
@@ -41,7 +54,7 @@ func (w *stateWatch) update(session *core.Session, open bool, running ...bool) {
 	previous, exists := w.states[state.ID]
 	state.Revision = previous.Revision
 	if exists && state == previous {
-		return
+		return false
 	}
 	w.revision++
 	state.Revision = w.revision
@@ -50,11 +63,15 @@ func (w *stateWatch) update(session *core.Session, open bool, running ...bool) {
 	} else {
 		delete(w.states, state.ID)
 	}
+	unwatched = state.NeedsAnswer && !previous.NeedsAnswer
 	for client := range w.clients {
 		if !client.enqueue(notification{"2.0", "session.event", sessionEvent{ID: state.ID, Kind: "session.state", Payload: state}}) {
 			delete(w.clients, client)
+		} else if !client.device {
+			unwatched = false
 		}
 	}
+	return unwatched
 }
 func (w *stateWatch) subscribe(client *peer) []sessionState {
 	w.mu.Lock()

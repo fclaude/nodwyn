@@ -1220,4 +1220,27 @@ options. Their spend limit resets at schedule.run and includes human
 follow-ups. `session.info` adds optional `run_spend`; budgets.cost reports the
 current run’s limit. Whole-task session.totals remains unchanged. Scheduled
 sessions close after 15 idle minutes without pending prompts, freeing the
-same resources as session.close. Automatic daemon startup at login is not built.
+same resources as session.close.
+
+`schedule.read` and `session.list`'s schedule view add `held` when the next
+run would be skipped as things are: the task is closed, the keychain is
+locked and the default model needs a key from it.
+
+## Starting at login and desktop notices (ADR 52 §11)
+
+- `startup.read {}` returns the login item: `offered` (false for a daemon
+  given none, as a test's), `supported` (Linux and macOS), `on`, `path` (the
+  unit or agent file), `other` (it runs another nodwyn), `program` (the nodwyn
+  it would run) and `why` it cannot be turned on (a `go run` build).
+- `startup.set {on}` writes or removes the login item and returns the same.
+  Writing replaces one nodwyn wrote; a file at that place nodwyn did not
+  write is refused, either way. It starts nothing now: the daemon starts at
+  the next login.
+
+Both are this computer's: the daemon and the bridge refuse them to a paired
+device. With the setting `notify.desktop` on (`settings.write`, off by
+default), a daemon given a notifier shows a desktop notice, with fixed
+words, when an open session's state turns to `needs_answer` while no client
+of this computer (one that did not hello with `via`) is in `session.watch`,
+and once when a locked keychain makes a scheduled run skip, until the
+keychain is unlocked.
