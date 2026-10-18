@@ -71,22 +71,10 @@ export class Connection {
     }
     this.waiting.clear();
   }
-  async call(method, params = {}, timeout = 35000) {
-    try {
-      return await this.send(method, params, timeout);
-    } catch (error) {
-      if (error.code !== touchCode || !this.confirmTouch) throw error;
-      const answer = await this.confirmTouch();
-      // A touch that made this device the person's needs a connection that
-      // says so: the request is for the person to make again.
-      if (answer?.promoted) {
-        this.connect();
-        throw new Error("Confirmed. This device can now change nodwyn's setup: do it again.");
-      }
-      return this.send(method, params, timeout);
-    }
-  }
-  send(method, params, timeout) {
+  // call sends a request and resolves to its result. The promise is the
+  // one the reply settles, with nothing between them: a reply handled a
+  // tick later than a page's other work reorders its redraws.
+  call(method, params = {}, timeout = 35000, touched = false) {
     return new Promise((resolve, reject) => {
       if (this.socket?.readyState !== WebSocket.OPEN) {
         reject(new Error("Disconnected. Reconnect to reload; nothing was retried."));
@@ -97,9 +85,25 @@ export class Connection {
         this.waiting.delete(id);
         reject(Object.assign(new Error("Request timed out. Nothing was retried."), { timedOut: true }));
       }, timeout);
-      this.waiting.set(id, { resolve, reject, timer, method });
+      this.waiting.set(id, { resolve, reject, timer, method, params, timeout, touched });
       this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
+  }
+  // afterTouch asks for the touch a setup request was held back for, and
+  // sends the request again, once, settling the first call's promise.
+  async afterTouch(wait) {
+    try {
+      const answer = await this.confirmTouch();
+      // A touch that made this device the person's needs a connection that
+      // says so: the request is for the person to make again.
+      if (answer?.promoted) {
+        this.connect();
+        throw new Error("Confirmed. This device can now change nodwyn's setup: do it again.");
+      }
+      wait.resolve(await this.call(wait.method, wait.params, wait.timeout, true));
+    } catch (error) {
+      wait.reject(error);
+    }
   }
   connect() {
     clearTimeout(this.retryTimer);
@@ -147,7 +151,8 @@ export class Connection {
         if (!wait) return;
         clearTimeout(wait.timer);
         this.waiting.delete(frame.id);
-        if (frame.error) wait.reject(Object.assign(new Error(frame.error.message), { code: frame.error.code }));
+        if (frame.error?.code === touchCode && this.confirmTouch && !wait.touched) this.afterTouch(wait);
+        else if (frame.error) wait.reject(new Error(frame.error.message));
         else {
           wait.resolve(frame.result);
           for (const fn of this.resultListeners) fn(wait.method);
