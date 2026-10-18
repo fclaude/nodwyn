@@ -548,3 +548,68 @@ a model has one entry. Existing config.toml files restate the model in
 `[control]` and would need a migration of the file; the scopes remove the
 failure that motivated it (a field in one list and not another) without one.
 
+
+## Amendment 2026-10-17: a relay's report that its provider failed is retried
+
+The Decision's readiness clause makes a 404 permanent: the server has no
+such model, and sending again cannot fix that. A relay answers for someone
+else, though. In an unattended lean session on 2026-10-17 at 21:49 (Muse
+through OpenRouter's OpenAI-compatible endpoint, by way of a local proxy), one
+model request was answered `404 Not Found` with
+`{"error":{"message":"Provider returned error","code":404,"metadata":{"raw":"{\"error\":{\"code\":\"model_not_found\",\"message\":\"The requested model was ...\"}}",...}}}`.
+It was the only request of the evening that failed, among thousands to the
+same model before and after it, and the session ended on it at once: the note
+`model request failed: openai: 404 Not Found: …` with the hint that the server
+has no such model, `turn.end` with outcome `error`, and `run.state` "turn
+ended: error: openai: 404 Not Found". The retries (two, two and four seconds
+apart, ADR 18 amended 2026-10-05) never ran, because the 404 was permanent.
+
+- **A relayed provider failure is not the request's.** A refusal whose body
+  is OpenRouter's envelope for its provider's failure, an `error` object
+  whose `message` is "Provider returned error" (read as JSON, or by those
+  words where the 4 KiB cut broke the JSON), is retried when its status is
+  404, as a 5xx is (`llm.permanentRefusal`, `relayedFailure`). A relayed 400,
+  401, 402, 403 or 422 is still permanent: the request, the key or the
+  account was refused upstream and would be again. A relayed 429 or 5xx was
+  retried already. A relay's own refusal, such as OpenRouter's 404 "No
+  endpoints found that support tool use.", is not the envelope, and a
+  provider's own 404 (OpenAI's `model_not_found`, Ollama's "model not
+  found") stays permanent, with the hint to check the model's id.
+- **A request over the model's context is permanent whatever its status**
+  (`overContext`: `context_length_exceeded`, "maximum context length",
+  "exceeds the context window", "prompt is too long",
+  `exceed_context_size_error`, "exceeds the available context size", a
+  relayed provider's words included), so the envelope cannot make one
+  retried, and neither can a server that answers one with a 5xx.
+- **The rest is as it was**, in every provider (all of them refuse through
+  `llm.send`) and both profiles: 429, 529, the 5xx statuses, a timeout and a
+  connection refused, reset or closed before an answer are sent again up to
+  `llm.Retries` (2) more times, after 2 s and then 4 s, or after the server's
+  `Retry-After` when it is longer, up to `llm.MaxRetryAfter` (a minute; a
+  longer one ends the request at once). The waits are bounded by those, and
+  each attempt by `loop.request_timeout`. A wait ends when the turn's context
+  does, so a cancel, an abort or a run's or turn's wall limit stops it and
+  nothing is sent after that; the turn then ends as that stop says, not as the
+  provider's error. Each retry is a note before its wait, `model request
+  failed, retrying (1/2): openai: 404 Not Found: {…Provider returned error…}`,
+  and a request that fails every time ends the turn with the last error and,
+  for a relayed 404, the hint "The provider the server routed the request to
+  failed, each time it was sent: send the message again later, or choose
+  another model".
+
+Tests: `internal/llm` `TestARelayedProviderFailureIsSentAgain` (the
+session's envelope once, then the reply), `...IsRetriedUpToTheBound`,
+`...WaitsNoLongerThanTheCaller` (a deadline and a cancel during the wait),
+`TestRefusalsThatWouldFailAgainAreNotRetried` (401, a provider's own 404, a
+relay's own 404, context length as 400, 500 and inside the envelope, relayed
+400, 401 and 403) and `TestTransientFailuresAreSentAgain` (429, 500, 502
+relayed, 503, 504, 529, a reset, an EOF and a refused connection, which were
+retried before too); `internal/core`
+`TestARelayedProviderFailureDoesNotEndTheSession`, in the lean and the full
+profile, ends with the session's error on the unchanged code.
+
+Not built: other relays' envelopes (LiteLLM's, a gateway's), which no session
+log has shown; more retries or longer waits for a relayed failure, since the
+one in the evidence was a single request; the wait in the retry's note; and
+Settings' model test (`models.test`), which still reports a relayed 404 as
+`no_model`, sending one request and no retries.

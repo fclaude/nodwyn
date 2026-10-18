@@ -50,7 +50,7 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0038](./0038-several-edits-in-one-call.md) — fs-edit takes several edits to one file in one call
 - [0039](./0039-named-archived-deleted-tasks.md) — Tasks are named, archived and deleted, and listed by folder (amends 2)
 - [0040](./0040-a-conversations-model-is-a-choice.md) — A conversation's model is a choice
-- [0041](./0041-model-providers-and-efforts.md) — Providers, models and efforts are chosen in the console (amends 8, 40; amended: a model's settings are its own; its list is asked with its key and its reply cap comes out of its context; what providers publish fills what an entry leaves unset; the judge's model settings sit with the models'; Anthropic and Baseten are providers to choose)
+- [0041](./0041-model-providers-and-efforts.md) — Providers, models and efforts are chosen in the console (amends 8, 40; amended: a model's settings are its own; its list is asked with its key and its reply cap comes out of its context; what providers publish fills what an entry leaves unset; the judge's model settings sit with the models'; Anthropic and Baseten are providers to choose; a relay's report that its provider failed is retried)
 - [0043](./0043-fs-edit-works-on-the-text-the-model-reads.md) — fs-edit works on the text the model reads, so a line with a credential on it can be edited (amends 25, 38)
 
 - [0045](./0045-project-trust-and-security-boundaries.md) — User-owned project trust, executable identity, credential transport settings, keychain bounds and persistence, and canonical project paths

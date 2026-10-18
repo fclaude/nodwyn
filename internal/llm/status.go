@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -37,11 +38,64 @@ func (e *StatusError) Error() string { return fmt.Sprintf("%s: %s: %s", e.Provid
 // 20261004T182412Z-747045aa, seq 6842 to 6847).
 func refused(provider string, resp *http.Response, body string) error {
 	err := &StatusError{Provider: provider, Status: resp.StatusCode, Text: resp.Status, Body: body, RetryAfter: retryAfter(resp.Header, time.Now())}
-	switch resp.StatusCode {
-	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusUnprocessableEntity:
+	if permanentRefusal(resp.StatusCode, body) {
 		return Permanent(err)
 	}
 	return err
+}
+
+// permanentRefusal says whether a refusal is one sending the same request
+// again cannot fix. A 404 is the provider saying it has no such model,
+// unless a relay says the provider it routed the request to failed
+// (relayedFailure): OpenRouter answered one request of an unattended session
+// on 2026-10-17 so, a 404 from the provider of a model that thousands of
+// requests before and after it reached, and the session ended on it (ADR 41,
+// amended 2026-10-17). A relayed 400, 401, 402, 403 or 422 is the request,
+// the key or the account refused upstream, as it would be again; a relayed
+// 429 or 5xx is retried as any is. A request over the model's context is as
+// long the next time, whatever status it was refused with.
+func permanentRefusal(status int, body string) bool {
+	if overContext(body) {
+		return true
+	}
+	switch status {
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusUnprocessableEntity:
+		return true
+	case http.StatusNotFound:
+		return !relayedFailure(body)
+	}
+	return false
+}
+
+// relayedFailure says whether a refusal is a relay's report that the
+// provider it routed the request to failed: OpenRouter's envelope,
+// {"error":{"message":"Provider returned error","code":...,"metadata":{"raw":
+// ...}}}, which carries the provider's own status and answer. A relay's own
+// refusal ("No endpoints found that support tool use.") is not one. The body
+// is cut at 4 KiB (send), so one whose JSON the cut broke is read by its words.
+func relayedFailure(body string) bool {
+	var envelope struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal([]byte(body), &envelope) != nil {
+		return strings.Contains(body, `"message":"Provider returned error"`)
+	}
+	return strings.EqualFold(strings.TrimSpace(envelope.Error.Message), "Provider returned error")
+}
+
+// overContext says whether a refusal says the request is longer than the
+// model's context, in the words of OpenAI's two APIs and the servers that copy
+// them, Anthropic's and llama.cpp's, a relayed provider's included.
+func overContext(body string) bool {
+	body = strings.ToLower(body)
+	for _, words := range []string{"context_length_exceeded", "maximum context length", "exceeds the context window", "prompt is too long", "exceed_context_size_error", "exceeds the available context size"} {
+		if strings.Contains(body, words) {
+			return true
+		}
+	}
+	return false
 }
 
 // retryAfter reads how long a server asked to wait: Retry-After in seconds
@@ -81,6 +135,11 @@ func Hint(err error) string {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return "The server did not accept the key: replace it in Settings › Models, or choose a model on another provider"
 	case http.StatusNotFound:
+		// A relay's 404 is its provider's failure, which the retries met each
+		// time: the model's id may well be right.
+		if relayedFailure(se.Body) {
+			return "The provider the server routed the request to failed, each time it was sent: send the message again later, or choose another model"
+		}
 		return "The server has no such model: check its id in Settings › Models, or choose another model"
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		// OpenAI refuses an effort beside tools on /chat/completions for some

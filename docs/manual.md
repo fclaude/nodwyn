@@ -2834,13 +2834,25 @@ own wait, not a hang.
 Some failures are not retried, because sending the same request again fails
 the same way: a refusal with status 400, 401, 402, 403, 404 or 422 (a wrong
 key, a model the provider does not have, an account out of credit, a field the
-server does not take; the turn ends with what to change), a redirect, and a key
-that is not bound for the host or is locked. Everything else is (a timeout, a
-dropped connection, 429 and the 5xx statuses).
+server does not take; the turn ends with what to change), a refusal that says
+the request is longer than the model's context, whatever its status, a
+redirect, and a key that is not bound for the host or is locked. Everything
+else is (a timeout, a connection refused, reset or closed before an answer,
+429, 529 and the 5xx statuses), in both profiles and with every provider.
+
+A relay such as OpenRouter passes on the failure of the provider it sent the
+request to as `{"error":{"message":"Provider returned error",...}}`, with that
+provider's status. Such a 404 is retried like a 5xx: it is that provider
+failing, not the model's id being wrong (since 2026-10-17, when an unattended
+session ended on one, among thousands of requests to the same model that were
+answered). If every try fails, the turn ends saying the provider failed rather
+than that the server has no such model. A relayed 400, 401, 402, 403 or 422 is
+still not retried.
 
 Each attempt has its own `loop.request_timeout`, so a request that never
-answers takes up to three times it before the turn ends. The retries are not
-configurable.
+answers takes up to three times it before the turn ends. A wait for a retry
+ends when the turn does: a cancel, or a run's or turn's time limit, stops it,
+and nothing is sent after that. The retries are not configurable.
 
 ### When something is wrong
 
