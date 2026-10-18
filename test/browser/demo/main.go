@@ -50,6 +50,7 @@ import (
 	fakechat "github.com/fclaude/nodwyn/test/fakes/chat"
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
 	fakedrive "github.com/fclaude/nodwyn/test/fakes/drive"
+	fakeforge "github.com/fclaude/nodwyn/test/fakes/forge"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
 	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
@@ -75,6 +76,7 @@ func main() {
 	docs := flag.Bool("docs", false, "keep a Google credential in a throwaway keychain, bound to a fake Drive that takes uploads")
 	oauthOnly := flag.Bool("oauth-only", false, "run only a fake OAuth2 provider (client id demo-client) and print its endpoints")
 	chatOnly := flag.Bool("chat-only", false, "run only a fake chat-completions provider and print its address and key")
+	forged := flag.Bool("forge", false, "a fake Gitea at FORGE (a token bound to its host for GET, fc/nodwyn with one open pull request, set over PUT /_fake/pulls/fc/nodwyn)")
 	locked := flag.Bool("locked", false, "a keychain with a passphrase (demo-passphrase), left locked, holding the key the model needs, and a task scheduled for 2099")
 	flag.DurationVar(&pace, "pace", 400*time.Millisecond, "how long the scripted model waits before each reply")
 	flag.Parse()
@@ -117,13 +119,13 @@ func main() {
 		model.Close()
 		return
 	}
-	if err := run(*seed, *port, *docs, *locked, *dir); err != nil {
+	if err := run(*seed, *port, *docs, *locked, *forged, *dir); err != nil {
 		fmt.Fprintln(os.Stderr, "demo:", err)
 		os.Exit(1)
 	}
 }
 
-func run(seed bool, port int, docs, locked bool, given string) error {
+func run(seed bool, port int, docs, locked, forged bool, given string) error {
 	root, kept := given, given != ""
 	if !kept {
 		var err error
@@ -150,6 +152,7 @@ func run(seed bool, port int, docs, locked bool, given string) error {
 	defer chat.Close()
 
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	forgeURL := ""
 	cfg := config.Default()
 	cfg.Control = config.Model{URL: model.URL, Model: "demo"}
 	runtime, err := fakecontainer.Install(filepath.Join(root, "runtime"), "podman")
@@ -185,6 +188,36 @@ func run(seed bool, port int, docs, locked bool, given string) error {
 			return err
 		}
 		cfg.Docs.GoogleUploadURL = drive.UploadURL()
+	}
+	if forged {
+		// A keychain holding a made-up forge token, bound to the fake
+		// forge's host for GET as Gitea takes it and as GitHub does, which
+		// a workflow's poll needs and nothing else (ADR 53).
+		forge := fakeforge.New("forge-token")
+		defer forge.Close()
+		forge.Set("fc/nodwyn", fakeforge.Pull{Number: 1, Title: "old change", Author: "ana", Base: "main", Head: "a1"})
+		if err := os.MkdirAll(paths.ConfigDir, 0o700); err != nil {
+			return err
+		}
+		if store == nil {
+			var err error
+			if store, err = keychain.Create(filepath.Join(root, "keychain"), keychain.FastKDF, []byte("demo")); err != nil {
+				return err
+			}
+		}
+		if _, err := store.Add("forge", []byte("forge-token")); err != nil {
+			return err
+		}
+		for _, position := range []string{"header:Authorization:token", "header:Authorization:Bearer"} {
+			row, err := binding.Exact("forge", "127.0.0.1", "GET", position)
+			if err != nil {
+				return err
+			}
+			if err := binding.AppendExact(context.Background(), paths.Bindings, row); err != nil {
+				return err
+			}
+		}
+		forgeURL = forge.URL
 	}
 	if locked {
 		// A task scheduled far ahead, made before the model needed a key,
@@ -307,6 +340,9 @@ func run(seed bool, port int, docs, locked bool, given string) error {
 	}
 	url := "http://" + web.Addr().String()
 	fmt.Printf("URL %s/#ticket=%s\nCODE %s\nREPO %s\nMCP %s\nIMAGE %s\nGIT %s\n", url, ticket, code, repos["console"], chat.URL, notesImage, project)
+	if forgeURL != "" {
+		fmt.Printf("FORGE %s\n", forgeURL)
+	}
 	go func() {
 		// More tickets for automated checks: one per line on stdin.
 		buf := make([]byte, 1)

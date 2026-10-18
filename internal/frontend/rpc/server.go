@@ -57,6 +57,8 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 	}
 	schedulerDone := make(chan struct{})
 	go s.scheduler(ctx, schedulerDone)
+	workflowsDone := make(chan struct{})
+	go s.workflowLoop(ctx, workflowsDone)
 	var mu sync.Mutex
 	connections := make(map[net.Conn]bool)
 	var workers sync.WaitGroup
@@ -110,6 +112,7 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 	go func() { closed <- s.close() }()
 	workers.Wait()
 	<-schedulerDone
+	<-workflowsDone
 	if s.schedulerLock != nil {
 		defer s.schedulerLock.Close()
 		defer syscall.Flock(int(s.schedulerLock.Fd()), syscall.LOCK_UN)

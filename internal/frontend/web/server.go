@@ -464,7 +464,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 
 func readOnly(method string) bool {
 	switch method {
-	case "schedule.read", "schedule.next", "hello", "session.list", "session.watch", "session.info", "session.totals", "session.subscribe", "session.unsubscribe", "log.read", "log.runs", "conversation.search", "log.context",
+	case "schedule.read", "schedule.next", "workflow.list", "workflow.read", "hello", "session.list", "session.watch", "session.info", "session.totals", "session.subscribe", "session.unsubscribe", "log.read", "log.runs", "conversation.search", "log.context",
 		"attention.list", "notes.read", "index.status", "models.status", "models.offered", "models.published", "keychain.status", "settings.read",
 		"workspace.list", "workspace.forgotten", "versions.list", "versions.diff", "worktree.diff", "mcp.list", "mcp.runtime", "credentials.list":
 		return true
@@ -731,6 +731,10 @@ func reply(id uint64, result json.RawMessage, err error) map[string]any {
 var slowCalls = map[string]time.Duration{
 	"mcp.pull":    31 * time.Minute,
 	"models.test": 65 * time.Second,
+	// A workflow's source is a forge's answer or a command's, which may take
+	// up to a minute each.
+	"workflow.test":  65 * time.Second,
+	"workflow.check": 65 * time.Second,
 }
 
 // slowCall relays one of slowCalls over a daemon connection of its own.
@@ -783,7 +787,7 @@ func (b *bridge) tierOf(method string) tier {
 	}
 	switch method {
 	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.approval.create", "session.friction", "session.policy.read",
-		"schedule.pause", "schedule.run", "session.notes.write", "session.restore", "session.rename", "session.archive":
+		"schedule.pause", "schedule.run", "workflow.pause", "workflow.check", "session.notes.write", "session.restore", "session.rename", "session.archive":
 		return tierAnswer
 	// "Don't ask" can be turned off from a device, the safe direction; the
 	// daemon refuses to turn it on for one (ADR 30), so a device can stop a
@@ -797,6 +801,10 @@ func (b *bridge) tierOf(method string) tier {
 	// and the keychain's passphrase are secrets the person types, and the
 	// passphrase is its own proof. The folder last picked only remembers.
 	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "startup.read":
+		return tierPerson
+	// A workflow decides what runs with nobody watching, as a schedule does,
+	// and its source is asked with this computer's keys (ADR 53 §9).
+	case "workflow.set", "workflow.remove", "workflow.test":
 		return tierPerson
 	// A log is the record of what a session did, devices included (ADR 39).
 	case "session.delete", "session.binding.create", "session.policy.write", "keychain.create", "keychain.passphrase", "settings.control.write", "settings.docs.write", "settings.write",

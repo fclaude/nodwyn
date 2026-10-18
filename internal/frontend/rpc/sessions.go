@@ -56,6 +56,13 @@ type server struct {
 	// login is where this computer's login item goes and the nodwyn it
 	// runs (WithStartup); a daemon without it offers none.
 	login *loginItem
+	// polled is when each workflow's source was last checked, pollErrors
+	// what its last failed check said, and capped the day its daily spend
+	// limit was last said to be reached: kept in memory, so a daemon that
+	// starts checks every source at once.
+	polled     map[string]time.Time
+	pollErrors map[string]string
+	capped     map[string]string
 	// ctx ends when Serve is told to stop, and every wait on the network a
 	// method makes without the lock ends with it (base). closing is set once
 	// the sessions are being closed, which a session made after that does not
@@ -305,6 +312,13 @@ var methodTable = map[string]handler{
 	"schedule.run":             (*server).runSchedule,
 	"startup.read":             (*server).startupMethod,
 	"startup.set":              (*server).startupMethod,
+	"workflow.list":            (*server).workflowMethod,
+	"workflow.read":            (*server).workflowMethod,
+	"workflow.set":             (*server).workflowMethod,
+	"workflow.remove":          (*server).workflowMethod,
+	"workflow.pause":           (*server).workflowMethod,
+	"workflow.check":           (*server).workflowMethod,
+	"workflow.test":            (*server).workflowMethod,
 	"session.close":            (*server).closeSession,
 	"session.rename":           (*server).rename,
 	"session.archive":          (*server).archive,

@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 285 of 614 tracked Go files: every non-test Go file, 69,662 of 133,183 Go source lines (52.3\% by lines). It also includes all 36 tracked Scheme files (5,888 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 289 of 620 tracked Go files: every non-test Go file, 71,273 of 135,318 Go source lines (52.7\% by lines). It also includes all 36 tracked Scheme files (5,888 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -191,6 +191,18 @@ Read value, reader, environment and interpreter first; then follow primitive app
 Read \src{internal/schedule/schedule.go} for the rules a schedule runs on (set times on chosen days, an interval within a daily window, monthly dates or a weekday of the month, once), the five repeats from before rules read as rules, the sentence that says a rule, summer-time resolution and missed-time coalescing. This package computes occurrences only; the RPC daemon owns the timer and lock, and core stores schedule records in the session log. Its tests keep the old repeats' arithmetic as an oracle and cover skipped and repeated minutes.
 
 \sourcefile{internal/schedule/schedule.go}{Go}
+
+\chapter{Reading what a workflow's source has now}
+
+Read \src{internal/watch/watch.go} for the sources (a forge's pull requests, a command's JSON lines), the key sent only where the binding table allows it, the filters, and the changes against what was seen. It owns no timer and no log.
+
+\sourcefile{internal/watch/watch.go}{Go}
+
+\chapter{A workflow's log}
+
+Read \src{internal/workflow/workflow.go} for a workflow's definition and its log in the data directory: the definition, what its source had at the last check, and the task of each subject.
+
+\sourcefile{internal/workflow/workflow.go}{Go}
 
 \chapter{Starting the daemon at login}
 
@@ -632,6 +644,8 @@ The subdirectories are independent entry routes to core. Plain implements line-o
 
 \sourcefile{internal/frontend/rpc/watch.go}{Go}
 
+\sourcefile{internal/frontend/rpc/workflow.go}{Go}
+
 \sourcefile{internal/frontend/rpc/workspaces.go}{Go}
 
 \sourcefile{internal/frontend/run/run.go}{Go}
@@ -767,6 +781,8 @@ These are support implementations, not the Go test cases themselves. The fake mo
 \sourcefile{test/fakes/container/container.go}{Go}
 
 \sourcefile{test/fakes/drive/drive.go}{Go}
+
+\sourcefile{test/fakes/forge/forge.go}{Go}
 
 \sourcefile{test/fakes/home/home.go}{Go}
 

@@ -1032,7 +1032,12 @@ is saved. A new schedule first runs at its first time after now. The task's
 \textbf{Schedule\ldots} also lists recent runs: when, how each ended or why
 it was skipped, and its cost. The \textbf{Workflows} page lists every
 schedule with what today's runs cost, beside a daily spend limit that skips
-the rest of a day's times once reached (\adr{53}).
+the rest of a day's times once reached (\adr{53}). A workflow can also watch
+a Gitea or GitHub repository's pull requests, or a command's output: it
+filters what happens, then runs a task for each pull request with the event
+attached as data and your instruction as the request, and a new commit to the
+same pull request arrives in its task. \textbf{Test the trigger} shows what
+would run, with no model.
 The task opens immediately, without sending until due. On a task,
 \textbf{Schedule\ldots} in its menu adds a schedule, or edits,
 pauses, resumes, runs now or removes it. Run now leaves the automatic time

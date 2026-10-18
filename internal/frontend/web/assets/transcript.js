@@ -380,7 +380,10 @@ export class Transcript {
         this.end();
         let holder = this.el.lastElementChild;
         if (!holder?.classList.contains("attached")) {
-          holder = h("div", { class: "turn user attached" }, h("div", { class: "who" }, "You attached"), h("div", { class: "attach-list" }));
+          // A workflow attaches the event that started a run (ADR 53): said
+          // so, since the person did not, and it is data from outside.
+          const by = typeof p.actor === "string" && p.actor.startsWith("workflow ") ? `Attached by workflow “${p.actor.slice(9)}”` : "You attached";
+          holder = h("div", { class: "turn user attached" }, h("div", { class: "who" }, by), h("div", { class: "attach-list" }));
           this.el.append(holder);
         }
         holder.querySelector(".attach-list").append(attachmentChip(p));
@@ -610,7 +613,7 @@ export class Transcript {
         break;
       case "schedule.run":
         this.end();
-        this.el.append(h("div", { class: "audit run-marker" }, `${p.manual ? "Run now" : "Scheduled run"} · due ${new Date(p.due).toLocaleString()} · started ${new Date(p.started).toLocaleString()}${p.missed ? ` · includes ${p.missed} missed time(s)` : ""}`));
+        this.el.append(h("div", { class: "audit run-marker" }, `${p.workflow ? `Workflow run · ${p.event || "an event"}` : p.manual ? "Run now" : "Scheduled run"} · due ${new Date(p.due).toLocaleString()} · started ${new Date(p.started).toLocaleString()}${p.missed ? ` · includes ${p.missed} missed time(s)` : ""}`));
         break;
       case "schedule.skip":
         this.end();

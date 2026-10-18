@@ -125,12 +125,22 @@ top right and the edit form folded behind **Edit**; the transcript shows a
 `session.schedule` record by its `words`. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,
 as do edits and removal. Runs discard Don’t ask and use normal approvals.
-The **Workflows** page (`#/workflows`, `workflows.js`) lists every schedule
+The **Workflows** page (`#/workflows`, `workflows.js`) lists every workflow:
+those that watch a source (`workflow.list`, with their sentence, status, the
+latest events linking to their tasks, and Pause, Check now, Edit and
+Remove, which asks first) and every schedule
 from the desk's list with its sentence, next time or why not, `today` (runs
 and cost against `day_cost`) and the latest `history` entry, with Pause or
 Resume, Run now and Schedule…; it follows the list as runs start and end.
-**New workflow** goes to Home and opens its Schedule dialog once Home is
-drawn. The dialog has a daily spend limit beside the one per run and says
+**New timetable** goes to Home and opens its Schedule dialog once Home is
+drawn. **Watch pull requests** opens the builder, `#/workflows/new` (and
+`#/workflows/<id>` to change one): cards for When, Only if, Do and Runs go
+to, the credential names from `credentials.list`, and **Test the trigger**,
+which shows `workflow.test`'s sentence and what is there, and says nothing
+is recorded. The page works out no words of its own. Its state is kept while
+the page is redrawn by the desk, and dropped when it is left. The transcript
+labels an event the workflow attached "Attached by workflow “name”", never
+"You attached", and its run marker "Workflow run · the event". The dialog has a daily spend limit beside the one per run and says
 what today's runs came to.
 Home lists each schedule's sentence and next time, or Paused, each card with Pause or Resume and
 Run now. The daemon coalesces missed times,

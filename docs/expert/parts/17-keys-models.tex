@@ -723,6 +723,18 @@ given a notifier (WithNotify) shows fixed notices when a session's
 needs\_answer turns on with no local client in session.watch, and once per
 locked period when a locked keychain skips a scheduled run.
 
+\paragraph{Workflows that watch a source (\adr{53}).}
+\texttt{internal/watch} reads a forge's open pull requests with the key the
+binding table allows at that host for GET (the table's own lookup, as the
+guard makes it for http-request; no redirect is followed and the body is
+bounded) or the JSON lines of a command run with no shell; it fires what is
+new against what was seen, by id and version, after the filters.
+\texttt{internal/workflow} keeps each workflow's log in the data directory,
+written by the daemon that holds scheduler.lock, redacted as a task's records
+are. A run attaches the event as a file, so the window frames it as data, and
+sends the instruction as an ordinary scheduled turn: the event is never a
+user message, and no primitive makes or changes a workflow.
+
 A successful turn that added more than a quarter-window since its last note
 asks compact-note for a handover focused on the scheduled request. It keeps
 the turn's budget, skips tool calls and records context.handover without

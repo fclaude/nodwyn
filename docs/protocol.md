@@ -1266,3 +1266,55 @@ words, when an open session's state turns to `needs_answer` while no client
 of this computer (one that did not hello with `via`) is in `session.watch`,
 and once when a locked keychain makes a scheduled run skip, until the
 keychain is unlocked.
+
+## Workflows that watch a source (ADR 53, slice 3)
+
+A workflow with a source has a log of its own, `workflows/<id>.jsonl` in the
+data directory, written by the daemon that holds `scheduler.lock`, with the
+records `workflow.define` (the latest counts), `workflow.seen` (each item's
+id and version at the last check), `workflow.fire` (an event that started a
+run: item, version, kind, subject, task, summary) and `workflow.skip`.
+
+- A definition is `{name, source, every, filters, message, routing, repo,
+  worktree, model, no_limits, cost, day_cost, concurrency, existing, paused}`.
+  `source` is `{kind, server, repo, credential, command, dir, on}`: `kind` is
+  `gitea-pulls`, `github-pulls` (`server` optional, GitHub's API by default)
+  or `command`; `credential` is the keychain class a forge is asked with;
+  `command` is a program (an absolute path, or a name without a slash, looked
+  up on `PATH`) and its arguments, run in `dir` (the workflow's `repo`) with
+  no shell; `on` is `opened`, `updated` or both. `every` is minutes between
+  checks, 1 to 1440. A filter is `{field, op, value}` with `op` one of `is`,
+  `is_not`, `contains`, `not_contains`, compared without regard to case.
+  `routing` is `subject` (a task per item) or `one`. `concurrency` 0 is 2.
+- `workflow.list {}` returns every workflow; `workflow.read {id}` one. Each is
+  the folded log plus `sentence` (the workflow in words), `status`
+  ("Watching 3 items, checked Sat 17 Oct 14:02", "Paused", "Could not check
+  the source: …"), `checked`, `running`, `today` (`{day,runs,cost}` over its
+  tasks) and `recent` (the latest five fires, newest first, each with `when`).
+- `workflow.set {id?, definition}` makes a workflow (no `id`) or replaces a
+  definition (the same `id`), keeping what it has seen. The daemon refuses a
+  definition that does not validate, a folder a task may not work in, and a
+  model that is not configured. `workflow.remove {id}` removes it; the tasks
+  it opened stay. `workflow.pause {id, paused}` pauses or resumes it.
+  `workflow.check {id}` checks the source now, as a tick would.
+- `workflow.test {definition}` asks the source once and answers
+  `{sentence, items, note}`: each item with `passes` and, if not, `why`. It
+  runs no model and records nothing.
+
+`workflow.set`, `workflow.remove` and `workflow.test` are this computer's, or a
+device that signed in with a passkey and is the person's; an invited device may
+`workflow.list`, `workflow.read`, `workflow.pause` (not resume) and
+`workflow.check`.
+
+The daemon checks each source when it is due, outside its lifecycle lock,
+every 30 seconds at the soonest, and fires what comes under it. A run is a
+scheduled turn: the event is attached first (`attach`, named
+`pull-request-<id>.md`, with the actor `workflow <name>`), then the
+workflow's `message` is sent as the run's request with `schedule.run`, which
+carries `workflow` (the workflow's id) and `event` (a line). A task a
+workflow opens has `session.origin {workflow, name, subject}` and the name
+`#<id> <title>` for a subject, else the workflow's. An event that cannot start
+yet (its task busy or waiting for an answer, the workflow's runs all going,
+the keychain locked, the day's `day_cost` reached) is not marked seen, and is
+tried at the next check.
+

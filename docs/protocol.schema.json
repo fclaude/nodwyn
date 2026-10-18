@@ -2486,6 +2486,9 @@
           "format": "date-time",
           "type": "string"
         },
+        "event": {
+          "type": "string"
+        },
         "manual": {
           "type": "boolean"
         },
@@ -2501,6 +2504,9 @@
         },
         "through": {
           "format": "date-time",
+          "type": "string"
+        },
+        "workflow": {
           "type": "string"
         }
       },
@@ -2667,6 +2673,24 @@
       },
       "required": [
         "model"
+      ],
+      "type": "object"
+    },
+    "log.SessionOrigin": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow",
+        "name"
       ],
       "type": "object"
     },
@@ -3456,6 +3480,9 @@
     "payload.session.model": {
       "$ref": "#/$defs/log.SessionModel"
     },
+    "payload.session.origin": {
+      "$ref": "#/$defs/log.SessionOrigin"
+    },
     "payload.session.resume": {
       "$ref": "#/$defs/log.SessionStart"
     },
@@ -3819,6 +3846,27 @@
         },
         {
           "$ref": "#/$defs/request.versions.list"
+        },
+        {
+          "$ref": "#/$defs/request.workflow.check"
+        },
+        {
+          "$ref": "#/$defs/request.workflow.list"
+        },
+        {
+          "$ref": "#/$defs/request.workflow.pause"
+        },
+        {
+          "$ref": "#/$defs/request.workflow.read"
+        },
+        {
+          "$ref": "#/$defs/request.workflow.remove"
+        },
+        {
+          "$ref": "#/$defs/request.workflow.set"
+        },
+        {
+          "$ref": "#/$defs/request.workflow.test"
         },
         {
           "$ref": "#/$defs/request.workspace.active"
@@ -6367,6 +6415,224 @@
       ],
       "type": "object"
     },
+    "request.workflow.check": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workflow.check"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.workflow.list": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workflow.list"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.workflow.pause": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workflow.pause"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.workflowPauseParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.workflow.read": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workflow.read"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.workflow.remove": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workflow.remove"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.workflow.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workflow.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.workflowSetParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.workflow.test": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workflow.test"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.workflowTestParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.workspace.active": {
       "properties": {
         "id": {
@@ -6985,6 +7251,35 @@
         "array",
         "null"
       ]
+    },
+    "result.workflow.check": {
+      "$ref": "#/$defs/rpc.workflowView"
+    },
+    "result.workflow.list": {
+      "items": {
+        "$ref": "#/$defs/rpc.workflowView"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "result.workflow.pause": {
+      "$ref": "#/$defs/rpc.workflowView"
+    },
+    "result.workflow.read": {
+      "$ref": "#/$defs/rpc.workflowView"
+    },
+    "result.workflow.remove": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "result.workflow.set": {
+      "$ref": "#/$defs/rpc.workflowView"
+    },
+    "result.workflow.test": {
+      "$ref": "#/$defs/rpc.workflowTest"
     },
     "result.workspace.active": {
       "$ref": "#/$defs/rpc.workspaceActiveResult"
@@ -7654,6 +7949,46 @@
       "required": [
         "id",
         "source"
+      ],
+      "type": "object"
+    },
+    "rpc.fireView": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "item": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item",
+        "version",
+        "kind",
+        "subject",
+        "task",
+        "summary",
+        "at",
+        "when"
       ],
       "type": "object"
     },
@@ -9594,6 +9929,47 @@
       ],
       "type": "object"
     },
+    "rpc.testItem": {
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "fields": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "passes": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "title",
+        "passes"
+      ],
+      "type": "object"
+    },
     "rpc.testParams": {
       "properties": {
         "effort": {
@@ -9694,6 +10070,181 @@
       "required": [
         "repo",
         "path"
+      ],
+      "type": "object"
+    },
+    "rpc.workflowPauseParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "paused": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "paused"
+      ],
+      "type": "object"
+    },
+    "rpc.workflowSetParams": {
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/workflow.Definition"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "definition"
+      ],
+      "type": "object"
+    },
+    "rpc.workflowTest": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/rpc.testItem"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "note": {
+          "type": "string"
+        },
+        "sentence": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "note"
+      ],
+      "type": "object"
+    },
+    "rpc.workflowTestParams": {
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/workflow.Definition"
+        }
+      },
+      "required": [
+        "definition"
+      ],
+      "type": "object"
+    },
+    "rpc.workflowView": {
+      "properties": {
+        "checked": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "definition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/workflow.Define"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fires": {
+          "items": {
+            "$ref": "#/$defs/workflow.Fire"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "last_skip": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/workflow.Skip"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recent": {
+          "items": {
+            "$ref": "#/$defs/rpc.fireView"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "running": {
+          "type": "integer"
+        },
+        "seeded": {
+          "type": "boolean"
+        },
+        "seen": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "sentence": {
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        },
+        "subjects": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "today": {
+          "$ref": "#/$defs/core.ScheduleDay"
+        }
+      },
+      "required": [
+        "id",
+        "sequence",
+        "seeded",
+        "sentence",
+        "status",
+        "running",
+        "today",
+        "recent"
       ],
       "type": "object"
     },
@@ -11125,6 +11676,30 @@
               "type": "string"
             },
             "kind": {
+              "const": "session.origin"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionOrigin"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
               "const": "session.resume"
             },
             "payload": {
@@ -11576,6 +12151,258 @@
           "type": "object"
         }
       ]
+    },
+    "watch.Filter": {
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "op",
+        "value"
+      ],
+      "type": "object"
+    },
+    "watch.Source": {
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "credential": {
+          "type": "string"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "on": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "repo": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "workflow.Define": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "concurrency": {
+          "type": "integer"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "day_cost": {
+          "type": "number"
+        },
+        "every": {
+          "type": "integer"
+        },
+        "existing": {
+          "type": "boolean"
+        },
+        "filters": {
+          "items": {
+            "$ref": "#/$defs/watch.Filter"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "no_limits": {
+          "type": "boolean"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "removed": {
+          "type": "boolean"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "routing": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/watch.Source"
+        },
+        "worktree": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "source",
+        "every",
+        "message",
+        "routing",
+        "repo",
+        "cost",
+        "actor"
+      ],
+      "type": "object"
+    },
+    "workflow.Definition": {
+      "properties": {
+        "concurrency": {
+          "type": "integer"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "day_cost": {
+          "type": "number"
+        },
+        "every": {
+          "type": "integer"
+        },
+        "existing": {
+          "type": "boolean"
+        },
+        "filters": {
+          "items": {
+            "$ref": "#/$defs/watch.Filter"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "no_limits": {
+          "type": "boolean"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "routing": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/watch.Source"
+        },
+        "worktree": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "source",
+        "every",
+        "message",
+        "routing",
+        "repo",
+        "cost"
+      ],
+      "type": "object"
+    },
+    "workflow.Fire": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "item": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item",
+        "version",
+        "kind",
+        "subject",
+        "task",
+        "summary",
+        "at"
+      ],
+      "type": "object"
+    },
+    "workflow.Skip": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "item": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "at"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

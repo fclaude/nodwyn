@@ -301,8 +301,8 @@ function draw(routeChanged, what) {
     if (route.name === "settings") renderSettings(view, { ...ctx, tab: route.tab });
     else if (route.name === "workspaces") renderWorkspaces(view, ctx);
     else if (route.name === "connections") renderConnections(view, { ...ctx, tab: route.tab });
-    else if (route.name === "workflows") renderWorkflows(view, ctx);
-  } else if (route.name === "workflows") {
+    else if (route.name === "workflows") renderWorkflows(view, { ...ctx, tab: route.tab });
+  } else if (route.name === "workflows" && !route.tab) {
     // Its rows follow the list: a run starting, ending or skipped changes
     // what they say.
     renderWorkflows(view, ctx);

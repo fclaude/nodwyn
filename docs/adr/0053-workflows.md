@@ -1,8 +1,9 @@
 # ADR 0053: Workflows: a trigger, a filter, an instruction, where runs go, and what happens with them
 
 - Status: accepted 2026-10-17; the timetable (§3) built the same day as an
-  amendment to ADR 49, and §11 (slice 0) and slice 2 the same day, amended
-  below; the rest not built (see "Not built")
+  amendment to ADR 49, §11 (slice 0), slice 2 and slice 3 (pull requests and
+  commands) the same day, amended below; the rest not built (see "Not
+  built")
 - Date: 2026-10-17
 - Amends: 49 (a schedule becomes a workflow whose runs all go to one task;
   schedules stop being read from every task's log), 30 (a daemon may start at
@@ -274,3 +275,89 @@ history test), `internal/frontend/rpc`
 check (the daily limit sent, the Workflows page reached from Home and the
 sidebar, its row before and after Run now, New workflow opening Home's
 Schedule dialog).
+
+## Amendment 2026-10-17: slice 3, a workflow that watches pull requests or a command
+
+Built: **Workflows › Watch pull requests** makes a workflow whose events come
+from a Gitea or GitHub repository's open pull requests, or from the JSON
+lines a command prints (§1, §4, §5, §6, §8, §10, §12). It is checked every 1
+minute to 24 hours (a tick every 30 seconds at the soonest); what is open at
+its first check is recorded and not acted on, unless the person asks
+(`existing`); an item new to the source, or whose version (a pull request's
+head commit) changed, is an event; filters on author, base, head, draft,
+labels and title (a command's own fields too) leave events out before any
+model is asked; each event that passes runs a task, in a task per subject
+(its first event opens a task named `#142 title`, with `session.origin`, and
+a later one is its next run) or in one task. At most 2 runs of a workflow go
+at once (settable), the rest wait for the next check unmarked; more than 20
+events at one check pause the workflow and say so; a daily spend limit counts
+what all its tasks' runs cost today; a source that cannot be checked says so
+once. **Test the trigger** asks the source once and lists what is there and
+whether each passes, with no model and nothing recorded. Only this computer
+(or a passkey-signed person) makes, changes, removes or tests one; an invited
+device sees, pauses and checks one.
+
+How the sections are met, and where this departs from them:
+
+1. **§5, the event is data.** A run first attaches the event as a file
+   (`pull-request-142.md`, actor `workflow NAME`), which the window frames as
+   data, never instructions, and tags external as any attachment is, then
+   sends the workflow's message as the run's request. A pull request whose
+   description says to print the keys reaches the model as the quoted text of a
+   file the workflow attached; the browser check and `TestAWorkflowRunsATask…`
+   use exactly such a body. The conversation says "Attached by workflow
+   “NAME”", never "You attached", and the run's marker says "Workflow run ·
+   Pull request #142 opened". **Not built:** telling the judge the run was
+   started by an outside event.
+2. **§4, the watchers are Go, not Scheme.** §4 had them as Scheme procedures
+   in a library, run in an interpreter that refuses what would prompt. They
+   are `internal/watch`, in Go, with the guard's own checks applied where
+   they apply to the poll: a forge is asked only with a key from the keychain,
+   only where the binding table (read afresh for each poll) allows that class
+   at that host for GET at the position the forge takes (`header:Authorization:token`
+   for Gitea, `...:Bearer` for GitHub), by the same `binding` lookup the
+   guard makes for `http-request`; the request is a GET of the pull-request
+   listing and nothing else; no redirect is followed, so the key goes to the
+   bound host and no other (`TestAPollDoesNotFollowARedirectWithItsKey`); the
+   body is bounded; a locked keychain, a missing key or an unbound host is an
+   error said on the workflow. This keeps SPEC invariant 5 by the mechanism
+   that fits a poll with no model in it, but it is a different one from the
+   interpreter's, and the choice is recorded here rather than hidden: a source
+   of the person's own is a command source, not a procedure.
+3. **A command source** runs the program the person named, with no shell, in
+   the workflow's folder (which must pass the task-root refusal), with the
+   daemon's environment, for at most a minute, its output bounded. A program
+   is an absolute path or a name on `PATH`: one with a slash that is not
+   absolute is refused, since a program in the folder would be whatever its
+   repository holds, written by whoever can commit to it (AGENTS.md). Who
+   writes the definition: a person at this computer, in nodwyn's data
+   directory; no repository, no model and no device. The command is the
+   person's own act, as an MCP server entry is, and is not asked about again.
+4. **§8, a workflow log, now built for what a task's log cannot hold.**
+   `workflows/<id>.jsonl` holds `workflow.define` (the latest counts),
+   `workflow.seen` (each item's id and version at the last check),
+   `workflow.fire` (item, version, kind, subject, task, summary) and
+   `workflow.skip`, redacted as it is written, by the daemon that holds
+   `scheduler.lock`. The tick reads these logs (a handful), not every task's.
+   The outbox's records come with slice 4.
+5. **§6, events wait their turn** is built as: an event that cannot start (its
+   task busy or waiting for an answer, all the workflow's runs going, the
+   keychain locked, the day's limit reached) is not marked seen and is tried
+   at the next check.
+
+Not built, and not verified: the sources were run only against fakes
+(`test/fakes/forge` answers both forges' listings with the headers each takes),
+not a real Gitea or GitHub, so a real server's differences are untried; a
+listing is the 50 most recently updated open pull requests, with no paging; a
+GitHub source needs a token with a repository scope, which the shipped GitHub
+OAuth profile does not ask for, so a personal token is stored as a credential
+instead; the judge is not told a run came from an event; opening a source of
+the person's own as a Scheme procedure; filters on which paths changed; the
+outbox (slice 4); email (slice 5). Checks: `internal/watch` (the listings
+through the binding table in both forges' ways, every refusal, no redirect,
+JSON lines, the changes and filters), `internal/frontend/rpc`
+(`TestAWorkflowRunsATaskForEachPullRequest`, with a mutation check that
+removing the attachment fails it; `TestEventsWaitTheirTurnAndAFloodPauses`;
+`TestAWorkflowsDailySpendLimitHoldsItsEvents`; `TestWorkflowsAreMadeOnThisComputer`),
+the `workflows` browser check, and the bridge's classification of every method.
+

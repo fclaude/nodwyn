@@ -81,6 +81,7 @@ const (
 	KindDocUpload        Kind = "doc.upload"        // a document sent to a document service: file, size, hash, destination, the document's id; never content (W5)
 	KindSessionTitle     Kind = "session.title"     // the name a person gave the session; an empty one gives it back its first message (ADR 39)
 	KindSessionArchive   Kind = "session.archive"   // a person archived the session or brought it back (ADR 39)
+	KindSessionOrigin    Kind = "session.origin"    // the workflow that opened the session, and for which subject (ADR 53)
 	KindIndexUpdate      Kind = "index.update"      // a build or refresh of the repository's index: what it read, removed, skipped and was refused; never content (ADR 50)
 )
 
@@ -98,7 +99,7 @@ var kinds = map[Kind]bool{
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSettingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,
 	KindJevReq: true, KindCredRegister: true, KindCredRefresh: true, KindMCPEgress: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true, KindAttach: true,
-	KindDocUpload: true, KindSessionTitle: true, KindSessionArchive: true, KindIndexUpdate: true,
+	KindDocUpload: true, KindSessionTitle: true, KindSessionArchive: true, KindSessionOrigin: true, KindIndexUpdate: true,
 	KindWorktreeCreate: true, KindWorktreeRestore: true, KindWorktreeRemove: true,
 }
 

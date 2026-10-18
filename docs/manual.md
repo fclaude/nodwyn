@@ -2265,8 +2265,52 @@ The **Workflows** page (in the sidebar, and **All workflows** on Home's
 Scheduled section) lists every schedule: its task, the rule in words, when
 it runs next (or Paused, or held by locked keys), what today's runs cost
 and how the latest ended, with Pause, Run now and Schedule…. **New
-workflow** opens Home's Schedule dialog, beside the task's folder, model
+timetable** opens Home's Schedule dialog, beside the task's folder, model
 and limits.
+
+### A workflow that watches pull requests
+
+**Workflows › Watch pull requests** builds one that runs a task when
+something happens at a source (ADR 53). Its answers are four cards:
+
+- **When:** a Gitea or GitHub repository's pull requests (the server for
+  Gitea, `owner/name`, and the keychain credential to ask with), or a
+  command's output, checked every 1 minute to 24 hours (2 by default). It
+  fires when a pull request is opened, when it gets new commits, or both.
+  What is open when the workflow is first checked is recorded and not acted
+  on, unless you tick **Also handle what is there when this starts**.
+- **Only if:** conditions on the event, checked before any model is asked:
+  `author is not "me"`, `draft is "no"`, `labels contains "review"`, on the
+  fields author, base, head, draft, labels and title (a command's own
+  fields too). An event that fails one runs nothing and is not asked about
+  again.
+- **Do:** the instruction, sent as each run's request, with the task's
+  folder, worktree, model, limits and spend per run and per day, as any task.
+- **Runs go to:** a task per pull request (its first event opens a task
+  named `#142 title`, and a later one, such as a new commit, arrives there
+  as its next run), or one task for every event. At most 2 runs go at once
+  (settable); events past that wait for the next check.
+
+The event is attached to the run as a file, `pull-request-142.md`, which the
+conversation says the workflow attached, and framed to the model as data,
+never instructions: what a pull request's description says is not your
+request, which is the instruction. **Test the trigger** asks the source once
+and lists what is there and whether each passes the filters, with no model
+and nothing recorded; the daemon says the whole workflow in a sentence.
+
+A forge is asked with a key from the keychain, only where Connections ›
+Credentials allows that key at that host for GET (`header:Authorization:token`
+for Gitea, `header:Authorization:Bearer` for GitHub), with no redirect
+followed; the request lists pull requests and nothing else. A locked keychain,
+a missing key or an unbound host is said on the workflow and, for a locked
+keychain, once on the desktop notices. A command source runs with no shell in
+the workflow's folder, as the absolute path or the name on `PATH` you give
+(a program in the folder is refused, since its repository would choose what
+runs), for at most a minute, and prints one JSON object per line with an
+`id` and, to tell a changed item from a new one, a `version`. More than 20
+events at one check pause the workflow and say so. A workflow is made,
+tried, changed and removed on this computer only; a paired device sees it,
+pauses it and asks it to check now.
 
 On an existing task, **Schedule…** in its **⋯** menu adds a schedule, or
 shows the rule in words, its message, when it runs next and its **Recent

@@ -1073,6 +1073,16 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .workflow-name { font-weight: 600; color: var(--ink); }
 .workflow-when { font-family: var(--serif); font-size: 16px; }
 .workflow-row .row-actions { flex-wrap: wrap; justify-content: flex-end; }
+.workflow-fires, .workflow-items { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.workflow-fires li, .workflow-items li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.workflow-items li.passes { border-color: var(--ok-dot); }
+.builder-card { display: grid; gap: 10px; margin-top: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); min-width: 0; }
+.builder-card .eyebrow { margin: 0; }
+.builder-field { display: grid; gap: 6px; min-width: 0; }
+.builder-field .input { width: 100%; }
+.builder-filter .input { flex: 1 1 140px; min-width: 0; }
+.builder-test { display: grid; gap: 8px; margin-top: 12px; }
+.page-col > .builder-field { margin-top: 12px; }
 @media (max-width: 700px) { .workflow-row { grid-template-columns: 1fr; } .workflow-row .row-actions { justify-content: flex-start; } }
 .schedule-preview { display: grid; gap: 4px; }
 .schedule-preview p { margin: 0; }

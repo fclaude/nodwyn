@@ -415,6 +415,15 @@ type SessionTitle struct {
 	Title string `json:"title"`
 }
 
+// SessionOrigin is the workflow that opened a session and the subject it
+// opened it for (a pull request's number; empty when every event of the
+// workflow goes to one task), written by the daemon as it opens it (ADR 53).
+type SessionOrigin struct {
+	Workflow string `json:"workflow"`
+	Name     string `json:"name"`
+	Subject  string `json:"subject,omitempty"`
+}
+
 // SessionArchive records a person archiving a session or bringing it back
 // (ADR 39). The latest one says whether the task list leaves it out.
 type SessionArchive struct {
@@ -725,6 +734,11 @@ type ScheduleRun struct {
 	Actor       string    `json:"actor"`
 	Cost        float64   `json:"cost"`
 	SpendBefore float64   `json:"spend_before"`
+	// Workflow and Event are a workflow's run's: the workflow and what
+	// happened, in a line ("Pull request #142 opened: …"), the event itself
+	// attached before the run's message (ADR 53).
+	Workflow string `json:"workflow,omitempty"`
+	Event    string `json:"event,omitempty"`
 }
 
 type ScheduleSkip struct {
