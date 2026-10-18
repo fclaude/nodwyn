@@ -211,3 +211,100 @@ func TestACommitAloneIsNoChangeToValidate(t *testing.T) {
 		t.Fatal("a commit-only turn was told to validate again")
 	}
 }
+
+// offersTool reports whether the request offered the model a tool by name.
+func offersTool(r fake.Request, name string) bool {
+	for _, raw := range r.Tools {
+		if strings.Contains(string(raw), `"name":"`+name+`"`) {
+			return true
+		}
+	}
+	return false
+}
+
+// The validate reminder names what the model can run: the validate tool in
+// the full profile, which offers it, and make validate through shell-exec in
+// the lean one, which offers lean-tools alone (shell-exec and fs-edit). It
+// named the tool in both, and a lean model was told to call a tool it could
+// not (ADR 37, amended 2026-10-18). The model answers without validating, so
+// the turn is reminded twice, the reminder's limit.
+func TestTheValidateReminderNamesWhatTheModelCanRun(t *testing.T) {
+	for _, c := range []struct {
+		p         finishProfile
+		offered   bool
+		says, not string
+	}{
+		{finishProfiles[0], true, "Run validate, read its summary", "Run make validate with shell-exec"},
+		{finishProfiles[1], false, "Run make validate with shell-exec, read its summary", "Run validate,"},
+	} {
+		t.Run(c.p.name, func(t *testing.T) {
+			s, srv := c.p.session(t, finishRepo(t, false),
+				editCall("e", "calc/calc.go", "return 1 }", "return 2 }"),
+				fake.Turn{Content: "Done."},
+				fake.Turn{Content: "Done, without validate."},
+				fake.Turn{Content: "Still without validate."},
+			)
+			c.p.turn(t, s, 1, 1)
+			if len(srv.Requests) != 4 {
+				t.Fatalf("%d requests, want 4", len(srv.Requests))
+			}
+			if got := offersTool(srv.Requests[2], "validate"); got != c.offered {
+				t.Fatalf("the %s profile offers validate: %v, want %v", c.p.name, got, c.offered)
+			}
+			if n := requestsSaying(srv, c.says); n != 2 {
+				t.Errorf("%d requests carry %q, want the two after each reminder:\n%s", n, c.says, srv.Requests[3].Raw)
+			}
+			if n := requestsSaying(srv, c.not); n != 0 {
+				t.Errorf("%d requests carry %q", n, c.not)
+			}
+		})
+	}
+}
+
+// A run of the repository's validate through shell-exec counts as the tool's,
+// whatever it found, in the reminder and in the reminder's own continuation:
+// after it, with no edit since, the turn is not told that validate has not
+// run. The continuation did not count it, so a lean session that ran make
+// validate after the first reminder got the second anyway (commit-bench,
+// 48f90ea8: "No code changes this turn; re-ran validate"), and a chat's turn
+// did not count it at all. Here validate fails, which still counts as a run.
+func TestAShellValidateRunCountsAsValidate(t *testing.T) {
+	const reminder = "validate has not run since your last change"
+	shellRepo := func(t *testing.T) string {
+		t.Helper()
+		repo := fixture(t, map[string]string{
+			"Makefile":     "validate:\n\t@echo 'validate: FAIL (1 failure)'\n\t@exit 1\n",
+			"calc/calc.go": "package calc\n\nfunc One() int { return 1 }\n",
+		})
+		copyInit(t, repo)
+		return repo
+	}
+	for _, p := range finishProfiles {
+		t.Run(p.name+"/after the reminder", func(t *testing.T) {
+			s, srv := p.session(t, shellRepo(t),
+				editCall("e", "calc/calc.go", "return 1 }", "return 2 }"),
+				fake.Turn{Content: "Done."},
+				shellCall("v", "make validate"),
+				fake.Turn{Content: "validate: FAIL (1 failure), which the unchanged code has too."},
+			)
+			p.turn(t, s, 1, 1)
+			if len(srv.Requests) != 4 || requestsSaying(srv, reminder) != 2 {
+				t.Fatalf("%d requests, %d with the reminder; want 4, the last two with the first reminder alone", len(srv.Requests), requestsSaying(srv, reminder))
+			}
+			if n := strings.Count(string(srv.Requests[3].Raw), reminder); n != 1 {
+				t.Fatalf("the reminder was said %d times, want once", n)
+			}
+		})
+		t.Run(p.name+"/before it", func(t *testing.T) {
+			s, srv := p.session(t, shellRepo(t),
+				editCall("e", "calc/calc.go", "return 1 }", "return 2 }"),
+				shellCall("v", "make validate"),
+				fake.Turn{Content: "validate: FAIL (1 failure), which the unchanged code has too."},
+			)
+			p.turn(t, s, 1, 1)
+			if len(srv.Requests) != 3 || requestsSaying(srv, reminder) != 0 {
+				t.Fatalf("%d requests, %d with the reminder; want 3 and none", len(srv.Requests), requestsSaying(srv, reminder))
+			}
+		})
+	}
+}

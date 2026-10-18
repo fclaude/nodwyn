@@ -73,8 +73,39 @@
 ;; one that answers a question, is not reminded.
 (define validate-reminders 2)
 
-(define validate-reminder
-  "You changed files in this turn and validate has not run since your last change. Run validate, read its summary, fix what it reports, and quote the summary in your answer, warnings included.")
+;; The reminder names what the model can run. The lean profile offers the
+;; model lean-tools alone (lean-args, strategy.scm), shell-exec and fs-edit
+;; unless a project adds more, and the reminder named the validate tool
+;; there too: a tool the model could not call (commit-bench, lean, ADR 37
+;; amended 2026-10-18). Where validate is not offered it says make validate
+;; through shell-exec, which counts as the tool's run (below).
+(define (validate-offered?)
+  (or (not lean-prompt) (and (member "validate" lean-tools) #t)))
+
+(define (validate-reminder)
+  (string-append "You changed files in this turn and validate has not run since your last change. Run "
+                 (if (validate-offered?) "validate" "make validate with shell-exec")
+                 ", read its summary, fix what it reports, and quote the summary in your answer, warnings included."))
+
+;; A run of the repository's validate through the shell (validate-commands:
+;; make validate, go run ./scripts/validate) counts as the tool's, whatever
+;; it found: validated-run (strategy.scm) sets validated-state as the tool
+;; does. The evidence loop calls it for the calls of an unattended or
+;; planned turn; the chat loop and the reminder's own continuation did not,
+;; so a lean run told to validate ran make validate and was told again with
+;; no edit since (commit-bench 48f90ea8: "No code changes this turn; re-ran
+;; validate"), and a chat's shell run never counted. Wrapping run-calls
+;; counts it in every loop. The base is captured once, as below, so a
+;; reload does not wrap the wrapper. This runs every round: a failure to
+;; count is no reason to fail the round's calls.
+(define validate-base-run-calls
+  (or (guard (e (else #f)) validate-base-run-calls) run-calls))
+
+(define (run-calls calls)
+  (let ((results (validate-base-run-calls calls)))
+    (guard (e (else #f))
+      (for-each (lambda (c r) (validated-run (tool-call c) (tool-result c r))) calls results))
+    results))
 
 ;; The turn this wraps, captured once: a reload runs this file again, and
 ;; would otherwise wrap the wrapper.
@@ -105,7 +136,7 @@
     (let remind ((left validate-reminders))
       (let ((now (validation-state)))
         (when (and (> left 0) (not turn-stopping) (not (equal? now before)) (not (equal? now validated-state)))
-          (add-message validate-reminder)
+          (add-message (validate-reminder))
           (validate-continue request)
           (remind (- left 1)))))))
 

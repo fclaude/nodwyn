@@ -2961,7 +2961,8 @@ after the first whatever it found: in the lean run
 cb-landed-d635ad3-or-muse13c-el-trusted-home-r3 the reminder came twice in
 each of 3 of its 9 sessions, and on 48f90ea8 the second came after a validate
 run with no edit since ("No code changes this turn; re-ran validate").
-Neither is changed here.
+Neither is changed by this decision; ADR 37's amendment of the same day
+changes both.
 
 **Decision.** `.nodwyn/init.scm` gains a finish check of its own, in both
 profiles, after the validate reminder and last before a turn ends. It reads

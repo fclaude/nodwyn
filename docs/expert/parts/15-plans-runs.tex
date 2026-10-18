@@ -351,7 +351,11 @@ git does not track are named in the finish review, with
 \code{init.scm}'s validate tool's run when it keeps
 \code{validated-state} as nodwyn's does. The untracked files such a run
 leaves are its output: its result names them, and deleting them does not
-make \code{validated-state} stale (\code{validate-settle}).
+make \code{validated-state} stale (\code{validate-settle}). The default
+loop calls \code{validated-run} only in the evidence loop of a run or a
+planned turn; nodwyn's \code{init.scm} wraps \code{run-calls} to call it for
+every call, so a shell run counts in a chat and in its own reminder's
+continuation too.
 
 \begin{tip}
 If your project runs its tests some other way, teach the loop:

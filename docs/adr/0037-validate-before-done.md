@@ -359,3 +359,41 @@ a new file left out of git fails it as on 3422faf1. Its failure names the
 `git add -N` and `git rm --cached` to run first. Running both would have
 spent the second each takes for nothing, and a new untracked file would
 have failed one and passed the other.
+
+## Amendment 2026-10-18: the reminder names what the model can run, and a shell run counts
+
+The finish check of `.nodwyn/init.scm` runs in a lean session too: the file
+redefines `default-agent-turn`, which `agent-turn` calls in either profile.
+Two of its parts did not fit that session (ADR 32, amended 2026-10-18,
+experiment E, found them):
+
+- the reminder said "Run validate", the tool, and the lean profile does not
+  offer it: a plain `ask-model` there offers `lean-tools`, `shell-exec` and
+  `fs-edit` (`lean-args`), so the model was told to call a tool it could
+  not, and ran `go run ./scripts/validate` through `shell-exec` instead;
+- a validate run made through the shell counted only in the evidence loop
+  (`validated-run`, ADR 32, amended 2026-10-16), which runs a run's turn up
+  to the reminder. The reminder's own continuation (`validate-continue`)
+  and a chat's loop did not count it, so the second reminder came after a
+  shell validate run whatever it found: on commit-bench's 48f90ea8, after
+  one with no edit since, the model answered "No code changes this turn;
+  re-ran validate".
+
+**Decision:**
+
+- Where the model is not offered `validate` (the lean profile, unless a
+  project adds the tool to `lean-tools`), the reminder says "Run make
+  validate with shell-exec" in place of "Run validate"; the rest of its
+  wording is as before, and the full profile's is unchanged.
+- The init file wraps `run-calls` and calls `validated-run` on each call
+  and its result, as the evidence loop does, so a `make validate` or `go run
+  ./scripts/validate` through `shell-exec` that ran to an exit, passing or
+  failing, sets `validated-state` in every loop: the chat's, the evidence
+  loop's and the reminder's continuation. Nothing else is counted: a run
+  started with `shell-start` is still the evidence loop's to see.
+
+Two tests in `scripts/validate/gate_test.go` run each in both profiles, and
+each fails on the init file before this: the lean reminder names `make
+validate` through `shell-exec` and not the tool, the full one the tool; and
+after a failing shell `make validate` with no edit since, no reminder
+follows, whether the run came before the first reminder or after it.

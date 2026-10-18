@@ -248,6 +248,18 @@ helper beside the other development tools.
   that it passed. It does not parse the final PASS/FAIL line. The agent must
   read failures and warnings, fix what belongs to the change, rerun, and
   report the result. A reminder is not a proof of correctness.
+\item \code{validate-reminder} builds the reminder's text. It names the
+  \code{validate} tool only where the model is offered it:
+  \code{validate-offered?} reads \code{lean-prompt} and \code{lean-tools},
+  the same switches \code{lean-args} in \src{internal/loop/strategy.scm}
+  uses to choose the tools a lean session offers. A lean session is told
+  to run \code{make validate} with \code{shell-exec} instead.
+\item \code{validate-base-run-calls} captures \code{run-calls} once, and the
+  replacement passes each call and its result to \code{validated-run} from
+  the base loop. A \code{make validate} or \code{go run ./scripts/validate}
+  run through \code{shell-exec} that reached an exit, passing or failing,
+  then records the repository's state as the tool does, in every loop that
+  runs calls, not only the evidence loop that already called it.
 \item \code{validate-base-agent-turn} and
   \code{validate-base-test-call?} capture the original procedures once.
   Without the existing-binding check, reload would wrap the wrapper again.
