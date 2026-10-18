@@ -46,6 +46,7 @@ commands:
   app [--browser]      nodwyn as one program: a window, and a daemon if none runs
   ui [--socket PATH]    interactive browser view (optional --read-only)
   ui --listen ADDR     also serve other machines; devices pair with an invitation
+  ui --acme NAME --acme-accept-terms   get an https certificate for NAME from an ACME CA
   devices [revoke NAME] list or revoke browsers paired from other machines
   devices invite       print a one-time invitation for another device (over https
                        it also registers a passkey there)

@@ -2790,11 +2790,16 @@ nodwyn startup on                   # the daemon at login: a user service, locke
 nodwyn ui --no-open --listen 127.0.0.1:7777 --name https://nodwyn.example.net
 ```
 
-Give the console https in one of two ways: your own proxy that ends TLS in
+Give the console https in one of three ways: your own proxy that ends TLS in
 front of it (Caddy, nginx with certbot, a VPN's https), named with `--name
-https://NAME`; or `--tls-cert` and `--tls-key` with a certificate from any ACME
+https://NAME`; `--tls-cert` and `--tls-key` with a certificate from any ACME
 client or a CA of your own, which the console reads again when they are
-renewed. Over plain http devices pair and answer, but the person cannot sign
+renewed; or, on a server the internet reaches on port 443 with no proxy in
+front, `--acme nodwyn.example.net --acme-accept-terms`, which has the
+console ask Let's Encrypt for the certificate itself and renew it (the
+service needs permission to bind port 443, `AmbientCapabilities=CAP_NET_BIND_SERVICE`
+in a unit; `--acme-directory` names another CA, such as its staging one, to
+try it first). Over plain http devices pair and answer, but the person cannot sign
 in with a passkey, so setup stays on the server.
 
 Pairing takes no code. Once, on the server, `nodwyn devices invite` prints
@@ -2811,8 +2816,34 @@ each sign-in, invitation and setup change a device made. After a restart,
 unlock the keychain from any device signed in with the passkey: a schedule
 due meanwhile waits for it and then runs once, late. `nodwyn devices`
 lists and revokes devices on the server; Settings removes a lost phone's
-passkey. A provider's OAuth sign-in and `nodwyn trust` still need the server
+passkey. A provider's OAuth sign-in works from your laptop too: the provider's
+page ends on an address that does not load there, and pasting that address
+into the card nodwyn shows (**Finish**) completes it. `nodwyn trust` and the
+command line's `credential add --oauth2` still need the server
 ([the browser view](browser.md), "Other devices").
+
+To have the keychain open by itself after a restart, give the daemon's unit
+its passphrase as a systemd credential (opt-in; ADR 5, amended 2026-10-17):
+
+```sh
+# the passphrase, typed once; the file is useless on another computer
+systemd-ask-password -n | sudo systemd-creds encrypt --with-key=host+tpm2 --name=nodwyn-keychain - /etc/nodwyn/keychain.cred
+# in the daemon's unit, which must then be a system service (User=you):
+#   LoadCredentialEncrypted=nodwyn-keychain:/etc/nodwyn/keychain.cred
+```
+
+A user service (`nodwyn startup on`) has no TPM: `systemd-creds --user encrypt
+--name=nodwyn-keychain - ~/.config/nodwyn/keychain.cred` and a drop-in
+(`systemctl --user edit nodwyn.service`) with `LoadCredentialEncrypted=nodwyn-keychain:%h/.config/nodwyn/keychain.cred`
+work with a key kept in your home, which keeps the passphrase out of plain
+text but not out of a backup of your home. Know what this gives: the
+keychain's file is protected at rest (a copy, a backup, a disk taken out),
+but while nodwyn runs, any process of your account can read the decrypted
+passphrase, so against code running as you it is as open as a keychain with
+no passphrase. A task's own file tools refuse the credentials directory; a
+command you approved does not. A passphrase that does not open the keychain
+leaves the daemon locked, with a line in its journal, and you unlock it from
+a device as before.
 
 ## Downloadable builds and books
 

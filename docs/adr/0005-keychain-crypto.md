@@ -82,3 +82,43 @@ user trust record; executable identity is resolved, credential transport is a us
 setting with secure defaults, keychain decoding and persistence are bounded, and
 project paths resolve symlinks consistently. Its compatibility rules apply to
 existing sessions, workspaces, notes and worktrees.
+
+## Amendment 2026-10-17: the passphrase may come from a systemd credential
+
+A daemon nobody sits at (ADR 30, amended 2026-10-17) starts, after a reboot,
+with the keychain locked until a person unlocks it from a console, and the
+schedules due meanwhile wait (ADR 49, amended 2026-10-17). A person who would
+rather it open by itself can give the unit the passphrase as a **credential**
+(systemd's `LoadCredentialEncrypted=nodwyn-keychain:FILE`, or
+`LoadCredential=`, `SetCredential=`): `nodwyn daemon` reads
+`$CREDENTIALS_DIRECTORY/nodwyn-keychain`, one trailing newline removed, when
+the keychain has a passphrase, before it looks for a terminal. It is opt-in:
+without the credential nothing changes. The rule "never from the environment
+or an argument" holds: the environment names a directory, and the passphrase
+is a file the service manager made in a memory file system (0400, in a 0700
+directory of that unit). A passphrase that does not open the keychain starts
+the daemon locked, with a line saying so, not failed: a service that exits is
+started again at once, and could never be unlocked from a console.
+
+What it gives and does not. The passphrase is never plain on disk or in a
+backup, and with `systemd-creds encrypt --with-key=host+tpm2` (a system
+service: root encrypts it, and a user unit has no TPM, which a run of
+`systemd-creds encrypt --with-key=tpm2` as a user refused on 2026-10-17) the
+blob opens only on that computer. But while the daemon runs, the decrypted
+file is readable by any process of the same account: against code running as
+that account the keychain is then as open as one with no passphrase (ADR 5,
+amended 2026-10-02). What stays protected is the file at rest: a copy of the
+keychain, a backup, a disk taken out. A task's path arguments refuse the
+credentials directory as they refuse nodwyn's own (`core.privateDirs`), but a
+command the person approved runs as the account and can read it. Whoever
+controls how the computer boots, or root, has the keys either way. Say so
+when you set it up (the manual does).
+
+Checks: `TestOpenKeychainFromASystemdCredential` (the passphrase with a
+newline opens it with no terminal; a wrong one and a relative directory
+start it locked) and `TestTheCredentialsDirectoryIsPrivateToTasks`. Run by
+hand on 2026-10-17: `systemd-creds --user encrypt` and a transient user unit
+with `LoadCredentialEncrypted=` (`systemd-run --user`) gave the unit the
+decrypted file, 0400, in `/run/user/UID/credentials/UNIT/`. Not run: the
+TPM-sealed system service (the machine's TPM needs root), nodwyn started by
+such a unit.

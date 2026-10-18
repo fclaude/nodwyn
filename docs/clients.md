@@ -192,7 +192,7 @@ in with the person's passkey after a touch of it (ADR 30, amended
 |---|---|---|---|---|
 | Providers, models, efforts, judges, limits, timeouts | Settings: Models, Judge, and General (limits, timeouts and the context window under Advanced); one Save bar for the settings | — | — | edit `config.toml` |
 | MCP servers: add, inspect, approve, pull | Connections › Tools | — | — | `nodwyn mcp` |
-| Credentials: add, replace, allow a host, take a host back, remove; OAuth2 sign-in | Connections › Credentials (a ChatGPT plan is connected on its provider, Settings › Models) | — | — | `nodwyn credential` (taking a host back is an edit of `bindings.toml`) |
+| Credentials: add, replace, allow a host, take a host back, remove; OAuth2 sign-in | Connections › Credentials (a ChatGPT plan is connected on its provider, Settings › Models); a sign-in whose browser is on another computer finishes from the address it ended on, pasted into the card (`credentials.authorize.finish`, ADR 24 amended 2026-10-17) | — | — | `nodwyn credential` (taking a host back is an edit of `bindings.toml`) |
 | Keychain: create, unlock, passphrase | Settings › Keys & devices, and beside a provider form that needs it | unlocks the daemon's at start, over the socket (`keychain.unlock`); an empty answer or `--no-keychain` leaves it locked | the same; under a script, only with `--keychain-tty`, which asks the controlling terminal | `nodwyn keychain` |
 | Named workspaces and mounts | Workspaces | — | — | edit `workspaces.toml` |
 | Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor; a task's Workspace tab says which | yes, `:earlier`, `:earlier on`, `:earlier off` | — | edit `workspaces.toml` (`earlier_tasks = true`) |

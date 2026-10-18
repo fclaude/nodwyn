@@ -558,13 +558,35 @@ not a person, so any process on an enrolled laptop, a coding agent or a
 package's install script, would speak for it; the Origin check binds only
 browsers. A VPN stays an extra layer in front of the console.
 
-Not built: pasting an OAuth provider's redirect address into the console (a
-sign-in to a provider still needs a browser on the computer nodwyn runs on,
-ADR 24); a console that installs as an app (a manifest); built-in ACME
-certificates (`--acme`); unlocking the keychain at boot from a systemd
-credential sealed to a TPM; reviewing project trust in the console (`nodwyn
-trust` stays the terminal's); a notification for a schedule that waits for
-the keychain (Home says it).
+A provider's OAuth sign-in finishes from a pasted address (ADR 24, amended
+2026-10-17).
+
+**`--acme NAME` gets the console its own certificate.** For a server the
+internet reaches and no proxy in front: `nodwyn ui --acme nodwyn.example.net
+--acme-accept-terms` serves https on :443 with a certificate from Let's
+Encrypt (`--acme-directory` names a staging or private CA, `--acme-email` an
+address for its notices), by `autocert`: TLS-ALPN-01 answered on that same
+port, so nothing else listens; only that name is answered (a hello for
+another asks the CA for nothing); the account's key and the certificates are
+kept in `acme/` of the config directory (0700, closed to a task's file tools
+as the rest of it is); a certificate is renewed by itself 30 days before it
+ends, and one in the cache is served with no word to the CA. The CA's terms
+are the person's to accept, so the flag is required, as `certbot --agree-tos`
+is. Port 443 needs a service allowed it
+(`AmbientCapabilities=CAP_NET_BIND_SERVICE`, or `net.ipv4.ip_unprivileged_port_start`),
+and a name the CA's check can reach. Cost: `autocert` imports
+`golang.org/x/net/idna`, so go.mod gains `x/net` and `x/text` (indirect, the
+Go team's, already in the module graph through the window library) and
+`x/crypto` moves from v0.55.0 to v0.57.0, which `x/net` v0.59.0 requires.
+Not verified: an issuance by a real CA, which needs a name and port 443 on the
+internet; the tests cover the flags, the one-name policy, the ALPN protocol
+and serving a held certificate with the CA unreachable.
+
+**The keychain can open at boot** from a systemd credential holding its
+passphrase, opt-in (ADR 5, amended 2026-10-17), with what that does and does
+not protect said there. Not built: reviewing project trust in the console (`nodwyn
+trust` stays the terminal's). A schedule that waits for the keychain says so
+on Home and, with the daemon's notices on, on the desktop (ADR 53 §11).
 
 Checks: `internal/frontend/web` (`TestAPasskeyPairsThePersonsDevices` with a
 software authenticator, the wrong origin, RP ID, unverified person,

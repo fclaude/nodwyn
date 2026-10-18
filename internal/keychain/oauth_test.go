@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/scheme"
 	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 )
 
@@ -374,5 +376,98 @@ func TestOAuth2RefreshThatFailsOnTheWayIsTransient(t *testing.T) {
 	}
 	if IsTransient(reauthError(h.ID, "docs")) || IsTransient(errNotFound) {
 		t.Fatal("a refusal reads as transient")
+	}
+}
+
+// A browser that cannot reach the listener (it is on another computer than
+// the one nodwyn runs on) ends on the provider's redirect to it, and the
+// address it ended on finishes the authorization: the same checks as the
+// listener's, only this flow's own redirect address, and once.
+func TestOAuth2FinishesFromAPastedAddress(t *testing.T) {
+	st, srv, _ := oauthStore(t)
+	var finish func(string) error
+	ctx := WithFinish(context.Background(), func(f func(string) error) { finish = f })
+	var ended string
+	asked := make(chan struct{})
+	// The browser follows nothing: it stops at the redirect, as one whose
+	// loopback is not the daemon's does, and the person copies its address.
+	browser := func(authURL string) error {
+		go func() {
+			client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			resp, err := client.Get(authURL)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			resp.Body.Close()
+			ended = resp.Header.Get("Location")
+			close(asked)
+		}()
+		return nil
+	}
+	type outcome struct {
+		h   *scheme.Handle
+		err error
+	}
+	got := make(chan outcome, 1)
+	go func() {
+		h, err := st.AddOAuth2(ctx, "docs", grant(srv, "files.read"), browser)
+		got <- outcome{h, err}
+	}()
+	select {
+	case <-asked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the browser never reached the redirect")
+	}
+	u, err := url.Parse(ended)
+	if err != nil || u.Host == "" {
+		t.Fatalf("redirect %q %v", ended, err)
+	}
+	// What is not this flow's own redirect is refused, and the flow goes on.
+	for _, bad := range []string{"", "not a url", "https://" + u.Host + u.Path + "?" + u.RawQuery, "http://127.0.0.1:1" + u.Path + "?" + u.RawQuery, "http://" + u.Host + "/other?" + u.RawQuery, "http://user@" + u.Host + u.Path + "?" + u.RawQuery} {
+		if err := finish(bad); err == nil || !strings.Contains(err.Error(), "not the address") {
+			t.Fatalf("finish(%q): %v", bad, err)
+		}
+	}
+	select {
+	case o := <-got:
+		t.Fatalf("a refused address ended the flow: %+v", o)
+	default:
+	}
+	if err := finish("  " + ended + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := finish(ended); err == nil || !strings.Contains(err.Error(), "already over") {
+		t.Fatalf("a second address: %v", err)
+	}
+	o := <-got
+	if o.err != nil {
+		t.Fatal(o.err)
+	}
+	if srv.Exchanges() != 1 {
+		t.Fatalf("one PKCE exchange, got %d", srv.Exchanges())
+	}
+	if got := injected(t, st, o.h.ID); !strings.HasPrefix(got, "Bearer fake-access-token-") {
+		t.Fatalf("injected %q", got)
+	}
+	// An address with another state stores nothing and ends the flow, as
+	// the listener's handler does.
+	var forged func(string) error
+	ctx = WithFinish(context.Background(), func(f func(string) error) { forged = f })
+	redirects := make(chan string, 1)
+	capture := func(authURL string) error {
+		redirect, _ := urlUnescape(strings.SplitN(strings.SplitN(authURL, "redirect_uri=", 2)[1], "&", 2)[0])
+		redirects <- redirect
+		return nil
+	}
+	errs := make(chan error, 1)
+	count := st.Count()
+	go func() { _, err := st.AddOAuth2(ctx, "other", grant(srv), capture); errs <- err }()
+	redirect := <-redirects
+	if err := forged(redirect + "?code=x&state=forged"); err == nil || !strings.Contains(err.Error(), "state") {
+		t.Fatalf("forged state: %v", err)
+	}
+	if err := <-errs; err == nil || st.Count() != count {
+		t.Fatalf("a forged state stored something: %v", err)
 	}
 }
