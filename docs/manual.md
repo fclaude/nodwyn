@@ -339,7 +339,11 @@ and `nodwyn run` carries a task to its end with no conversation, a batch
 tool for scripts and benchmarks ([runs](runs.md)). Everywhere else a task is
 a chat: a request that takes long is a message like any other.
 [The clients](clients.md) lists what each of them can do, and what is
-still built in one and not another.
+still built in one and not another. The console connects again by itself
+when its connection drops, as a phone's does after a sleep, and reloads the
+open task from its log; nothing that was on its way is sent again. When
+nodwyn was upgraded meanwhile, the page says so and offers **Reload**; it
+never reloads by itself, since a reload loses the replies being written.
 `nodwyn -h` lists every command and flag.
 
 ### Programs that keep running
