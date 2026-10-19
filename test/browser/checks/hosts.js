@@ -128,6 +128,15 @@ check(async () => {
   await page.click("a.new-task");
   await page.waitForSelector("#runs-on");
   await page.selectOption("#runs-on", "workshop");
+  // Runs on is a native select drawn like the model picker: no native arrow, a CSS chevron.
+  const look = await page.$eval("#runs-on", (el) => ({
+    tag: el.tagName,
+    appearance: getComputedStyle(el).appearance,
+    chevron: getComputedStyle(el.parentElement, "::after").content,
+    value: el.value,
+  }));
+  assert.deepStrictEqual(look, { tag: "SELECT", appearance: "none", chevron: '""', value: "workshop" }, "Runs on looks like the model picker");
+  assert.strictEqual(await page.evaluate(() => localStorage.getItem("nodwyn-runs-on")), "workshop", "Runs on stores the host");
   await page.waitForSelector(".work-in-host:has-text('Folders on workshop')");
   await shows(page, ".ask-bar .where", workshop.modelHost);
   // A device that answers on workshop chooses no model there, as a paired phone does not.

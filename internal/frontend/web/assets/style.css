@@ -1206,13 +1206,23 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   font-size: 11.5px; font-weight: 500; white-space: nowrap; vertical-align: middle;
 }
 .card-sub .host-chip, .finished .what .host-chip { margin-right: 6px; }
-.runs-on { display: flex; flex-direction: column; gap: 1px; padding: 4px 10px 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); min-width: 0; }
+/* Runs on is drawn like the model picker beside it (.ask-bar .mp-controls): the
+   same box, a CSS chevron over a native select, and the same hover and focus. */
+.runs-on { position: relative; display: flex; flex-direction: column; gap: 0; padding: 3px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); min-width: 0; line-height: 12px; }
 .runs-on-label { font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--faint); }
-.runs-on select {
-  height: 22px; max-width: 200px; padding: 0; border: none; background: transparent;
-  color: var(--ink); font-size: 13px; font-weight: 500;
+.runs-on::after {
+  content: ""; position: absolute; right: 13px; bottom: 11px; width: 5px; height: 5px;
+  border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; color: var(--faint); transform: rotate(45deg); pointer-events: none;
 }
-.runs-on select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.runs-on select {
+  appearance: none; height: 24px; max-width: 200px; padding: 0 20px 0 0; border: 1px solid transparent; border-radius: 6px; background: transparent;
+  color: var(--ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; cursor: pointer;
+}
+.runs-on select:hover:not(:disabled) { background: var(--surface); }
+.runs-on select:disabled { color: var(--faint); cursor: default; }
+.runs-on:has(select:disabled)::after { opacity: .4; }
+.runs-on select:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+.runs-on option { background: var(--surface); color: var(--ink); font-size: 13px; }
 .work-in-host { margin-left: 4px; }
 .host-card { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
 .host-icon {
