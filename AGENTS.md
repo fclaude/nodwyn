@@ -18,8 +18,8 @@ answer what you ran and what you did not. A sentence in your answer saying
 something works names the run or the check that showed it: what the code
 you wrote should do is not evidence.
 
-**Before calling work done, run `validate`** (the tool; `make validate`
-outside nodwyn) after your last edit (ADR 37). It runs what the list below
+**Before calling work done, run `validate`** (the tool where it is offered;
+otherwise `make validate` in a shell) after your last edit (ADR 37). It runs what the list below
 asks for the files you changed (`gofmt`, `make accept`, the browser checks,
 the books' source inventory), runs each Go test you added or changed
 against the unchanged code, and checks the house rules a diff can show. Fix what fails, and quote
