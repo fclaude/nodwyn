@@ -20,7 +20,10 @@ import (
 // Another value, and the judge, are refused.
 func TestSandboxRunOverRPC(t *testing.T) {
 	t.Setenv(config.ProfileEnv, "") // a run nobody watches runs the lean loop
-	srv := fake.New(fake.Turn{Content: "working on it"}, fake.Turn{Content: "done\n" + run.CompleteLine})
+	// Each session's first turn is asked to check its result before it ends
+	// (the sandbox finish check), and a resume is a new session.
+	srv := fake.New(fake.Turn{Content: "working on it"}, fake.Turn{Content: "still working on it"},
+		fake.Turn{Content: "done\n" + run.CompleteLine}, fake.Turn{Content: "checked\n" + run.CompleteLine})
 	defer srv.Close()
 	o := options(t)
 	o.Provider = llm.NewOllama(srv.URL)

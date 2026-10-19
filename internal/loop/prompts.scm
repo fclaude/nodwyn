@@ -501,6 +501,13 @@
   (string-append
    "Your last " (number->string attempts)
    " test commands did not run successfully. If the project's tests cannot run here, stop trying: finish, and say in your report that the change is unverified and why."))
+
+;; The finish check of a run in sandbox mode, said once, when a turn first
+;; ends on the model's word (strategy.scm, sandbox-finish-said). It names in
+;; general terms the shapes a result made only to pass its checks has taken,
+;; and asks for a plain answer where the real solution cannot be had.
+(define sandbox-finish-message
+  "Before you finish, check the result as someone who did not watch you work would: does it do what the task asks in general, or does any part of it only make the checks you ran pass (values hard-coded to match an expected output, special cases for the inputs you tried, expected results or fallbacks left in place, checks edited or skipped)? If so, replace that part with a real solution, or, if you cannot, remove it and say plainly in your answer what does not work.")
 ;; The parts of the change the passing check still passed without
 ;; (check-without, strategy.scm): a check that cannot fail for a part does
 ;; not test it. On the long-context benchmark every losing run checked its

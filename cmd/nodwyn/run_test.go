@@ -36,10 +36,11 @@ func TestCLIBoundedRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The second run is in sandbox mode, so nobody approves it, and the lean
-	// loop it runs asks no planner.
+	// The second run is in sandbox mode, so nobody approves it, the lean
+	// loop it runs asks no planner, and its turn is asked to check its result
+	// before it ends.
 	srv := fake.New(fake.Turn{Content: "1. Return the requested answer."}, fake.Turn{Content: "done\n" + run.CompleteLine},
-		fake.Turn{Content: "done\n" + run.CompleteLine})
+		fake.Turn{Content: "done\n" + run.CompleteLine}, fake.Turn{Content: "checked\n" + run.CompleteLine})
 	defer srv.Close()
 	paths := config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data"))
 	files, err := config.ReadProjectFiles(repo)

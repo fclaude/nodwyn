@@ -82,6 +82,47 @@ func TestCallIdentity(t *testing.T) {
 	}
 }
 
+// In sandbox mode (warnRepeats, ADR 54) the same call run four times in a
+// row is a warning at every fourth run, not a stop, and a different call
+// starts the count again. The other stops are as they were: a denied call
+// retried three times, ten failures in a row, the same call among them.
+func TestProgressRepeatsWarnInSandboxMode(t *testing.T) {
+	p := turnProgress{warnRepeats: true}
+	poll := call("shell-exec", `{"cmd":"bash","args":["-c","sleep 55; tail -n 5 out.txt"]}`)
+	for i := 1; i <= 9; i++ {
+		if reason := p.observe(poll, toolOutcome{}); reason != "" {
+			t.Fatalf("call %d: %q", i, reason)
+		}
+		if want := map[bool]int{true: i}[i%repeats == 0]; p.warned != want {
+			t.Fatalf("call %d warned %d, want %d", i, p.warned, want)
+		}
+	}
+	if p.observe(call("shell-exec", `{"cmd":"date"}`), toolOutcome{}) != "" || p.warned != 0 {
+		t.Fatalf("another call: warned %d", p.warned)
+	}
+	for i := 1; i <= 4; i++ {
+		p.observe(poll, toolOutcome{})
+	}
+	if p.warned != 4 {
+		t.Fatalf("the count did not start again: warned %d", p.warned)
+	}
+
+	p = turnProgress{warnRepeats: true}
+	for i := 0; i < 4; i++ {
+		reason := p.observe(call("write", `{"path":"secret"}`), toolOutcome{failed: true, denied: true})
+		if (reason != "") != (i == 3) || (i == 3 && !strings.Contains(reason, "denied")) {
+			t.Fatalf("denial %d: %q", i, reason)
+		}
+	}
+	p = turnProgress{warnRepeats: true}
+	for i := 0; i < 10; i++ {
+		reason := p.observe(call("fs-read", `{"path":"missing"}`), toolOutcome{failed: true})
+		if (reason != "") != (i == 9) || (i == 9 && !strings.Contains(reason, "ten consecutive")) {
+			t.Fatalf("failure %d: %q", i, reason)
+		}
+	}
+}
+
 // observeRound is a model response whose calls are observed in order.
 func observeRound(p *turnProgress, calls ...func() (llm.ToolCall, toolOutcome)) string {
 	p.response()

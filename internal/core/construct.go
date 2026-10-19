@@ -564,6 +564,7 @@ func (s *Session) initialize() (err error) {
 		Root:           o.Repo,
 		Delegates:      s.delegates,
 		Profile:        s.profile,
+		Sandbox:        o.Sandbox,
 	})
 	if err != nil {
 		return err

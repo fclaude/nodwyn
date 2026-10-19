@@ -382,6 +382,13 @@ func (l *Loop) runTools(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, l.stop(err, calls[i:])
 		}
 		res, value, outcome, err := l.runTool(c.Ctx, tc)
+		reason := ""
+		if err == nil {
+			// The guard sees the call before its result is recorded: in
+			// sandbox mode a warning goes to the model with the result.
+			reason = t.progress.observe(tc, outcome)
+			err = l.recordResult(res, t.progress.warned)
+		}
 		if err != nil {
 			// Cancelled, or the log failed: the rest cannot run either.
 			if skipErr := l.skipTools(calls[i+1:], err.Error()); skipErr != nil {
@@ -390,7 +397,7 @@ func (l *Loop) runTools(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, err
 		}
 		results = append(results, resultValue(res, value, outcome))
-		if reason := t.progress.observe(tc, outcome); reason != "" {
+		if reason != "" {
 			stuck := &ProgressStop{Reason: reason}
 			if err := l.record(log.KindNote, log.Note{Text: stuck.Error()}); err != nil {
 				return scheme.Void, err
@@ -437,10 +444,11 @@ func (l *Loop) skipToolsPrim(c *scheme.Call) (scheme.Value, error) {
 		if err := l.reserveCall(c.Ctx, t); err != nil {
 			return scheme.Void, l.stop(err, calls[i:])
 		}
-		if err := l.skipTools(calls[i:i+1], reason); err != nil {
+		why := t.progress.observe(tc, toolOutcome{failed: true})
+		if err := l.recordResult(notExecuted(tc, reason), t.progress.warned); err != nil {
 			return scheme.Void, err
 		}
-		if why := t.progress.observe(tc, toolOutcome{failed: true}); why != "" {
+		if why != "" {
 			stuck := &ProgressStop{Reason: why}
 			if err := l.record(log.KindNote, log.Note{Text: stuck.Error()}); err != nil {
 				return scheme.Void, err
@@ -490,7 +498,8 @@ func (l *Loop) logNote(c *scheme.Call) (scheme.Value, error) {
 
 // foldResult is (fold-result result text): later windows show a tool result
 // as text. result is the tool.result's seq, or the id of the call it
-// answers (its latest result); either must be of this session.
+// answers (its latest result); either must be of this session. A note the
+// progress guard gave the model with the result (warnings) follows the text.
 func (l *Loop) foldResult(c *scheme.Call) (scheme.Value, error) {
 	if _, err := l.active(c); err != nil {
 		return scheme.Void, err
@@ -505,6 +514,9 @@ func (l *Loop) foldResult(c *scheme.Call) (scheme.Value, error) {
 	seq, err := resultSeq(l.host.EventsSoFar(), c.Args[0])
 	if err != nil {
 		return scheme.Void, err
+	}
+	if note, ok := l.warnings[seq]; ok {
+		text = withNote(text, note)
 	}
 	return scheme.Void, l.record(log.KindResultFold, log.ResultFold{Seq: seq, Text: text})
 }
