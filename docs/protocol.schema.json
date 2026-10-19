@@ -3323,6 +3323,30 @@
             "params"
           ],
           "type": "object"
+        },
+        {
+          "not": {
+            "required": [
+              "id"
+            ]
+          },
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "method": {
+              "const": "host.closed"
+            },
+            "params": {
+              "$ref": "#/$defs/rpc.hostClosed"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method",
+            "params"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -3639,6 +3663,21 @@
         },
         {
           "$ref": "#/$defs/request.hello"
+        },
+        {
+          "$ref": "#/$defs/request.host.attach"
+        },
+        {
+          "$ref": "#/$defs/request.host.connect"
+        },
+        {
+          "$ref": "#/$defs/request.host.link"
+        },
+        {
+          "$ref": "#/$defs/request.host.list"
+        },
+        {
+          "$ref": "#/$defs/request.host.unlink"
         },
         {
           "$ref": "#/$defs/request.index.forget"
@@ -4243,6 +4282,162 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.helloParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.host.attach": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "host.attach"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.hostAttachParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.host.connect": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "host.connect"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.hostNameParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.host.link": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "host.link"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.hostLinkParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.host.list": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "host.list"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.host.unlink": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "host.unlink"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.hostNameParams"
             }
           ],
           "unevaluatedProperties": false
@@ -7141,6 +7336,27 @@
     "result.hello": {
       "$ref": "#/$defs/rpc.helloResult"
     },
+    "result.host.attach": {},
+    "result.host.connect": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "result.host.link": {
+      "$ref": "#/$defs/rpc.hostInfo"
+    },
+    "result.host.list": {
+      "items": {
+        "$ref": "#/$defs/rpc.hostInfo"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "result.host.unlink": {
+      "$ref": "#/$defs/rpc.hostUnlinkResult"
+    },
     "result.index.forget": {
       "properties": {},
       "required": [],
@@ -8435,6 +8651,102 @@
         "version",
         "methods",
         "peer"
+      ],
+      "type": "object"
+    },
+    "rpc.hostAttachParams": {
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "id",
+        "path",
+        "file"
+      ],
+      "type": "object"
+    },
+    "rpc.hostClosed": {
+      "properties": {
+        "code": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "rpc.hostInfo": {
+      "properties": {
+        "locked": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "rpc.hostLinkParams": {
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "as": {
+          "type": "string"
+        },
+        "invite": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "address",
+        "as",
+        "invite"
+      ],
+      "type": "object"
+    },
+    "rpc.hostNameParams": {
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "rpc.hostUnlinkResult": {
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "told": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "told"
       ],
       "type": "object"
     },

@@ -972,7 +972,7 @@ export class TaskView {
         this.uploading = true;
         this.controls();
         try {
-          await this.files.upload(item.id);
+          await this.files.upload(item.id, this.desk.host);
         } finally {
           this.uploading = false;
           this.acting = true;
@@ -1037,7 +1037,7 @@ export class TaskView {
     // redraw that follows its action does not leave it open.
     const entry = (label, handler, { danger = false, disabled = false, title = "" } = {}) =>
       h("button", { type: "button", class: `menu-item${danger ? " danger" : ""}`, disabled: disabled || !this.conn.live || this.acting, title: title || undefined, onclick: (event) => { this.menuOpen = false; event.target.closest("details")?.removeAttribute("open"); handler(); } }, label);
-    if (this.conn.has("conversation.search") && this.conn.has("log.context")) menu.push(h("a", { class: "menu-item", href: `#/search/${encodeURIComponent(item.id)}`, "aria-label": "Search conversation", onclick: () => (this.menuOpen = false) }, "Search"));
+    if (this.conn.has("conversation.search") && this.conn.has("log.context")) menu.push(h("a", { class: "menu-item", href: this.desk.at(`search/${encodeURIComponent(item.id)}`), "aria-label": "Search conversation", onclick: () => (this.menuOpen = false) }, "Search"));
     if (this.conn.has("schedule.read") && (this.conn.has("schedule.set") || item.schedule?.definition)) menu.push(entry("Schedule…", () => manageSchedule(this.conn, item.id, async () => { await this.desk.refresh(); if (this.item?.id === item.id) { this.item = this.desk.sessions.get(item.id) || item; this.header(); if (this.item.open) await this.loadInfo(); } })));
     // A run comes from nodwyn run (ADR 35): Stop ends it, and a message
     // afterwards goes on with the task as a chat. A request waiting outside
@@ -1068,6 +1068,9 @@ export class TaskView {
     const meta = h(
       "div",
       { class: "task-meta" },
+      // A linked host's task says where it runs (ADR 54): its folders,
+      // models and keys are that host's.
+      this.desk.host ? h("span", { class: "host-chip", title: `Runs on ${this.desk.host}, a linked host` }, icon("server", 13), this.desk.host) : null,
       icon("folder", 15),
       h("strong", {}, this.desk.folderName(this.desk.project(item))),
       h("span", { class: "mono" }, shortPath(this.desk.project(item), home)),
@@ -1109,7 +1112,7 @@ export class TaskView {
             "div",
             { class: "callout context-unknown", role: "note" },
             h("span", {}, `This task works in a ${(this.desk.settings?.values?.["window.high_water"]?.value || 61440).toLocaleString("en-US")}-token window: nodwyn doesn't know how much context ${this.info.model.model} holds, so it compacts early and forgets more. Set its context length in Settings › Models.`),
-            h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => this.navigate("#/settings/models") }, "Open Settings")),
+            this.desk.host ? null : h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => this.navigate("#/settings/models") }, "Open Settings")),
           )
         : "",
     ];
@@ -1772,7 +1775,7 @@ export class TaskView {
     return h(
       "section",
       { class: "panel" },
-      h("h2", {}, "Tools in this task", h("a", { href: "#/connections", class: "note" }, "Manage")),
+      h("h2", {}, "Tools in this task", this.desk.host ? null : h("a", { href: "#/connections", class: "note" }, "Manage")),
       h("div", { class: "kv" }, h("span", {}, "nodwyn · built in"), h("span", {}, `${builtin} tools`)),
       servers.map((s) => h("div", { class: "kv", title: s.detail || "" }, h("span", {}, `${s.name} · ${where(s)}`), h("span", {}, (words[s.state] || (() => s.state))(s)))),
     );

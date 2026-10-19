@@ -10,34 +10,49 @@ import { ConversationSearchView, ConversationContextView } from "./search.js";
 import { TaskView } from "./task.js";
 import { renderWorkspaces, renderConnections } from "./pages.js";
 import { renderWorkflows } from "./workflows.js";
+import { Hosts, renderHosts } from "./hosts.js";
 import { renderSettings, applyTheme, storedTheme, applyThinking, storedThinking } from "./settings.js";
 
 applyTheme(storedTheme());
 applyThinking(storedThinking());
 const conn = new Connection();
 const desk = new Desk(conn);
+// This computer and the nodwyns it is linked to, each with a connection and
+// a desk of its own (ADR 54).
+const hosts = new Hosts(conn, desk);
 // One view per task. An open task's view is kept when another page is shown:
 // its subscription stays and its events keep arriving, so coming back
 // catches up at once instead of reading its whole log again, which took
 // seconds for a long task. The least recently shown go past keptViews.
-const views = new Map(); // task id -> TaskView, least recently shown first
+const views = new Map(); // host and task id (viewKey) -> TaskView, least recently shown first
 const keptViews = 8;
 let task = null; // the view on screen, when a task is
 let route = parse();
 let homeState = null;
 let conversationView = null;
 
+// parse reads the route from the address. A task of a linked host, and its
+// search and history, are under #/host/NAME/ (ADR 54); everything else is
+// this computer's.
 function parse() {
   const hash = location.hash.replace(/^#/, "");
   const [path, queryString = ""] = hash.split("?");
   const query = new URLSearchParams(queryString);
-  const parts = path.split("/").filter(Boolean);
-  if (parts[0] === "search" && parts[1]) return { name: "search", id: decodeURIComponent(parts[1]), query: query.get("q") || "", scope: query.get("scope") || "project" };
-  if (parts[0] === "history" && parts[1] && parts[2]) return { name: "history", id: decodeURIComponent(parts[1]), seq: Number(parts[2]), search: query.get("search") || "", query: query.get("q") || "", scope: query.get("scope") || "project" };
-  if (parts[0] === "task" && parts[1]) return { name: "task", id: decodeURIComponent(parts[1]), review: parts[2] === "review" };
-  if (["settings", "workspaces", "connections", "workflows"].includes(parts[0])) return { name: parts[0], tab: parts[1] };
-  return { name: "home" };
+  let parts = path.split("/").filter(Boolean);
+  let host = "";
+  if (parts[0] === "host" && parts[1]) {
+    host = decodeURIComponent(parts[1]);
+    parts = parts.slice(2);
+  }
+  if (parts[0] === "search" && parts[1]) return { host, name: "search", id: decodeURIComponent(parts[1]), query: query.get("q") || "", scope: query.get("scope") || "project" };
+  if (parts[0] === "history" && parts[1] && parts[2]) return { host, name: "history", id: decodeURIComponent(parts[1]), seq: Number(parts[2]), search: query.get("search") || "", query: query.get("q") || "", scope: query.get("scope") || "project" };
+  if (parts[0] === "task" && parts[1]) return { host, name: "task", id: decodeURIComponent(parts[1]), review: parts[2] === "review" };
+  if (["settings", "workspaces", "connections", "workflows", "hosts"].includes(parts[0])) return { host: "", name: parts[0], tab: parts[1] };
+  return { host: "", name: "home" };
 }
+// viewKey keys a task's view by its host and id: two hosts may each have a
+// task of one id.
+const viewKey = (host, id) => `${host}\n${id}`;
 function navigate(hash) {
   if (location.hash === hash) render();
   else location.hash = hash;
@@ -46,7 +61,7 @@ window.addEventListener("hashchange", () => {
   const next = parse();
   conversationView?.leave();
   conversationView = null;
-  if (route.name === "task" && (next.name !== "task" || next.id !== route.id)) putAway(task);
+  if (route.name === "task" && (next.name !== "task" || next.id !== route.id || next.host !== route.host)) putAway(task);
   route = next;
   closeMenu();
   render(true);
@@ -177,27 +192,28 @@ function openMenu() {
   $("shell").append(scrim);
 }
 
-// showTask puts task id's view on screen: the kept one as it is, or one
-// that reads the conversation.
-function showTask(id, review = false) {
-  let view = views.get(id);
-  views.delete(id);
+// showTask puts the view of task id, on the host entry shows, on screen:
+// the kept one as it is, or one that reads the conversation.
+function showTask(entry, id, review = false) {
+  const key = viewKey(entry.name, id);
+  let view = views.get(key);
+  views.delete(key);
   if (task && task !== view) putAway(task);
   if (view?.keeps(id)) {
-    views.set(id, view);
+    views.set(key, view);
     task = view;
     $("view").replaceChildren(view.root);
-    view.show(desk.sessions.get(id));
+    view.show(entry.desk.sessions.get(id));
     if (review) view.openReview();
     else if (view.inspecting === "review" && view.activePrompt()) view.closeInspector();
   } else {
-    view ||= new TaskView(conn, desk, navigate);
-    views.set(id, view);
+    view ||= new TaskView(entry.conn, entry.desk, navigate);
+    views.set(key, view);
     task = view;
     $("view").replaceChildren(view.root);
     view.open(id).then(() => {
       // A navigation may finish after the reader has already left the task.
-      if (review && task === view && route.name === "task" && route.id === id && route.review && !view.failed) view.openReview();
+      if (review && task === view && route.name === "task" && route.id === id && route.host === entry.name && route.review && !view.failed) view.openReview();
     });
   }
   for (const [other, kept] of views) {
@@ -219,14 +235,20 @@ function putAway(view) {
   }
   if (task === view) task = null;
 }
-// dropViews ends every view: a new connection has none of their
-// subscriptions, so there is nothing to unsubscribe.
-function dropViews() {
-  for (const view of views.values()) view.dispose(false);
-  views.clear();
-  task = null;
-  conversationView?.leave();
-  conversationView = null;
+// dropViews ends every view of a host whose connection is new, every host's
+// when host is undefined: a new connection has none of their subscriptions,
+// so there is nothing to unsubscribe.
+function dropViews(host) {
+  for (const [key, view] of views) {
+    if (host !== undefined && view.desk.host !== host) continue;
+    view.dispose(false);
+    views.delete(key);
+    if (task === view) task = null;
+  }
+  if (host === undefined || route.host === host) {
+    conversationView?.leave();
+    conversationView = null;
+  }
 }
 
 let lastRoute = "";
@@ -264,21 +286,33 @@ function draw(routeChanged, what) {
   if (conn.state !== "live") return;
   $("gate").hidden = true;
   $("shell").hidden = false;
-  renderSidebar($("sidebar"), { desk, route, conn, rerender: () => render() });
-  const attention = desk.needsYou().length + desk.outbox.length;
+  renderSidebar($("sidebar"), { desk, hosts, route, conn, rerender: () => render() });
+  // What waits, on every host (ADR 54).
+  const waiting = hosts.needsYou();
+  const attention = waiting.length + hosts.outbox().length;
   $("topbar-count").textContent = attention ? `${attention} need${attention === 1 ? "s" : ""} you` : "";
   $("topbar-count").hidden = !attention;
   // On a phone the sidebar is a drawer, so this is the way to what waits.
-  $("topbar-count").href = attention === 1 && desk.needsYou().length === 1 ? `#/task/${desk.needsYou()[0].id}` : "#/";
+  $("topbar-count").href = attention === 1 && waiting.length === 1 ? waiting[0].desk.href(waiting[0].item.id) : "#/";
   document.title = attention ? `(${attention}) nodwyn` : "nodwyn";
   const view = $("view");
-  const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.id}` : route.name;
-  const ctx = { conn, desk, navigate, rerender: () => render(), pickFolder: window.nodwynPickFolder };
+  const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.host}:${route.id}` : route.name;
+  const ctx = { conn, desk, hosts, navigate, rerender: () => render(), pickFolder: window.nodwynPickFolder };
+  // A task of a linked host is drawn once that host's desk is read.
+  const entry = hosts.get(route.host);
+  if (route.host && ["task", "search", "history"].includes(route.name) && !entry?.conn.live) {
+    if (task) putAway(task);
+    conversationView?.leave();
+    conversationView = null;
+    view.replaceChildren(hostAway(route.host, entry));
+    lastRoute = "";
+    return;
+  }
   if (route.name === "task") {
-    if (key !== lastRoute || routeChanged || !task) showTask(route.id, route.review);
+    if (key !== lastRoute || routeChanged || !task) showTask(entry, route.id, route.review);
     else {
       // The list changed: keep the conversation, refresh what the task shows.
-      const fresh = desk.sessions.get(route.id);
+      const fresh = entry.desk.sessions.get(route.id);
       if (fresh && task.item && task.item.id === fresh.id) {
         Object.assign(task.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived, worktree: fresh.worktree, schedule: fresh.schedule });
         if (!fresh.open) task.subscribed = false;
@@ -291,7 +325,7 @@ function draw(routeChanged, what) {
   } else if (route.name === "search" || route.name === "history") {
     if (key !== lastRoute || routeChanged || !conversationView) {
       conversationView?.leave();
-      conversationView = route.name === "search" ? new ConversationSearchView(conn, desk, navigate, route) : new ConversationContextView(conn, desk, route);
+      conversationView = route.name === "search" ? new ConversationSearchView(entry.conn, entry.desk, navigate, route) : new ConversationContextView(entry.conn, entry.desk, route);
       view.replaceChildren(conversationView.root);
       conversationView.open();
     }
@@ -302,6 +336,10 @@ function draw(routeChanged, what) {
     else if (route.name === "workspaces") renderWorkspaces(view, ctx);
     else if (route.name === "connections") renderConnections(view, { ...ctx, tab: route.tab });
     else if (route.name === "workflows") renderWorkflows(view, { ...ctx, tab: route.tab });
+    else if (route.name === "hosts") renderHosts(view, ctx);
+  } else if (route.name === "hosts" && !editing(view)) {
+    // A host's state changes while the page is open.
+    renderHosts(view, ctx);
   } else if (route.name === "workflows" && !route.tab) {
     // Its rows follow the list: a run starting, ending or skipped changes
     // what they say.
@@ -321,6 +359,19 @@ function draw(routeChanged, what) {
   lastRoute = key;
 }
 
+// hostAway is what a linked host's task shows while the host cannot be
+// read: not linked, connecting, or not reachable, and why.
+function hostAway(name, entry) {
+  const [title, words] = !entry
+    ? [`${name} is not linked`, "This computer has no host of that name. Link it on Hosts."]
+    : entry.conn.state === "unpaired"
+      ? [`${name} refuses this computer`, entry.detail || "Link it again on Hosts."]
+      : entry.conn.state === "down"
+        ? [`${name} is not reachable`, entry.info?.locked || entry.detail || "This page shows its task once it answers."]
+        : [`Connecting to ${name}…`, "The task shows once it answers."];
+  return h("main", { class: "page", id: "host-away" }, h("div", { class: "page-col" }, h("h1", {}, title), h("p", { class: "lede" }, words), h("div", { class: "row-actions" }, h("a", { class: "btn", href: "#/hosts" }, "Hosts"), h("a", { class: "btn ghost", href: "#/" }, "Home"))));
+}
+
 // editing reports whether a field in root has the focus or holds what was
 // typed into it, which a redraw would lose.
 function editing(root) {
@@ -329,6 +380,7 @@ function editing(root) {
 }
 
 desk.onChange((what) => render(false, what));
+hosts.onChange((what) => render(false, what));
 // A throw outside a render (a click's handler, a request nobody waits for)
 // would otherwise reach the console only; a connection that dropped says so
 // on its own banner.
@@ -338,7 +390,14 @@ window.addEventListener("unhandledrejection", (event) => {
 window.addEventListener("error", (event) => {
   if (event.message && !event.message.startsWith("ResizeObserver")) toastError(event.message);
 });
-desk.notifier.onOpen = (id) => navigate(`#/task/${id}`);
+// A notice opens its task, on its host (ADR 54).
+const openTask = (id, host = "") => navigate((hosts.get(host)?.desk || desk).href(id));
+desk.notifier.onOpen = openTask;
+hosts.onOpen = openTask;
+hosts.onLive = (name) => {
+  dropViews(name);
+  if (route.host === name) lastRoute = "";
+};
 // While the connection waits for its next try, the banner over the page (or
 // the gate, before it was ever live) counts down the seconds. The count is
 // not announced; the banner's reason is, when it changes.
@@ -371,11 +430,14 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
   navigator.serviceWorker
     .register("/sw.js", { scope: "/" })
     .then(() => navigator.serviceWorker.ready)
-    .then((registration) => (desk.notifier.worker = registration))
+    .then((registration) => {
+      for (const entry of hosts.all()) entry.desk.notifier.worker = registration;
+    })
     .catch((error) => console.warn("nodwyn: no service worker:", error.message));
   navigator.serviceWorker.addEventListener("message", (event) => {
     const id = event.data?.open;
-    if (typeof id === "string" && id !== "") desk.notifier.onOpen?.(id);
+    const host = typeof event.data?.host === "string" ? event.data.host : "";
+    if (typeof id === "string" && id !== "") openTask(id, host);
   });
 }
 conn.onState(async (state, detail) => {
@@ -386,6 +448,9 @@ conn.onState(async (state, detail) => {
   showRetry(detail);
   if (state === "unpaired") {
     desk.reset();
+    // Every link goes through this computer's console, which no longer
+    // takes this browser.
+    hosts.drop();
     showPairing(detail);
   } else if (state === "down") {
     desk.reset();
@@ -400,6 +465,8 @@ conn.onState(async (state, detail) => {
     } catch (error) {
       toastError(error.message);
     }
+    // The hosts this computer is linked to, each read on its own.
+    hosts.refresh().catch((error) => toastError(`Could not read the linked hosts: ${error.message}`));
     render(true);
     // The browser checks wait for this mark before they look at a page: the
     // desk's first refresh is drawn and the models have answered.
@@ -408,7 +475,7 @@ conn.onState(async (state, detail) => {
   }
 });
 setInterval(() => {
-  if (conn.live) desk.refreshModels(false, true);
+  for (const entry of hosts.live()) entry.desk.refreshModels(false, true);
 }, 60000);
 
 // ⌘N / Ctrl+N: a new task, as the sidebar promises.
@@ -436,9 +503,14 @@ $("reload").addEventListener("click", () => location.reload());
 // A phone that wakes, or a laptop back on a network, reconnects at once
 // rather than at its next try, and a connection that only looks live is
 // found out (Connection.wake).
-window.addEventListener("online", () => conn.wake());
+window.addEventListener("online", () => {
+  conn.wake();
+  hosts.wake();
+});
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") conn.wake();
+  if (document.visibilityState !== "visible") return;
+  conn.wake();
+  hosts.wake();
 });
 
 // Wails can install the native bridge after the first console render.

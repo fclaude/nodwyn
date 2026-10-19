@@ -48,6 +48,9 @@ type Device struct {
 	// By is who let it in: the device that invited it, the passkey it
 	// signed in with, or the terminal.
 	By string `toml:"by,omitempty" json:"by,omitempty"`
+	// Host says the device is another nodwyn linked to this one (ADR 54),
+	// not a browser. It cannot touch a passkey, so it is offered no setup.
+	Host bool `toml:"host,omitempty" json:"host,omitempty"`
 }
 
 // Passkey is a passkey (WebAuthn) the person registered with this console,
@@ -69,6 +72,10 @@ type invite struct {
 	Expires time.Time `toml:"expires"`
 	By      string    `toml:"by"`
 	Passkey bool      `toml:"passkey"`
+	// Vouch is the passkey the person proved themself with on the device that
+	// made an invitation that may register one: another nodwyn that uses it
+	// is theirs, as a device signed in with that passkey is (ADR 54).
+	Vouch string `toml:"vouch,omitempty"`
 }
 
 type deviceFile struct {
@@ -246,6 +253,17 @@ func normalCode(code string) string {
 // its code: 20 characters (100 bits) in groups of four. With passkey, the
 // device that uses it may register a passkey.
 func (d *Devices) Invite(by string, passkey bool) (string, time.Time, error) {
+	return d.invite(by, "", passkey)
+}
+
+// InviteAsPerson makes an invitation that may register a passkey, by the
+// device by whose person just proved themself with passkey: another nodwyn
+// that uses it is the person's (Link).
+func (d *Devices) InviteAsPerson(by, passkey string) (string, time.Time, error) {
+	return d.invite(by, passkey, true)
+}
+
+func (d *Devices) invite(by, vouch string, passkey bool) (string, time.Time, error) {
 	var raw [20]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", time.Time{}, err
@@ -261,7 +279,7 @@ func (d *Devices) Invite(by string, passkey bool) (string, time.Time, error) {
 	err := d.change(func(f *deviceFile) error {
 		now := time.Now()
 		f.Invite = slices.DeleteFunc(f.Invite, func(x invite) bool { return now.After(x.Expires) })
-		f.Invite = append(f.Invite, invite{Hash: digest(normalCode(code.String())), Expires: expires, By: by, Passkey: passkey})
+		f.Invite = append(f.Invite, invite{Hash: digest(normalCode(code.String())), Expires: expires, By: by, Passkey: passkey, Vouch: vouch})
 		return nil
 	})
 	return code.String(), expires, err
@@ -309,6 +327,34 @@ func (d *Devices) Join(code, name string) (string, error) {
 		}
 		token, err = pair(f, name, x.By, "", false)
 		return err
+	})
+	return token, err
+}
+
+// Link uses an invitation to pair another nodwyn named name (ADR 54), and
+// returns its token. It is the person's when person allows it (the request
+// reached a console where a browser could be, over https or at a localhost
+// name, so the secrets the person types do not cross the network in clear)
+// and the invitation was made by a device of the person's that vouched for
+// it with a passkey still registered: it then carries that passkey, and only
+// answers once it is removed. Otherwise it answers, as a device paired by a
+// plain invitation does.
+func (d *Devices) Link(code, name string, person bool) (string, error) {
+	var token string
+	err := d.change(func(f *deviceFile) error {
+		x, err := take(f, code)
+		if err != nil {
+			return err
+		}
+		vouch := ""
+		if person && x.Passkey && x.Vouch != "" && slices.ContainsFunc(f.Passkey, func(p Passkey) bool { return p.Name == x.Vouch }) {
+			vouch = x.Vouch
+		}
+		if token, err = pair(f, name, x.By, vouch, false); err != nil {
+			return err
+		}
+		f.Device[len(f.Device)-1].Host = true
+		return nil
 	})
 	return token, err
 }

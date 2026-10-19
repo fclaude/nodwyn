@@ -1,4 +1,5 @@
-// Home: start anything, and see what needs you across every task.
+// Home: start anything, and see what needs you across every task, on every
+// host the window shows (ADR 54).
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, toastError, basename } from "./dom.js";
 import { newSchedule, nextLine, scheduleTime, scheduleActions } from "./schedule.js";
 import { takeNewWorkflow } from "./workflows.js";
@@ -9,20 +10,56 @@ import { firstModel } from "./models.js";
 import { Attachments, isImage } from "./attach.js";
 import { keepDraft } from "./task.js";
 import { ModelPicker, defaultSelection, choicesOf, blocked, defaultJudge, judgesOf } from "./modelpicker.js";
+import { hostState } from "./hosts.js";
 
 // The folder the next task starts in, for this tab. A tab that has not
 // picked yet starts in the folder picked last: this browser's, else the
 // daemon's — which survives an app restart, where the window's console is
 // on a new loopback port and this browser remembers nothing (ADR 30).
 const LAST_KEY = "nodwyn-last-folder";
-let chosen = "";
 let draft = "";
 let current = null;
 let files = null; // the files chosen for the next task, kept across redraws
 let starting = false; // a start is in flight: one task per ask
-// A choice made for a folder in this tab; otherwise a known git workspace
-// defaults to a worktree.
+// A choice made for a folder in this tab, by host and folder; otherwise a
+// known git workspace defaults to a worktree.
 const worktreeChoices = new Map();
+
+// The host a new task starts on (ADR 54): "" for this computer, else a
+// linked host's name. Kept in this browser, since it is a choice like the
+// folder.
+const RUNS_ON_KEY = "nodwyn-runs-on";
+let runsOn = null;
+function loadRunsOn() {
+  if (runsOn !== null) return runsOn;
+  try {
+    runsOn = localStorage.getItem(RUNS_ON_KEY) || "";
+  } catch {
+    runsOn = "";
+  }
+  return runsOn;
+}
+function setRunsOn(name) {
+  runsOn = name;
+  try {
+    if (name) localStorage.setItem(RUNS_ON_KEY, name);
+    else localStorage.removeItem(RUNS_ON_KEY);
+  } catch {
+    /* kept for this tab only */
+  }
+}
+// keyFor is the name a choice is kept under in this browser: this
+// computer's as it always was, a linked host's with the host's name, since
+// its folders and models are its own.
+const keyFor = (key, host) => (host ? `${key}@${host}` : key);
+// What this tab chose for each host's next task: its folder, and its model
+// and judge when they are not the default.
+const perHost = new Map();
+function stateOf(host = "") {
+  let st = perHost.get(host);
+  if (!st) perHost.set(host, (st = { chosen: "", picked: null, pickedLoaded: false, pickedJudge: null, pickedJudgeLoaded: false }));
+  return st;
+}
 
 // The model and effort chosen for the next task, if they are not the default
 // (ADR 41): kept while the window is left and come back to, and in this
@@ -31,14 +68,15 @@ const worktreeChoices = new Map();
 // new task always begins on the default of Settings unless it is changed
 // there and then. It never changes the default.
 const NEW_KEY = "nodwyn-new-task-model";
-let picked = null; // {name, effort}, or null for the default
-let pickedLoaded = false;
-function loadPicked() {
-  if (pickedLoaded) return;
-  pickedLoaded = true;
+// loadPicked reads the model kept for host's next task, {name, effort}, or
+// null for the default, once.
+function loadPicked(host) {
+  const st = stateOf(host);
+  if (st.pickedLoaded) return;
+  st.pickedLoaded = true;
   try {
-    const v = JSON.parse(localStorage.getItem(NEW_KEY) || "null");
-    if (v && typeof v.name === "string" && typeof v.effort === "string") picked = { name: v.name, effort: v.effort };
+    const v = JSON.parse(localStorage.getItem(keyFor(NEW_KEY, host)) || "null");
+    if (v && typeof v.name === "string" && typeof v.effort === "string") st.picked = { name: v.name, effort: v.effort };
   } catch {
     /* a browser that refuses storage starts on the default */
   }
@@ -47,23 +85,23 @@ function loadPicked() {
 // as the model's choice is and dropped as it is. "" is no judge; null is the
 // default of Settings.
 const NEW_JUDGE_KEY = "nodwyn-new-task-judge";
-let pickedJudge = null;
-let pickedJudgeLoaded = false;
-function loadPickedJudge() {
-  if (pickedJudgeLoaded) return;
-  pickedJudgeLoaded = true;
+function loadPickedJudge(host) {
+  const st = stateOf(host);
+  if (st.pickedJudgeLoaded) return;
+  st.pickedJudgeLoaded = true;
   try {
-    const v = JSON.parse(localStorage.getItem(NEW_JUDGE_KEY) || "null");
-    if (typeof v === "string") pickedJudge = v;
+    const v = JSON.parse(localStorage.getItem(keyFor(NEW_JUDGE_KEY, host)) || "null");
+    if (typeof v === "string") st.pickedJudge = v;
   } catch {
     /* a browser that refuses storage starts on the default */
   }
 }
 function pickJudge(name, desk) {
-  pickedJudge = name === null || name === defaultJudge(desk) ? null : name;
+  const st = stateOf(desk.host);
+  st.pickedJudge = name === null || name === defaultJudge(desk) ? null : name;
   try {
-    if (pickedJudge !== null) localStorage.setItem(NEW_JUDGE_KEY, JSON.stringify(pickedJudge));
-    else localStorage.removeItem(NEW_JUDGE_KEY);
+    if (st.pickedJudge !== null) localStorage.setItem(keyFor(NEW_JUDGE_KEY, desk.host), JSON.stringify(st.pickedJudge));
+    else localStorage.removeItem(keyFor(NEW_JUDGE_KEY, desk.host));
   } catch {
     /* kept for this tab only */
   }
@@ -72,8 +110,9 @@ function pickJudge(name, desk) {
 // The models the next task's model may hand work to (ADR 27, amended
 // 2026-10-09). Never kept between tasks, not even in this tab's storage: where
 // a task's work may go is chosen for each, and the default is the task's own
-// model alone.
+// model alone. They are the models of the host they were ticked for.
 const pickedHelpers = new Set();
+let helpersHost = "";
 
 // Whether the next task's turns stop at Settings' limits (ADR 49). Ticked by
 // default, and ticked again for each new task: running without them is a
@@ -114,30 +153,33 @@ function helpersBox(desk, driving, changed) {
 }
 
 function pick(selection, desk) {
+  const st = stateOf(desk.host);
   const dflt = defaultSelection(desk);
-  picked = selection && !(dflt && selection.name === dflt.name && selection.effort === dflt.effort) ? selection : null;
+  st.picked = selection && !(dflt && selection.name === dflt.name && selection.effort === dflt.effort) ? selection : null;
   try {
-    if (picked) localStorage.setItem(NEW_KEY, JSON.stringify(picked));
-    else localStorage.removeItem(NEW_KEY);
+    if (st.picked) localStorage.setItem(keyFor(NEW_KEY, desk.host), JSON.stringify(st.picked));
+    else localStorage.removeItem(keyFor(NEW_KEY, desk.host));
   } catch {
     /* kept for this tab only */
   }
 }
 
-// setFolder picks the folder the next task starts in, in this tab, and
-// remembers it — in this browser for a fresh tab, and with the daemon
-// (workspace.active, local consoles only) for a fresh window or tab that
-// this browser has never seen.
+// setFolder picks the folder the next task starts in on desk's host, in
+// this tab, and remembers it — in this browser for a fresh tab, and with the
+// daemon (workspace.active, local consoles only) for a fresh window or tab
+// that this browser has never seen.
 function setFolder(folder, desk) {
-  chosen = folder;
-  localStorage.setItem(LAST_KEY, folder);
+  const host = desk?.host || "";
+  stateOf(host).chosen = folder;
+  localStorage.setItem(keyFor(LAST_KEY, host), folder);
   if (desk?.conn?.has("workspace.active")) desk.conn.call("workspace.active", { path: folder }).catch(() => {});
 }
 
-// chosenFolder is the folder Home would start the next task in, as far as
-// this tab knows: what the sidebar's search takes its project from.
+// chosenFolder is the folder Home would start the next task in on this
+// computer, as far as this tab knows: what the sidebar's search takes its
+// project from.
 export function chosenFolder() {
-  return chosen || localStorage.getItem(LAST_KEY) || "";
+  return stateOf("").chosen || localStorage.getItem(LAST_KEY) || "";
 }
 
 // chooseFolder preselects the folder the next task starts in.
@@ -145,64 +187,91 @@ export function chooseFolder(folder, desk) {
   setFolder(folder, desk);
 }
 
-// forgetFolder stops preselecting a folder that left the list, and drops it
-// as the last pick, so a fresh tab does not start there either.
-export function forgetFolder(folder) {
-  if (chosen === folder) chosen = "";
-  if (localStorage.getItem(LAST_KEY) === folder) localStorage.removeItem(LAST_KEY);
+// forgetFolder stops preselecting a folder of host's that left the list,
+// and drops it as the last pick, so a fresh tab does not start there either.
+export function forgetFolder(folder, host = "") {
+  const st = stateOf(host);
+  if (st.chosen === folder) st.chosen = "";
+  if (localStorage.getItem(keyFor(LAST_KEY, host)) === folder) localStorage.removeItem(keyFor(LAST_KEY, host));
 }
 
 export function renderHome(root, ctx) {
-  const { conn, desk, navigate, pickFolder } = ctx;
-  const folders = desk.folders();
+  const { navigate, hosts } = ctx;
+  // The host a new task starts on (ADR 54), and what the composer offers
+  // follows it: its folders, its models and the choices its console lets
+  // this window make. A host that is gone or not reachable leaves the
+  // choice made, and the composer says why it cannot start.
+  const entries = hosts ? hosts.all() : [{ name: "", label: "This computer", conn: ctx.conn, desk: ctx.desk }];
+  const several = entries.length > 1;
+  const target = entries.find((e) => e.name === loadRunsOn()) || entries[0];
+  const { conn, desk } = target;
+  const st = stateOf(target.name);
+  // A folder chooser picks a folder on this computer.
+  const pickFolder = target.name ? null : ctx.pickFolder;
+  // What the forms on this page act on: the host a task starts on.
+  const tctx = { ...ctx, conn, desk, pickFolder };
+  if (helpersHost !== target.name) {
+    pickedHelpers.clear();
+    helpersHost = target.name;
+  }
+  // The lists below are every host's that can be read, each task with its
+  // host's desk.
+  const live = entries.filter((e) => e.conn.live);
+  const everyHost = (list) => live.flatMap((e) => list(e.desk).map((item) => ({ item, desk: e.desk, conn: e.conn })));
+  const newest = (a, b) => new Date(b.item.last_event) - new Date(a.item.last_event);
+  // hostChip names the host of a task in a list, when there are several.
+  const hostChip = (d) => (several ? h("span", { class: "host-chip" }, icon(d.host ? "server" : "laptop", 12), d.host || "This computer") : null);
+  const folders = conn.live ? desk.folders() : [];
   // A tab that has not picked yet starts in the folder picked last: this
   // browser's, else the daemon's, which an app restart keeps.
   // A remembered pick of a folder forgotten since is dropped; a folder
   // picked in this tab is kept, forgotten or not, since a device that cannot
   // add folders chooses one by its path, and using it brings it back.
-  if (!chosen) {
-    chosen = localStorage.getItem(LAST_KEY) || desk.last || "";
-    if (desk.forgotten.has(chosen)) {
-      forgetFolder(chosen);
-      chosen = "";
+  if (!st.chosen) {
+    st.chosen = localStorage.getItem(keyFor(LAST_KEY, target.name)) || desk.last || "";
+    if (desk.forgotten.has(st.chosen)) {
+      forgetFolder(st.chosen, target.name);
+      st.chosen = "";
     }
   }
-  if (!chosen || !folders.includes(chosen)) chosen = chosen && !folders.includes(chosen) && chosen.startsWith("/") ? chosen : folders[0] || "";
+  if (!st.chosen || !folders.includes(st.chosen)) st.chosen = st.chosen && !folders.includes(st.chosen) && st.chosen.startsWith("/") ? st.chosen : folders[0] || "";
   const control = desk.control();
   // Every task is a chat (ADR 35): a long request is a message like any
   // other, and goes on until it is done.
-  const canStart = conn.has("session.open") && conn.has("session.send");
-  const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
+  // A linked host that cannot be read now keeps its composer, which says so.
+  const canStart = (conn.has("session.open") && conn.has("session.send")) || (!!target.name && !conn.live);
+  const where = !conn.live && target.name ? `${target.name} is not reachable` : control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
   // This computer chooses where a task's content goes (ADR 30, ADR 40): a
   // paired device starts tasks on the default model and says which it is.
-  loadPicked();
-  loadPickedJudge();
+  loadPicked(target.name);
+  loadPickedJudge(target.name);
   const canChoose = conn.has("session.model.set") && choicesOf(desk).length > 0;
-  const selection = () => picked || defaultSelection(desk);
+  const selection = () => st.picked || defaultSelection(desk);
   // The judge is chosen beside the model (ADR 47), on this computer only,
   // and only where there is a judge to choose.
   const canDelegate = canChoose && conn.has("session.judge.set");
   const canJudge = canChoose && conn.has("session.judge.set") && judgesOf(desk).length > 0;
-  const judgeChoice = () => (pickedJudge !== null ? pickedJudge : defaultJudge(desk));
+  const judgeChoice = () => (st.pickedJudge !== null ? st.pickedJudge : defaultJudge(desk));
 
   // Needs you: each waiting task says what it asks.
   const needs = h("section", { class: "home-section home-needs", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
-  const waiting = desk.needsYou();
-  if (!waiting.length && !desk.outbox.length) needs.append(h("p", { class: "empty-note" }, "Nothing is waiting for you."));
+  const waiting = everyHost((d) => d.needsYou()).sort(newest);
+  const held = live.flatMap((e) => e.desk.outbox.map((item) => ({ item, desk: e.desk, conn: e.conn })));
+  if (!waiting.length && !held.length) needs.append(h("p", { class: "empty-note" }, "Nothing is waiting for you."));
   // A workflow's answer waits here for a yes before anything is posted.
-  for (const held of desk.outbox) needs.append(outboxCard(conn, desk, held));
-  for (const item of waiting) {
-    const events = desk.pending.get(item.id) || [];
+  for (const { item, desk: d, conn: c } of held) needs.append(outboxCard(c, d, item));
+  for (const { item, desk: d, conn: c } of waiting) {
+    const events = d.pending.get(item.id) || [];
     const first = events[0];
     const s = first ? summary(first) : { kind: "Approval", tool: "", title: "Waiting for your answer" };
     const stats = s.detail ? diffStats(s.detail) : null;
-    const since = first ? desk.firstSeen.get(first.payload.ID) : null;
-    const actions = h("div", { class: "card-actions" }, h("a", { class: "btn small dark", href: `#/task/${item.id}` }, s.path ? "Review the change" : "Review"));
+    const since = first ? d.firstSeen.get(first.payload.ID) : null;
+    const actions = h("div", { class: "card-actions" }, h("a", { class: "btn small dark", href: d.href(item.id) }, s.path ? "Review the change" : "Review"));
     // Allow once from here only for a plain command or write: a security
     // confirmation or a send to another host needs what the task's card
     // shows (the reasons, the destination, the diff), so it gets Review.
     const plain = first?.kind === "prompt.confirm" && !first.payload?.Prompt?.Security && !first.payload?.Prompt?.Egress;
-    if (plain && conn.has("session.answer")) {
+    if (plain && c.has("session.answer")) {
       actions.append(
         h(
           "button",
@@ -212,9 +281,9 @@ export function renderHome(root, ctx) {
             onclick: async (event) => {
               event.target.disabled = true;
               try {
-                await conn.call("session.answer", { id: item.id, prompt_id: first.payload.ID, reply: "y" });
+                await c.call("session.answer", { id: item.id, prompt_id: first.payload.ID, reply: "y" });
                 toast("Allowed once.");
-                desk.scheduleAttention();
+                d.scheduleAttention();
               } catch (error) {
                 toastError(`${error.message} Nothing was retried.`);
                 event.target.disabled = false;
@@ -234,7 +303,7 @@ export function renderHome(root, ctx) {
           "div",
           { class: "stack-sm" },
           h("div", { class: "card-title" }, h("span", {}, s.title), stats ? [h("span", { class: "plus" }, `+${stats.plus}`), h("span", { class: "minus" }, `−${stats.minus}`)] : null),
-          h("div", { class: "card-sub" }, `${item.title || "Untitled task"} · ${desk.folderName(desk.project(item))}`),
+          h("div", { class: "card-sub" }, hostChip(d), `${item.title || "Untitled task"} · ${d.folderName(d.project(item))}`),
         ),
         actions,
       ),
@@ -242,57 +311,58 @@ export function renderHome(root, ctx) {
   }
 
   const running = h("section", { class: "home-section", "aria-labelledby": "running" }, h("h2", { class: "eyebrow", id: "running" }, "Running"));
-  const active = desk.running();
+  const active = everyHost((d) => d.running()).sort(newest);
   if (!active.length) running.append(h("p", { class: "empty-note" }, "Nothing is running."));
-  for (const item of active) running.append(runningCard(item));
+  for (const { item, desk: d } of active) running.append(runningCard(item, d));
 
   const done = h("section", { class: "home-section", "aria-labelledby": "done" }, h("h2", { class: "eyebrow", id: "done" }, "Recently finished"));
-  const recent = desk.recent().slice(0, 5);
+  const recent = everyHost((d) => d.recent()).sort(newest).slice(0, 5);
   if (!recent.length) done.append(h("p", { class: "empty-note" }, "Finished tasks will appear here."));
   else
     done.append(
       h(
         "ul",
         { class: "finished" },
-        recent.map((item) =>
+        recent.map(({ item, desk: d, conn: c }) =>
           h(
             "li",
             {},
             h(
               "a",
-              { href: `#/task/${item.id}` },
+              { href: d.href(item.id) },
               h("div", { class: "row" }, h("span", {}, item.title || "Untitled task"), h("span", {}, ago(item.last_event))),
               h(
                 "div",
                 { class: "what" },
-                item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${desk.folderName(desk.project(item))}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${desk.folderName(desk.project(item))}`)],
+                hostChip(d),
+                item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${d.folderName(d.project(item))}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${d.folderName(d.project(item))}`)],
               ),
             ),
-            item.worktree && conn.has("worktree.diff") ? h("a", { class: "btn small ghost", href: `#/task/${item.id}/review` }, "Review") : null,
+            item.worktree && c.has("worktree.diff") ? h("a", { class: "btn small ghost", href: d.href(item.id, "/review") }, "Review") : null,
           ),
         ),
       ),
     );
 
   const schedules = h("section", { class: "home-section", "aria-label": "Scheduled tasks" }, h("h2", { class: "eyebrow" }, "Scheduled", " ", h("a", { class: "eyebrow-link", href: "#/workflows" }, "All workflows")));
-  for (const item of desk.sessions.values()) if (item.schedule?.definition && !item.archived) {
+  for (const { item, desk: d, conn: c } of everyHost((d) => [...d.sessions.values()])) if (item.schedule?.definition && !item.archived) {
     const s = item.schedule;
     const update = async (method, params = {}) => {
       try {
-        await conn.call(method, { id: item.id, ...params });
-        await desk.refresh();
+        await c.call(method, { id: item.id, ...params });
+        await d.refresh();
       } catch (error) {
         toast(error.message);
       }
     };
-    schedules.append(h("article", { class: "card" }, h("a", { href: `#/task/${item.id}` }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.sentence || s.definition.repeat), h("p", { class: s.held ? "hint warn" : "hint", title: s.timezone }, s.definition.paused ? "Paused" : s.held || (s.next_words ? nextLine(s) : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending")), h("div", { class: "row-actions" }, ...scheduleActions(conn, s.definition, item.archived, update))));
+    schedules.append(h("article", { class: "card" }, hostChip(d), h("a", { href: d.href(item.id) }, item.title || item.first_message || "Scheduled task"), h("p", { class: "hint" }, s.sentence || s.definition.repeat), h("p", { class: s.held ? "hint warn" : "hint", title: s.timezone }, s.definition.paused ? "Paused" : s.held || (s.next_words ? nextLine(s) : s.next?.length ? `Next ${scheduleTime(s.next[0])} · ${s.timezone}` : "No time pending")), h("div", { class: "row-actions" }, ...scheduleActions(c, s.definition, item.archived, update))));
   }
   if (!schedules.querySelector("article")) schedules.append(h("p", { class: "empty-note" }, "Nothing scheduled."));
   // The daemon says of each schedule whether locked keys hold back its next
   // run: said once here, where the schedules are, and unlocked above. This
   // part of Home is drawn again when the list changes; the top is not while
   // a passphrase is being typed.
-  else if ([...desk.sessions.values()].some((item) => item.schedule?.held && !item.archived)) schedules.querySelector("h2").after(h("p", { class: "hint warn", id: "schedules-held" }, "Your keys are locked, so scheduled runs wait until you unlock them, and then run once, late."));
+  else if (live.some((e) => [...e.desk.sessions.values()].some((item) => item.schedule?.held && !item.archived))) schedules.querySelector("h2").after(h("p", { class: "hint warn", id: "schedules-held" }, "Your keys are locked, so scheduled runs wait until you unlock them, and then run once, late."));
   const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, schedules, done));
   // The ask being typed survives updates: while focus is in the top half,
   // only the lists below are replaced. This is decided before the composer
@@ -339,7 +409,7 @@ export function renderHome(root, ctx) {
   // its message, or is "" when it can: a button that does nothing and says
   // nothing reads as a broken one.
   const unready = () =>
-    starting ? "A task is starting." : !conn.live ? "Disconnected." : desk.keysLocked ? "Unlock your keys first." : !chosen ? "Choose a folder first." : canChoose && blocked(desk, selection()) ? "The chosen model cannot be used yet." : "";
+    starting ? "A task is starting." : !conn.live ? (target.name ? `${target.name} is not reachable.` : "Disconnected.") : desk.keysLocked ? "Unlock your keys first." : !st.chosen ? "Choose a folder first." : canChoose && blocked(desk, selection()) ? "The chosen model cannot be used yet." : "";
   const ready = () => canStart && !unready() && !!task.value.trim();
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: true }, icon("up", 18, 2));
   // sync draws what depends on whether a task can start now.
@@ -358,16 +428,17 @@ export function renderHome(root, ctx) {
   // one you work in. Only a daemon that offers worktree.open, and a bridge
   // that lets it through, shows the choice; only known git workspaces default
   // to it because other folders cannot be opened as worktrees.
-  const worktreeDefault = () => !!desk.workspace(chosen)?.git;
+  const worktreeDefault = () => !!desk.workspace(st.chosen)?.git;
   // A named workspace says whether it is a git repository; a folder a task
   // merely used does not, so it is left to the daemon, which refuses.
-  const notGit = !!desk.workspace(chosen) && !desk.workspace(chosen).git;
-  const worktree = () => conn.has("worktree.open") && !notGit && (worktreeChoices.has(chosen) ? worktreeChoices.get(chosen) : worktreeDefault());
-  const worktreeBox = conn.has("worktree.open") && chosen
+  const notGit = !!desk.workspace(st.chosen) && !desk.workspace(st.chosen).git;
+  const worktreeKey = `${target.name}\n${st.chosen}`;
+  const worktree = () => conn.has("worktree.open") && !notGit && (worktreeChoices.has(worktreeKey) ? worktreeChoices.get(worktreeKey) : worktreeDefault());
+  const worktreeBox = conn.has("worktree.open") && st.chosen
     ? h(
         "label",
         { class: "worktree-toggle", title: notGit ? "Only a git repository can have worktrees, and this folder is not one." : "Start this task in a new git worktree of the folder, on a branch of its own: it does not touch the files you or other tasks are working on. Its changes stay on that branch until it is merged." },
-        h("input", { type: "checkbox", disabled: notGit, checked: worktree(), onchange: (event) => { worktreeChoices.set(chosen, event.target.checked); count(); } }),
+        h("input", { type: "checkbox", disabled: notGit, checked: worktree(), onchange: (event) => { worktreeChoices.set(worktreeKey, event.target.checked); count(); } }),
         h("span", {}, "In a worktree"),
       )
     : null;
@@ -450,6 +521,28 @@ export function renderHome(root, ctx) {
   );
   options.hidden = !worktreeBox && !limitsBox && !scheduleButton && !canDelegate;
   count();
+  // Runs on chooses the host the task starts on (ADR 54): the folders, the
+  // models and the choices above follow it. A host that cannot be read now
+  // is offered, saying so, and the composer says why it cannot start.
+  const runsOnPicker = several
+    ? h(
+        "label",
+        { class: "runs-on", title: "The host this task starts on, with its folders, models and keys" },
+        h("span", { class: "runs-on-label" }, "Runs on"),
+        h(
+          "select",
+          {
+            id: "runs-on",
+            onchange: (event) => {
+              setRunsOn(event.target.value);
+              renderHome(root, { ...ctx, keepTop: false });
+              root.querySelector("#runs-on")?.focus();
+            },
+          },
+          entries.map((e) => h("option", { value: e.name, selected: e === target }, e.name ? `${e.name}${e.conn.live ? "" : ` (${hostState(e)[1]})`}` : "This computer")),
+        ),
+      )
+    : null;
   // startTask starts the task and sends its message, or, given a schedule,
   // schedules it instead. The schedule is an argument, not page state: one
   // whose start failed stayed set, and the next plain Send scheduled.
@@ -471,15 +564,15 @@ export function renderHome(root, ctx) {
           // A model or effort chosen on this page is sent as it is. Left
           // alone, the picker shows the default and the task starts on it, as
           // a task always did: the daemon pins its effort in the log.
-          const params = { repo: chosen };
-          const sel = canChoose ? picked : null;
+          const params = { repo: st.chosen };
+          const sel = canChoose ? st.picked : null;
           if (sel) {
             params.name = sel.name;
             if (sel.effort) params.effort = sel.effort;
           }
           // So is a judge chosen here; left alone, the task asks the
           // default of Settings, as a task always did.
-          if (canJudge && pickedJudge !== null) params.judge = pickedJudge;
+          if (canJudge && st.pickedJudge !== null) params.judge = st.pickedJudge;
           // And the helpers ticked for this task, if any.
           if (canDelegate && pickedHelpers.size) params.delegates = [...pickedHelpers].sort();
           // Limits are on unless unticked: only then is the choice sent.
@@ -487,8 +580,8 @@ export function renderHome(root, ctx) {
           const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
           opened = info.id;
           // An image waits for its own confirm, which the task's page shows.
-          if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
-          if (files.files.length) await files.upload(info.id);
+          if (files.files.some(isImage)) navigate(desk.href(info.id));
+          if (files.files.length) await files.upload(info.id, target.name);
           sending = true;
           if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling });
           else await conn.call("session.send", { id: info.id, text });
@@ -498,7 +591,7 @@ export function renderHome(root, ctx) {
           pickedHelpers.clear();
           limitsOn = true;
           await desk.refresh();
-          navigate(`#/task/${info.id}`);
+          navigate(desk.href(info.id));
         } catch (error) {
           if (opened && !sending) {
             // The task opened, but an attachment was refused (an image's
@@ -509,7 +602,7 @@ export function renderHome(root, ctx) {
             draft = "";
             files.clear();
             toastError(`${error.message} The message was not sent: it waits in the task's reply box.`);
-            navigate(`#/task/${opened}`);
+            navigate(desk.href(opened));
           } else {
             // The daemon's refusal before any task opened says so plainly;
             // a lost connection or a timeout may have started one, so those
@@ -532,15 +625,16 @@ export function renderHome(root, ctx) {
       { class: "ask-bar" },
       attach,
       options,
+      runsOnPicker,
       canChoose ? picker.el : h("span", { class: "where" }, where),
       submit,
     ),
-    h("p", { class: "hint ask-hint" }, "Enter starts the task · Shift+Enter for a new line"),
+    h("p", { class: "hint ask-hint" }, several ? `Enter starts the task on ${target.name || "this computer"} · Shift+Enter for a new line` : "Enter starts the task · Shift+Enter for a new line"),
   );
   sync();
 
   const chips = h("div", { class: "work-in", id: "work-in" }, h("span", {}, "Work in"));
-  const listed = [chosen, ...folders.filter((f) => f !== chosen)].filter(Boolean);
+  const listed = [st.chosen, ...folders.filter((f) => f !== st.chosen)].filter(Boolean);
   for (const folder of listed.slice(0, 6)) {
     chips.append(
       h(
@@ -548,7 +642,7 @@ export function renderHome(root, ctx) {
         {
           type: "button",
           class: "chip",
-          "aria-pressed": String(folder === chosen),
+          "aria-pressed": String(folder === st.chosen),
           title: folder,
           // A pick changes the whole top, the chips, the ask bar's folder and
           // the worktree box, so it redraws it, whatever redraw came before;
@@ -563,8 +657,8 @@ export function renderHome(root, ctx) {
       ),
     );
   }
-  // The rest are on Workspaces, each with New task here.
-  if (listed.length > 6) chips.append(h("a", { class: "chip", href: "#/workspaces", style: "text-decoration:none", title: "Every folder, on Workspaces" }, `${listed.length - 6} more`));
+  // The rest are on Workspaces, each with New task here: this computer's.
+  if (listed.length > 6 && !target.name) chips.append(h("a", { class: "chip", href: "#/workspaces", style: "text-decoration:none", title: "Every folder, on Workspaces" }, `${listed.length - 6} more`));
   // Adding a folder names it; where the console may save workspaces, the
   // folder joins the list for next time.
   const adding = h("form", { class: "add-folder card", hidden: true });
@@ -620,6 +714,8 @@ export function renderHome(root, ctx) {
       "Add a folder",
     ),
   );
+  // The folders are the host's the task runs on.
+  if (several) chips.append(h("span", { class: "hint work-in-host" }, target.name ? `Folders on ${target.name}` : "Folders on this computer"));
 
   // The first run sets a model up with the forms of Settings › Models, which
   // write a provider, a model and the default: all three are this computer's.
@@ -635,13 +731,13 @@ export function renderHome(root, ctx) {
         { class: "home-col" },
         h("h1", {}, "Let's connect nodwyn to a model"),
         h("p", { class: "lede" }, "nodwyn thinks with a language model you choose: one running on this computer or your network, or a service you have a key for. Nothing is sent anywhere until you set this up."),
-        h("div", { class: "card" }, firstModel(ctx, redrawSetup)),
+        h("div", { class: "card" }, firstModel(tctx, redrawSetup)),
       )
     : h(
         "div",
         { class: "home-col" },
         h("h1", {}, "What should we get done?"),
-        locked ? h("details", { class: "callout", open: true }, h("summary", {}, desk.keysLocked ? "Unlock your keys to start a task: the model needs one." : "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(ctx, { onDone: async () => {
+        locked ? h("details", { class: "callout", open: true }, h("summary", {}, desk.keysLocked ? "Unlock your keys to start a task: the model needs one." : "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(tctx, { onDone: async () => {
           // The daemon said of each schedule whether locked keys hold back
           // its next run; unlocked, the list read before is out of date.
           await desk.reload();
@@ -686,7 +782,7 @@ export function renderHome(root, ctx) {
   };
   return current;
 
-  function runningCard(item) {
+  function runningCard(item, desk) {
     const run = item.run?.status === "running" ? item.run : null;
     const card = h(
       "article",
@@ -694,7 +790,7 @@ export function renderHome(root, ctx) {
       h(
         "div",
         { class: "stack-sm" },
-        h("div", { style: "display:flex;align-items:center;gap:10px" }, h("span", { class: "run-dot" }), h("a", { href: `#/task/${item.id}`, style: "font-size:15px;font-weight:600;text-decoration:none" }, item.title || "Untitled task")),
+        h("div", { style: "display:flex;align-items:center;gap:10px" }, h("span", { class: "run-dot" }), h("a", { href: desk.href(item.id), style: "font-size:15px;font-weight:600;text-decoration:none" }, item.title || "Untitled task"), hostChip(desk)),
         // A run comes from nodwyn run, a batch tool for scripts (ADR 35).
         h("div", { class: "card-sub", style: "padding-left:18px" }, run ? `${run.unattended ? "Unattended run" : "Run"} from nodwyn run · ${desk.folderName(desk.project(item))}` : `Working · ${desk.folderName(desk.project(item))}`),
       ),

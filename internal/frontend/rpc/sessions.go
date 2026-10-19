@@ -341,6 +341,11 @@ var methodTable = map[string]handler{
 	"conversation.search":          (*server).searchConversation,
 	"log.context":                  (*server).readContext,
 	"log.runs":                     (*server).readRuns,
+	"host.list":                    (*server).hostMethod,
+	"host.link":                    (*server).hostMethod,
+	"host.unlink":                  (*server).hostMethod,
+	"host.connect":                 (*server).hostMethod,
+	"host.attach":                  (*server).hostMethod,
 }
 
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {

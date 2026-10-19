@@ -1,5 +1,6 @@
-// The browser's one connection to the bridge. It matches replies to
-// requests and hands notifications to listeners. A dropped connection fails
+// A connection to the bridge, for this computer's daemon or, through it, a
+// linked host's (ADR 54): one per host. It matches replies to requests and
+// hands notifications to listeners. A dropped connection fails
 // every outstanding request, which is never sent again, and is made again by
 // itself after a wait (browser.md). The one request sent again is a setup
 // request the bridge held back for a touch of the passkey, once the person
@@ -21,7 +22,12 @@ const retryLast = 30000;
 const aliveWait = 10000;
 
 export class Connection {
-  constructor() {
+  // host names the linked host this connection reaches, or is "" for this
+  // computer.
+  constructor(host = "") {
+    this.host = host;
+    this.path = host ? `/socket?host=${encodeURIComponent(host)}` : "/socket";
+    this.closed = false;
     this.socket = null;
     this.nextID = 0;
     this.waiting = new Map();
@@ -106,6 +112,7 @@ export class Connection {
     }
   }
   connect() {
+    if (this.closed) return;
     clearTimeout(this.retryTimer);
     this.retryAt = 0;
     if (this.socket) {
@@ -116,7 +123,7 @@ export class Connection {
     this.fail("Reconnecting; no operation was retried.");
     this.setState("connecting");
     const scheme = location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(`${scheme}://${location.host}/socket`);
+    const socket = new WebSocket(`${scheme}://${location.host}${this.path}`);
     this.socket = socket;
     let opened = false;
     socket.onopen = async () => {
@@ -179,8 +186,9 @@ export class Connection {
       // A socket refused before it opened does not say why. The bridge
       // does: a browser it does not take (never paired, revoked, or paired
       // with a run of the console that has since stopped) pairs again, and
-      // one that could not reach it tries again.
-      if (!opened && (await paired()) === false) {
+      // one that could not reach it tries again. Whether this browser is
+      // paired is this computer's connection's to find out.
+      if (!opened && !this.host && (await paired()) === false) {
         if (this.socket) return;
         this.retries = 0;
         this.setState("unpaired");
@@ -189,9 +197,20 @@ export class Connection {
       if (!this.socket) this.retry();
     };
   }
+  // close ends the connection for good: its host was unlinked.
+  close() {
+    this.closed = true;
+    clearTimeout(this.retryTimer);
+    const socket = this.socket;
+    this.socket = null;
+    socket?.close();
+    this.fail("This host was unlinked.");
+    this.setState("idle");
+  }
   // retry connects again after the wait for this attempt; retryAt says
   // when, for the page to show.
   retry(detail = "", least = 0) {
+    if (this.closed) return;
     const wait = Math.max(least, Math.min(retryLast, retryFirst * 2 ** this.retries));
     this.retries++;
     clearTimeout(this.retryTimer);

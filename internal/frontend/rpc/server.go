@@ -140,6 +140,12 @@ func (s *server) connection(ctx context.Context, conn net.Conn) {
 		if reply != nil && !client.enqueue(reply) {
 			return
 		}
+		// host.connect made the rest of this connection a linked host's
+		// (ADR 54).
+		if client.relay != nil {
+			client.relay(ctx, reader)
+			return
+		}
 	}
 	if reader.Err() == nil {
 		// A client may half-close its request stream while still reading.

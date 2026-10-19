@@ -2989,6 +2989,41 @@ command you approved does not. A passphrase that does not open the keychain
 leaves the daemon locked, with a line in its journal, and you unlock it from
 a device as before.
 
+## Several hosts in one window
+
+With nodwyn on your laptop and on a server that is always on, the laptop's
+window can show both: the server's tasks beside the laptop's, what either
+waits for under one **Needs you**, and a new task started on whichever should
+run it (ADR 54). The laptop links to the server once:
+
+1. On the server, make an invitation: `nodwyn devices invite` in its
+   terminal, or **Invite a device** in Settings › Keys & devices of its
+   console. One made by your device signed in there with your passkey lets
+   the laptop make your choices for the server's tasks (a task's model,
+   limits and schedule, unlocking its keys); one from its terminal lets it
+   start tasks and answer them.
+2. On the laptop, open **Hosts** in the sidebar and **Add a host**: the
+   server's address (`https://nodwyn.example.net`), the laptop's name there
+   (what the server records your answers with, such as `laptop`), what to
+   call the server here (such as `workshop`) and the invitation, then **Link**.
+   The laptop keeps the link's token in its keychain, which has to be open:
+   the form offers to unlock or create it.
+
+The sidebar then groups the tasks under each host, with its state, and
+Home's **Runs on** chooses the host a new task starts on, with that host's
+folders and model. A task on the server says so in its heading; you answer
+it, message it and give it files from the laptop, and the server records the
+answers as the laptop's. A notice of the server's task opens it there.
+
+The server decides what the laptop may do, and its setup (its Settings,
+keys, folders) is changed in its own console: **Open its console** on Hosts.
+Revoking the laptop there ends the link, and Hosts says the server refuses
+it; **Unlink** on the laptop forgets the link and asks the server to forget
+the laptop too, saying when it could not. The laptop reaches the server
+through its own nodwyn, so the server's tasks show while the laptop's nodwyn
+runs. The TUI and line mode show this computer's tasks only. A phone that
+reaches every host through the server is not built yet.
+
 ## Downloadable builds and books
 
 Download portable binaries and both books from the repository's Gitea

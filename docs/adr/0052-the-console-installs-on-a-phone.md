@@ -1,7 +1,7 @@
 # ADR 0052: The console installs on a phone as a web app
 
-- Status: accepted; §1–§5 implemented 2026-10-17; Web Push and several
-  hosts in one app not built (§6)
+- Status: accepted; §1–§5 implemented 2026-10-17; Web Push not built (§6);
+  several hosts in one app built as ADR 54
 - Date: 2026-10-17
 - Amends: 30 (the phone view becomes an app on the Home Screen)
 
@@ -71,7 +71,8 @@ latter. So on a phone the console's notices never appeared.
   decision of its own, with its keys in the keychain.
 - **Several hosts in one app**, the design canvas of 2026-10-17: tasks of
   this computer and of an always-on host side by side, and a phone that
-  reaches every host through one.
+  reaches every host through one. The first is built as ADR 54 (2026-10-18);
+  the phone's home host is not.
 - **Pairing without the code,** which the remote-first trust proposal of
   2026-10-17 covers.
 

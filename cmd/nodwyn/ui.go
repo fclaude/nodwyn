@@ -306,6 +306,10 @@ func (c *cli) devices() error {
 			if d.Passkey != "" {
 				signed = "  passkey " + d.Passkey
 			}
+			// Another nodwyn linked to this one (ADR 54), not a browser.
+			if d.Host {
+				signed += "  another nodwyn"
+			}
 			fmt.Printf("%-20s paired %s  last seen %s%s\n", d.Name, d.Paired.Local().Format("2006-01-02"), d.LastSeen.Local().Format("2006-01-02 15:04"), signed)
 		}
 		return nil

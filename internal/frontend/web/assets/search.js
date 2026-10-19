@@ -6,9 +6,11 @@ import { Transcript } from "./transcript.js";
 // The scopes: "project" is this task and the project's earlier ones, which
 // the daemon answers as two searches (its "conversation" and "earlier"), the
 // default since the words a person looks for are as likely in last week's
-// task as in this one.
-export function searchURL(id, query = "", scope = "project") {
-  return `#/search/${encodeURIComponent(id)}?${new URLSearchParams({ q: query, scope })}`;
+// task as in this one. A linked host's task is searched there (desk.at, ADR
+// 54).
+export function searchURL(id, query = "", scope = "project", desk = null) {
+  const path = `search/${encodeURIComponent(id)}?${new URLSearchParams({ q: query, scope })}`;
+  return desk ? desk.at(path) : `#/${path}`;
 }
 
 // describe says what a match is in a person's words, from the daemon's kind
@@ -70,11 +72,11 @@ export class ConversationSearchView {
     const results = h("div", { class: "search-results" });
     const form = h("form", { class: "conversation-search-form", onsubmit: (event) => {
       event.preventDefault();
-      const url = searchURL(id, input.value.trim(), where.value);
+      const url = searchURL(id, input.value.trim(), where.value, this.desk);
       if (location.hash === url) this.open();
       else this.navigate(url);
     } }, h("label", { for: "conversation-query" }, "Words to find", input), h("label", { for: "conversation-scope" }, "Where", where), h("button", { type: "submit", class: "btn dark" }, "Search"));
-    this.root.replaceChildren(h("div", { class: "page-col" }, h("a", { href: `#/task/${encodeURIComponent(id)}` }, "Back to task"), h("h1", {}, "Search conversations"),
+    this.root.replaceChildren(h("div", { class: "page-col" }, h("a", { href: this.desk.href(encodeURIComponent(id)) }, "Back to task"), h("h1", {}, "Search conversations"),
       h("p", { class: "lede" }, item ? `${this.desk.folderName(this.desk.project(item))} · ${item.title || "Untitled task"}` : "Task history"), form,
       h("p", { class: "hint" }, "Searches messages, replies, plans, attachments and tool results. Your search does not change what the model may search."), status, results));
     input.focus();
@@ -103,7 +105,7 @@ export class ConversationSearchView {
           for (const match of turn.matches) {
             const back = new URLSearchParams({ search: id, q: query, scope });
             card.append(h("div", { class: "search-match", dataset: { seq: String(match.seq) } },
-              h("a", { class: "search-match-link", href: `#/history/${encodeURIComponent(task.id)}/${match.seq}?${back}`, title: match.heading }, describe(match)),
+              h("a", { class: "search-match-link", href: this.desk.at(`history/${encodeURIComponent(task.id)}/${match.seq}?${back}`), title: match.heading }, describe(match)),
               h("span", { class: "hint" }, ` · ${when(match.time)}`),
               h("pre", { class: "search-snippet" }, match.lines.map((line) => h("span", {}, h("span", { class: "line-number" }, `${line.number}: `), highlight(line.text, query), "\n")))));
           }
@@ -135,8 +137,8 @@ export class ConversationContextView {
     this.earlier = h("button", { type: "button", class: "btn", hidden: true, onclick: () => this.more(true) }, "Load earlier in this turn");
     this.later = h("button", { type: "button", class: "btn", hidden: true, onclick: () => this.more(false) }, "Load later in this turn");
     this.root.replaceChildren(h("div", { class: "page-col" }, h("div", { class: "row-actions" },
-      search ? h("a", { class: "btn ghost", href: searchURL(search, query, scope) }, "Back to search results") : null,
-      h("a", { class: "btn ghost", href: `#/task/${encodeURIComponent(id)}` }, "Open task")),
+      search ? h("a", { class: "btn ghost", href: searchURL(search, query, scope, this.desk) }, "Back to search results") : null,
+      h("a", { class: "btn ghost", href: this.desk.href(encodeURIComponent(id)) }, "Open task")),
       h("h1", {}, item?.title || "Conversation history"), h("p", { class: "hint" }, "Recorded history. Open the task to reply or answer a current request."), this.status, this.earlier, this.body, this.later));
     if (!Number.isSafeInteger(seq) || seq < 1) { this.status.textContent = "Invalid event reference."; return; }
     this.status.textContent = "Loading matching conversation…";

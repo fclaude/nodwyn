@@ -1189,3 +1189,45 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .ws-startup { display: block; }
 .ws-review { display: grid; gap: 12px; margin-top: 10px; }
 .ws-file { max-height: 280px; overflow: auto; margin: 6px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; }
+
+/* Several hosts in one window (ADR 54): each host's tasks under its name and
+   state, a chip naming a task's host, the Runs on picker and the Hosts page. */
+.nav-host { display: flex; flex-direction: column; gap: 6px; }
+.host-head {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px;
+  background: var(--surface-2); color: var(--ink-2); font-size: 13px; font-weight: 600; min-width: 0;
+}
+.host-head .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.host-head .state { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; color: var(--faint); white-space: nowrap; }
+.host-hint { padding: 0 10px; margin: 0; }
+.host-chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2);
+  font-size: 11.5px; font-weight: 500; white-space: nowrap; vertical-align: middle;
+}
+.card-sub .host-chip, .finished .what .host-chip { margin-right: 6px; }
+.runs-on { display: flex; flex-direction: column; gap: 1px; padding: 4px 10px 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); min-width: 0; }
+.runs-on-label { font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--faint); }
+.runs-on select {
+  height: 22px; max-width: 200px; padding: 0; border: none; background: transparent;
+  color: var(--ink); font-size: 13px; font-weight: 500;
+}
+.runs-on select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.work-in-host { margin-left: 4px; }
+.host-card { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+.host-icon {
+  flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2);
+  color: var(--ink-2); display: inline-flex; align-items: center; justify-content: center;
+}
+.host-main { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.host-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.host-line h2 { margin: 0; font-size: 17px; }
+.host-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.host-address { font-size: 12.5px; color: var(--faint); overflow-wrap: anywhere; }
+.host-main .hint { margin: 2px 0 0; }
+.host-actions { flex-wrap: wrap; }
+.host-actions .confirm-text { flex-basis: 100%; }
+@media (max-width: 760px) {
+  .ask-bar .runs-on { flex-basis: 100%; }
+  .runs-on select { max-width: 100%; }
+}

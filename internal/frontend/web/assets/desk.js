@@ -5,8 +5,11 @@
 import { toastError } from "./dom.js";
 
 export class Desk {
-  constructor(conn) {
+  // host is the linked host this desk shows (ADR 54), or "" for this
+  // computer.
+  constructor(conn, host = "") {
     this.conn = conn;
+    this.host = host;
     this.sessions = new Map(); // id -> session.list entry, merged with watch state
     this.states = new Map(); // id -> session.watch state (by revision)
     this.pending = new Map(); // id -> pending prompt events (attention.list)
@@ -21,7 +24,7 @@ export class Desk {
     this.listeners = new Set();
     this.version = 0;
     this.latest = null; // the newest refresh, which an older one waits for
-    this.notifier = new Notifier();
+    this.notifier = new Notifier(host);
     this.attentionTimer = 0;
     conn.onEvent((frame) => {
       if (frame.method === "session.event" && frame.params?.kind === "session.state") this.watch(frame.params.payload);
@@ -235,6 +238,15 @@ export class Desk {
     this.notifier.update(state, previous, notify, item);
     this.changed("state");
   }
+  // at is the address of a page of this desk's host: this computer's as it
+  // always was, a linked host's under #/host/NAME/.
+  at(path) {
+    return `#/${this.host ? `host/${encodeURIComponent(this.host)}/` : ""}${path}`;
+  }
+  // href is the address of a task of this desk's host.
+  href(id, suffix = "") {
+    return this.at(`task/${id}${suffix}`);
+  }
   // Lists, newest activity first.
   all() {
     return [...this.sessions.values()].sort((a, b) => new Date(b.last_event) - new Date(a.last_event));
@@ -300,9 +312,15 @@ const storedNotify = () => {
   }
 };
 
+// The choice is one for the page, whichever host's tasks a notifier tells
+// of: "on", "off", or null when never chosen.
+let notifyChoice = storedNotify();
+
 class Notifier {
-  constructor() {
-    this.choice = storedNotify(); // "on", "off", or null when never chosen
+  // host is the linked host whose tasks it tells of, or "" for this
+  // computer: a notice opens the task on its host.
+  constructor(host = "") {
+    this.host = host;
     this.open = new Map();
     this.onOpen = null;
     // The service worker's registration, once it is ready (ADR 52): a phone
@@ -315,6 +333,12 @@ class Notifier {
   }
   get available() {
     return this.native || (typeof Notification !== "undefined" && window.isSecureContext);
+  }
+  get choice() {
+    return notifyChoice;
+  }
+  set choice(value) {
+    notifyChoice = value;
   }
   get enabled() {
     if (this.native) return this.choice !== "off";
@@ -355,12 +379,12 @@ class Notifier {
       return;
     }
     if (!document.hidden || Notification.permission !== "granted") return;
-    const tag = `nodwyn-${state.id}`;
+    const tag = `nodwyn-${this.host ? `${this.host}-` : ""}${state.id}`;
     if (this.worker) {
-      // The task's id is data, never shown: a click on the notice reaches the
-      // worker, which asks this page, or a new one, to open it.
+      // The task's id and host are data, never shown: a click on the notice
+      // reaches the worker, which asks this page, or a new one, to open it.
       const worker = this.worker;
-      worker.showNotification("nodwyn needs your answer", { body: "Open nodwyn to review what it asks.", tag, data: { id: state.id } }).catch(() => {});
+      worker.showNotification("nodwyn needs your answer", { body: "Open nodwyn to review what it asks.", tag, data: this.host ? { id: state.id, host: this.host } : { id: state.id } }).catch(() => {});
       this.open.set(state.id, { close: () => worker.getNotifications({ tag }).then((shown) => shown.forEach((n) => n.close()), () => {}) });
       return;
     }
@@ -368,7 +392,7 @@ class Notifier {
       const n = new Notification("nodwyn needs your answer", { body: "Open nodwyn to review what it asks.", tag });
       n.onclick = () => {
         window.focus();
-        this.onOpen?.(state.id);
+        this.onOpen?.(state.id, this.host);
         n.close();
       };
       this.open.set(state.id, n);

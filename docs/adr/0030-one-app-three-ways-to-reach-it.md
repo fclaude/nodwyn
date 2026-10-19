@@ -598,3 +598,14 @@ daemon; `TestASharedConsolePairsThisComputerOnlyByTicket`;
 `internal/frontend/rpc` (`TestAPasskeyDeviceMakesThisComputersChoices`),
 `cmd/nodwyn` (`TestARenewedCertificateIsServed`), and the `remote` browser
 check with Chromium's virtual authenticator.
+
+## Amendment 2026-10-18: another nodwyn is a device (ADR 54)
+
+A console now shows the tasks of the other nodwyns its computer is linked
+to. A link is a device of the other host's console, paired with an
+invitation made there (`/pair` with `host: true`), so the trust model above
+decides what it may do: it answers, or, when the person's device vouched for
+it with a passkey at an address where passkeys work, it makes the person's
+choices; it is never offered setup, since it cannot touch a passkey, and it
+may revoke itself (`devices.leave`). Settings › Keys & devices and `nodwyn
+devices` say a device is another nodwyn. ADR 54 records the rest.

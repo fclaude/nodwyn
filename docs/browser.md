@@ -179,8 +179,9 @@ model's context.
 ## Other pages
 
 **Connections** (MCP tools and credentials),
-**Workspaces** and **Settings** hold the rest; Settings also creates,
-unlocks and sets the passphrase of the keychain. The
+**Workspaces**, **Hosts** (the other nodwyns this computer is linked to,
+below) and **Settings** hold the rest; Settings also creates, unlocks and
+sets the passphrase of the keychain. The
 U3 inspectors described below sit under a task's **Details**, in the
 Workspace tab. For the app
 window and first-run setup see [app.md](app.md).
@@ -987,9 +988,9 @@ identity still identifies the bridge process.
 Implementation is deliberately small: embedded HTML/CSS/plain JavaScript,
 `internal/frontend/web` for the HTTP/WebSocket boundary, and the existing RPC
 client for session data. There is no JavaScript build system, second history store or policy evaluator.
-`app.js` is the entry point (pairing, router, shell); `connection.js` is the one
-connection to the bridge; `desk.js` holds what every page reads (tasks, what
-needs you); `sidebar.js`, `home.js`, `task.js`, `transcript.js` and `pages.js`
+`app.js` is the entry point (pairing, router, shell); `connection.js` is a
+connection to the bridge, one per host; `desk.js` holds what every page reads
+(tasks, what needs you), one per host; `hosts.js` the hosts and their page; `sidebar.js`, `home.js`, `task.js`, `transcript.js` and `pages.js`
 draw the views; `prompts.js` renders review choices; `setup.js` the keychain
 forms; `modelpicker.js` the model and effort picker of the New task window, a conversation and Settings; `models.js` Settings › Models, whose provider and model forms the first run draws too; `credentials.js` Connections › Credentials; `attach.js` attachments; `markdown.js` model replies;
 `inspectors.js` fixed snapshots from the same redacted records; `policy.js`
@@ -1000,6 +1001,59 @@ the binary: the console's typefaces and the licence of every Go library linked
 into it (`licenses/go-modules.txt`, written by `python3 scripts/licenses.py`
 from `go list -deps` on each platform nodwyn is built for, and checked against
 `go.mod` by a test).
+
+## Several hosts in one window (ADR 54)
+
+This computer's console shows the tasks of the other nodwyns it is linked
+to beside its own: a laptop's window with an always-on server's tasks, say.
+**Hosts** (in the sidebar's places, on this computer or a device signed in
+with your passkey) lists this computer and each linked host, with its state
+(ready, connecting, not reachable, refused, keys locked), its address, the
+name this computer has there and what it may do there.
+
+**Add a host** links this computer to another nodwyn. On the other host,
+make an invitation (`nodwyn devices invite` in its terminal, or Settings ›
+Keys & devices in its console); here, give the other console's address,
+this computer's name there (what it records your answers with, such as
+`laptop`), what to call the host here (`workshop`; the first part of its
+address if left empty) and the invitation. This computer's daemon pairs
+with the other console as a device, and keeps the device's token in this
+computer's keychain, bound to the host's name: linking needs the keychain
+open, and the form offers to unlock or create it first. The token never
+reaches the page or a file in clear, and a changed address in `hosts.toml`
+(where each link's name, address and name there are kept, in the config
+directory) is sent no token.
+
+What the link may do is the other host's to say. One invited by your
+device signed in there with your passkey makes your choices for its tasks
+(a task's model, judge, helpers and limits, schedules, a key the model asks
+for, unlocking its keychain); one invited from its terminal answers and
+starts tasks, as a device paired by a plain invitation does. A link never
+changes the other host's setup, since it cannot touch a passkey: **Open its
+console** opens that host's own console in the browser, where your passkey
+signs you in. That host's Settings › Keys & devices and `nodwyn devices`
+say the device is another nodwyn, and revoking it there ends the link here:
+the host shows as refused, and **Unlink** forgets it. **Unlink** asks first,
+asks the host to forget this computer, and forgets the token, its binding
+rows and its line; a host that could not be told says so, and is revoked
+there by hand.
+
+With a linked host, the sidebar groups tasks under each host's name and
+state, below one **Needs you** for every host, each task there naming its
+host. Home's **Runs on** chooses the host a new task starts on: the folders,
+the model (from that host's list, when it lets this computer choose) and the
+options follow it, and Enter starts it there. The lists below Home's
+composer are every host's, each card naming its host. A linked host's task
+is at `#/host/NAME/task/ID`, names its host in its heading, and is answered,
+searched and given files there; a notice of one opens it there. With no
+link, the window is as it was.
+
+The page keeps one origin: a linked host's socket is `/socket?host=NAME` on
+this computer's console, which this computer's daemon relays to that host's
+console, and a file for a linked host's task is `POST /attach?host=NAME`.
+Every request for a linked host passes this computer's daemon, so the window
+shows a host only while it runs. Settings, Connections, Workspaces and
+Workflows stay this computer's.
 
 ## Verification and remaining U3 work
 

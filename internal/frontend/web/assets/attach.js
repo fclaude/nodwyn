@@ -60,13 +60,15 @@ export class Attachments {
     );
     this.onChange?.();
   }
-  // upload sends every file to a session; it stops at the first failure,
-  // leaving the rest chosen, and never retries.
-  async upload(sessionID) {
+  // upload sends every file to a session, on this computer or on the linked
+  // host named host (ADR 54); it stops at the first failure, leaving the
+  // rest chosen, and never retries.
+  async upload(sessionID, host = "") {
     const receipts = [];
     while (this.files.length) {
       const file = this.files[0];
-      const response = await fetch(`/attach?id=${encodeURIComponent(sessionID)}&name=${encodeURIComponent(file.name)}`, {
+      const on = host ? `&host=${encodeURIComponent(host)}` : "";
+      const response = await fetch(`/attach?id=${encodeURIComponent(sessionID)}&name=${encodeURIComponent(file.name)}${on}`, {
         method: "POST",
         body: file,
         credentials: "same-origin",

@@ -8,7 +8,7 @@ bootstrap through v0 and the tracks after it, is the book's part "How it was
 built, and what is next" (`make book`) and the git history; the plan as it
 stood until 2026-10-02 is `git show 2f4394f^:plan.md`.
 
-## Where it stands (2026-10-17)
+## Where it stands (2026-10-18)
 
 - **v0 is done** except the optional L3 (P8): the log as the source of
   truth, the guard at the only Scheme→Go exit, credentials as handles behind
@@ -48,6 +48,13 @@ stood until 2026-10-02 is `git show 2f4394f^:plan.md`.
   at boot from a systemd credential (ADR 5); a provider's sign-in finishes
   from a pasted address (ADR 24); and a project's startup files are
   reviewed and trusted from a device signed in with the passkey (ADR 45).
+- **On 2026-10-18, several hosts in one window (ADR 54):** this computer
+  links to another nodwyn as a device of its console, with an invitation
+  made there, keeps the token in its keychain, bound to that host, and its
+  daemon relays a console's socket to it; the sidebar groups tasks by host,
+  Needs you is every host's, Home's Runs on starts a task on either, and
+  Hosts adds, shows and unlinks them. Tried with two daemons on one
+  computer (the `hosts` browser check), not between two computers.
 
 ## Next
 
@@ -71,17 +78,14 @@ it is built.
       phone's browser, with its keys in the keychain and a subscription per
       paired device. Sending to Apple's, Google's or Mozilla's push service
       is an egress decision, recorded first.
-   3. *Several hosts in one window.* The design canvas of 2026-10-17 (a
-      private claude.ai artifact,
-      [link removed]) draws it: the
-      tasks of this computer and of an always-on host side by side, grouped
-      by host in the sidebar, Needs you across hosts, a Runs on picker that
-      the folders and models follow, a Hosts page and Add a host. The
-      proposed mechanism keeps the console's one origin: the bridge links to
-      another nodwyn as a named device of it, keeps that device's token in
-      the keychain, and relays a socket per host; the console holds one
-      connection per host. The other host's rules still decide what the link
-      may do.
+   3. *Several hosts in one window* is built (ADR 54, 2026-10-18), as the
+      design canvas of 2026-10-17 drew it (a private claude.ai artifact,
+      [link removed]), but for its
+      matching words: a host links with an invitation, as a device does.
+      Open: trying it between a laptop and a server over https, which the
+      check, two daemons on one computer over loopback http, does not; a
+      link from the person's passkey device made the person's there was
+      tried in a Go test, not in a browser.
    4. *A home host for the phone.* The other hosts dial out to the one that
       is always on, which relays a phone's requests to them while they are
       reachable, so a laptop needs no open port and a phone sees its tasks.

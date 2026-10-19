@@ -1102,7 +1102,7 @@ async function showDevices(node, ctx) {
                   h(
                     "div",
                     { class: "list-row" },
-                    h("div", { class: "main" }, h("strong", {}, d.name, d.name === me ? " (this device)" : ""), h("span", {}, [`paired ${ago(d.paired)}`, `last seen ${ago(d.last_seen)}`, d.passkey ? `signed in with the passkey ${d.passkey}` : "answers only", d.by ? `let in by ${d.by}` : ""].filter(Boolean).join(" · "))),
+                    h("div", { class: "main" }, h("strong", {}, d.name, d.name === me ? " (this device)" : ""), h("span", {}, [`paired ${ago(d.paired)}`, `last seen ${ago(d.last_seen)}`, d.host ? "another nodwyn, linked to this one" : "", d.passkey ? `${d.host ? "vouched for" : "signed in"} with the passkey ${d.passkey}` : "answers only", d.by ? `let in by ${d.by}` : ""].filter(Boolean).join(" · "))),
                     h("div", { class: "end" }, removal({ label: "Revoke", consequence: `Revoke ${d.name}? It is locked out at once, and pairs again only with an invitation.`, asking: revoking === d.name, ask: () => ((revoking = d.name), draw()), cancel: () => ((revoking = ""), draw()), run: () => revoke(d.name) })),
                   ),
                 ),

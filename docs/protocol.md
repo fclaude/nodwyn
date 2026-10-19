@@ -907,6 +907,35 @@ estimate), `destination` (the only host its requests go to) and
 `approved_by`; never the pixels. A request that did not carry an image
 records why in `llm.req` `withheld_images`.
 
+## Linked hosts (ADR 54)
+
+A host is another nodwyn this computer is linked to: this daemon paired with
+that host's console as a device, and relays a console's socket to it. These
+methods are for this computer's own clients and a device whose person signed
+in with a passkey; one relayed for another paired device is refused.
+
+| Method | Named parameters | Result |
+|---|---|---|
+| `host.list` | `{}` | The links, `[{name, address, as, added, locked?}]`: what this computer calls the host, its console's origin, the name this computer has there, when it was linked, and why its token cannot be sent now (the keychain is locked, or the token is not in it) |
+| `host.link` | `{"name","address","as","invite"}` | The new link, as `host.list` gives it. It posts `{invite, device: as, host: true}` to the console at `address` (an origin; https, or http to this computer or with `policy.allow_insecure_http`), keeps the device cookie it sets in the keychain as class `nodwyn-host-NAME`, bound to the host's name for GET and POST at `header:Cookie`, and adds the link to `hosts.toml` in the config directory. Needs the keychain open; the host's refusal is the error, in its words. `invite` is `writeOnly` |
+| `host.unlink` | `{"name"}` | `{told, detail?}`: it asks the host to forget this computer (`devices.leave`, below), then removes the token, its binding rows and the link; `told` is false, and `detail` says what to do, when the host could not be told. Needs the keychain open |
+| `host.connect` | `{"name"}` | `{}`, after which the connection is a relay: each line sent is one message to the host's console socket, and each message the host sends comes back as one line. It fails with -32040 when the host does not take the link (revoked, or not used for 90 days), -32041 when it cannot be reached and -32042 when the token cannot be sent (the keychain is locked, the token is gone, or the binding does not allow the address in `hosts.toml`). When the host closes the relay, the last line is the notification `host.closed {code, reason}`, its close code and reason (1008: it revoked this computer) |
+| `host.attach` | `{"name","id","path","file"}` | What the host's console answered `POST /attach?id=ID&name=FILE` with: the attachment's receipt. It sends the file at `path`, a regular file of at most 20 MB, to task `id` on the host, through the same authorizer as `host.connect` |
+
+The console's bridge uses `host.connect` and `host.attach` for a page's
+`/socket?host=NAME` and `POST /attach?host=NAME`, and refuses both when a
+page calls them itself. A relay refused or closed by the host closes the
+page's socket with 1008 (the page stops trying) or 1013 (it tries again),
+with the reason. The host's own console sees an ordinary device: its
+`/pair` takes `host: true` for another nodwyn, which `devices.list` then
+reports as `host`; such a device is offered no method that would wait for a
+passkey touch, which it cannot give; and any device may ask `devices.leave
+{}` to be revoked itself. Whether it makes the person's choices there is
+decided by the invitation it used: one made by a device of the person's that
+proved itself with a passkey, at an address where a passkey works (https or a
+`localhost` name), makes it the person's, carrying that passkey's name in
+`hello`'s `passkey`.
+
 ## Generated contract
 
 [protocol.schema.json](protocol.schema.json) is generated from the actual Go

@@ -25,8 +25,9 @@ This page records what each one can do as of 2026-10-17 (the judge choice,
 ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49,
 retrieval, ADR 50, the TUI and line mode on the daemon, the console as a phone's
 app, ADR 52, devices that pair by invitation and sign in with a passkey,
-ADR 30 amended 2026-10-17 twice, and workflows, ADR 53, included), so work on a
-client starts from it instead of a fresh survey of the code. It does not
+ADR 30 amended 2026-10-17 twice, workflows, ADR 53, and several hosts in one
+window, ADR 54, included), so work on a client starts from it instead of a
+fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
 saying where that is recorded, or **deliberate**, saying why.
@@ -45,6 +46,7 @@ it can see the thing but not change it.
 | Resume a stored session | yes, the sidebar | yes, the chooser (paged, typing filters it) or `--resume` | yes, `--resume` | — |
 | Switch between open tasks | yes, the sidebar; several open at once | one session per process; quit and choose again | one session | — |
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
+| Several hosts in one window (ADR 54): the tasks of this computer and of the nodwyns it is linked to, grouped by host, Needs you across them, **Runs on** for a new task, a linked host's tasks opened, answered and given files | yes, this computer's console (`/socket?host=`, `/attach?host=`); what a linked host lets its link do, and its setup in its own console | not built: this computer's tasks | not built: this computer's tasks | — |
 | Told when a task needs an answer while looking elsewhere | yes, Settings › This browser › Notifications; on a phone through the console's service worker (ADR 52); with no window open, the daemon's desktop notices (Settings › General › While you're away, ADR 53 §11) | not built | — | — |
 | Installed on a phone's Home Screen (ADR 52) | yes, over https: the console is a web app | deliberate gap: a terminal client | — | — |
 | Create and manage schedules (ADR 49) | yes, Home’s **Options › Schedule…** and a task’s **Schedule…** (in its **⋯** menu): set times on chosen weekdays, an interval within hours of the day, monthly dates or weekday, once, a first minute and a last day; the daemon's sentence, next times and zone name; Home’s cards pause and run now; a device signed in with a passkey creates and changes them, and other paired devices can pause or run now | not built, and it does not show a `session.schedule` record or a run's marker either | not built | not built |
@@ -200,7 +202,8 @@ in with the person's passkey after a touch of it (ADR 30, amended
 | Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor; a task's Workspace tab says which | yes, `:earlier`, `:earlier on`, `:earlier off` | — | edit `workspaces.toml` (`earlier_tasks = true`) |
 | Project trust (ADR 45) | Workspaces › **Review…**: both files whole, **Trust this revision** and **Revoke trust**, on a device signed in with a passkey after a touch of it; deliberate gap on this computer's own console and on a device paired by invitation (this computer's cookie reaches every loopback server; ADR 45 amended 2026-10-17) | — | — | `nodwyn trust` |
 | Pair devices | yes: Settings › Keys & devices › **Invite a device** (a code and a link, good once for ten minutes); over https an invitation makes a passkey, which signs other browsers in with no invitation | — | — | `nodwyn devices invite` |
-| List and revoke devices, remove a passkey | yes, on this computer or after a passkey touch, each after a confirm | — | — | `nodwyn devices`, `nodwyn devices revoke NAME`; a passkey only in the console |
+| List and revoke devices, remove a passkey | yes, on this computer or after a passkey touch, each after a confirm; another nodwyn linked here is said to be one | — | — | `nodwyn devices` (another nodwyn linked here says so), `nodwyn devices revoke NAME`; a passkey only in the console |
+| Link to another nodwyn, and unlink (ADR 54: `host.link`, `host.unlink`) | **Hosts**: **Add a host** (its address, this computer's name there, an invitation made there), its state and what it may do there, **Open its console**, **Unlink** after a confirm; on this computer, or on a device signed in with a passkey after a touch | — | — | not built: edit nothing by hand, since the token is in the keychain |
 | Start the daemon at login (`startup.read`, `startup.write`; ADR 53 §11) | Settings › General › While you're away, on this computer | — | — | `nodwyn startup`, `nodwyn startup on`, `nodwyn startup off` |
 | The daemon's desktop notices (`notify.desktop`) | Settings › General › While you're away; the daemon shows them whichever client is in use, when no window of this computer watches | — | — | edit `config.toml` (`[notify] desktop = true`) |
 | Home says when locked keys hold back a scheduled run (`held`) | yes, the Scheduled section and the card, unlocked from Home's callout | not built | — | — |

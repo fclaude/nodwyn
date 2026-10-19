@@ -1142,7 +1142,10 @@ func TestEveryAdvertisedMethodIsClassifiedByTheBridge(t *testing.T) {
 	// POST /attach, which stages it, never through a path the page names.
 	// trust.set is the passkey's alone: this computer's console does not make
 	// it (ADR 45, amended 2026-10-17); `nodwyn trust` is this computer's way.
-	terminalOnly := []string{"run.start", "run.info", "run.stop", "run.resume", "session.eval", "session.attach", "trust.set"}
+	// host.connect and host.attach are the bridge's for a linked host's
+	// socket and uploads (ADR 54): called on the console's own connection,
+	// the first would make it a relay.
+	terminalOnly := []string{"run.start", "run.info", "run.stop", "run.resume", "session.eval", "session.attach", "trust.set", "host.connect", "host.attach"}
 	b := &bridge{}
 	for _, method := range hello.Methods {
 		switch allowed := b.allowed(method, caller{local: true}); {

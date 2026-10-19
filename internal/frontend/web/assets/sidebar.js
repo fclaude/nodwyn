@@ -1,15 +1,19 @@
 // The sidebar: new task, then what needs you, then every other task under
 // its folder, the folder with the latest activity first, then the tasks a
-// person archived (ADR 39), then the places that are not tasks.
+// person archived (ADR 39), then the places that are not tasks. With a
+// linked host (ADR 54), what needs you is every host's, and each host's
+// folders are under its name and state.
 import { h, icon, ago, minutes } from "./dom.js";
 import { summary } from "./prompts.js";
 import { stateWords } from "./modelpicker.js";
 import { searchURL } from "./search.js";
 import { chosenFolder } from "./home.js";
+import { hostState } from "./hosts.js";
 
 let filter = "";
 let searching = false;
-let showArchived = false;
+// The hosts whose archived tasks are shown ("" is this computer's).
+const showArchived = new Set();
 // Folders showing all their tasks, this tab only.
 const expanded = new Set();
 // Folders folded away, remembered by this browser.
@@ -57,13 +61,16 @@ function byFolder(desk, items) {
   });
 }
 
-export function renderSidebar(nav, { desk, route, conn, rerender }) {
+export function renderSidebar(nav, { desk, hosts, route, conn, rerender }) {
   const current = ["task", "search", "history"].includes(route.name) ? route.id : "";
+  const currentHost = route.host || "";
+  const several = !!hosts?.several;
   const matches = (item) => !filter || `${item.title} ${item.repo} ${item.worktree?.branch || ""}`.toLowerCase().includes(filter.toLowerCase());
-  const row = (item, sub, dot) =>
+  // row is a task of the host d shows, linked on that host.
+  const row = (d, item, sub, dot) =>
     h(
       "a",
-      { class: `nav-task ${dot ? "dotted" : "plain"}`, href: `#/task/${item.id}`, "aria-current": item.id === current ? "page" : null, title: item.title || item.id },
+      { class: `nav-task ${dot ? "dotted" : "plain"}`, href: d.href(item.id), "aria-current": item.id === current && d.host === currentHost ? "page" : null, title: item.title || item.id },
       h("span", { class: "title" }, dot ? h("span", { class: `dot ${dot}` }) : null, h("span", {}, item.title || "Untitled task")),
       h("span", { class: "sub" }, sub),
     );
@@ -72,55 +79,85 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
   const heading = (name, repo, n, open, toggle) =>
     h("button", { type: "button", class: "folder-head", "aria-expanded": String(open), title: repo || name, disabled: !toggle, onclick: toggle || undefined }, icon(open ? "down" : "right", 14), h("span", { class: "name" }, name), h("span", { class: "n" }, String(n)));
 
-  const needs = desk.needsYou().filter(matches).map((item) => {
-    const first = desk.pending.get(item.id)?.[0];
-    return row(item, `${first ? summary(first).title : "Waiting for your answer"} · ${desk.folderName(desk.project(item))}`, "warn");
+  // What needs you is every host's, each saying its host when there are
+  // several.
+  const waiting = hosts ? hosts.needsYou() : desk.needsYou().map((item) => ({ item, desk }));
+  const needs = waiting.filter(({ item }) => matches(item)).map(({ item, desk: d }) => {
+    const first = d.pending.get(item.id)?.[0];
+    return row(d, item, `${first ? summary(first).title : "Waiting for your answer"} · ${several ? `${d.host || "This computer"} · ` : ""}${d.folderName(d.project(item))}`, "warn");
   });
-  const taskRow = (item) => {
+  const taskRow = (d, item) => {
     const running = item.open && (item.busy || item.run?.status === "running");
-    if (!running) return row(item, ago(item.last_event), "");
+    if (!running) return row(d, item, ago(item.last_event), "");
     const run = item.run?.status === "running" ? item.run : null;
     const left = run ? new Date(run.deadline).getTime() - Date.now() : 0;
-    return row(item, run ? `${run.unattended ? "Unattended · " : ""}Turn ${run.turns} of ${run.max_turns} · ${left > 0 ? minutes(left) + " left" : "time up"}` : "Working", "run");
+    return row(d, item, run ? `${run.unattended ? "Unattended · " : ""}Turn ${run.turns} of ${run.max_turns} · ${left > 0 ? minutes(left) + " left" : "time up"}` : "Working", "run");
   };
-  const others = desk.all().filter((s) => !s.archived && !(s.open && s.needs_answer) && matches(s));
-  const folders = byFolder(desk, others).map(({ repo, name, tasks }) => {
-    const open = !!filter || !folded.has(repo);
-    const toggle = () => {
-      if (folded.has(repo)) folded.delete(repo);
-      else folded.add(repo);
-      saveFolded();
-      rerender();
-    };
-    // The task on screen is never hidden behind "Show more".
-    const all = !!filter || expanded.has(repo) || tasks.slice(perFolder).some((t) => t.id === current);
-    const shown = all ? tasks : tasks.slice(0, perFolder);
+  // foldersOf is the folders of the host d shows, each with its tasks. A
+  // linked host's folder is folded by its host and path, this computer's by
+  // its path, as it always was.
+  const foldersOf = (d) => {
+    const others = d.all().filter((s) => !s.archived && !(s.open && s.needs_answer) && matches(s));
+    return byFolder(d, others).map(({ repo, name, tasks }) => {
+      const key = d.host ? `${d.host}\n${repo}` : repo;
+      const open = !!filter || !folded.has(key);
+      const toggle = () => {
+        if (folded.has(key)) folded.delete(key);
+        else folded.add(key);
+        saveFolded();
+        rerender();
+      };
+      // The task on screen is never hidden behind "Show more".
+      const all = !!filter || expanded.has(key) || (d.host === currentHost && tasks.slice(perFolder).some((t) => t.id === current));
+      const shown = all ? tasks : tasks.slice(0, perFolder);
+      return h(
+        "div",
+        { class: "nav-group folder" },
+        heading(name, repo, tasks.length, open, filter ? null : toggle),
+        open ? shown.map((item) => taskRow(d, item)) : null,
+        open && shown.length < tasks.length ? h("button", { type: "button", class: "nav-more", onclick: () => { expanded.add(key); rerender(); } }, `Show ${tasks.length - shown.length} more`) : null,
+      );
+    });
+  };
+  const archiveOf = (d) => {
+    const archived = d.archived().filter(matches);
+    if (!archived.length) return null;
+    const archiveOpen = showArchived.has(d.host) || !!filter || (d.host === currentHost && archived.some((t) => t.id === current));
     return h(
       "div",
-      { class: "nav-group folder" },
-      heading(name, repo, tasks.length, open, filter ? null : toggle),
-      open ? shown.map(taskRow) : null,
-      open && shown.length < tasks.length ? h("button", { type: "button", class: "nav-more", onclick: () => { expanded.add(repo); rerender(); } }, `Show ${tasks.length - shown.length} more`) : null,
+      { class: "nav-group folder archived" },
+      heading("Archived", "", archived.length, archiveOpen, filter ? null : () => { if (archiveOpen) showArchived.delete(d.host); else showArchived.add(d.host); rerender(); }),
+      archiveOpen ? archived.map((item) => row(d, item, `${d.folderName(d.project(item))} · ${ago(item.last_event)}`, "")) : null,
     );
-  });
-  const archived = desk.archived().filter(matches);
-  const archiveOpen = showArchived || (!!filter && archived.length > 0) || archived.some((t) => t.id === current);
-  const archive = archived.length
-    ? h(
-        "div",
-        { class: "nav-group folder archived" },
-        heading("Archived", "", archived.length, archiveOpen, filter ? null : () => { showArchived = !archiveOpen; rerender(); }),
-        archiveOpen ? archived.map((item) => row(item, `${desk.folderName(desk.project(item))} · ${ago(item.last_event)}`, "")) : null,
-      )
-    : null;
+  };
+  // hostSection is a host's heading, with its state, and its folders and
+  // archived tasks while it can be read.
+  const hostSection = (entry) => {
+    const [dot, words, detail] = hostState(entry);
+    const live = entry.conn.live;
+    const folders = live ? foldersOf(entry.desk) : [];
+    return h(
+      "section",
+      { class: "nav-host", "aria-label": entry.label, dataset: { host: entry.name } },
+      h("div", { class: "host-head", title: detail }, icon(entry.name ? "server" : "laptop", 15), h("span", { class: "name" }, entry.label), h("span", { class: "state" }, h("span", { class: `dot ${dot}` }), words)),
+      live ? (folders.length ? h("div", { class: "folders" }, folders) : null) : h("p", { class: "hint host-hint" }, detail || (entry.conn.state === "down" ? "Its tasks show again when it answers." : "Connecting…")),
+      live ? archiveOf(entry.desk) : null,
+    );
+  };
+  const folders = several ? [] : foldersOf(desk);
+  const archive = several ? null : archiveOf(desk);
+  const sections = several ? hosts.all().map(hostSection) : [];
 
   // What was said in the tasks is searched from the same box, anchored on
   // the task on screen, else the newest task in the folder Home starts in,
-  // else the newest: the daemon takes the project from the task it is given.
+  // else the newest: the daemon takes the project from the task it is given,
+  // on the host the task is on.
   const folder = chosenFolder();
   const all = desk.all().filter((s) => !s.archived);
-  const anchor = (current && desk.sessions.get(current)) || all.find((s) => desk.project(s) === folder) || all[0] || desk.all()[0];
-  const searchWords = () => (anchor && filter.trim() ? searchURL(anchor.id, filter.trim()) : "");
+  const onScreen = current ? hosts?.get(currentHost)?.desk || (currentHost ? null : desk) : null;
+  const anchorDesk = onScreen?.sessions.get(current) ? onScreen : desk;
+  const anchor = onScreen?.sessions.get(current) || all.find((s) => desk.project(s) === folder) || all[0] || desk.all()[0];
+  const searchWords = () => (anchor && filter.trim() ? searchURL(anchor.id, filter.trim(), "project", anchorDesk) : "");
   const search = h("input", {
     class: "input",
     type: "search",
@@ -164,7 +201,8 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     group("Needs you", needs, true),
     folders.length ? h("div", { class: "folders" }, folders) : null,
     archive,
-    !needs.length && !folders.length && !archived.length ? h("p", { class: "hint", style: "padding: 0 10px" }, filter ? "No task title matches." : "No tasks yet.") : null,
+    sections,
+    !several && !needs.length && !folders.length && !archive ? h("p", { class: "hint", style: "padding: 0 10px" }, filter ? "No task title matches." : "No tasks yet.") : null,
   );
   nav.replaceChildren(
     ...[
@@ -177,7 +215,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     searching ? h("div", { class: "search" }, search) : null,
     h("a", { class: "new-task", href: "#/", onclick: () => setTimeout(() => document.getElementById("task")?.focus(), 0) }, icon("plus"), h("span", {}, "New task"), h("kbd", {}, "⌘N")),
     tasks,
-    h("div", { class: "nav-links" }, link("#/connections", "plug", "Connections"), link("#/workspaces", "folder", "Workspaces"), link("#/workflows", "clock", "Workflows"), link("#/settings", "sliders", "Settings")),
+    h("div", { class: "nav-links" }, link("#/connections", "plug", "Connections"), link("#/workspaces", "folder", "Workspaces"), link("#/workflows", "clock", "Workflows"), conn.has("host.list") ? link("#/hosts", "hosts", "Hosts") : null, link("#/settings", "sliders", "Settings")),
     h(
       "div",
       { class: "model-line", title: control?.detail || "" },

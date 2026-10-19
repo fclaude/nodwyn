@@ -1,6 +1,8 @@
 package rpc
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
 	"net"
 	"sync"
@@ -16,10 +18,13 @@ type peer struct {
 	// (via): the web bridge. A process claiming it only limits itself.
 	device bool
 	ready  bool // used only by the connection's request reader
-	conn   net.Conn
-	out    chan any
-	done   chan struct{}
-	once   sync.Once
+	// relay, once host.connect set it, carries the rest of the connection to
+	// a linked host (ADR 54): the request reader hands its lines over.
+	relay func(context.Context, *bufio.Scanner)
+	conn  net.Conn
+	out   chan any
+	done  chan struct{}
+	once  sync.Once
 }
 
 func newPeer(conn net.Conn) *peer {
@@ -57,6 +62,25 @@ func (p *peer) enqueue(value any) bool {
 		return false
 	}
 }
+
+// flushed is put in the queue by flush, and closed by the writer when it
+// reaches it.
+type flushed chan struct{}
+
+// flush waits until everything queued before it is written, or for at most
+// wait: a relay says why it ended before its connection closes.
+func (p *peer) flush(wait time.Duration) {
+	reached := make(flushed)
+	if !p.enqueue(reached) {
+		return
+	}
+	select {
+	case <-reached:
+	case <-p.done:
+	case <-time.After(wait):
+	}
+}
+
 func (p *peer) write() {
 	defer p.close()
 	for {
@@ -66,6 +90,10 @@ func (p *peer) write() {
 		case value, ok := <-p.out:
 			if !ok {
 				return
+			}
+			if reached, ok := value.(flushed); ok {
+				close(reached)
+				continue
 			}
 			raw, err := json.Marshal(value)
 			if err != nil {

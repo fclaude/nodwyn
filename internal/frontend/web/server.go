@@ -288,6 +288,10 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			token = c.Value
 			b.signIn(w, r, token)
 		}
+		if host := r.URL.Query().Get("host"); host != "" {
+			b.connectHost(w, r, device, token, host)
+			return
+		}
 		b.connect(w, r, device, token)
 	default:
 		// The page renews a device's sign-in each time it loads, as the
@@ -404,6 +408,9 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 		Ticket string `json:"ticket"`
 		Device string `json:"device"`
 		Invite string `json:"invite"`
+		// Host says another nodwyn is linking to this one (ADR 54), not a
+		// browser.
+		Host bool `json:"host"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	decoder.DisallowUnknownFields()
@@ -432,7 +439,15 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Name this device, for example phone", http.StatusBadRequest)
 			return
 		}
-		token, err := b.devices.Join(p.Invite, p.Device)
+		join := func() (string, error) { return b.devices.Join(p.Invite, p.Device) }
+		if p.Host {
+			// A link is the person's only where a browser could be: where
+			// what the person types does not cross the network in clear.
+			join = func() (string, error) {
+				return b.devices.Link(p.Invite, p.Device, passkeyHost(r.Host, b.secure(r.Host)))
+			}
+		}
+		token, err := join()
 		if errors.Is(err, errInvite) {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
@@ -441,7 +456,11 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.signIn(w, r, token)
-		b.logf("%s paired with an invitation", p.Device)
+		if p.Host {
+			b.logf("%s linked to this nodwyn with an invitation", p.Device)
+		} else {
+			b.logf("%s paired with an invitation", p.Device)
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	case b.shared():
@@ -540,68 +559,19 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 	// A paired device stays paired only while its token is in devices.toml:
 	// revoking it ends this console within deviceRecheck, and before any
 	// further request is relayed.
-	paired := func() (Device, bool) {
-		if device.Name == "" {
-			return device, true
-		}
-		now, ok := b.devices.Check(token)
-		return now, ok && now.Name == device.Name
-	}
+	paired := func() (Device, bool) { return b.stillPaired(device, token) }
 	// Who the requests come from now: a passkey removed meanwhile makes the
 	// device one that only answers at once, though its daemon connection
 	// still carries the passkey; one that touches a passkey reconnects.
 	who := func(now Device) caller {
-		return caller{local: !remote, person: now.Passkey != "" && now.Passkey == device.Passkey, touched: now.Name != "" && b.touched(now.Hash)}
+		return caller{local: !remote, person: now.Passkey != "" && now.Passkey == device.Passkey, touched: now.Name != "" && b.touched(now.Hash), link: now.Host}
 	}
 	revoked := func() {
 		conn.Close(websocket.StatusPolicyViolation, "this device was revoked")
 		cancel()
 	}
-	go func() {
-		every := b.ping
-		if every <= 0 {
-			every = pingEvery
-		}
-		tick := time.NewTicker(every)
-		defer tick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-tick.C:
-				// The pong is read by the loop below, which reads the
-				// console's requests.
-				pingCtx, stop := context.WithTimeout(ctx, 2*every)
-				err := conn.Ping(pingCtx)
-				stop()
-				if err != nil {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-	if device.Name != "" {
-		go func() {
-			every := b.recheck
-			if every <= 0 {
-				every = deviceRecheck
-			}
-			tick := time.NewTicker(every)
-			defer tick.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-tick.C:
-					if _, ok := paired(); !ok {
-						revoked()
-						return
-					}
-				}
-			}
-		}()
-	}
+	b.keepAlive(ctx, conn, cancel)
+	b.watchDevice(ctx, device, token, revoked)
 	// Browser backpressure cannot block a session: the RPC client and daemon
 	// already enforce bounded queues. A failed connection is never replayed.
 	go func() {
@@ -679,7 +649,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 					// A setup method waiting for a touch is offered: the
 					// console asks for the passkey when it is used.
 					methods := []string{}
-					for _, method := range append(hello.Methods, "devices.list", "devices.revoke", "devices.invite", "passkeys.list", "passkeys.remove") {
+					for _, method := range append(hello.Methods, "devices.list", "devices.revoke", "devices.invite", "devices.leave", "passkeys.list", "passkeys.remove") {
 						if b.access(method, c) != refused {
 							methods = append(methods, method)
 						}
@@ -699,6 +669,72 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 			return
 		}
 	}
+}
+
+// stillPaired reports whether device, the zero Device for this computer's
+// browser, is still paired with token, and what it is now.
+func (b *bridge) stillPaired(device Device, token string) (Device, bool) {
+	if device.Name == "" {
+		return device, true
+	}
+	now, ok := b.devices.Check(token)
+	return now, ok && now.Name == device.Name
+}
+
+// keepAlive pings an open console every pingEvery (b.ping) and ends it, with
+// cancel, when one goes unanswered. The pong is read by whatever reads the
+// console's messages.
+func (b *bridge) keepAlive(ctx context.Context, conn *websocket.Conn, cancel func()) {
+	every := b.ping
+	if every <= 0 {
+		every = pingEvery
+	}
+	go func() {
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				pingCtx, stop := context.WithTimeout(ctx, 2*every)
+				err := conn.Ping(pingCtx)
+				stop()
+				if err != nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+}
+
+// watchDevice checks every deviceRecheck (b.recheck) that a paired device's
+// console is still paired, and calls revoked once it is not, so a revocation
+// also ends a console that is only watching.
+func (b *bridge) watchDevice(ctx context.Context, device Device, token string, revoked func()) {
+	if device.Name == "" {
+		return
+	}
+	every := b.recheck
+	if every <= 0 {
+		every = deviceRecheck
+	}
+	go func() {
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				if _, ok := b.stillPaired(device, token); !ok {
+					revoked()
+					return
+				}
+			}
+		}
+	}()
 }
 
 // audited says in the audit that device took a setup action.
@@ -761,6 +797,7 @@ type caller struct {
 	local   bool // this computer's browser (ADR 30)
 	person  bool // a device signed in with a passkey still registered
 	touched bool // such a device whose person touched it within touchLife
+	link    bool // another nodwyn linked to this one, which never touches (ADR 54)
 }
 
 // tier is who may call a method, from the widest.
@@ -807,6 +844,13 @@ func (b *bridge) tierOf(method string) tier {
 	// and its source is asked with this computer's keys (ADR 53 §9).
 	case "workflow.write", "workflow.remove", "workflow.test":
 		return tierPerson
+	// A linked host's link is this computer's authority there (ADR 54): the
+	// person uses it, from this computer or their passkey's device, and a
+	// device that only answers here does not. The console uses it through
+	// its own socket and uploads for that host, never by calling
+	// host.connect or host.attach itself.
+	case "host.list":
+		return tierPerson
 	// Trusting a project lets its Scheme run as the person: it needs the
 	// passkey, though this computer's own console may do the rest of setup,
 	// since the cookie of that console goes to every server on loopback,
@@ -819,8 +863,9 @@ func (b *bridge) tierOf(method string) tier {
 		"settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test",
 		"workspace.save", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull",
 		"credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "credentials.authorize.finish",
-		// What starts at this computer's login is its setup (ADR 30, ADR 53).
-		"startup.write":
+		// What starts at this computer's login is its setup (ADR 30, ADR 53),
+		// and so are the other nodwyns it is linked to (ADR 54).
+		"startup.write", "host.link", "host.unlink":
 		return tierSetup
 	}
 	if b.devices == nil {
@@ -830,7 +875,9 @@ func (b *bridge) tierOf(method string) tier {
 	// a device that only answers, so a device may make one; one that may
 	// register a passkey is a setup action (deviceMethod).
 	switch method {
-	case "devices.invite":
+	// A device may end its own pairing: another nodwyn that unlinks asks it
+	// (ADR 54).
+	case "devices.invite", "devices.leave":
 		return tierAnswer
 	case "devices.list", "passkeys.list":
 		return tierPerson
@@ -863,13 +910,23 @@ func (b *bridge) access(method string, c caller) access {
 		case c.touched:
 			return granted
 		}
-		return needsTouch
+		return c.touch()
 	case c.local || t == tierAnswer:
 		return granted
 	case !c.person:
 		return refused
 	case t == tierPerson || c.touched:
 		return granted
+	}
+	return c.touch()
+}
+
+// touch is what a setup action waits for from the person's device: a touch
+// of the passkey, which another nodwyn linked to this one cannot give, so it
+// is not offered one (ADR 54).
+func (c caller) touch() access {
+	if c.link {
+		return refused
 	}
 	return needsTouch
 }
@@ -919,8 +976,9 @@ func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device Device) {
 	}
 	via, passkey := relay(device)
 	// An image waits for its confirm, which the daemon gives up on after
-	// ten minutes; the call waits a little longer than that.
-	ctx, cancel := context.WithTimeout(b.ctx, 11*time.Minute)
+	// ten minutes; the call waits a little longer than that, and one for a
+	// linked host, which waits as long there, longer still.
+	ctx, cancel := context.WithTimeout(b.ctx, 12*time.Minute)
 	defer cancel()
 	client, err := rpc.DialAs(ctx, b.socket, via, passkey)
 	if err != nil {
@@ -928,8 +986,18 @@ func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device Device) {
 		return
 	}
 	defer client.Close()
+	method, params := "session.attach", map[string]string{"id": id, "path": staged, "name": name}
+	if host := r.URL.Query().Get("host"); host != "" {
+		// A file for a task on a linked host goes there through this
+		// computer's link (ADR 54), which is the person's to use.
+		if !b.allowed("host.list", b.callerOf(r, device)) {
+			http.Error(w, "Linked hosts are reached from this computer, or from a device signed in with your passkey", http.StatusForbidden)
+			return
+		}
+		method, params = "host.attach", map[string]string{"name": host, "id": id, "path": staged, "file": name}
+	}
 	var receipt json.RawMessage
-	if err := client.Call(ctx, "session.attach", map[string]string{"id": id, "path": staged, "name": name}, &receipt); err != nil {
+	if err := client.Call(ctx, method, params, &receipt); err != nil {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		_, _ = io.WriteString(w, err.Error())
@@ -986,12 +1054,27 @@ func (b *bridge) deviceMethod(req request, device Device, c caller) (json.RawMes
 			}
 			b.touch(device.Hash)
 		}
-		code, expires, err := b.devices.Invite(by, p.Passkey)
+		invite := func() (string, time.Time, error) { return b.devices.Invite(by, p.Passkey) }
+		if p.Passkey && !c.local {
+			// The person's device vouches with its passkey: another nodwyn
+			// that uses the invitation is theirs (ADR 54).
+			invite = func() (string, time.Time, error) { return b.devices.InviteAsPerson(by, device.Passkey) }
+		}
+		code, expires, err := invite()
 		if err != nil {
 			return nil, err
 		}
 		b.logf("%s made an invitation (passkey: %v)", by, p.Passkey)
 		return json.Marshal(map[string]any{"code": code, "expires": expires})
+	case "devices.leave":
+		if device.Name == "" {
+			return nil, errors.New("this computer is not a paired device")
+		}
+		if err := b.devices.Revoke(device.Name); err != nil {
+			return nil, err
+		}
+		b.logf("%s left", device.Name)
+		return json.Marshal(struct{}{})
 	}
 	if p.Name == "" {
 		return nil, errors.New("name is required")

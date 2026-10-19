@@ -57,9 +57,19 @@ const paths = {
   pencil: ["M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z", "M13.5 8l2.5 2.5"],
   warn: ["M12 3.5L2.5 20h19z", "M12 10v4.5", "M12 17.2h.01"],
   clock: ["M12 7.5V12l3 2"],
+  // The hosts a window shows (ADR 54): a server, a laptop, and several.
+  server: ["M7 7.5h.01M7 16.5h.01"],
+  laptop: ["M2 19h20"],
+  hosts: ["M12 8v4M6 16v-2h12v2"],
 };
 const circles = { search: [[11, 11, 7]], sliders: [[15, 7, 2], [9, 17, 2]], commit: [[12, 12, 3.5]], sun: [[12, 12, 4]], image: [[8.5, 9.5, 1.5]], clock: [[12, 12, 8.5]] };
-const rects = { stop: [[6, 6, 12, 12, 1.5]], image: [[3, 5, 18, 14, 1.5]] };
+const rects = {
+  stop: [[6, 6, 12, 12, 1.5]],
+  image: [[3, 5, 18, 14, 1.5]],
+  server: [[3, 4, 18, 7, 1.5], [3, 13, 18, 7, 1.5]],
+  laptop: [[4, 5, 16, 11, 1.5]],
+  hosts: [[9, 3, 6, 5, 1], [3, 16, 6, 5, 1], [15, 16, 6, 5, 1]],
+};
 
 export function icon(name, size = 16, width = 1.8) {
   const ns = "http://www.w3.org/2000/svg";

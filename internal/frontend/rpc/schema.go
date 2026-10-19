@@ -40,6 +40,11 @@ func contracts() map[string]methodContract {
 		"workflow.test":                {workflowTestParams{}, workflowTest{}},
 		"outbox.list":                  {struct{}{}, []OutboxView{}},
 		"outbox.decide":                {outboxDecideParams{}, struct{}{}},
+		"host.list":                    {struct{}{}, []hostInfo{}},
+		"host.link":                    {hostLinkParams{}, hostInfo{}},
+		"host.unlink":                  {hostNameParams{}, hostUnlinkResult{}},
+		"host.connect":                 {hostNameParams{}, struct{}{}},
+		"host.attach":                  {hostAttachParams{}, json.RawMessage{}},
 		"run.start":                    {runParams{}, runResult{}},
 		"run.info":                     {idParams{}, run.State{}},
 		"run.stop":                     {idParams{}, struct{}{}},
@@ -213,6 +218,8 @@ func WireSchema() ([]byte, error) {
 	g.defs["notification"] = map[string]any{"oneOf": []any{
 		wireNotification("session.event", map[string]any{"$ref": "#/$defs/sessionEvent"}),
 		wireNotification("session.closed", g.typ(reflect.TypeOf(idParams{}))),
+		// The end of a relay to a linked host, which closed it (ADR 54).
+		wireNotification("host.closed", g.typ(reflect.TypeOf(hostClosed{}))),
 	}}
 	g.defs["message"] = map[string]any{"anyOf": []any{
 		map[string]any{"$ref": "#/$defs/request"}, map[string]any{"$ref": "#/$defs/response"}, map[string]any{"$ref": "#/$defs/notification"},
@@ -232,7 +239,7 @@ type schemaBuilder struct{ defs map[string]any }
 var writeOnly = map[string]bool{
 	"secretParams.secret": true, "passphraseParams.passphrase": true, "providerParams.api_key": true, "mcpSaveParams.api_key": true,
 	"keychainCreateParams.passphrase": true, "keychainPassphraseParams.current": true, "keychainPassphraseParams.passphrase": true,
-	"credentialAddParams.value": true, "credentialReplaceParams.value": true, "credentialAuthorizeParams.client_secret": true,
+	"credentialAddParams.value": true, "credentialReplaceParams.value": true, "credentialAuthorizeParams.client_secret": true, "hostLinkParams.invite": true,
 }
 
 func (g *schemaBuilder) typ(t reflect.Type) map[string]any {

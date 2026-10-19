@@ -163,6 +163,29 @@ and stops trying. A page that comes back to an upgraded nodwyn (after
 offers \textbf{Reload}; it never reloads by itself, since a reply being
 written lives only in the page and a reload loses it.
 
+\section{Several hosts in one window}
+
+With \nodwyn{} on a laptop and on a server that is always on, the laptop's
+window shows both hosts' tasks (\adr{54}). Hosts \textrightarrow{} Add a host
+takes the server's address, the laptop's name there, what to call the
+server here and an invitation made there. The laptop's daemon pairs with
+the server's console as a device, keeps the device's token in the laptop's
+keychain, bound to the server's name like any key, and from then on relays
+the page's socket for the server (\code{/socket?host=workshop}) to it, so the
+page keeps one origin and never holds the token. The sidebar groups tasks
+by host, Needs you holds every host's questions, Home's Runs on chooses
+where a new task starts, with that host's folders and model, and a notice
+of the server's task opens it there.
+
+The server decides what the link may do, as it does for any device: it
+answers and starts tasks, and when your device signed in there with your
+passkey made its invitation, it makes your choices for the server's tasks
+too, until that passkey is removed. It never changes the server's setup,
+since it cannot touch a passkey: Open its console, on Hosts, is for that.
+Revoking it on the server ends the link; Unlink on the laptop forgets it
+and asks the server to forget the laptop. Everything for the server passes
+the laptop's daemon, so its tasks show while the laptop's \nodwyn{} runs.
+
 \begin{careful}
 A paired device can answer approvals, and approving a command \emph{is}
 running a command as you. Pair only devices you would hand a terminal. A
