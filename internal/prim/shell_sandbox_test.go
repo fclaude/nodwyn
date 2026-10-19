@@ -1,9 +1,10 @@
 package prim
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -22,18 +23,20 @@ func TestASandboxCommandLeavesWhatItStartsInTheBackgroundRunning(t *testing.T) {
 	lines := []string{
 		// Holds the output, prints its address first and then a line every
 		// 50 ms, which would end it at once on a closed pipe.
-		"(echo listening on 8000; while sleep 0.05; do echo request; done) & echo $!",
+		"(echo listening on 8000; while sleep 0.05; do echo request; done) & echo pid=$!",
 		// Its own output goes elsewhere, as nohup's often does.
-		"nohup sleep 60 > /dev/null 2>&1 & echo $!",
+		"nohup sleep 60 > /dev/null 2>&1 & echo pid=$!",
 		// A process group of its own, as setsid and a daemon make one.
-		"perl -e 'use POSIX; setsid(); sleep 60' & echo $!",
+		"perl -e 'use POSIX; setsid(); sleep 60' & echo pid=$!",
 	}
 	pidOf := func(t *testing.T, got shellOut) int {
 		t.Helper()
-		var pid int
-		if _, err := fmt.Sscan(got.Stdout, &pid); err != nil {
-			t.Fatalf("no pid in %+v: %v", got, err)
+		// The background process may print before the shell does.
+		m := regexp.MustCompile(`pid=(\d+)`).FindStringSubmatch(got.Stdout)
+		if m == nil {
+			t.Fatalf("no pid in %+v", got)
 		}
+		pid, _ := strconv.Atoi(m[1])
 		t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 		return pid
 	}
