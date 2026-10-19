@@ -57,6 +57,10 @@
 ;; and a nudge that moved behaviour from 3% to 61% (git log -S) moved the
 ;; score not at all, at 13% more cost. A sentence about a tool is said only
 ;; when the tool is offered (ADR 32, amended 2026-10-17).
+;; In sandbox mode ((sandbox?), ADR 54) the folder is a disposable machine's
+;; working directory, often no repository, and every path on the machine is
+;; the tools': the first two sentences say so, where the repository's would
+;; tell the model its paths stop at the root, which they do not there.
 ;; The repository's AGENTS.md comes last, as in the full prompts (ADR 36): it
 ;; is the repository's word, not the harness's, so it is carried in every
 ;; profile (ADR 32, amended 2026-10-18), after the fixed sentences so they stay
@@ -66,9 +70,13 @@
   (let ((has (lambda (t) (and (member t lean-tools) #t)))
         (agents (project-instructions-section)))
     (string-append
-     "You are a coding agent working in the repository at " repo ", unattended: nobody approves or answers your calls.\n"
+     (if (sandbox?)
+         (string-append "You are a coding agent working in " repo ", unattended: nobody approves or answers your calls. This machine is a disposable sandbox: anything on it is yours to read, change, install or run.\n")
+         (string-append "You are a coding agent working in the repository at " repo ", unattended: nobody approves or answers your calls.\n"))
      (lean-tool-sentence)
-     " Paths are relative to the repository root; throwaway files go in $TMPDIR or /tmp.\n"
+     (if (sandbox?)
+         (string-append " Relative paths are relative to " repo "; throwaway files go in $TMPDIR or /tmp.\n")
+         " Paths are relative to the repository root; throwaway files go in $TMPDIR or /tmp.\n")
      (if (and lean-cli (has "shell-exec")) (string-append "Three commands of " lean-cli-name " show a repository's structure; run them with shell-exec: `" lean-cli-name " outline FILE` lists a file's classes and functions with their line ranges, `" lean-cli-name " symbol FILE Class.method` prints one definition with line numbers, `" lean-cli-name " tests-for FILE` lists the test files that exercise a source file and how to run them. Use them instead of reading a large file whole.\n") "")
      (if (has "outline") "outline lists a file's classes and functions with their line ranges and fs-read with symbol reads one of them (Class.method), so a large file need not be read whole; tests-for names the test files that exercise a source file and how to run them.\n" "")
      (if (has "scheme") "The scheme tool runs a small Scheme program that calls the other tools as procedures: use it to read, search or run several things in one call and keep only what matters of the results.\n" "")

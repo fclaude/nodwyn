@@ -520,7 +520,13 @@ func (s *Session) Close() error {
 		s.closeWorktree()
 		_, _ = s.logw.Append(log.KindSessionEnd, log.SessionEnd{Reason: "closed"})
 		s.closeErr = s.logw.Close()
-		removeScratch(s.scratch)
+		// In sandbox mode (ADR 54) what the session's commands started in the
+		// background goes on, with TMPDIR set to the scratch directory: a
+		// server whose temporary files went there would fail once it was
+		// gone, and the machine is thrown away with it anyway.
+		if !s.opts.Sandbox {
+			removeScratch(s.scratch)
+		}
 		close(s.out)
 	})
 	return s.closeErr

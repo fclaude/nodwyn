@@ -617,7 +617,10 @@ commit (`$TMPDIR/base`, `base-run?`) tests nothing of the change; one that
 fails after the change's run failed is the comparison done, and the failing
 run is not told. After `finish-no-change-message` a turn that has run a test
 or check may end unchanged: the code may already do what the request asks,
-and the message says to show it with a check (ADR 32, amended 2026-10-10). When such a turn first ends with a change
+and the message says to show it with a check (ADR 32, amended 2026-10-10).
+In sandbox mode (`(sandbox?)`, ADR 54) no turn is told that nothing
+changed: the whole machine is the workspace, and a command may change a file
+anywhere on it that neither git nor the file tools see. When such a turn first ends with a change
 and none of those reminders is due, the finish review
 (`finish-review-points`) gathers what the change lacks and says it in one
 message, `(finish-review-message points)`: one point as it is, several
@@ -843,6 +846,7 @@ call starts the count again, and so does the reminder; 0 turns it off.
 | | |
 |---|---|
 | `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`nodwyn run --yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`). `[approval]` (ADR 35) does not make it true: a chat whose commands the judge answers still has a person to ask |
+| `(sandbox?)` | true in sandbox mode (`nodwyn run --sandbox container`, ADR 54): the machine is the session's disposable sandbox, its tools reach any path but nodwyn's own directories and credential files, and nobody approves anything (`(unattended?)` is true too). The lean prompt says so (§9.8), and the default loop does not tell a turn that no file changed, since a command may change any file on the machine |
 
 A reply's `done` is `"length"` when the model reached the output cap (the
 model's reply cap: its `max_output`, else the longest reply its provider publishes (at most a quarter of its context), else `window.output_reserve`, at most a quarter of a context too small for the window and that reply); the core notes it in the log. What to do is the
@@ -870,7 +874,7 @@ conversation (`model-turn`, `run-tools`, `skip-tools`, `answer-call`,
 `record-step`, `record-compaction`, `narrow-context`, `fold-context`, `widen`) are refused outside
 a turn and from model-originated code; the ones that only describe the session (`model-info`, `model-names`,
 `window-limits`, `session-system-prompt`, `session-requests`,
-`context-tokens`, `unattended?`, `reviewed?`, `plan-required?`, `plan-recorded?`, `run-plan`,
+`context-tokens`, `unattended?`, `sandbox?`, `reviewed?`, `plan-required?`, `plan-recorded?`, `run-plan`,
 `unfinished-plan`, `session-list`, `session-events`) answer at any time (`session-system-prompt`
 and `context-tokens` once the session has started), which
 is how `compact.scm` reads `(window-limits)` as it loads. The strategy runs with harness origin, so it cannot
@@ -1336,7 +1340,11 @@ what a session nobody approves runs: a system prompt of about 90 tokens
 (`lean-system-prompt`: who and where, unattended, one phrase per tool of
 `lean-tools`, throwaway files in `$TMPDIR` or `/tmp`, one sentence on the work
 and one on the answer, then the repository's `AGENTS.md` when it has one, by
-`(project-instructions-section)`, but not the project notes); the control
+`(project-instructions-section)`, but not the project notes; in sandbox mode,
+`(sandbox?)`, it names the folder without calling it a repository, says the
+machine is a disposable sandbox whose every file is the model's to read,
+change, install or run, and that relative paths are relative to the folder);
+the control
 model offered `shell-exec` and `fs-edit`
 alone (`lean-tools`); a run's plan the one line `plan-minimal-text`, with no
 explorer, planner or judge (`plan-minimal`), recorded hidden, so the model is

@@ -88,6 +88,14 @@ type Options struct {
 	// branch of its own, instead of in Repo (ADR 34). The person asks for
 	// it; nothing the model does can.
 	Worktree bool
+	// Sandbox is sandbox mode (ADR 54): the person declares the whole
+	// machine the session's disposable sandbox, as a benchmark's task
+	// container is (nodwyn run --sandbox container). The guard then lets
+	// the tools reach any path but nodwyn's own directories and credential
+	// files, what a command starts in the background keeps running, and
+	// nobody is asked anything: it implies AutoApprove and Unattended, and
+	// excludes JudgeApprove. Nothing turns it on but the run's flag.
+	Sandbox bool
 }
 
 // unattended is whether nobody approves this session's calls: it answers
@@ -237,6 +245,14 @@ func resolveOptions(o Options) (Options, error) {
 	if o.Repo == "" {
 		return Options{}, errors.New("core: repo root is required")
 	}
+	if o.Sandbox {
+		// Nobody watches a sandbox: its ordinary confirms are answered yes
+		// and its security ones declined, as --yolo --unattended has them.
+		if o.JudgeApprove || o.NoConfirm {
+			return Options{}, errors.New("core: sandbox mode answers ordinary confirms itself (as --yolo), so it excludes the judge and --no-confirm")
+		}
+		o.AutoApprove, o.Unattended = true, true
+	}
 	repo, err := filepath.Abs(o.Repo)
 	if err != nil {
 		return Options{}, err
@@ -290,6 +306,7 @@ func (s *Session) primitiveOptions() prim.Options {
 		po.Temp = guard.TempDir()
 	}
 	po.Scratch = s.scratch
+	po.Sandbox = o.Sandbox
 	po.Private = privateDirs(o.Paths)
 	po.Procs = s.procs
 	po.Terms = s.terms

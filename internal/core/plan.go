@@ -40,6 +40,17 @@ func (s *Session) registerPlanRequired() error {
 			},
 		},
 		{
+			Name: "sandbox?",
+			Meta: scheme.Meta{
+				Doc:    "True in sandbox mode (nodwyn run --sandbox container, ADR 54): the machine is the session's disposable sandbox, every path but nodwyn's own directories and credential files is the tools', and nobody approves anything. The lean prompt says so, and the default loop does not tell a turn that no file changed, since a command may change any file on the machine.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: func(*scheme.Call) (scheme.Value, error) {
+				return scheme.Bool(s.opts.Sandbox), nil
+			},
+		},
+		{
 			Name: "reviewed?",
 			Meta: scheme.Meta{
 				Doc:    "True when a person reads this turn's answer before anything else happens: a chat's turn, and a supervised run's turn that a run checkpoint follows. False in an unattended run, in a run's last turn, and outside a turn. The default loop then lets a turn that changes nothing end, if the model says the request asks for no change yet.",

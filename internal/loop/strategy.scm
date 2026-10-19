@@ -1767,7 +1767,11 @@
                                     (git-shows? written before))
                                 edited))
                    (gap (cond ((or turn-stopping review-made) #f)
-                              ((and (not changed) (not excused) (not (and unchanged-told tested)))
+                              ;; In sandbox mode (ADR 54) the whole machine is the
+                              ;; workspace: neither git nor the file tools see what a
+                              ;; command changed outside the root (a config in /etc, a
+                              ;; package), so nothing says that no file changed.
+                              ((and (not changed) (not excused) (not (and unchanged-told tested)) (not (sandbox?)))
                                (cond (lean-quiet finish-no-change-lean-message)
                                      ((reviewed?) finish-no-change-reviewed-message)
                                      (else finish-no-change-message)))
