@@ -82,6 +82,12 @@ type RepoPin struct {
 	// Mounts are the workspace's folders outside the root (ADR 22 §1),
 	// reached by absolute path. A read-only mount refuses every write.
 	Mounts []Mount
+	// Sandbox is sandbox mode (ADR 54): a run started with --sandbox
+	// container declares the whole machine its disposable sandbox, so every
+	// path is inside. The credential denylist, a checker of its own, still
+	// refuses nodwyn's directories and credential files. False, the default,
+	// pins paths as above.
+	Sandbox bool
 }
 
 // Mount is a folder outside the root a workspace may use.
@@ -170,6 +176,9 @@ func (r RepoPin) Resolve(raw string) string {
 	abs = filepath.Clean(abs)
 	// Resolve symlinks on the longest existing prefix so a new file under a
 	// linked directory is judged by where the link points.
+	if r.Sandbox {
+		return abs
+	}
 	resolved := resolveExisting(abs)
 	if within(resolved, resolveExisting(r.Root)) {
 		return abs
@@ -284,18 +293,38 @@ func (d PathDenylist) Denies(raw string) string {
 			return "path " + raw + " matches the credential-file denylist (" + g + ")"
 		}
 	}
+	if dir := d.dirOf(abs, real); dir != "" {
+		return "path " + raw + " is under the protected directory " + dir
+	}
+	return ""
+}
+
+// dirOf returns the protected directory abs, absolute and cleaned, is in,
+// as written or as real, its links resolved, or "" for none or for one of
+// Except.
+func (d PathDenylist) dirOf(abs, real string) string {
 	for _, ex := range d.Except {
 		if ex != "" && within(abs, ex) && within(real, resolveExisting(ex)) {
 			return ""
 		}
 	}
 	for _, dir := range d.Dirs {
-		rdir := resolveExisting(dir)
-		if within(abs, dir) || within(real, rdir) {
-			return "path " + raw + " is under the protected directory " + dir
+		if within(abs, dir) || within(real, resolveExisting(dir)) {
+			return dir
 		}
 	}
 	return ""
+}
+
+// physical is an absolute path as the system reaches it: links followed
+// before a parent component is applied, as far as the path exists, where
+// cleaning it first would apply .. to the link's name (a/link/../x is
+// link's target's parent's x, not a/x).
+func physical(path string) string {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real
+	}
+	return resolveExisting(filepath.Clean(path))
 }
 
 // credentialName returns the glob a file name matches, or "". Case is
@@ -324,6 +353,15 @@ type ArgvTrigger struct {
 	Temp     string   // the system's /tmp, resolved, for a lean session nobody approves (TempDir); "" for none
 	Network  []string // program names
 	Patterns []string // substrings of the joined command line
+	// Sandbox, set in sandbox mode (ADR 54), is the session's credential
+	// denylist: the machine is the session's disposable sandbox, so a path
+	// on the command line is outside only in the directories the denylist
+	// keeps off limits (nodwyn's own configuration and data, ~/.ssh and the
+	// rest), and one there is refused outright, since nobody could approve
+	// it. Its file names are not judged here, as in the repository they are
+	// not: a command may make key.pem. nil, the default, judges paths
+	// against the repository as above.
+	Sandbox *PathDenylist
 }
 
 // DefaultArgvTrigger is the bootstrap list.
@@ -422,6 +460,9 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			outside(tok, nil)
 		}
 	}
+	if a.Sandbox != nil && len(flagged) > 0 {
+		return Decision{Verdict: Deny, Reason: "the command line names " + strings.Join(flagged, ", ") + ", in a directory nodwyn keeps off limits in sandbox mode too (its own configuration and data, and credentials such as ~/.ssh), so it was refused and nothing of it ran", Detail: line}
+	}
 	// Where nobody could approve a path outside (a lean session nobody
 	// approves, which may use /tmp), it is refused outright, and the refusal
 	// says what was refused and that nothing ran: a confirmation nobody
@@ -455,6 +496,9 @@ func (a ArgvTrigger) outsidePart(part string, ok func(string) bool) string {
 	inside := func(path string) bool {
 		return argumentPath(path, a.Root, false) == "" || a.inScratch(path) || InTemp(a.Temp, a.Scratch, path) || (ok != nil && ok(path))
 	}
+	if a.Sandbox != nil {
+		inside, ok = a.sandboxInside, nil
+	}
 	places, pattern := globPlaces(part, a.Root)
 	if !pattern {
 		if inside(part) {
@@ -474,10 +518,25 @@ func (a ArgvTrigger) outsidePart(part string, ok func(string) bool) string {
 	}
 	// A pattern in /tmp named as a credential file is (*.pem, id_*) is
 	// outside, as such a name is there (InTemp).
-	if lead := places[0]; argumentPath(lead, a.Root, false) != "" && !a.inScratch(lead) && DefaultDenylist().credentialName(filepath.Base(part)) != "" {
+	if lead := places[0]; a.Sandbox == nil && argumentPath(lead, a.Root, false) != "" && !a.inScratch(lead) && DefaultDenylist().credentialName(filepath.Base(part)) != "" {
 		return part
 	}
 	return ""
+}
+
+// sandboxInside is whether path, one path of a command-line word, is inside
+// in sandbox mode: anywhere but the denylist's directories, judged as the
+// system reaches it, a relative path in the repository root where the
+// command runs. An option (-x) is no path.
+func (a ArgvTrigger) sandboxInside(path string) bool {
+	if path == "" || strings.HasPrefix(path, "-") {
+		return true
+	}
+	abs := path
+	if !filepath.IsAbs(abs) {
+		abs = a.Root + string(filepath.Separator) + path
+	}
+	return a.Sandbox.dirOf(filepath.Clean(abs), physical(abs)) == ""
 }
 
 // globPlaces is where a command-line word with a glob pattern (* ? or [ in
