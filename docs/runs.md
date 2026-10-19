@@ -211,5 +211,9 @@ The run is unattended and `--yolo` without saying so, and excludes
 `--judge`; its tools may reach any path but nodwyn's own directories and
 credential files; what its commands start in the background keeps running
 after them and after the session; the folder need not be a repository, and
-may be `/` or the home directory. A resume is in sandbox mode only when it
-says `--sandbox container` again.
+may be `/` or the home directory. The first turn that ends on the model's
+word is asked once to check its result as someone who did not watch it work
+would, and to replace or own up to anything that only makes its checks pass;
+the same call four times in a row warns the model instead of ending the
+turn. A resume is in sandbox mode only when it says `--sandbox container`
+again.

@@ -957,6 +957,22 @@ a repository, not `--yolo`. In it:
   command may change any file on the machine where neither git nor the file
   tools look. Without git there are no git tools, no kept passing state and
   no worktree, as in any folder that is not a repository.
+- The first time a turn ends on the model's word, the model is asked once
+  to check its result as someone who did not watch it work would: whether
+  any part only makes the checks it ran pass (values hard-coded to match an
+  expected output, special cases for the inputs it tried, expected results
+  or fallbacks left in place, checks edited or skipped), and to replace such
+  a part with a real solution, or remove it and say in its answer what does
+  not work. The turn then goes on until the model answers again. A turn a
+  budget or the progress guard stops is not asked, and a resumed run may be
+  asked once more. Each time the log has a note beginning "sandbox finish
+  check:".
+- The same call four times in a row does not stop the turn, as it does
+  elsewhere: waiting on a long job with one command is legitimate, and the
+  run's wall-clock and tool-call budgets bound it. The fourth result, and
+  every fourth after it, tells the model it has run that exact call so many
+  times in a row, and the log has a note beginning "progress warning:". The
+  progress guard's other stops are as elsewhere.
 
 `run.state` records `sandbox`, and a resume is in sandbox mode only when it
 says `--sandbox container` again. The full profile's prompts are not

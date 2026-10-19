@@ -1,7 +1,9 @@
 # ADR 0054: Sandbox mode, a run on a disposable machine
 
-- Status: accepted; implemented 2026-10-18. Amends 17 (the argv trigger),
-  18 (unattended runs), 28 (the scratch directory) and 32 (the lean loop).
+- Status: accepted; implemented 2026-10-18; amended 2026-10-19 (a finish
+  check, and a repeated call warns). Amends 17 (the argv trigger), 18
+  (unattended runs, the progress guard), 28 (the scratch directory) and 32
+  (the lean loop).
 - Date: 2026-10-18
 
 ## Context
@@ -175,3 +177,42 @@ The model found no `python3` in the image, installed it with `apt-get`, wrote
 `/app/regex.txt` and its checks in `/tmp`, and tested the pattern; the task's
 tests then passed in the same container. Its fifth call, `cat
 /etc/os-release`, is one a lean unattended run outside sandbox mode refuses.
+
+## Amendment 2026-10-19: a finish check, and a repeated call warns
+
+A pass of Terminal-Bench 2.1 (89 tasks, every trial reviewed blind) showed
+two things sandbox mode lacked. Both change a run in sandbox mode only;
+every other session is as it was.
+
+1. **A finish check, once.** Twice a sandbox run passed a task's checks
+   with a result shaped to them and did not say so: it hard-coded three
+   pixel values to make a reimplemented renderer's output byte-identical to
+   the original's, and it left a deploy hook's expected pages in place "as
+   a fallback", so the checks passed whatever the hook did. Now the first
+   time a turn of the session ends on the model's word (a reply without
+   tool calls, no reminder or review due; not a budget or progress stop, a
+   cancellation, an error or a forced report), the default loop says
+   `sandbox-finish-message` and the turn goes on as the evidence loop: check
+   the result as someone who did not watch you work would, and replace what
+   only makes your checks pass with a real solution, or remove it and say
+   what does not work. It wraps the turn as this repository's completeness
+   check does (`.nodwyn/init.scm`), and is said in either profile,
+   `lean-quiet` or not. A resumed run is a new session and may be asked
+   once more. The log has a note beginning "sandbox finish check:" each
+   time.
+2. **The same call four times in a row warns.** A run polled a training job
+   of about fifty minutes with one command line (`sleep 55; sleep 55; tail
+   -n 5 ...; date`), and the progress guard ended it at minute 52 of 57,
+   before the job finished; a sandbox run is bounded by its wall-clock and
+   tool-call budgets, and waiting with one command is legitimate. The
+   fourth identical call, and every fourth after, now gets "[this exact
+   call has now run 4 times in a row; if you are waiting on something, that
+   is fine; otherwise look at what the results show before running it
+   again]" after its output, kept after any fold of the result
+   (`fold-result`), and the log a note beginning "progress warning:"; the
+   turn goes on. The guard's other stops are unchanged.
+
+`TestASandboxRunIsAskedOnceToCheckItsResult`,
+`TestASandboxRunIsWarnedOfARepeatedCallAndGoesOn` and
+`TestProgressRepeatsWarnInSandboxMode` show both, with and without sandbox
+mode. Not measured yet.

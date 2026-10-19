@@ -3047,3 +3047,18 @@ spoke of background processes and is unchanged; the full one says so.
 
 Not changed: the full profile's prompts, which say every path stays inside
 the repository; sandbox mode is meant for the lean loop.
+
+## Amendment 2026-10-19: a sandbox run's finish check
+
+In sandbox mode only (`(sandbox?)`, ADR 54), the default loop says one more
+thing as a turn ends: the first time a turn of the session ends on the
+model's word, `sandbox-finish-message` asks the model to check its result as
+someone who did not watch it work would, to replace a part that only makes
+its checks pass with a real solution or remove it and say what does not
+work, and the turn goes on as the evidence loop. It comes from Terminal-Bench
+2.1, where a sandbox run twice made a task's checks pass with a result
+shaped to them (three pixel values hard-coded; expected pages left in place
+as a fallback behind a deploy hook) and said nothing of it. It is said under
+`lean-quiet` too, in either profile, since it is sandbox mode's and not a
+rung of the lean ladder; no other session hears it. Not yet measured; ADR 54,
+amended 2026-10-19, has the rest.

@@ -320,7 +320,10 @@ circles: the same call four times in a row, a denied call retried three
 times, ten failures in a row, or one tool failing on one file in six of the
 last sixteen responses, or a background command that is still running
 read thirty times in a row (waiting for one is not repeating a call, so
-those reads are counted on their own). No Scheme can catch these stops. That is a
+those reads are counted on their own). In sandbox mode (ADR 54) the same
+call four times in a row is not a stop: the fourth result, and every fourth
+after it, says so to the model, and the log has a \code{progress warning}
+note. No Scheme can catch these stops. That is a
 feature: a strategy you write cannot accidentally keep a runaway turn alive.
 
 \section{The scratch directory}
