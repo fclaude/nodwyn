@@ -194,8 +194,13 @@ every other session is as it was.
    cancellation, an error or a forced report), the default loop says
    `sandbox-finish-message` and the turn goes on as the evidence loop: check
    the result as someone who did not watch you work would, and replace what
-   only makes your checks pass with a real solution, or remove it and say
-   what does not work. It wraps the turn as this repository's completeness
+   only makes your checks pass, or what came from anywhere but your own work
+   (the task's published solution or answer key, files of whatever runs or
+   checks the session), with a real solution, or remove it and say what does
+   not work. The second half came from the same benchmark: on a task whose
+   data a run had lost, runs of nodwyn and of another agent went looking for
+   the task's published files in the benchmark's public repository, and the
+   other agent's run passed with them. It wraps the turn as this repository's completeness
    check does (`.nodwyn/init.scm`), and is said in either profile,
    `lean-quiet` or not. A resumed run is a new session and may be asked
    once more. The log has a note beginning "sandbox finish check:" each

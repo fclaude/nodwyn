@@ -3054,8 +3054,10 @@ In sandbox mode only (`(sandbox?)`, ADR 54), the default loop says one more
 thing as a turn ends: the first time a turn of the session ends on the
 model's word, `sandbox-finish-message` asks the model to check its result as
 someone who did not watch it work would, to replace a part that only makes
-its checks pass with a real solution or remove it and say what does not
-work, and the turn goes on as the evidence loop. It comes from Terminal-Bench
+its checks pass, or that came from anywhere but its own work (a published
+solution or answer key, the runner's own files), with a real solution or
+remove it and say what does not work, and the turn goes on as the evidence
+loop. It comes from Terminal-Bench
 2.1, where a sandbox run twice made a task's checks pass with a result
 shaped to them (three pixel values hard-coded; expected pages left in place
 as a fallback behind a deploy hook) and said nothing of it. It is said under
