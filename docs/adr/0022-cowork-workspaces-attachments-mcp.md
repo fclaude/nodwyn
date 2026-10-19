@@ -596,3 +596,38 @@ gap. Sheets come in the workbook's order under the names it gives them, and
 slides in `presentation.xml`'s order and numbered by it, resolved through the
 relationships parts; the numbers in the files' names, which are the order
 parts were made in, are used only for a package that has no such parts.
+
+## Amendment 2026-10-19: the version store is the repository's own folder
+
+The store lives in the repository's `.nodwyn`, which whoever can commit to it
+writes, and git keeps links. Keep followed them: a link committed at
+`.nodwyn/versions/objects/<sha256 of a file's content>` made nodwyn create the
+file it named, outside the repository (`~/.zshenv`, a LaunchAgent), with
+that file's content, when the person let a write to it go ahead; a linked
+`.nodwyn`, `versions` or `objects` put the whole store elsewhere, and pruning
+rewrote the index through a link at `index.jsonl.tmp`. Opening a folder needs
+no trust (ADR 45) and writes in it go ahead (ADR 35), so nothing stood in the
+way.
+
+The store is now written only as itself. `.nodwyn`, `versions` and `objects`
+must each be a folder, made if missing, and the store is opened as an
+`os.Root` on the folder that was looked at, so nothing written lands outside
+it. An object, `index.jsonl` and `lock` must be regular files where they
+exist; `.gitignore` and a new object are created exclusively, which never
+follows a link; pruning removes whatever is at `index.jsonl.tmp` before
+writing it. A link anywhere on the way is refused, not skipped: Keep returns
+the reason, so the write fails as it does for any version that cannot be kept
+(amendment of 2026-10-16), and the person sees which path to remove. Skipping
+the store would let a repository turn off the undo §2 promises. The read side
+already refused a linked object (`ReadVersion`).
+
+The lock is created exclusively, or else the file already there is opened:
+on macOS, `openat` with `O_CREAT` alone, which `os.Root` uses, failed with
+`ENOENT` in 687 of 1,200 attempts when six sessions created the same new
+file at once, where `open` on a path and `O_EXCL` never did.
+
+Tests: `TestKeepWritesNothingThroughALinkInTheStore`,
+`TestPruneWritesNothingThroughALinkedIndex` and
+`TestFsWriteFailsWhenTheStoreLinksOutside` (prim) fail on the code before
+this change; `TestVersionsOfSeveralSessionsLoseNoneAndLeaveNoOrphan` covers the
+lock.

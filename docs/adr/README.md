@@ -31,7 +31,7 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC; amended: what the judge is told about a call; what needs a plan, a chat's earlier messages, and looking)
 - [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (amends plan P5; implemented, amended for the judge tools and judged approval)
 - [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (implemented)
-- [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented; amended: a chat-completions model takes images unless it says not)
+- [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented; amended: a chat-completions model takes images unless it says not; the version store is the repository's own folder)
 - [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (implemented: remote servers, and contained ones in podman or docker)
 - [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (implemented, from the console too; W5 builds on it)
 - [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output

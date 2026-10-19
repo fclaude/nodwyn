@@ -468,7 +468,10 @@ monitor and the pager switched off. The status names every changed file; a
 diff leaves out the contents of credential-shaped files.
 Kept versions are the undo for what git cannot give back: before a write,
 nodwyn keeps a file's content unless git has it committed and unchanged
-(`nodwyn versions`, `nodwyn undo`).
+(`nodwyn versions`, `nodwyn undo`). The store, `.nodwyn/versions`, must be a
+folder of the repository's own: where `.nodwyn`, the store or anything in it
+is a link (a repository can commit one), the write fails, naming the path,
+rather than keep the version wherever the link points.
 
 In the console's **Changes** tab, click a filename to expand the latest recorded
 approval preview, with line numbers and addition/deletion counts; long lines

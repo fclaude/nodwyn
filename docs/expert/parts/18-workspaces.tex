@@ -86,7 +86,11 @@ In a git work tree, each write asks git (\code{git status}) whether the
 file is committed and unchanged; only then is git the undo, and nothing is
 kept. A file with uncommitted changes, an untracked file and an ignored one
 keep a version, so the store appears in git repositories too. Its own
-\file{.gitignore} keeps it out of \code{git status}.
+\file{.gitignore} keeps it out of \code{git status}. The store is written
+only as itself: \file{.nodwyn}, \file{versions} and \file{objects} must be
+folders and its files regular files, so a link a repository commits there
+makes the write fail, naming the path, instead of taking the version (and
+the file it would create) wherever the link points.
 
 \begin{sh}
 $ nodwyn versions plants.txt

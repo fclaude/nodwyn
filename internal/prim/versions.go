@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -57,7 +58,8 @@ func VersionsDir(root string) string { return filepath.Join(root, ".nodwyn", "ve
 // another undo. A link is followed, as the write that comes next follows it:
 // what is kept is the target's content, under the target's path. A failure to
 // keep a version fails the write, and so does a file too large to keep: a
-// workspace that promises an undo must not lose one silently.
+// workspace that promises an undo must not lose one silently. A link in the
+// store is never followed (openStore).
 func (v *Versions) Keep(abs string) error {
 	if v == nil || (v.Skip != nil && v.Skip(abs)) {
 		return nil
@@ -81,30 +83,45 @@ func (v *Versions) Keep(abs string) error {
 	}
 	sum := sha256.Sum256(content)
 	version := Version{Path: abs, Hash: hex.EncodeToString(sum[:]), Bytes: len(content), Time: time.Now().UTC()}
-	objects := filepath.Join(v.Dir, "objects")
-	if err := os.MkdirAll(objects, 0o700); err != nil {
+	store, err := openStore(v.Dir)
+	if err != nil {
 		return err
 	}
+	defer store.Close()
 	// The sessions of one repository share this store, and a pruning one
 	// rewrites the index: a version another appended meanwhile would be lost,
 	// its object orphaned, and an object it had just found present removed.
-	unlock, err := lockStore(v.Dir)
+	unlock, err := lockStore(store)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	// Keep nodwyn's copies out of a repository's commits.
-	if ignore := filepath.Join(v.Dir, ".gitignore"); !exists(ignore) {
-		_ = os.WriteFile(ignore, []byte("# nodwyn's kept versions of files\n*\n"), 0o600)
+	// Keep nodwyn's copies out of a repository's commits. A file created
+	// exclusively is never one a link names.
+	if f, err := store.OpenFile(".gitignore", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
+		_, _ = f.WriteString("# nodwyn's kept versions of files\n*\n")
+		_ = f.Close()
 	}
-	object := filepath.Join(objects, version.Hash)
-	if _, err := os.Stat(object); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(object, content, 0o600); err != nil {
+	object := filepath.Join("objects", version.Hash)
+	f, err := store.OpenFile(object, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	switch {
+	case errors.Is(err, fs.ErrExist): // kept before, unless what is there is a link
+		if err := regularIfThere(store, object); err != nil {
+			return err
+		}
+	case err != nil:
+		return err
+	default:
+		_, werr := f.Write(content)
+		if err := errors.Join(werr, f.Close()); err != nil {
 			return err
 		}
 	}
 	line, _ := json.Marshal(version)
-	f, err := os.OpenFile(filepath.Join(v.Dir, versionsIndexName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err := regularIfThere(store, versionsIndexName); err != nil {
+		return err
+	}
+	f, err = store.OpenFile(versionsIndexName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -115,34 +132,112 @@ func (v *Versions) Keep(abs string) error {
 	if v.Record != nil {
 		v.Record(version)
 	}
-	return v.prune()
+	return prune(store)
 }
 
-// lockStore holds an advisory lock on the store at dir, against the other
-// sessions and daemons that use it. The lock is on the file description, so
-// it also excludes another Keep in this process.
-func lockStore(dir string) (func(), error) {
-	fd, err := syscall.Open(filepath.Join(dir, "lock"), syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
+// openStore opens the store at dir, <root>/.nodwyn/versions, making what is
+// missing of it. Whoever can commit to a repository writes its .nodwyn, and
+// git keeps links: a linked .nodwyn, versions or objects would put the store,
+// and every object nodwyn writes into it, wherever the link names, outside the
+// repository included. Each must be a folder, and the store is opened as the
+// folder that was looked at, so what is written stays in it.
+func openStore(dir string) (*os.Root, error) {
+	root, err := os.OpenRoot(filepath.Dir(filepath.Dir(dir)))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	name := filepath.Join(filepath.Base(filepath.Dir(dir)), filepath.Base(dir))
+	if _, err := ownFolder(root, filepath.Dir(name)); err != nil {
+		return nil, err
+	}
+	info, err := ownFolder(root, name)
+	if err != nil {
+		return nil, err
+	}
+	store, err := root.OpenRoot(name)
+	if err != nil {
+		return nil, err
+	}
+	if opened, err := store.Stat("."); err != nil || !os.SameFile(opened, info) {
+		store.Close()
+		return nil, fmt.Errorf("versions: %s changed while it was opened", dir)
+	}
+	if _, err := ownFolder(store, "objects"); err != nil {
+		store.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+// ownFolder makes name in r if it is missing, and refuses it if it is there
+// and is not a folder: a link is refused, not followed, as core's ownDir does
+// for worktrees and attachments.
+func ownFolder(r *os.Root, name string) (fs.FileInfo, error) {
+	if err := r.Mkdir(name, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+		return nil, err
+	}
+	info, err := r.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a folder: nodwyn keeps versions only in a folder of the repository's own", filepath.Join(r.Name(), name))
+	}
+	return info, nil
+}
+
+// regularIfThere refuses name in the store if it is there and is not a
+// regular file. os.Root follows a link that stays inside it; the store's
+// files are written only as themselves.
+func regularIfThere(store *os.Root, name string) error {
+	info, err := store.Lstat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a file: nodwyn writes no kept version through a link", filepath.Join(store.Name(), name))
+	}
+	return nil
+}
+
+// lockStore holds an advisory lock on the store, against the other sessions
+// and daemons that use it. The lock is on the file description, so it also
+// excludes another Keep in this process.
+func lockStore(store *os.Root) (func(), error) {
+	// Made exclusively, or opened as the file already there: openat with
+	// O_CREAT alone, which os.Root uses, fails with ENOENT on macOS when two
+	// sessions make the same new file at once.
+	f, err := store.OpenFile("lock", os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		if err = regularIfThere(store, "lock"); err == nil {
+			f, err = store.OpenFile("lock", os.O_RDWR, 0)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("versions: lock: %w", err)
 	}
+	fd := int(f.Fd())
 	for {
 		if err = syscall.Flock(fd, syscall.LOCK_EX); !errors.Is(err, syscall.EINTR) {
 			break
 		}
 	}
 	if err != nil {
-		syscall.Close(fd)
+		f.Close()
 		return nil, fmt.Errorf("versions: lock: %w", err)
 	}
-	return func() { _ = syscall.Flock(fd, syscall.LOCK_UN); _ = syscall.Close(fd) }, nil
+	return func() { _ = syscall.Flock(fd, syscall.LOCK_UN); _ = f.Close() }, nil
 }
 
 // prune keeps the newest maxVersionsPer versions of each path and at most
 // maxVersionsTotal bytes of objects, removing objects nothing refers to. The
 // store is locked.
-func (v *Versions) prune() error {
-	all, err := readIndex(v.Dir)
+func prune(store *os.Root) error {
+	all, err := readIndex(store.FS())
 	if err != nil {
 		return err
 	}
@@ -174,24 +269,33 @@ func (v *Versions) prune() error {
 		line, _ := json.Marshal(x)
 		buf.Write(append(line, '\n'))
 	}
-	index := filepath.Join(v.Dir, versionsIndexName)
-	tmp := index + ".tmp"
-	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
+	// Whatever is at the temporary name goes, a link included, so the index
+	// is written to a file of its own.
+	tmp := versionsIndexName + ".tmp"
+	if err := store.Remove(tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	if err := os.Rename(tmp, index); err != nil {
+	f, err := store.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, werr := f.Write(buf.Bytes())
+	if err := errors.Join(werr, f.Close()); err != nil {
+		return err
+	}
+	if err := store.Rename(tmp, versionsIndexName); err != nil {
 		return err
 	}
 	for _, x := range all {
 		if _, ok := sizes[x.Hash]; !ok {
-			_ = os.Remove(filepath.Join(v.Dir, "objects", x.Hash))
+			_ = store.Remove(filepath.Join("objects", x.Hash))
 		}
 	}
 	return nil
 }
 
-func readIndex(dir string) ([]Version, error) {
-	f, err := os.Open(filepath.Join(dir, versionsIndexName))
+func readIndex(store fs.FS) ([]Version, error) {
+	f, err := store.Open(versionsIndexName)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -214,7 +318,7 @@ func readIndex(dir string) ([]Version, error) {
 
 // ListVersions returns the kept versions of abs in dir, newest first.
 func ListVersions(dir, abs string) ([]Version, error) {
-	all, err := readIndex(dir)
+	all, err := readIndex(os.DirFS(dir))
 	if err != nil {
 		return nil, err
 	}
@@ -263,11 +367,6 @@ func ReadVersion(dir, hash string) ([]byte, error) {
 		return nil, fmt.Errorf("versions: object %s is damaged", hash[:12])
 	}
 	return content, nil
-}
-
-func exists(path string) bool {
-	_, err := os.Lstat(path)
-	return err == nil
 }
 
 // GitHoldsPath is root's Versions.Skip: it reports whether git is the undo

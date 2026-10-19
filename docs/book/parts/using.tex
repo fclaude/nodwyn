@@ -823,7 +823,9 @@ uncommitted changes, an untracked one or an ignored one inside it,
 \nodwyn{} keeps the version, so \file{.nodwyn/versions} appears in git
 repositories too, with a \file{.gitignore} that keeps it out of
 \code{git status}. Each write in a git work tree asks git
-(\code{git status}) which case it is. \code{nodwyn versions FILE} lists the
+(\code{git status}) which case it is. The store must be a folder of the
+repository's own: where \file{.nodwyn}, the store or anything in it is a
+link, which a repository can commit, the write fails and names the path. \code{nodwyn versions FILE} lists the
 kept versions, \code{nodwyn undo FILE} puts back the newest, and the
 console's Restore puts back any of them. A Restore is a write like any
 other: it goes ahead without asking unless \code{approval.writes} is
