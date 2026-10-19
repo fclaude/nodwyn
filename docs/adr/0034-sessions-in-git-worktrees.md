@@ -601,3 +601,22 @@ gives a rename's two paths in one record; the second was read as a record of
 its own and every staged rename failed. It reads status with `--no-renames`
 and only standard output. The regressions are
 `TestGitLandLeavesAStagedRefusedFileOut` and `TestGitLandLandsAStagedRename`.
+
+## Amendment 2026-10-18: landing preserves Git's configured SSH command
+
+Raven's SQLite Explorer task committed successfully but `git-land` could not
+fetch its base. Its default `GIT_SSH_COMMAND=ssh -o BatchMode=yes` overrode
+the checkout's `core.sshCommand`, losing the per-repository deploy key and
+`-F` selection of Raven's SSH config. Default SSH then read Fedora's root-owned
+system config; inside Raven's user namespace root is unmapped, so OpenSSH
+rejected that file's apparent owner even though its host permissions were
+correct. The configured Git transport worked in the same namespaces.
+
+Landing now retains an explicit `GIT_SSH_COMMAND`, otherwise reads the
+worktree's effective `core.sshCommand` through Git, and uses its noninteractive
+default only when neither is set. Git's configuration is the person's own,
+including the per-checkout config shared by linked worktrees; no project file
+or model argument selects another credential. Existing prompt suppression and
+signing behaviour remain. `TestGitLandUsesTheRepositoriesSSHCommand` performs
+fetch and push against a temporary local bare repository through a fake SSH
+transport, and fails on the old code because it chose the default instead.

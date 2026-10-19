@@ -524,7 +524,11 @@ undone does. Commits are signed as your git configuration says, with your
 own agent; if signing fails it stops and says so rather than commit
 unsigned, and a prompt nobody can answer (a passphrase) fails at once
 instead of hanging. A rebase conflict stops it with the files named; the
-task resolves them and calls it again. You can still merge a branch by
+task resolves them and calls it again. SSH uses your `GIT_SSH_COMMAND` when
+set, otherwise Git's `core.sshCommand` for that worktree (including global
+configuration). Only when neither is configured does it use
+`ssh -o BatchMode=yes`. Repository-scoped deploy keys and SSH config selection
+therefore apply to landing too. You can still merge a branch by
 hand, for example with `git merge nodwyn/<id>` in the repository. Closing the task removes the worktree
 and its branch when nothing would be lost (no change, no untracked or
 ignored file, no commit its base lacks); otherwise both stay and resuming

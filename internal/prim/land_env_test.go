@@ -2,6 +2,7 @@ package prim
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -35,6 +36,49 @@ func TestGitLandScansOnlyWhatTheChangeAdds(t *testing.T) {
 	r.write(r.tree, "cfg.go", "package cfg\n\nvar AwsKey = \""+key+"\"\n")
 	if _, err := r.land("Put the key back"); err == nil || !strings.Contains(err.Error(), "nothing was pushed") {
 		t.Fatalf("a change that adds a key: %v", err)
+	}
+}
+
+// Repository-scoped deploy keys live in core.sshCommand, shared by the
+// checkout and its worktrees. Landing must use that transport for both fetch
+// and push; a noninteractive default must not replace its key or SSH config.
+func TestGitLandUsesTheRepositoriesSSHCommand(t *testing.T) {
+	t.Setenv("GIT_SSH_COMMAND", "")
+	if err := os.Unsetenv("GIT_SSH_COMMAND"); err != nil {
+		t.Fatal(err)
+	}
+	r := newLandRig(t)
+	bin := t.TempDir()
+	r.write(bin, "ssh", "#!/bin/sh\necho default-ssh-must-not-run >&2\nexit 97\n")
+	if err := os.Chmod(filepath.Join(bin, "ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+	transport := filepath.Join(t.TempDir(), "repository ssh")
+	called := filepath.Join(t.TempDir(), "transport-calls")
+	script := "#!/bin/sh\ncase \"$*\" in\n" +
+		"*git-upload-pack*) echo fetch >> " + quote(called) + "; exec git-upload-pack " + quote(r.remote) + ";;\n" +
+		"*git-receive-pack*) echo push >> " + quote(called) + "; exec git-receive-pack " + quote(r.remote) + ";;\n" +
+		"*) exit 0;;\nesac\n"
+	if err := os.WriteFile(transport, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	r.git(r.repo, "config", "core.sshCommand", quote(transport)+" -i scoped-deploy-key")
+	r.git(r.repo, "remote", "set-url", "origin", "ssh://git@example.invalid/repository.git")
+	r.write(r.tree, "app.txt", "one\ntwo\nchanged\n")
+	if _, err := r.land("The task uses the configured SSH transport"); err != nil {
+		t.Fatal(err)
+	}
+	used, err := os.ReadFile(called)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(used), "fetch\n") || !strings.Contains(string(used), "push\n") {
+		t.Fatalf("configured transport was not used for fetch and push: %q", used)
+	}
+	if got, want := r.git(r.remote, "rev-parse", "main"), r.git(r.tree, "rev-parse", "HEAD"); got != want {
+		t.Fatalf("remote main = %s, want task head %s", got, want)
 	}
 }
 

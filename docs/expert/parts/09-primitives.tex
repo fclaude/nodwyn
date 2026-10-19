@@ -105,7 +105,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(request-context)} & what the latest request answers: the agent's last answer before it, and the names of the files attached to it (the loop's; Chapter~\ref{ch:turn}) \\
 \code{(workspace)} & the folder's mounted folders \\
 \code{(worktree)} & \code{\#f}, or the task's own git worktree: repository, branch, base \\
-\code{(git-land message)} & in a worktree task only: commit, rebase, push to the base by fast-forward, move the local base; asks first \\
+\code{(git-land message)} & in a worktree task only: commit, rebase, push to the base by fast-forward, move the local base; asks first and uses the configured Git SSH command \\
 \code{(turn-plan)} & the loop's, not the model's: the plan this turn recorded, with its marks, as \code{run-plan} gives a run's; a compaction that cannot give the plan back as the message after the note records it again in the new context \\
 \code{(http-request cred url method position headers body)} & a keyed request, checked against bindings and the user's transport policy \\
 \code{(credential class)} & the handle of a stored key, or \code{\#f} \\

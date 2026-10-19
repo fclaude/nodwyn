@@ -64,9 +64,15 @@ func landEnv(o Options) []string {
 		// answers nothing, even when a terminal is there to prompt on.
 		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_ASKPASS=true", "SSH_ASKPASS=true", "SSH_ASKPASS_REQUIRE=force")
 	// Decided from the child's own environment: the person's command, when
-	// they have one and it came through, is theirs to choose.
+	// they have one and it came through, is theirs to choose. Otherwise Git's
+	// configured command may select a repository's deploy key and private SSH
+	// config, including from a linked worktree; the default must not replace it.
 	if !slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "GIT_SSH_COMMAND=") }) {
-		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+		command := "ssh -o BatchMode=yes"
+		if configured, err := runGit(context.Background(), o, "config", "--get", "core.sshCommand"); err == nil {
+			command = strings.TrimSuffix(configured, "\n")
+		}
+		env = append(env, "GIT_SSH_COMMAND="+command)
 	}
 	return env
 }
