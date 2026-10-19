@@ -2954,7 +2954,11 @@ Pairing takes no code. Once, on the server, `nodwyn devices invite` prints
 an invitation; open the console's address on your laptop or phone, name the
 device and enter it, and **Connect and make a passkey**. Your other devices
 sign in with that passkey (**Sign in with a passkey**), with no invitation,
-or are invited from Settings › Keys & devices. A device stays signed in for
+or are invited from Settings › Keys & devices of a device signed in with it.
+An invitation made in a browser on the server itself makes no passkey: that
+browser's sign-in is sent to every server on the server's loopback address
+it visits, so the first passkey always comes from `nodwyn devices invite`.
+A device stays signed in for
 as long as it is used, and 90 days without use sign it out; restarting or
 upgrading nodwyn signs nobody out. A device signed in with the passkey makes
 the choices the computer makes (a task's model, judge, limits, schedule,

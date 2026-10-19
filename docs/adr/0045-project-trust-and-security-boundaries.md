@@ -133,3 +133,13 @@ refused, a large pair not shown), the bridge's tier test, and the `remote`
 browser check, where a device that only answers is shown nothing, and the
 laptop reads the files, trusts the revision it read and revokes after a
 confirm.
+
+## Amendment 2026-10-19: the passkey that grants trust is not made with this computer's cookie
+
+The amendment above keeps `trust.set` from this computer's console, whose
+cookie reaches every server on loopback. That cookie could still make an
+invitation that registers a passkey, and a device it paired with one
+granted trust (reproduced on 2026-10-19). An invitation that may register a
+passkey now comes from `nodwyn devices invite` or from a device signed in
+with a passkey after a touch, never from this computer's console (ADR 30,
+amended 2026-10-19, which records the chain, the decision and the checks).

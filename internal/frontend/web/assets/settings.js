@@ -1053,12 +1053,14 @@ async function showDevices(node, ctx) {
       await conn.call("passkeys.remove", { name });
       toast(`The passkey ${name} signs nothing in from now on.`);
     });
-  // An invitation from the person's device, or from this computer, may make
-  // a passkey on the device that uses it, after a touch; one from a device
-  // that only answers lets in another such device.
+  // An invitation from the person's device may make a passkey on the device
+  // that uses it, after a touch. One from this computer, whose sign-in the
+  // browser sends to every server on this computer it visits, or from a
+  // device that only answers, lets in a device that only answers: the first
+  // passkey comes from nodwyn devices invite (ADR 30, amended 2026-10-19).
   const invite = () =>
     act(async () => {
-      const made = await conn.call("devices.invite", { passkey: !me || person });
+      const made = await conn.call("devices.invite", { passkey: person });
       invitation = { ...made, at: Date.now() };
     });
   // A device paired before it had a passkey, here where passkeys work,
@@ -1089,6 +1091,7 @@ async function showDevices(node, ctx) {
                     h("p", {}, "Invitation: ", h("strong", { class: "mono" }, invitation.code)),
                     loopback ? null : h("p", { class: "hint" }, "Or open this link on the device: ", h("span", { class: "mono" }, `${location.origin}/#invite=${invitation.code}`)),
                     h("p", { class: "hint" }, `Good once, until ${new Date(invitation.expires).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Keep it off chats and screenshots.`),
+                    me ? null : h("p", { class: "hint" }, "The device it lets in answers. For one that makes a passkey, run ", h("span", { class: "mono" }, "nodwyn devices invite"), " in a terminal on this computer."),
                   )
                 : null,
             )
@@ -1132,7 +1135,9 @@ async function showDevices(node, ctx) {
           h("span", { class: "mono" }, "--name"),
           ", and pair with an invitation: from ",
           h("span", { class: "mono" }, "nodwyn devices invite"),
-          " on its computer, or Invite a device here. A paired device answers and sends messages. Over https the invitation also makes a passkey on the device, and a device signed in with one makes this computer's choices too, and changes settings and keys after a touch of it.",
+          " on its computer, or Invite a device here. A paired device answers and sends messages. Over https an invitation from ",
+          h("span", { class: "mono" }, "nodwyn devices invite"),
+          " or from a device signed in with your passkey also makes a passkey on the device, and a device signed in with one makes this computer's choices too, and changes settings and keys after a touch of it. One made in this computer's browser makes none: the browser sends its sign-in to every server on this computer it visits.",
         ),
       ].filter(Boolean),
     );

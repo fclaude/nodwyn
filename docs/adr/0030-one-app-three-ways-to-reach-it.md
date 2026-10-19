@@ -609,3 +609,74 @@ it with a passkey at an address where passkeys work, it makes the person's
 choices; it is never offered setup, since it cannot touch a passkey, and it
 may revoke itself (`devices.leave`). Settings › Keys & devices and `nodwyn
 devices` say a device is another nodwyn. ADR 54 records the rest.
+
+## Amendment 2026-10-19: this computer's cookie makes no passkey
+
+Point 2 of the amendment of 2026-10-17 let an invitation from this computer
+make a passkey. This computer's cookie goes to every server on 127.0.0.1
+that the browser visits (amended 2026-10-16), which bounded it to using this
+console until it stops, and ADR 45 (amended 2026-10-17) keeps `trust.set`
+from it for that reason. But `devices.invite {passkey: true}` from that
+cookie made an invitation that registers a passkey, `/passkey/register`
+asked for nothing more, and a registration counts as a touch. A security
+audit reproduced it on 2026-10-19 against HEAD, on a shared console where
+passkeys work (`nodwyn ui --listen 127.0.0.1:PORT --name https://NAME`
+behind `tailscale serve`): with the cookie alone, a client made such an
+invitation, registered a P-256 key of its own as the device `evil`, and as
+`evil` called `trust.set` and had the project trusted, so the repository's
+`init.scm` would run as the person. The device stayed in `devices.toml`
+across a restart and reached the console wherever the console is reached.
+
+1. **An invitation that may register a passkey is made at the terminal,
+   by `nodwyn devices invite`, or by a device signed in with a passkey
+   after a touch of it**, as before. This computer's console makes plain
+   invitations only: the bridge refuses it `devices.invite {passkey:
+   true}`, naming the terminal's command, before anything is written.
+2. **The console asks for what it may have.** On this computer, Settings ›
+   Keys & devices › **Invite a device** asks for a plain invitation and says,
+   beside it, that one which makes a passkey comes from `nodwyn devices
+   invite`. The pairing page already pairs a device without a passkey when
+   its invitation cannot make one.
+
+What a person sees: pairing a phone from the computer's own browser, or
+from `nodwyn app`'s window started with `--listen` or `--name`, gives a
+device that only answers. To make it the person's, they run `nodwyn devices
+invite` once and open that invitation on the phone, or sign the phone in
+with a passkey made on another device. A console is reached by other
+machines only through `--listen`, `--name` or `--acme`, flags given at a
+terminal or in a unit file, so whoever set it up has the terminal; a console
+on loopback alone has no devices and is unchanged.
+
+Considered and not chosen:
+
+- **The first passkey from this computer while none exists.** A fresh
+  server's console runs with no passkey until the person gets to it, and
+  the first registration wins, so a server on loopback could still be first.
+- **No invitations from this computer at all.** A device that only answers
+  can do what the cookie already does while the console runs, but it lasts
+  after the console stops; see what remains below.
+- **A check in the daemon.** The passkey's tier is the bridge's alone:
+  `refuseDevice` in `internal/frontend/rpc/peer.go` refuses only a client
+  that claims a device and no passkey. A check there would not have stopped
+  this chain, since `evil`'s passkey was registered and its claim true, and
+  the daemon checks no claim, since a same-user client that claims nothing
+  has every method already (point 4 above). What made the escalation is
+  enrolment, which is the bridge's state, `devices.toml`, alone. A refusal
+  of `trust.set` to this computer's console in the daemon would need that
+  console to claim itself (its connection claims nothing, as a terminal's
+  does) and would repeat the bridge's `tierPasskey`. Not built.
+
+What remains: this computer's cookie still does the rest of setup until the
+console stops, and an invitation it makes pairs a device that answers, for
+as long as that device is used. A server on loopback that the browser
+visits can do both. Closing that needs a host name of the console's own
+(amended 2026-10-16), still not built.
+
+Checks: `TestThisComputersCookieMakesNoPasskey` in `internal/frontend/web`
+walks the chain over the console's socket and a real daemon (on HEAD the
+registration answered 200 and the grant went through; now the invitation is
+refused, a plain one registers nothing even with a challenge, and the
+terminal's invitation still makes the person's device, which trusts the
+project), and the `remote` browser check, where this computer's own page,
+opened by the launch with its ticket, asks for a plain invitation and the
+device that uses it at `desk.localhost` is paired without a passkey.

@@ -1,7 +1,9 @@
 // nodwyn ui --listen with other host names (ADR 30, amended 2026-10-17): it
 // prints no pairing code; a phone pairs with an invitation from nodwyn devices
 // invite, answers, and the log records "via web:phone"; a launch ticket is
-// refused remotely. A laptop at a name where passkeys work (desk.localhost
+// refused remotely. This computer's own page, opened by the launch, invites a
+// device that only answers, and makes no passkey even where passkeys work. A
+// laptop at a name where passkeys work (desk.localhost
 // stands in for https) makes a passkey with its invitation, keeps its sign-in across
 // a restart of the console, and confirms with the passkey before it revokes
 // the phone; a tablet then signs in with that passkey, with no invitation.
@@ -25,11 +27,17 @@ check(async () => {
   fs.writeFileSync(`${root}/config/nodwyn/workspaces.toml`, `forgotten = ["${root}/work"]\n`, { mode: 0o600 });
   const daemon = start(process.env.NODWYN, ["daemon", "--no-keychain"], { env });
   await line(daemon, /(listening)/, "stderr");
+  // The browser the launch opens is a stand-in that writes down the address
+  // it was given, with the launch ticket in its fragment: this computer's
+  // own page, which the check opens itself.
+  const bin = tempDir("nodwyn-open-");
+  const opened = `${bin}/opened`;
+  for (const name of ["open", "xdg-open"]) fs.writeFileSync(`${bin}/${name}`, `#!/bin/sh\nprintf '%s\\n' "$1" > '${opened}'\n`, { mode: 0o755 });
   // The console's address has to be known before it starts, since the phone
   // reaches it by the name --name gives with its port: a port the system
   // picked, tried again in the rare case something took it meanwhile.
   let port, ui;
-  const console_ = () => start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--name", `desk.test:${port}`, "--name", `desk.localhost:${port}`, "--no-open"], { env });
+  const console_ = () => start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--name", `desk.test:${port}`, "--name", `desk.localhost:${port}`], { env: { ...env, PATH: `${bin}:${process.env.PATH}` } });
   for (let attempt = 1; !ui; attempt++) {
     port = await freePort();
     const started = console_();
@@ -129,6 +137,45 @@ check(async () => {
   const devices = execFileSync(process.env.NODWYN, ["devices"], { env }).toString().trim();
   assert.match(devices, /^phone\s+paired /m, "nodwyn devices lists the phone");
 
+  // This computer's own page invites a device that only answers: the
+  // browser sends its sign-in to every server on this computer it visits,
+  // so an invitation made with it makes no passkey (ADR 30, amended
+  // 2026-10-19). At a name where passkeys work, the pairing page then pairs
+  // that device without one.
+  await until("the launch opened this computer's page", () => fs.existsSync(opened));
+  const computerContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const computer = watch(await computerContext.newPage(), "computer");
+  const computerSent = requests(computer);
+  await computer.goto(fs.readFileSync(opened, "utf8").trim());
+  await ready(computer);
+  await computer.evaluate(() => (location.hash = "#/settings/keys"));
+  await computer.click("#devices-invite");
+  await computer.waitForSelector("#invitation");
+  assert.deepStrictEqual(computerSent.of("devices.invite"), [{ passkey: false }], "this computer's invitation asked for");
+  await shows(computer, "#invitation", "The device it lets in answers", "nodwyn devices invite");
+  await shows(computer, "#devices", "One made in this computer's browser makes none");
+  await computer.screenshot({ path: `${out}/computer-invite.png` });
+  const plain = (await computer.textContent("#invitation strong")).trim();
+  await computerContext.close();
+  const kioskContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const kiosk = watch(await kioskContext.newPage(), "kiosk");
+  expectError(/^WebSocket connection to 'ws:\/\/desk\.localhost:\d+\/socket' failed: .*403$/);
+  // The registration the page tries first is refused, and it pairs instead.
+  expectError(/^Failed to load resource: the server responded with a status of 403 \(Forbidden\)$/);
+  await kiosk.goto(`http://desk.localhost:${port}/#invite=${plain}`);
+  await kiosk.waitForSelector("#pair-invite");
+  await kiosk.fill("#pair-device", "kiosk");
+  await kiosk.click("button[type=submit]:has-text('Connect and make a passkey')");
+  await ready(kiosk);
+  const devicesFile = () => fs.readFileSync(`${root}/config/nodwyn/devices.toml`, "utf8");
+  const kioskEntry = /name = "kiosk"[^[]*/.exec(devicesFile())?.[0] || "";
+  assert.match(kioskEntry, /by = "computer"/, "the kiosk was not let in by this computer");
+  assert.doesNotMatch(kioskEntry, /passkey = /, "this computer's invitation signed the kiosk in with a passkey");
+  assert.doesNotMatch(devicesFile(), /\[\[passkey\]\]/, "this computer's invitation registered a passkey");
+  assert.strictEqual(await kiosk.$("#new-task-model-model"), null, "the kiosk is offered a model picker");
+  await kioskContext.close();
+  step("this computer's own page invites a device that only answers, with no passkey even where passkeys work");
+
   // A laptop where passkeys work opens an invitation's link, which makes a
   // passkey there with Chromium's virtual authenticator, the person always
   // present and verified.
@@ -150,7 +197,6 @@ check(async () => {
   await desk.screenshot({ path: `${out}/laptop-pair.png` });
   await desk.click("button[type=submit]:has-text('Connect and make a passkey')");
   await desk.waitForSelector("html[data-ready]", { timeout: 10000 });
-  const devicesFile = () => fs.readFileSync(`${root}/config/nodwyn/devices.toml`, "utf8");
   assert.match(devicesFile(), /name = "laptop"[^[]*passkey = "laptop"/, "devices.toml has the laptop signed in with its passkey");
   assert.match(devicesFile(), /\[\[passkey\]\]\s+name = "laptop"/, "devices.toml has the laptop's passkey");
   // The person's device chooses a task's model, as this computer does.

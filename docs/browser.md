@@ -304,7 +304,9 @@ unsaved changes keeps those made in every tab. The tabs:
   one; what is typed is forgotten once it worked, and an unlock forgets it as
   it sends); **Credentials over remote HTTP**; and **Other devices**:
   **Invite a device** (an invitation's code, and its link where the address
-  is not this computer's loopback), the paired devices, each with whether it
+  is not this computer's loopback; on this computer, one that lets in a
+  device that only answers, with a line naming `nodwyn devices invite` for
+  one that makes a passkey), the paired devices, each with whether it
   signed in with a passkey and who let it in, and **Revoke**, which asks
   first; the passkeys, each with **Remove**, which asks first; and, on a
   device that only answers where passkeys work, **Sign in with a passkey**.
@@ -691,8 +693,9 @@ nodwyn devices revoke phone
 A console other machines reach (`--listen`, `--name`) takes no pairing code
 and prints none (ADR 30, amended 2026-10-17). A browser on another machine
 pairs with an **invitation** and a device name: `nodwyn devices invite`
-prints one on the computer nodwyn runs on, and a paired device makes one in
-Settings › Keys & devices, with a link (`/#invite=CODE`) that fills it in.
+prints one on the computer nodwyn runs on, and this computer's browser or a
+paired device makes one in Settings › Keys & devices, with a link
+(`/#invite=CODE`) that fills it in.
 An invitation is twenty characters, good once and for ten minutes; it is
 typed in any case, with or without its dashes. It names a new device: a name
 a paired device or a passkey has already is refused, and the invitation stays
@@ -703,14 +706,20 @@ a forward to its loopback address nor another account on the computer can.
 
 **Over https, the person signs in with a passkey.** Where passkeys work
 (https, through `--tls-cert` or a proxy named `--name https://NAME`, or a
-`localhost` name), the invitation from the terminal, from this computer or
-from a device signed in with a passkey makes a passkey on the device that
+`localhost` name), the invitation from the terminal or from a device signed
+in with a passkey, after a touch of it, makes a passkey on the device that
 uses it (**Connect and make a passkey**; **Connect without a passkey** pairs
 one that only answers). Any other browser then signs in with that passkey,
 with no invitation (**Sign in with a passkey** on the pairing page): a passkey
 synced to the person's other devices, or the one on their phone through the
 browser's QR code. A device paired without one signs in with it from Settings
-› Keys & devices. The person's device makes the choices this computer makes:
+› Keys & devices. The person's first passkey comes from `nodwyn devices
+invite`: an invitation made in this computer's own browser lets in a device
+that only answers, as one from such a device does, since the browser sends
+this computer's sign-in to every server on this computer it visits (a task's
+dev server, a container's published port), and a passkey made with it would
+outlast the console, be reached wherever the console is, and could trust a
+project's startup code (ADR 30, amended 2026-10-19). The person's device makes the choices this computer makes:
 a task's model, judge and helpers, its turn limits, its schedule, a key the
 model asks for, unlocking the keychain. To change setup (Settings, providers
 and models, credentials and OAuth sign-in, the keychain's creation and

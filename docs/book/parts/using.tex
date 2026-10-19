@@ -292,9 +292,12 @@ provider that cannot read one refuses that request, and the turn says so
 \item[A phone] \code{nodwyn ui --listen ADDR} serves other devices as well.
   Each pairs with an invitation (\code{nodwyn devices invite}, or Invite a
   device in Settings) and a name, and may send messages and answer prompts.
-  Over https the invitation makes a passkey on it, and a device signed in
-  with that passkey makes the computer's choices too, and changes settings,
-  keys and policy after a touch of it; one paired without may not.
+  Over https an invitation from \code{nodwyn devices invite}, or from a
+  device signed in with a passkey, makes a passkey on it, and a device
+  signed in with that passkey makes the computer's choices too, and changes
+  settings, keys and policy after a touch of it; one paired without may not.
+  One made in the computer's own browser makes no passkey, since that
+  browser's sign-in reaches every server on the computer's loopback.
   \code{nodwyn devices revoke NAME} unpairs one.
   A phone that sleeps or changes network connects again by itself and
   reloads the open task; nothing that was on its way is sent again. If

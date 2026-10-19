@@ -873,7 +873,8 @@ func (b *bridge) tierOf(method string) tier {
 	}
 	// The console's own methods (deviceMethod). A plain invitation lets in
 	// a device that only answers, so a device may make one; one that may
-	// register a passkey is a setup action (deviceMethod).
+	// register a passkey is the person's device's, after a touch, and never
+	// this computer's cookie's (deviceMethod).
 	switch method {
 	// A device may end its own pairing: another nodwyn that unlinks asks it
 	// (ADR 54).
@@ -1042,20 +1043,25 @@ func (b *bridge) deviceMethod(req request, device Device, c caller) (json.RawMes
 		}
 		return marshal(keys, err)
 	case "devices.invite":
-		// An invitation that may register a passkey makes a device the
-		// person's, so it is a setup action; a plain one lets in a device
-		// that only answers, as the one inviting does.
-		if p.Passkey && !c.local {
-			if !c.person {
+		// A plain invitation lets in a device that only answers, as the one
+		// inviting does. One that may register a passkey makes the device
+		// that uses it the person's, who may trust a project's startup code
+		// (ADR 45), so it is a setup action of the person's device, and not
+		// this computer's: the browser sends this computer's cookie to every
+		// server on loopback, and a passkey made with it would outlast the
+		// console and reach it from wherever the console is reached (ADR 30,
+		// amended 2026-10-19). The terminal makes the first one.
+		invite := func() (string, time.Time, error) { return b.devices.Invite(by, false) }
+		if p.Passkey {
+			switch {
+			case c.local:
+				return nil, errors.New("this computer's console invites devices that answer: make an invitation that may register a passkey with nodwyn devices invite in a terminal, or from a device signed in with your passkey")
+			case !c.person:
 				return nil, errors.New("only a device signed in with a passkey invites one that may register a passkey")
-			}
-			if !c.touched {
+			case !c.touched:
 				return nil, errTouch
 			}
 			b.touch(device.Hash)
-		}
-		invite := func() (string, time.Time, error) { return b.devices.Invite(by, p.Passkey) }
-		if p.Passkey && !c.local {
 			// The person's device vouches with its passkey: another nodwyn
 			// that uses the invitation is theirs (ADR 54).
 			invite = func() (string, time.Time, error) { return b.devices.InviteAsPerson(by, device.Passkey) }

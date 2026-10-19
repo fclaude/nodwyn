@@ -25,6 +25,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 // authenticator is a software passkey: what a phone's or a laptop's does,
@@ -466,6 +467,190 @@ func TestThePersonsDeviceTouchesItsPasskeyForSetup(t *testing.T) {
 	phone, _ = open(phoneToken)
 	if methods := offered(phone); !methods["session.model.set"] || !strings.HasSuffix(peerOf(methods), " via web:phone passkey:laptop") {
 		t.Fatalf("the phone after its touch is offered %v", methods)
+	}
+}
+
+// This computer's cookie goes to every server on loopback that the browser
+// visits (ADR 30, amended 2026-10-16), so it makes no passkey (amended
+// 2026-10-19). On a console behind tailscale serve, a page holding it asked
+// for an invitation that may register a passkey, registered a key of its own
+// as the device evil, which the console took for the person's and the
+// registration for a touch, and as evil trusted a repository's startup code,
+// which trust.set keeps from this computer's cookie (ADR 45, amended
+// 2026-10-17). That invitation is now refused; the plain one this computer
+// may still make registers nothing; and the first passkey comes from the
+// invitation nodwyn devices invite prints at the terminal.
+func TestThisComputersCookieMakesNoPasskey(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	socket := filepath.Join(root, "run", "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	done := make(chan error, 1)
+	go func() { done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: paths}) }()
+	defer func() { cancel(); <-done }()
+
+	// The layout of `nodwyn ui --listen 127.0.0.1:PORT --name https://NAME`,
+	// with tailscale serve forwarding NAME to that port.
+	devices := OpenDevices(filepath.Join(root, "devices.toml"))
+	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession, devices: devices, audit: &bytes.Buffer{}, extra: []string{"https://desk.example"}}
+	server := httptest.NewUnstartedServer(b)
+	b.listensAt(server.Listener.Addr().String())
+	server.Start()
+	defer server.Close()
+
+	// A repository nodwyn works in, whose startup code nobody trusted.
+	repo := config.CanonicalPath(filepath.Join(root, "work"))
+	must.MkdirAll(t, filepath.Join(repo, ".nodwyn"), 0o755)
+	must.WriteFile(t, filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(display \"from the repository\")\n"), 0o644)
+	trusted := func() bool {
+		t.Helper()
+		files, err := config.ReadProjectFiles(repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ok, err := config.ProjectTrusted(paths, repo, files)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+
+	type rpcError struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	id := 0
+	call := func(conn *websocket.Conn, method string, params any) (json.RawMessage, *rpcError) {
+		t.Helper()
+		id++
+		if err := wsjson.Write(ctx, conn, map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			var frame struct {
+				ID     int             `json:"id"`
+				Result json.RawMessage `json:"result"`
+				Error  *rpcError       `json:"error"`
+			}
+			if err := wsjson.Read(ctx, conn, &frame); err != nil {
+				t.Fatal(err)
+			}
+			if frame.ID == id {
+				return frame.Result, frame.Error
+			}
+		}
+	}
+	// open is a console's socket, as a browser at host opens it with cookie.
+	open := func(host, cookie string) *websocket.Conn {
+		t.Helper()
+		header := http.Header{"Origin": {b.scheme(host) + "://" + host}, "Cookie": {cookie}}
+		conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header, Host: host})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { conn.CloseNow() })
+		if _, rerr := call(conn, "hello", map[string]any{"protocol": 1}); rerr != nil {
+			t.Fatal(rerr)
+		}
+		return conn
+	}
+	// register answers an invitation's registration with key, as the device
+	// name, at the name the proxy forwards.
+	register := func(code, name string, key *authenticator) (*browser, *httptest.ResponseRecorder) {
+		t.Helper()
+		at := &browser{t: t, b: b, host: "desk.example", origin: "https://desk.example"}
+		body := map[string]string{"invite": code, "device": name}
+		for k, v := range key.register(t, "desk.example", "https://desk.example", at.challenge(code)["challenge"].(string)) {
+			body[k] = v
+		}
+		return at, at.post("/passkey/register", body)
+	}
+
+	// The cookie a server on loopback was sent: it may review the project,
+	// and not trust it.
+	computer := open(b.local, b.cookieName()+"="+testSession)
+	if _, rerr := call(computer, "workspace.save", map[string]any{"path": repo, "name": "work", "mounts": []any{}}); rerr != nil {
+		t.Fatal(rerr)
+	}
+	raw, rerr := call(computer, "trust.read", map[string]any{"repo": repo})
+	var review struct {
+		Revision string `json:"revision"`
+		Trusted  bool   `json:"trusted"`
+	}
+	if rerr != nil || json.Unmarshal(raw, &review) != nil || review.Revision == "" || review.Trusted {
+		t.Fatalf("the review: %s %+v", raw, rerr)
+	}
+	if _, rerr := call(computer, "trust.set", map[string]any{"repo": repo, "revision": review.Revision}); rerr == nil || trusted() {
+		t.Fatal("this computer's cookie trusted the project")
+	}
+
+	// What the page did next.
+	raw, rerr = call(computer, "devices.invite", map[string]any{"passkey": true})
+	if rerr == nil {
+		var made struct {
+			Code string `json:"code"`
+		}
+		json.Unmarshal(raw, &made)
+		evil, w := register(made.Code, "evil", newAuthenticator(t))
+		granted := false
+		if w.Code == http.StatusOK {
+			_, rerr := call(open("desk.example", deviceCookie+"="+evil.cookies[0].Value), "trust.set", map[string]any{"repo": repo, "revision": review.Revision})
+			granted = rerr == nil && trusted()
+		}
+		t.Fatalf("this computer's cookie made an invitation that registers a passkey: registering one of its own: %d %s; then trusting the project as that device: %v", w.Code, strings.TrimSpace(w.Body.String()), granted)
+	}
+	if !strings.Contains(rerr.Message, "nodwyn devices invite") {
+		t.Fatalf("the refusal does not say where such an invitation is made: %+v", rerr)
+	}
+	// A plain invitation, which it may still make, pairs a device that only
+	// answers: it is offered no registration, and one answered with a
+	// challenge obtained otherwise is refused.
+	raw, rerr = call(computer, "devices.invite", map[string]any{"passkey": false})
+	var plain struct {
+		Code string `json:"code"`
+	}
+	if rerr != nil || json.Unmarshal(raw, &plain) != nil || plain.Code == "" {
+		t.Fatalf("a plain invitation from this computer: %s %+v", raw, rerr)
+	}
+	evil := &browser{t: t, b: b, host: "desk.example", origin: "https://desk.example"}
+	if w := evil.post("/passkey/options", map[string]string{"invite": plain.Code}); w.Code != http.StatusForbidden {
+		t.Fatalf("a plain invitation offered a registration: %d %s", w.Code, w.Body)
+	}
+	body := map[string]string{"invite": plain.Code, "device": "evil"}
+	for k, v := range newAuthenticator(t).register(t, "desk.example", "https://desk.example", b.challenge("webauthn.create", "desk.example")) {
+		body[k] = v
+	}
+	if w := evil.post("/passkey/register", body); w.Code != http.StatusForbidden {
+		t.Fatalf("a plain invitation registered a passkey: %d %s", w.Code, w.Body)
+	}
+	if keys, err := devices.Passkeys(); err != nil || len(keys) != 0 {
+		t.Fatalf("passkeys registered: %+v %v", keys, err)
+	}
+	if trusted() {
+		t.Fatal("the project is trusted")
+	}
+
+	// The person's first passkey comes from the terminal, and with it they
+	// trust the project.
+	code, _, err := devices.Invite(Terminal, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	laptop, w := register(code, "laptop", newAuthenticator(t))
+	if w.Code != http.StatusOK {
+		t.Fatalf("the terminal's invitation: %d %s", w.Code, w.Body)
+	}
+	if _, rerr := call(open("desk.example", deviceCookie+"="+laptop.cookies[0].Value), "trust.set", map[string]any{"repo": repo, "revision": review.Revision}); rerr != nil || !trusted() {
+		t.Fatalf("the person's device trusting the project: %+v", rerr)
 	}
 }
 
