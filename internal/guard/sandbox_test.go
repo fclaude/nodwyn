@@ -176,6 +176,46 @@ func TestSandboxModeJudgesWhatFeedsAnotherCommandByTheDenylist(t *testing.T) {
 	}
 }
 
+// The script of a nested shell and what eval joins are command lines of their
+// own (ADR 17, amended 2026-10-19), so in sandbox mode their paths are judged
+// by the denylist's directories alone, as a top-level line's are.
+func TestSandboxModeJudgesANestedShellsScriptByTheDenylist(t *testing.T) {
+	m := newSandboxMachine(t)
+	deny := m.denylist()
+	sandbox := guard.DefaultArgvTrigger(m.root)
+	sandbox.Sandbox = &deny
+	plain := guard.DefaultArgvTrigger(m.root)
+	ctx := scheme.WithOrigin(context.Background(), scheme.OriginModel)
+	verdict := func(a guard.ArgvTrigger, line string) guard.Decision {
+		return a.Check(ctx, shellP(), shellArgs("bash", "-c", line))
+	}
+	key := filepath.Join(m.home, ".ssh", "id_ed25519")
+	for _, line := range []string{
+		"sh -c 'cat ~/.ssh/id_ed25519'",
+		"bash -c \"sh -c 'cat " + key + "'\"",
+		"env sh -c 'cat " + m.data + "/x'",
+		"eval cat " + key,
+		"sh -c 'echo " + key + " | xargs cat'",
+	} {
+		d := verdict(sandbox, line)
+		if d.Verdict != guard.Deny || !strings.Contains(d.Reason, "in a directory nodwyn keeps off limits in sandbox mode too") {
+			t.Errorf("in sandbox mode %q: %+v", line, d)
+		}
+	}
+	for _, line := range []string{
+		"sh -c 'cat " + m.system + "/hosts'",
+		"bash -c \"eval cat " + m.system + "/hosts\"",
+		"sudo sh -c 'cat " + m.system + "/hosts'",
+	} {
+		if d := verdict(sandbox, line); d.Verdict == guard.Deny || d.Security {
+			t.Errorf("in sandbox mode %q: %+v", line, d)
+		}
+		if d := verdict(plain, line); d.Verdict != guard.Confirm || !d.Security {
+			t.Errorf("by default %q: %+v", line, d)
+		}
+	}
+}
+
 // In sandbox mode a write to a task's Makefile, scripts/ or .git/ goes
 // ahead, which by default needs a person; nodwyn's own folder still does.
 func TestSandboxModeKeepsOnlyNodwynsFolderProtected(t *testing.T) {

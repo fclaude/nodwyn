@@ -440,3 +440,51 @@ else, and so are the words the amendment above makes paths, what `echo`,
 on sandbox mode's branch before it met that amendment). The network tools
 and hard-trigger patterns still ask, and the run answers them. Every other
 session is judged as above.
+
+## Amendment 2026-10-19: a nested shell's script and eval are command lines of their own
+
+The amendment of 2026-10-19 above (what a command prints or lists is a path
+once another command takes it) left one route open that the same audit's
+probing found: the string after a nested shell's `-c` is one word to the argv
+trigger, and a word that begins with neither `/` nor `~` reads as a path
+relative to the repository. `bash -c "sh -c 'cat /etc/hosts'"`, `env sh -c 'cat
+/etc/hosts'`, `sudo sh -c 'cat ~/.ssh/config'`, `find . -exec sh -c 'cat
+/etc/hosts' \;` and `eval "cat /etc/hosts"` all got no security confirm,
+against the one `cat /etc/hosts` gets; `sudo` only asked its own plain
+question, which "Don't ask" and `--yolo` answer. The same word-as-path reading
+flagged a script that began with a path, as `sh -c '/usr/bin/python3 -V; echo
+hi'`, for the path `/usr/bin/python3 -V; echo hi`.
+
+- `withNested` (`internal/guard/scriptwords.go`) reads the string a command
+  hands to a shell as a command line of its own, with `scriptWords`, and
+  puts its commands after the command that runs it. The shell is any word of
+  the command that names one (`sh`, `bash`, `zsh`, `dash`, `ksh`), so a wrapper
+  (`env`, `timeout`), `sudo`, `xargs` and `find -exec` reach it as the
+  top-level shell does; the script is the first operand after the shell's
+  options when one of them holds `-c` (`-c`, `-lc`, `-ec`; `-o`, `+o`, `-O`,
+  `--rcfile` take a value). A shell with a file before its `-c` runs the file
+  and hands over nothing.
+- `eval` among a command's programs joins its words with spaces and reads
+  them again, as the shell does.
+- The words that make such a string are not paths of the command that holds
+  them: its commands stand for them, so the script is judged by what it does
+  with its paths, an environment's interpreter or a system binary at its head
+  included. A string `scriptWords` cannot split is still a word.
+- An inner command is in a substitution, or feeds a pipe, when the command
+  that runs it does (`cat $(sh -c 'echo /etc/hosts')`, `sh -c 'echo /etc/hosts'
+  | xargs cat`), and the network tools and hard-trigger patterns are looked
+  for in it too.
+- Every path of such a script goes through the same judgement as any other,
+  so in sandbox mode (the amendment of 2026-10-18 above) `sh -c 'cat
+  ~/.ssh/id_rsa'` is refused as `cat ~/.ssh/id_rsa` is, and `sh -c 'cat
+  /etc/hosts'` goes ahead there.
+- The same applies to a shell that is an argument of a program that is not a
+  shell: `docker exec c bash -c 'cat /etc/hosts'` names `/etc/hosts` as
+  `docker exec c cat /etc/hosts` always did.
+
+Still not read: an interpreter's program (`python3 -c`), a here-document or
+here-string handed to `xargs`, a path one command writes for another to read.
+`TestArgvTriggerReadsANestedShellsScript` and
+`TestSandboxModeJudgesANestedShellsScriptByTheDenylist` fail on `5a33587` (32
+of their lines) and pass with the change; the other argv trigger tests are
+unchanged.

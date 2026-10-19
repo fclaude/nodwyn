@@ -398,6 +398,10 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			commands = append([]scriptCommand{{words: argv[:2]}}, parsed...)
 		}
 	}
+	// A shell a command starts, or an eval, runs a command line of its own,
+	// whether the shell is the program, run by a wrapper, or an argument of
+	// xargs or find: those lines are read as the top-level one is.
+	commands = withNested(commands)
 	// The network tools and the hard-trigger patterns are looked for in the
 	// argv as it is and in each command of a -c line as the shell splits it:
 	// bash -c "curl ..." is one word to the first, and "git  push" matches
@@ -452,7 +456,7 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		first, kind := program(command.words), access(command.words)
 		for i, tok := range command.words {
 			switch {
-			case patterns[i]:
+			case patterns[i], command.scripts[i]:
 			case programs[i]:
 				// A program is judged as one, whatever kind of command it
 				// makes: an ls from outside is no names-only ls.

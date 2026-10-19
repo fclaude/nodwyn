@@ -93,12 +93,15 @@ runs what it names outside, a read outside an environment and `cd` outside still
 ask. The model may therefore list any folder unasked, names but not contents
 (ADR 17, amended 2026-10-19). The network tools and the hard-trigger patterns
 are looked for in each command of a `-c` line as well as in the argv, so
-`bash -c "curl …"` and `git  push` ask as `curl` and `git push` do.
+`bash -c "curl …"` and `git  push` ask as `curl` and `git push` do. The string
+a shell is given with `-c`, wherever the shell is in a command (behind `env`,
+`sudo`, `xargs` or `find -exec` too), and what `eval` joins are command lines of
+their own, read as the top-level one is, nested ones included
+(ADR 17, amended 2026-10-19, nested shells).
 
 The trigger reads words, not code. A path inside an interpreter's program
-(`python3 -c`), in a nested `sh -c` or `eval` string, in a here-document or
-here-string handed to `xargs`, or in a file a command wrote earlier and another
-reads, is not seen.
+(`python3 -c`), in a here-document or here-string handed to `xargs`, or in a
+file a command wrote earlier and another reads, is not seen.
 
 These checks inspect argv and executable paths, not binary signatures or the
 behaviour of an approved process. Builds and tests execute project code with the

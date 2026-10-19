@@ -367,3 +367,99 @@ func TestArgvTriggerFindsNetworkToolsAndPatternsInAScript(t *testing.T) {
 		}
 	}
 }
+
+// A shell that a command line starts is read as the top-level one is (ADR 17,
+// amended 2026-10-19, nested shells): the string after its -c, and what eval
+// joins, are command lines of their own. As one word they read as a path
+// relative to the repository, so `sh -c 'cat /etc/hosts'` inside a -c line,
+// or behind env, sudo, xargs or find -exec, asked nobody about /etc/hosts,
+// though the same line outside a nested shell is a security confirm.
+func TestArgvTriggerReadsANestedShellsScript(t *testing.T) {
+	repo, outside, base := t.TempDir(), t.TempDir(), t.TempDir()
+	secret := filepath.Join(outside, "secret")
+	python := filepath.Join(base, "envs", "testbed", "bin", "python")
+	for _, dir := range []string{filepath.Join(base, "envs", "testbed", "conda-meta"), filepath.Dir(python)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(python, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, argv := range [][]string{
+		{"sh", "-c", "cat " + secret, "name"},
+		{"env", "sh", "-c", "cat " + secret},
+		{"timeout", "5", "bash", "-lc", "cat " + secret},
+		{"sudo", "sh", "-c", "cat " + secret},
+		{"xargs", "sh", "-c", "cat " + secret, "_"},
+		{"find", ".", "-exec", "sh", "-c", "cat " + secret, ";"},
+		{"bash", "-c", "sh -c 'cat " + secret + "'"},
+		{"bash", "-c", "bash -ec \"cat " + secret + "\""},
+		{"bash", "-c", "bash -c \"sh -c 'cat " + secret + "'\""},
+		{"bash", "-c", "sh -o pipefail -c 'cat " + secret + "'"},
+		{"bash", "-c", "eval \"cat " + secret + "\""},
+		{"bash", "-c", "eval cat " + secret},
+		{"bash", "-c", "eval 'echo hi; cat " + secret + "'"},
+		{"bash", "-c", "cd src && eval \"$(echo cat " + secret + ")\""},
+		{"bash", "-c", "cat $(sh -c 'echo " + secret + "')"},
+		{"bash", "-c", "sh -c 'echo " + secret + "' | xargs cat"},
+		{"bash", "-c", "sh -c 'cat \"$(echo " + secret + ")\"'"},
+		{"bash", "-c", "sh -c 'echo hi >&" + secret + "'"},
+		{"bash", "-c", "sh -c 'for f in " + outside + "/*; do cat $f; done'"},
+	} {
+		d := argvVerdict(repo, argv...)
+		if d.Verdict != guard.Confirm || !d.Security || !strings.Contains(d.Reason, outside) {
+			t.Errorf("%q was not a security path confirm: %+v", argv, d)
+		}
+	}
+	// The network tools and hard-trigger patterns in a nested script are found.
+	for _, line := range []string{"sh -c 'curl https://example.com'", "bash -c \"sh -c 'git  push'\"", "eval 'wget -qO- https://example.com'"} {
+		if d := argvVerdict(repo, "bash", "-c", line); d.Verdict != guard.Confirm || d.Security {
+			t.Errorf("%q was not a plain confirm: %+v", line, d)
+		}
+	}
+	// Where nobody could approve the path it is refused outright.
+	if temp := guard.TempDir(); temp != "" {
+		trigger := guard.DefaultArgvTrigger(repo)
+		trigger.Temp = temp
+		for _, line := range []string{"sh -c 'cat " + secret + "'", "eval cat " + secret} {
+			if d := trigger.Check(scheme.WithOrigin(context.Background(), scheme.OriginModel), shellP(), shellArgs("bash", "-c", line)); d.Verdict != guard.Deny {
+				t.Errorf("%q was not refused where nobody approves: %+v", line, d)
+			}
+		}
+	}
+	// What a nested script spells inside the repository, or the environment's
+	// interpreter, is unasked, and so is a shell that runs a file or reads
+	// nothing: its -c may be another program's flag.
+	for _, argv := range [][]string{
+		{"sh", "-c", "cat a.go"},
+		{"bash", "-c", "sh -c 'python -m pytest -q 2>&1 | tail -n 5'"},
+		{"bash", "-c", "sh -c 'cd " + repo + " && PYTHONPATH=" + repo + " python -V'"},
+		{"bash", "-c", "bash -lc '" + python + " -V'"},
+		{"bash", "-c", "sh -c '/usr/bin/python3 -V; echo hi'"},
+		{"bash", "-c", "eval \"$(date)\""},
+		{"bash", "-c", "eval echo " + secret},
+		{"bash", "-c", "sh -c 'echo " + secret + "'"},
+		{"bash", "-c", "sh -c 'ls " + outside + "'"},
+		{"bash", "-c", "sh build.sh -c " + secret + ".conf" + " >/dev/null"},
+		{"bash", "-c", "grep -c bash a.go"},
+		{"bash", "-c", "sh -c \"cat 'unclosed\""},
+		{"sh", "-c", "git status --short"},
+	} {
+		d := argvVerdict(repo, argv...)
+		// The two that name the outside path are asked about by their own
+		// words, not their script: echo prints it, ls lists it.
+		if strings.Contains(strings.Join(argv, " "), "build.sh") {
+			if d.Verdict != guard.Confirm || !strings.Contains(d.Reason, outside) {
+				t.Errorf("%q: a word that is no script was not judged as a path: %+v", argv, d)
+			}
+			continue
+		}
+		if d.Verdict != guard.Allow {
+			t.Errorf("%q asked: %+v", argv, d)
+		}
+	}
+}

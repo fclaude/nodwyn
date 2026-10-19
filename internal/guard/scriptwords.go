@@ -24,12 +24,15 @@ import (
 // it: its words, assignments before the program included, the files its
 // redirections name, whether it runs inside a command substitution, whose
 // output another command may then use as its own arguments, and whether its
-// output goes into a pipe, where the next command may do the same.
+// output goes into a pipe, where the next command may do the same. scripts
+// marks the words that are command lines a shell runs (withNested), which the
+// commands after this one stand for.
 type scriptCommand struct {
 	words   []string
 	targets []string
 	sub     bool
 	piped   bool
+	scripts map[int]bool
 }
 
 var assignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
@@ -316,6 +319,93 @@ func bodyEnd(line string, start int, delim string) int {
 		pos = next + 1
 	}
 	return len(line) - 1
+}
+
+// nestedScript is a string a command hands to a shell to run as a command line
+// of its own: the argument of a shell's -c, or what eval joins. at is the
+// indexes of the words it is made of.
+type nestedScript struct {
+	text string
+	at   []int
+}
+
+// shellC is a shell's option cluster that holds -c: -c, -lc, -ec.
+var shellC = regexp.MustCompile(`^-[A-Za-z]*c[A-Za-z]*$`)
+
+// nestedScripts returns the strings the command of words hands to a shell: the
+// first operand after the options of any shell among its words when one of
+// them is -c (so env, timeout, sudo, xargs and find -exec reach it as a
+// top-level shell does), and the words after an eval that is a program of
+// the command, which eval joins with spaces and reads again. A shell with no
+// -c, or with a file to run before it, hands over nothing.
+func nestedScripts(words []string) []nestedScript {
+	var out []nestedScript
+	for i, w := range words {
+		if !shells[filepath.Base(w)] {
+			continue
+		}
+		cflag := false
+	options:
+		for j := i + 1; j < len(words); j++ {
+			switch a := words[j]; {
+			case a == "-o" || a == "+o" || a == "-O" || a == "+O" || a == "--rcfile" || a == "--init-file":
+				j++ // the option's value, which is no script
+			case shellC.MatchString(a):
+				cflag = true
+			case strings.HasPrefix(a, "-") || strings.HasPrefix(a, "+"):
+			default:
+				if cflag {
+					out = append(out, nestedScript{text: a, at: []int{j}})
+				}
+				break options
+			}
+		}
+	}
+	for i := range programs(words) {
+		if filepath.Base(words[i]) != "eval" || i+1 >= len(words) {
+			continue
+		}
+		at := make([]int, 0, len(words)-i-1)
+		for j := i + 1; j < len(words); j++ {
+			at = append(at, j)
+		}
+		out = append(out, nestedScript{text: strings.Join(words[i+1:], " "), at: at})
+	}
+	return out
+}
+
+// withNested returns commands with, after each command that hands a string to
+// a shell (nestedScripts), the commands of that string as scriptWords reads
+// them, nested ones too, and the string's words marked in scripts: they are
+// no path of the command, the commands after it stand for them. An inner
+// command is in a substitution, or feeds a pipe, when the command that runs
+// it does. A string scriptWords cannot split stays a word of its command, as
+// a top-level line does.
+func withNested(commands []scriptCommand) []scriptCommand {
+	var out []scriptCommand
+	for _, c := range commands {
+		var inner []scriptCommand
+		for _, n := range nestedScripts(c.words) {
+			parsed, ok := scriptWords(n.text)
+			if !ok {
+				continue
+			}
+			if c.scripts == nil {
+				c.scripts = map[int]bool{}
+			}
+			for _, i := range n.at {
+				c.scripts[i] = true
+			}
+			for _, p := range parsed {
+				p.sub = p.sub || c.sub
+				p.piped = p.piped || c.piped
+				inner = append(inner, p)
+			}
+		}
+		out = append(out, c)
+		out = append(out, withNested(inner)...)
+	}
+	return out
 }
 
 // wrappers run the program named among their arguments: the first word
