@@ -941,6 +941,9 @@ repeats an identical call four times in a row, retries a denied call three
 times, gets ten tool errors in a row, or fails with one tool on one file in
 six of its last sixteen responses. Reading a command that is still running
 thirty times in a row stops it too, but waiting for one a few times does not.
+In a sandbox run (\code{nodwyn run --sandbox container}) an identical call
+four times in a row does not stop the turn: the model is told so in the
+fourth result, and every fourth after it.
 A turn that stops short says where it had got to: the plan's marks, the files
 it wrote and the last command it ran, beside the stop.
 

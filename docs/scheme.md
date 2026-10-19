@@ -617,7 +617,10 @@ commit (`$TMPDIR/base`, `base-run?`) tests nothing of the change; one that
 fails after the change's run failed is the comparison done, and the failing
 run is not told. After `finish-no-change-message` a turn that has run a test
 or check may end unchanged: the code may already do what the request asks,
-and the message says to show it with a check (ADR 32, amended 2026-10-10). When such a turn first ends with a change
+and the message says to show it with a check (ADR 32, amended 2026-10-10).
+In sandbox mode (`(sandbox?)`, ADR 54) no turn is told that nothing
+changed: the whole machine is the workspace, and a command may change a file
+anywhere on it that neither git nor the file tools see. When such a turn first ends with a change
 and none of those reminders is due, the finish review
 (`finish-review-points`) gathers what the change lacks and says it in one
 message, `(finish-review-message points)`: one point as it is, several
@@ -715,6 +718,17 @@ run after an edit that took part of the model's own change out
 from the turn's first command on), which is a revert experiment, expected to
 fail, and leaves the count where it was (ADR 32, amended 2026-10-16, the
 original tests).
+In sandbox mode, the first time a turn of the session ends on the model's
+word (a reply without tool calls, with none of these messages due),
+`default-agent-turn` says `sandbox-finish-message` and goes on as the
+evidence loop, so the turn ends at the model's next answer unless a reminder
+is due: the model is asked to check its result as someone who did not watch
+it work would, and to replace what only makes its checks pass with a real
+solution or remove it and say what does not work. It is said once in the
+session (`sandbox-finish-said`), in either profile and under `lean-quiet`
+too, never after a stop or to a turn that is stopping (`turn-stopping`), and
+the log has a note beginning "sandbox finish check:" (ADR 54, amended
+2026-10-19).
 When a person reads the turn's answer before anything else happens,
 `(reviewed?)` (a chat's turn, or a supervised run's turn that a run
 checkpoint follows; not an unattended run, nor a run's last turn), a reply
@@ -843,6 +857,7 @@ call starts the count again, and so does the reminder; 0 turns it off.
 | | |
 |---|---|
 | `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`nodwyn run --yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`). `[approval]` (ADR 35) does not make it true: a chat whose commands the judge answers still has a person to ask |
+| `(sandbox?)` | true in sandbox mode (`nodwyn run --sandbox container`, ADR 54): the machine is the session's disposable sandbox, its tools reach any path but nodwyn's own directories and credential files, and nobody approves anything (`(unattended?)` is true too). The lean prompt says so (§9.8), the default loop does not tell a turn that no file changed, since a command may change any file on the machine, and asks the model once to check its result as someone who did not watch it work would (`sandbox-finish-message`, §9) |
 
 A reply's `done` is `"length"` when the model reached the output cap (the
 model's reply cap: its `max_output`, else the longest reply its provider publishes (at most a quarter of its context), else `window.output_reserve`, at most a quarter of a context too small for the window and that reply); the core notes it in the log. What to do is the
@@ -870,7 +885,7 @@ conversation (`model-turn`, `run-tools`, `skip-tools`, `answer-call`,
 `record-step`, `record-compaction`, `narrow-context`, `fold-context`, `widen`) are refused outside
 a turn and from model-originated code; the ones that only describe the session (`model-info`, `model-names`,
 `window-limits`, `session-system-prompt`, `session-requests`,
-`context-tokens`, `unattended?`, `reviewed?`, `plan-required?`, `plan-recorded?`, `run-plan`,
+`context-tokens`, `unattended?`, `sandbox?`, `reviewed?`, `plan-required?`, `plan-recorded?`, `run-plan`,
 `unfinished-plan`, `session-list`, `session-events`) answer at any time (`session-system-prompt`
 and `context-tokens` once the session has started), which
 is how `compact.scm` reads `(window-limits)` as it loads. The strategy runs with harness origin, so it cannot
@@ -887,7 +902,12 @@ had called them directly. Whatever the strategy does:
   one tool failing on one file in six of the last sixteen responses, a
   background command still running read thirty times in a row)
   end the turn with an error no `guard` clause can catch (§4), and so does a
-  failure to write the log, which is the source of truth.
+  failure to write the log, which is the source of truth. In sandbox mode
+  the same call four times in a row does not end the turn: the fourth
+  result, and every fourth after it, tells the model so after the tool's
+  output (a `fold-result` of it keeps that note after its text; the value
+  the strategy reads is the tool's own), and the log has a note beginning
+  "progress warning:" (ADR 54, amended 2026-10-19).
 
 ### 9.1 Prompts
 
@@ -901,6 +921,7 @@ strings (§1.1):
 | `(system-prompt repo)` | the control model's system prompt: `(lean-system-prompt repo)` when `lean-prompt` is true (the lean profile, §9.8; about 90 tokens, and it says nobody approves or answers the calls), else `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them; a question is answered, and a request for something never built is told so, with what exists, what is missing and what the model would build, before it builds anything |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach, the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
 | `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts omitted)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-original-tests-message failures)`, `(finish-regressed-tests-message names)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-unsupported-edits-message rows original)`, `(finish-review-message points)`, `finish-review-close`, `(edited-expectations-message lines)`, `(edited-expectations-firm-message verdicts)` | what the evidence loop tells the model (§9); from `finish-new-files-message` to `finish-unsupported-edits-message`, points of the finish review, and the one message that carries them; `edited-expectations-message` is said as a test file is edited, once for each file, and `edited-expectations-firm-message` once for a row whose answer quoted the request and did not support it |
+| `sandbox-finish-message` | what the default loop tells the model once in a sandbox session, the first time a turn ends on its word: check the result as someone who did not watch you work would (§9) |
 
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach (each cited as `path:line`), the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
 | `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)`, `(finish-untested-parts-message check parts omitted)`, `(finish-stale-citations-message spans)`, `(finish-removed-definitions-message defs)`, `(finish-removed-expectations-message lines)`, `(finish-original-tests-message failures)`, `(finish-regressed-tests-message names)`, `(finish-dropped-conditions-message dropped)`, `(finish-unshown-claims-message claims)`, `(finish-unsupported-edits-message rows original)`, `(finish-review-message points)`, `finish-review-close` | what the evidence loop tells the model (§9); from `finish-new-files-message` on, points of the finish review, and the one message that carries them |
@@ -1336,7 +1357,11 @@ what a session nobody approves runs: a system prompt of about 90 tokens
 (`lean-system-prompt`: who and where, unattended, one phrase per tool of
 `lean-tools`, throwaway files in `$TMPDIR` or `/tmp`, one sentence on the work
 and one on the answer, then the repository's `AGENTS.md` when it has one, by
-`(project-instructions-section)`, but not the project notes); the control
+`(project-instructions-section)`, but not the project notes; in sandbox mode,
+`(sandbox?)`, it names the folder without calling it a repository, says the
+machine is a disposable sandbox whose every file is the model's to read,
+change, install or run, and that relative paths are relative to the folder);
+the control
 model offered `shell-exec` and `fs-edit`
 alone (`lean-tools`); a run's plan the one line `plan-minimal-text`, with no
 explorer, planner or judge (`plan-minimal`), recorded hidden, so the model is
@@ -1344,7 +1369,8 @@ shown no plan and the run's turn prompt does not speak of one
 (`lean-plan-hidden`); and nothing said to the model while it works or as it
 ends (`lean-quiet`): no finish review, no finish reminders, no question on an
 edited test, no hint on failures the unchanged code has, no reading reminder
-(`lean-no-read-reminder`) and no environment hint (`lean-no-envhint`). A turn
+(`lean-no-read-reminder`) and no environment hint (`lean-no-envhint`); a
+sandbox session's finish check (`sandbox-finish-message`, §9) is still said. A turn
 that changed nothing is told so once (`lean-empty-reminders`), in the words of
 `finish-no-change-lean-message`, and a `shell-exec` call that only reads
 (`grep`, `sed -n`, `cat`) counts toward the rounds that only look

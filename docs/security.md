@@ -111,6 +111,27 @@ link is matched by its own name and by the name of the file it points at, so
 the images `doc-export` embeds. Names are matched ignoring case, since macOS's
 file system opens `.env` for `.ENV`.
 
+## Sandbox mode
+
+`nodwyn run --sandbox container` (ADR 54) is the person's declaration that
+the machine is a disposable container whose every file is the run's. Only
+that flag turns it on: no configuration key, repository file, Scheme or
+model call can. It changes four checkers and nothing else. The repository
+pin allows every path. `ArgvTrigger` judges a command line's paths only
+against the denylist's directories (nodwyn's configuration and data, the
+credentials directory a service manager gives the daemon, `~/.ssh`,
+`~/.aws`, `~/.gnupg`, `~/.config/gcloud`, `~/.azure`, `~/.kube`), each as
+the system reaches it, links followed before `..`, and refuses a line that
+names one outright; network tools and the hard-trigger patterns still raise
+their ordinary confirms, which the run answers yes. Of the protected paths
+only `.nodwyn/` and `.nibb/` still need a person, so a write there is
+refused. The denylist, its credential-file names, L1, taint, egress
+bindings, ingress redaction and the scrubbed child environment are what
+they are in every other mode, and security confirms are declined. What a
+command starts in the background is not stopped, so it outlives the call,
+the session and, if it does not write to the daemon's pipe after that, the
+daemon. None of this is a sandbox nodwyn provides: the container is.
+
 ## Credentials and HTTP
 
 Credential injection into a header, query or body requires HTTPS by default.

@@ -182,10 +182,33 @@
         ((optimize-request? request) (optimize-turn request))
         (else (default-agent-turn request))))
 
+;; The finish check of a run in sandbox mode ((sandbox?), ADR 54, amended
+;; 2026-10-19): the first time a turn ends on the model's word (a reply
+;; without tool calls, no reminder or review due), the model is asked to look
+;; at its result as someone who did not watch it work would
+;; (sandbox-finish-message), and the turn goes on as the evidence loop, which
+;; may end it at the next answer. A turn that a budget, the progress guard, a
+;; cancellation or an error stops never gets here, and one that is stopping
+;; (turn-stopping) ends on its report. Nobody reads a sandbox run as it goes,
+;; and on Terminal-Bench 2.1 one twice passed a task's checks with a result
+;; shaped to them and did not say so: three pixel values hard-coded to make a
+;; reimplemented renderer's output byte-identical, and expected pages left in
+;; place "as a fallback" behind a deploy hook. It is said in either profile,
+;; lean-quiet or not, since it is sandbox mode's and not the lean ladder's;
+;; once in the session, as finish-reviews counts the reviews, so a resumed
+;; run may hear it again; and the log has a note for each.
+(define sandbox-finish-said #f)
+
 (define (default-agent-turn request)
   (plan-gate request)
   (if (or (unattended?) (plan-required?))
-      (evidence-loop request)
+      (begin
+        (evidence-loop request)
+        (when (and (sandbox?) (not turn-stopping) (not sandbox-finish-said))
+          (set! sandbox-finish-said #t)
+          (add-message sandbox-finish-message)
+          (log-note "sandbox finish check: the model was asked once to check its result before the turn ends")
+          (evidence-loop request)))
       (let loop ((reply (ask-model)) (reading 0))
         (let ((calls (assoc-ref reply 'tool-calls '())))
           (unless (null? calls)
@@ -1767,7 +1790,11 @@
                                     (git-shows? written before))
                                 edited))
                    (gap (cond ((or turn-stopping review-made) #f)
-                              ((and (not changed) (not excused) (not (and unchanged-told tested)))
+                              ;; In sandbox mode (ADR 54) the whole machine is the
+                              ;; workspace: neither git nor the file tools see what a
+                              ;; command changed outside the root (a config in /etc, a
+                              ;; package), so nothing says that no file changed.
+                              ((and (not changed) (not excused) (not (and unchanged-told tested)) (not (sandbox?)))
                                (cond (lean-quiet finish-no-change-lean-message)
                                      ((reviewed?) finish-no-change-reviewed-message)
                                      (else finish-no-change-message)))

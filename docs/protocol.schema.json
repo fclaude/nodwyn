@@ -2444,6 +2444,9 @@
         "reason": {
           "type": "string"
         },
+        "sandbox": {
+          "type": "boolean"
+        },
         "status": {
           "type": "string"
         },
@@ -9786,6 +9789,9 @@
         "judge": {
           "type": "boolean"
         },
+        "sandbox": {
+          "type": "string"
+        },
         "unattended": {
           "type": "boolean"
         }
@@ -9843,6 +9849,9 @@
           "type": "integer"
         },
         "repo": {
+          "type": "string"
+        },
+        "sandbox": {
           "type": "string"
         },
         "task": {
@@ -11130,6 +11139,9 @@
         },
         "reason": {
           "type": "string"
+        },
+        "sandbox": {
+          "type": "boolean"
         },
         "status": {
           "type": "string"

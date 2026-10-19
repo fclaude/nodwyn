@@ -36,7 +36,11 @@ func TestCLIBoundedRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := fake.New(fake.Turn{Content: "1. Return the requested answer."}, fake.Turn{Content: "done\n" + run.CompleteLine})
+	// The second run is in sandbox mode, so nobody approves it, the lean
+	// loop it runs asks no planner, and its turn is asked to check its result
+	// before it ends.
+	srv := fake.New(fake.Turn{Content: "1. Return the requested answer."}, fake.Turn{Content: "done\n" + run.CompleteLine},
+		fake.Turn{Content: "done\n" + run.CompleteLine}, fake.Turn{Content: "checked\n" + run.CompleteLine})
 	defer srv.Close()
 	paths := config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data"))
 	files, err := config.ReadProjectFiles(repo)
@@ -81,17 +85,49 @@ func TestCLIBoundedRun(t *testing.T) {
 	}
 	// The submitting CLI has exited; a new invocation sees daemon-owned progress.
 	var state run.State
-	for end := time.Now().Add(4 * time.Second); time.Now().Before(end); {
-		if err := json.Unmarshal(invoke("status", "--socket", socket, started.ID), &state); err != nil {
-			t.Fatal(err)
+	ended := func(id string) {
+		t.Helper()
+		for end := time.Now().Add(4 * time.Second); time.Now().Before(end); {
+			if err := json.Unmarshal(invoke("status", "--socket", socket, id), &state); err != nil {
+				t.Fatal(err)
+			}
+			if state.Status != "running" {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
-		if state.Status != "running" {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
-	if state.Status != "completed" || state.Turns != 1 {
+	ended(started.ID)
+	if state.Status != "completed" || state.Turns != 1 || state.Sandbox {
 		t.Fatalf("%+v", state)
+	}
+	// --sandbox container is sandbox mode (ADR 54), which needs neither
+	// --yolo nor --unattended said: it is both.
+	if err := json.Unmarshal(invoke("start", "--socket", socket, "--repo", repo, "--task", task, "--budget-wall", "1m", "--max-turns", "1", "--sandbox", "container"), &started); err != nil || started.ID == "" {
+		t.Fatalf("start --sandbox %v %+v", err, started)
+	}
+	ended(started.ID)
+	if state.Status != "completed" || !state.Sandbox || !state.Unattended || !state.AutoApprove {
+		t.Fatalf("--sandbox container: %+v", state)
+	}
+}
+
+// --sandbox takes "container" alone, and excludes --judge, before anything
+// is sent to a daemon.
+func TestRunSandboxFlagIsChecked(t *testing.T) {
+	task := filepath.Join(t.TempDir(), "task.txt")
+	if err := os.WriteFile(task, []byte("t"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for args, want := range map[string]string{
+		"--sandbox vm":                  `--sandbox takes "container"`,
+		"--sandbox container --judge":   "--sandbox and --judge exclude each other",
+		"--sandbox=container --judge=1": "--sandbox and --judge exclude each other",
+	} {
+		err := runTask(append(strings.Fields(args), "--task", task, "--budget-wall", "1m", "--max-turns", "1"))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v", args, err)
+		}
 	}
 }
 func TestRunRejectsImplicitLimits(t *testing.T) {

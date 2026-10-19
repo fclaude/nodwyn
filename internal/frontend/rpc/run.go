@@ -27,6 +27,12 @@ type runParams struct {
 	// Cost is the run's spend limit in US dollars, for the whole run; it
 	// replaces budget.cost_hard. Omitted, the configured one applies.
 	Cost float64 `json:"cost,omitempty"`
+	// Sandbox "container" declares the machine the run's disposable
+	// sandbox (ADR 54): the guard lets its tools reach any path but
+	// nodwyn's own directories and credential files, what its commands
+	// start in the background keeps running, and it is unattended and
+	// auto-approved. Omitted, the run is pinned to its folder as any other.
+	Sandbox string `json:"sandbox,omitempty"`
 }
 
 // resumeParams resume a run. How it goes on is said again, never read back
@@ -36,6 +42,7 @@ type resumeParams struct {
 	AutoApprove bool   `json:"auto_approve,omitempty"`
 	Unattended  bool   `json:"unattended,omitempty"`
 	Judge       bool   `json:"judge,omitempty"`
+	Sandbox     string `json:"sandbox,omitempty"`
 }
 type runResult struct {
 	ID    string    `json:"id"`
@@ -45,8 +52,15 @@ type runResult struct {
 func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if req.Method == "run.start" {
 		var p runParams
-		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve", "unattended", "judge", "cost"); err != nil {
+		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve", "unattended", "judge", "cost", "sandbox"); err != nil {
 			return nil, err
+		}
+		sandbox, bad := sandboxMode(p.Sandbox, p.Judge)
+		if bad != nil {
+			return nil, bad
+		}
+		if sandbox {
+			p.AutoApprove, p.Unattended = true, true
 		}
 		if p.Judge && p.AutoApprove {
 			return nil, failure(-32602, "judge and auto_approve exclude each other: the judge answers what auto_approve would")
@@ -54,7 +68,11 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if err := unwatchedRefusal(client, p.AutoApprove, p.Unattended, p.Judge); err != nil {
 			return nil, err
 		}
-		if err := s.folder("repo", p.Repo); err != nil {
+		check := s.folder
+		if sandbox {
+			check = s.sandboxFolder
+		}
+		if err := check("repo", p.Repo); err != nil {
 			return nil, err
 		}
 		if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
@@ -64,7 +82,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if err != nil || wall <= 0 {
 			return nil, failure(-32602, "wall must be a positive duration")
 		}
-		state := run.State{Task: p.Task, Deadline: time.Now().Add(wall), MaxTurns: p.MaxTurns, Unattended: p.Unattended, AutoApprove: p.AutoApprove, Judge: p.Judge, Cost: p.Cost}
+		state := run.State{Task: p.Task, Deadline: time.Now().Add(wall), MaxTurns: p.MaxTurns, Unattended: p.Unattended, AutoApprove: p.AutoApprove, Judge: p.Judge, Cost: p.Cost, Sandbox: sandbox}
 		if err := state.Validate(); err != nil {
 			return nil, failure(-32602, err.Error())
 		}
@@ -80,6 +98,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		options.AutoApprove = p.AutoApprove
 		options.Unattended = p.Unattended
 		options.JudgeApprove = p.Judge
+		options.Sandbox = sandbox
 		var session *core.Session
 		s.slow("", func() { session, err = core.New(options) })
 		if err != nil {
@@ -90,10 +109,17 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	var p resumeParams
 	allowed := []string{"id"}
 	if req.Method == "run.resume" {
-		allowed = append(allowed, "auto_approve", "unattended", "judge")
+		allowed = append(allowed, "auto_approve", "unattended", "judge", "sandbox")
 	}
 	if err := params(req.Params, &p, allowed...); err != nil {
 		return nil, err
+	}
+	sandbox, bad := sandboxMode(p.Sandbox, p.Judge)
+	if bad != nil {
+		return nil, bad
+	}
+	if sandbox {
+		p.AutoApprove, p.Unattended = true, true
 	}
 	if p.Judge && p.AutoApprove {
 		return nil, failure(-32602, "judge and auto_approve exclude each other: the judge answers what auto_approve would")
@@ -141,7 +167,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if err := state.Validate(); err != nil {
 		return nil, failure(-32000, err.Error())
 	}
-	state.Unattended, state.AutoApprove, state.Judge = p.Unattended, p.AutoApprove, p.Judge
+	state.Unattended, state.AutoApprove, state.Judge, state.Sandbox = p.Unattended, p.AutoApprove, p.Judge, sandbox
 	if open {
 		delete(s.sessions, p.ID)
 	}
@@ -149,7 +175,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	options.Config.Budget = options.Config.Budget.WithCostHard(state.Cost)
 	options.Repo = ""
 	options.NoConfirm = false
-	options.AutoApprove, options.Unattended, options.JudgeApprove = p.AutoApprove, p.Unattended, p.Judge
+	options.AutoApprove, options.Unattended, options.JudgeApprove, options.Sandbox = p.AutoApprove, p.Unattended, p.Judge, sandbox
 	var session *core.Session
 	var closeErr error
 	s.slow(p.ID, func() {
@@ -167,6 +193,22 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	return s.startRun(session, state, client.actor)
+}
+
+// sandboxMode reads a run's sandbox parameter: "container" is sandbox mode
+// (ADR 54), "" none, and anything else, or sandbox mode with the judge,
+// which it excludes as auto_approve does, is refused.
+func sandboxMode(value string, judge bool) (bool, *rpcError) {
+	switch value {
+	case "":
+		return false, nil
+	case "container":
+		if judge {
+			return false, failure(-32602, "sandbox and judge exclude each other: a sandbox run answers its ordinary confirms itself, as auto_approve does")
+		}
+		return true, nil
+	}
+	return false, failure(-32602, `sandbox must be "container" (the machine is a disposable container) or omitted`)
 }
 
 // unwatchedRefusal says why a paired device may not start or resume a run

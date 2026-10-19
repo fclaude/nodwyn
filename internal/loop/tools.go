@@ -14,14 +14,17 @@ import (
 )
 
 // runTool evaluates one tool call as a Scheme application (ADR 3) with
-// model origin, and records the result the model will see.
+// model origin, and returns the result the model will see, which the caller
+// records (recordResult) once the progress guard has seen the call, so that
+// a note the guard has for the model goes with it. A call cut short by
+// cancellation has its result recorded here, as the turn ends with it.
 //
 // A failed operation — denied, missing file, bad arguments — is a result,
 // not an error: the model reads it and decides what to do. Only
 // cancellation or a log failure is returned as an error. outcome classifies
 // the result for the progress guard, and value is what a strategy receives:
-// the recorded text, still carrying the provenance of what the tool
-// produced (L2).
+// the tool's text, without the guard's note, still carrying the provenance
+// of what the tool produced (L2).
 func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (log.ToolResult, scheme.Value, toolOutcome, error) {
 	var outcome toolOutcome
 	res := log.ToolResult{ID: tc.ID, Name: tc.Name}
@@ -54,8 +57,41 @@ func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (log.ToolResult, sc
 		outcome.waiting = tc.Name == "shell-read" && stillRunning(res.Value)
 		outcome.terminal = terminalTools[tc.Name]
 	}
-	err = l.record(log.KindToolResult, res)
-	return res, scheme.Tainted(scheme.Str(res.Value), produced.Taint), outcome, err
+	return res, scheme.Tainted(scheme.Str(res.Value), produced.Taint), outcome, nil
+}
+
+// recordResult records a call's result. When the progress guard warned of
+// the call (turnProgress.warned, sandbox mode), the result carries
+// repeatNote after the tool's output or error, a later fold of it keeps the
+// note (warnings), and a note in the log says the guard warned, for whoever
+// counts the warnings.
+func (l *Loop) recordResult(res log.ToolResult, warned int) error {
+	if warned == 0 {
+		return l.record(log.KindToolResult, res)
+	}
+	note := repeatNote(warned)
+	if res.OK {
+		res.Value = withNote(res.Value, note)
+	} else {
+		res.Error = withNote(res.Error, note)
+	}
+	ev, err := l.host.Record(log.KindToolResult, res)
+	if err != nil {
+		return halt(err)
+	}
+	if l.warnings == nil {
+		l.warnings = make(map[uint64]string)
+	}
+	l.warnings[ev.Seq] = note
+	return l.record(log.KindNote, log.Note{Text: fmt.Sprintf("progress warning: the same tool and arguments ran %d times in a row; in sandbox mode the model is told so and the turn goes on", warned)})
+}
+
+// withNote is text with note on a line of its own after it.
+func withNote(text, note string) string {
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	return text + note
 }
 
 // apply looks the tool up, orders the model's named JSON arguments into
@@ -126,11 +162,16 @@ func (l *Loop) toolNames() string {
 // side effect, only a result that says why.
 func (l *Loop) skipTools(calls []llm.ToolCall, reason string) error {
 	for _, call := range calls {
-		if err := l.record(log.KindToolResult, log.ToolResult{ID: call.ID, Name: call.Name, OK: false, Error: "Not executed: " + reason}); err != nil {
+		if err := l.record(log.KindToolResult, notExecuted(call, reason)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// notExecuted is the result of a call answered without running it.
+func notExecuted(call llm.ToolCall, reason string) log.ToolResult {
+	return log.ToolResult{ID: call.ID, Name: call.Name, OK: false, Error: "Not executed: " + reason}
 }
 
 // terminalTools are the experimental terminal primitives (ADR 48).

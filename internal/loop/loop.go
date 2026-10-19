@@ -91,6 +91,9 @@ type Config struct {
 	Root string
 	// Profile is ProfileLean or ProfileFull; empty is lean.
 	Profile string
+	// Sandbox is sandbox mode (ADR 54): the progress guard warns the model
+	// of the same call run four times in a row instead of ending the turn.
+	Sandbox bool
 }
 
 // ControlModel is the registry name of the [control] model.
@@ -111,6 +114,13 @@ type Loop struct {
 	// turn is the turn in progress, nil between turns. The session runs one
 	// turn at a time, so a field suffices.
 	turn *turnState
+
+	// warnings are the progress guard's notes to the model (repeatNote) by
+	// the seq of the result that carries each. A strategy's fold of such a
+	// result keeps the note after its own text (foldResult): the lean loop
+	// folds every shell-exec result into plain text made from the tool's
+	// output, which has no note. Only turns touch it.
+	warnings map[uint64]string
 
 	// controlMu guards what SetControl replaces between turns: the control
 	// model's slot in cfg.Models, the window's water marks and the ceiling.
@@ -404,7 +414,7 @@ func (l *Loop) Turn(ctx context.Context, request string) error {
 	if !ok || !strategy.IsProcedure() {
 		return fmt.Errorf("loop: %s is not defined as a procedure; nodwyn calls (%s request) for every message", TurnProcedure, TurnProcedure)
 	}
-	l.turn = &turnState{budget: budget.From(ctx)}
+	l.turn = &turnState{budget: budget.From(ctx), progress: turnProgress{warnRepeats: l.cfg.Sandbox}}
 	defer func() { l.turn = nil }()
 
 	harness := scheme.WithOrigin(ctx, scheme.OriginHarness)

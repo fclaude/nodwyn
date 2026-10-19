@@ -186,7 +186,7 @@ fewer, and nothing in it ever waits for a person:
   model's final line, the same pin, denylist and binding table.
 
 `run.state` records how the run was started (`unattended`, `auto_approve`,
-`judge`).
+`judge`, `sandbox`).
 A resume never brings either back from the log: `nodwyn run resume SESSION`
 resumes a supervised run, and `--unattended` (with `--yolo` or `--judge` if
 wanted) must be said again, as the person resuming decides how it goes on. The console shows
@@ -197,3 +197,23 @@ an unattended or judged run as such ("Unattended run", "judged"), and its
 Repository startup code and approval files require the external trust review in
 [ADR 45](adr/0045-project-trust-and-security-boundaries.md), including for unattended
 runs. Neither `--yolo` nor `--no-confirm` grants project trust.
+
+## Sandbox runs
+
+```sh
+nodwyn run --sandbox container --task task.txt --repo /app --budget-wall 14m --max-turns 1
+```
+
+`--sandbox container` (`run.start {sandbox: "container"}`) says the machine
+is a disposable container whose every file is the run's, as a benchmark's
+task container is (ADR 54, [manual](manual.md#sandbox-mode-a-disposable-machine)).
+The run is unattended and `--yolo` without saying so, and excludes
+`--judge`; its tools may reach any path but nodwyn's own directories and
+credential files; what its commands start in the background keeps running
+after them and after the session; the folder need not be a repository, and
+may be `/` or the home directory. The first turn that ends on the model's
+word is asked once to check its result as someone who did not watch it work
+would, and to replace or own up to anything that only makes its checks pass;
+the same call four times in a row warns the model instead of ending the
+turn. A resume is in sandbox mode only when it says `--sandbox container`
+again.

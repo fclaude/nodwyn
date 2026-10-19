@@ -77,6 +77,13 @@ type Options struct {
 	// refused outright (ADR 32, amended 2026-10-17); "" for none. The core
 	// sets it.
 	Temp string
+	// Sandbox is sandbox mode (ADR 54), which only a run started with
+	// --sandbox container is in: the machine is the session's disposable
+	// sandbox. The pin then allows any path, the argv trigger refuses only
+	// paths in the denylist's directories, of the protected paths only
+	// nodwyn's folder needs a person, and what a shell-exec command leaves
+	// running in the background keeps running after it returns.
+	Sandbox bool
 
 	// P3 egress (all optional; nil disables the egress primitives — bootstrap
 	// has none). The guard's E3 checker enforces the binding table before any
@@ -130,7 +137,7 @@ func Register(in *scheme.Interp, o Options) error {
 	if o.Root == "" {
 		return os.ErrInvalid
 	}
-	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts, Temp: o.Temp}
+	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts, Temp: o.Temp, Sandbox: o.Sandbox}
 	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o), docExport(o, pin)}
 	if o.Lean {
 		// The lean profile's additions to the tools (ADR 32, amended
@@ -192,12 +199,16 @@ func Register(in *scheme.Interp, o Options) error {
 func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, extra ...guard.Checker) []guard.Checker {
 	argv := guard.DefaultArgvTrigger(o.Root)
 	argv.Scratch, argv.Temp = o.Scratch, o.Temp
+	deny := denylist(o)
+	if o.Sandbox {
+		argv.Sandbox = &deny
+	}
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
-		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts, Temp: o.Temp},
-		denylist(o),
+		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts, Temp: o.Temp, Sandbox: o.Sandbox},
+		deny,
 		argv,
-		guard.ProtectedPaths{Root: o.Root, Mounts: o.Mounts},
+		guard.ProtectedPaths{Root: o.Root, Mounts: o.Mounts, Sandbox: o.Sandbox},
 		guard.ScratchWrites{Dir: o.Scratch},
 		WritePreview{},
 	}

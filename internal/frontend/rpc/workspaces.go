@@ -537,18 +537,41 @@ func (s *server) folder(name, path string) *rpcError {
 	return nil
 }
 
+// sandboxFolder is folder for a run in sandbox mode (ADR 54), whose person
+// declared the whole machine its disposable sandbox: there the folder is
+// only where relative paths point, so it may be the whole disk, the home
+// directory, or one holding nodwyn's or the denylist's directories, which the
+// guard still refuses inside it.
+func (s *server) sandboxFolder(name, path string) *rpcError {
+	if err := absolute(name, path); err != nil {
+		return err
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return failure(-32602, name+" must be an existing folder")
+	}
+	if why := s.rootRefusalIn(path, true); why != "" {
+		return failure(-32602, why)
+	}
+	return nil
+}
+
 // rootRefusal says why a folder cannot be a task's root, or "". A root is
 // where every relative path points and what a task may write: never the
 // whole disk, the home directory itself, nodwyn's own configuration and data
 // (config, keys, bindings, logs) or the credential directories the guard
 // denies, nor a folder that contains any of them.
-func (s *server) rootRefusal(root string) string {
+func (s *server) rootRefusal(root string) string { return s.rootRefusalIn(root, false) }
+
+// rootRefusalIn is rootRefusal, or with sandbox the refusal of a sandbox
+// run's folder: only nodwyn's and the denylist's directories and the
+// folders inside them.
+func (s *server) rootRefusalIn(root string, sandbox bool) string {
 	real, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return "the folder does not exist"
 	}
 	home, _ := os.UserHomeDir()
-	if real == "/" || (home != "" && real == evalOr(home)) {
+	if !sandbox && (real == "/" || (home != "" && real == evalOr(home))) {
 		return "choose a folder inside your home directory, not the whole of it"
 	}
 	protected := append([]string{s.options.Paths.ConfigDir, s.options.Paths.DataDir}, guard.DefaultDenylist().Dirs...)
@@ -557,7 +580,8 @@ func (s *server) rootRefusal(root string) string {
 		if dir == "" {
 			continue
 		}
-		if real == dir || strings.HasPrefix(real, dir+string(filepath.Separator)) || strings.HasPrefix(dir, real+string(filepath.Separator)) {
+		holds := strings.HasPrefix(dir, real+string(filepath.Separator))
+		if real == dir || strings.HasPrefix(real, dir+string(filepath.Separator)) || holds && !sandbox {
 			return "that folder holds (or is inside) " + dir + ", which nodwyn never works in"
 		}
 	}

@@ -3011,3 +3011,56 @@ landed lean build's 96 patches. The blind reviews scored them 71.0 against
 66.9, higher on 6 of the 9 tasks reviewed. Not yet counted from the same
 runs: the regenerated catalogue, cost and calls per task, how often the
 check was said and what the model did after it.
+
+## Amendment 2026-10-18: the lean loop in sandbox mode
+
+ADR 54 adds sandbox mode, a run on a disposable machine such as a
+Terminal-Bench task container, where the folder is often no repository and
+every path but nodwyn's own and credential files is the tools'. Two things
+the lean loop says were false there, and are said differently only there,
+behind `(sandbox?)`; every other session's prompt and loop are byte for byte
+as they were, as `TestASandboxSessionChangesFilesOutsideItsFolder` and
+`TestASandboxTurnIsNotToldThatNoFileChanged` show both ways.
+
+- *The prompt.* "You are a coding agent working in the repository at /app"
+  and "Paths are relative to the repository root" tell the model its paths
+  stop at a repository root, which they do not in a sandbox, and the task's
+  folder is often no repository. In sandbox mode the first sentence names
+  the folder and adds "This machine is a disposable sandbox: anything on it
+  is yours to read, change, install or run.", and the second becomes
+  "Relative paths are relative to /app". These are statements of fact about
+  where the model works, as "unattended: nobody approves or answers your
+  calls" is, not habits; they were not measured, and the comparison on
+  Terminal-Bench is what will.
+- *The no-change reminder.* `lean-empty-reminders` tells a turn that changed
+  nothing so, once: with git, a tracked file that differs; without it, a
+  write by the file tools. A Terminal-Bench turn changes the machine mostly
+  through the shell (`echo ... > /app/regex.txt`, `apt-get install`, a
+  file in `/etc`), which in a folder that is no git work tree the loop
+  cannot see, and git sees only the folder. The reminder would say "No file
+  has changed" after nearly every such turn, falsely, and cost a request.
+  In sandbox mode it is not said, in either profile.
+
+`shell-exec`'s behaviour changes too (ADR 54 §4): in sandbox mode what a
+command starts in the background keeps running. The lean description never
+spoke of background processes and is unchanged; the full one says so.
+
+Not changed: the full profile's prompts, which say every path stays inside
+the repository; sandbox mode is meant for the lean loop.
+
+## Amendment 2026-10-19: a sandbox run's finish check
+
+In sandbox mode only (`(sandbox?)`, ADR 54), the default loop says one more
+thing as a turn ends: the first time a turn of the session ends on the
+model's word, `sandbox-finish-message` asks the model to check its result as
+someone who did not watch it work would, to replace a part that only makes
+its checks pass, or that came from anywhere but its own work (a published
+solution or answer key, the runner's own files), with a real solution or
+remove it and say what does not work, and the turn goes on as the evidence
+loop. It comes from Terminal-Bench
+2.1, where a sandbox run twice made a task's checks pass with a result
+shaped to them (three pixel values hard-coded; expected pages left in place
+as a fallback behind a deploy hook) and said nothing of it. It is said under
+`lean-quiet` too, in either profile, since it is sandbox mode's and not a
+rung of the lean ladder; no other session hears it. Not yet measured; ADR 54,
+amended 2026-10-19, has the rest.

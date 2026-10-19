@@ -46,6 +46,9 @@ type State struct {
 	// budget.cost_hard for its session; 0 keeps the configured one. A
 	// resume keeps it, as it keeps the deadline: it only limits.
 	Cost float64 `json:"cost,omitempty"`
+	// Sandbox: the run is in sandbox mode (ADR 54), which makes it
+	// unattended and auto-approved too. Not restored from the log either.
+	Sandbox bool `json:"sandbox,omitempty"`
 }
 
 // Validate reports whether a run can start or resume: a task, turns left and
@@ -157,7 +160,7 @@ func (d *Driver) execute(actor string) {
 	defer d.cancel()
 	state := d.Info()
 	// The log's redacted state, not the submitted raw task, drives subsequent work.
-	ev, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: "running", Actor: actor, Unattended: state.Unattended, AutoApprove: state.AutoApprove, Judge: state.Judge, Cost: state.Cost})
+	ev, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: "running", Actor: actor, Unattended: state.Unattended, AutoApprove: state.AutoApprove, Judge: state.Judge, Cost: state.Cost, Sandbox: state.Sandbox})
 	if err != nil {
 		d.finish("error", err.Error())
 		return
@@ -283,7 +286,7 @@ func Complete(answer string) bool {
 // finish records the run's final state and releases Wait.
 func (d *Driver) finish(status, reason string) {
 	state := d.Info()
-	_, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: status, Reason: reason, Unattended: state.Unattended, AutoApprove: state.AutoApprove, Judge: state.Judge, Cost: state.Cost})
+	_, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: status, Reason: reason, Unattended: state.Unattended, AutoApprove: state.AutoApprove, Judge: state.Judge, Cost: state.Cost, Sandbox: state.Sandbox})
 	d.mu.Lock()
 	d.state.Status = status
 	d.state.Reason = reason

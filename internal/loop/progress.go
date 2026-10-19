@@ -33,6 +33,29 @@ type turnProgress struct {
 	failures []failure       // failed calls within the last stallWindow responses
 	polls    int             // consecutive reads of a command that was still running
 	screens  int             // consecutive calls that drove a terminal
+	// warnRepeats makes the same call run repeats times in a row a warning
+	// to the model rather than a stop (sandbox mode, ADR 54).
+	warnRepeats bool
+	// warned is, under warnRepeats, how many times in a row the call observed
+	// last has run when that is a multiple of repeats, else 0: its result
+	// then carries repeatNote(warned).
+	warned int
+}
+
+// repeats is how many runs in a row of the same call end the turn. In
+// sandbox mode (ADR 54, amended 2026-10-19) they do not: the result of every
+// repeats-th run says so to the model and the turn goes on. A run there is
+// bounded by its wall-clock and tool-call budgets, and waiting on a long job
+// with one command is legitimate: a task that trained a model in the
+// background for about fifty minutes polled its log with the same command
+// line (sleep, tail, date), and the stop ended the whole run at minute 52 of
+// 57, before the training had finished.
+const repeats = 4
+
+// repeatNote is what, in sandbox mode, the result of a call that has run n
+// times in a row says to the model after the call's own output.
+func repeatNote(n int) string {
+	return fmt.Sprintf("[this exact call has now run %d times in a row; if you are waiting on something, that is fine; otherwise look at what the results show before running it again]", n)
 }
 
 // pollLimit is how many reads of a command that is still running, with
@@ -87,8 +110,9 @@ type toolOutcome struct{ failed, denied, waiting, terminal bool }
 func (p *turnProgress) response() { p.round++ }
 
 // observe records one completed call and returns why the turn should stop,
-// or "" to go on.
+// or "" to go on; under warnRepeats it sets warned for a call that goes on.
 func (p *turnProgress) observe(call llm.ToolCall, outcome toolOutcome) string {
+	p.warned = 0
 	if outcome.waiting && !outcome.failed {
 		// Waiting for a command is not repeating a call: the polls are
 		// counted on their own, and the repeat count is left as it was.
@@ -137,11 +161,14 @@ func (p *turnProgress) observe(call llm.ToolCall, outcome toolOutcome) string {
 			return reason
 		}
 	}
-	if p.repeated >= 4 {
+	if p.repeated >= repeats && !p.warnRepeats {
 		return "the same tool and arguments ran four times in a row"
 	}
 	if p.errors >= 10 {
 		return "ten consecutive tool calls failed"
+	}
+	if p.warnRepeats && p.repeated%repeats == 0 {
+		p.warned = p.repeated
 	}
 	return ""
 }

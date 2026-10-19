@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,10 +21,16 @@ import (
 
 func shellExec(o Options) *scheme.Prim {
 	files := &outputFiles{}
+	// What a command leaves running in the background is stopped when it
+	// ends, except in sandbox mode, where it keeps running (ADR 54).
+	background := " Whatever the program leaves running in the background is stopped when it ends; a program that keeps running goes to shell-start."
+	if o.Sandbox {
+		background = " Whatever the program starts in the background keeps running after it ends."
+	}
 	// A lean session is shown a long stream as a view with a file behind it
 	// (shellview.go); a full session's stream is cut at the cap, as it was
 	// (ADR 32, amended 2026-10-17).
-	doc := "Run a program with arguments in the repository root (no shell: pass arguments as a list). Returns an alist with status, stdout and stderr; output past the cap keeps its first and last halves, and a command that runs past the time limit is stopped and returns what it printed, with a status that says it timed out. A bash -c command line runs with pipefail, so a pipeline's status is that of its last command that failed. Whatever the program leaves running in the background is stopped when it ends; a program that keeps running goes to shell-start. A python -c program takes newlines, not ;, before a compound statement (class, def, if, for): write several lines, or python - with a heredoc in bash -c. A result carries a note when the command exited 141 (output cut by a downstream command such as head) or read a file and printed nothing (a range past the end of the file)."
+	doc := "Run a program with arguments in the repository root (no shell: pass arguments as a list). Returns an alist with status, stdout and stderr; output past the cap keeps its first and last halves, and a command that runs past the time limit is stopped and returns what it printed, with a status that says it timed out. A bash -c command line runs with pipefail, so a pipeline's status is that of its last command that failed." + background + " A python -c program takes newlines, not ;, before a compound statement (class, def, if, for): write several lines, or python - with a heredoc in bash -c. A result carries a note when the command exited 141 (output cut by a downstream command such as head) or read a file and printed nothing (a range past the end of the file)."
 	if o.Lean {
 		// Generic and short (2026-10-17): what the tool takes and gives back,
 		// and nothing on how to work with it.
@@ -89,13 +96,13 @@ func shellExec(o Options) *scheme.Prim {
 			var runErr error
 			timedOut := false
 			if held {
-				outcome, err := runHolding(c.Ctx, cmd, o.ShellTimeout, o.Procs, outTap, errTap)
+				outcome, err := runHolding(c.Ctx, cmd, o.ShellTimeout, o.Procs, outTap, errTap, o.Sandbox)
 				if outcome.left {
 					return heldResult(o.ShellTimeout, outcome), nil
 				}
 				runErr, timedOut = err, outcome.stopped
 			} else {
-				runErr = runStopping(cmd, outW, errW)
+				runErr = runStopping(cmd, outW, errW, o.Sandbox)
 			}
 			out.finish()
 			errOut.finish()
@@ -170,8 +177,12 @@ func shellExec(o Options) *scheme.Prim {
 // left it running for good (session 20261003T190332Z-547f0bd6). Output goes
 // through pipes this function owns, so Wait returns as soon as the program
 // itself exits rather than when the last holder of its output does.
-func runStopping(cmd *exec.Cmd, stdout, stderr io.Writer) error {
-	run, err := startPiped(cmd, stdout, stderr)
+//
+// With leave, in sandbox mode (ADR 54), what the command left running is
+// not stopped: on a Terminal-Bench task the server the agent starts with
+// `nohup server &` is what the task's tests talk to after the agent is done.
+func runStopping(cmd *exec.Cmd, stdout, stderr io.Writer, leave bool) error {
+	run, err := startPiped(cmd, stdout, stderr, leave)
 	if err != nil {
 		return err
 	}
@@ -186,9 +197,40 @@ type piped struct {
 	cmd        *exec.Cmd
 	outR, errR *os.File
 	copied     chan struct{}
+	// leave is sandbox mode's: end leaves the command's process group
+	// running, and outW and errW, between the pipes and the writers, are cut
+	// from the writers when the call returns (dropping).
+	leave      bool
+	outW, errW *dropping
 }
 
-func startPiped(cmd *exec.Cmd, stdout, stderr io.Writer) (*piped, error) {
+// dropping passes what is written to it on to w until drop, and from then on
+// takes it and keeps nothing. It never fails, so the copy from a pipe that
+// a process left running in the background holds goes on until that process
+// closes it, and its writes never meet a closed pipe while the daemon runs.
+type dropping struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (d *dropping) Write(b []byte) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.w != nil {
+		if _, err := d.w.Write(b); err != nil {
+			d.w = nil
+		}
+	}
+	return len(b), nil
+}
+
+func (d *dropping) drop() {
+	d.mu.Lock()
+	d.w = nil
+	d.mu.Unlock()
+}
+
+func startPiped(cmd *exec.Cmd, stdout, stderr io.Writer, leave bool) (*piped, error) {
 	outR, outW, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -208,15 +250,23 @@ func startPiped(cmd *exec.Cmd, stdout, stderr io.Writer) (*piped, error) {
 		errR.Close()
 		return nil, err
 	}
-	copied := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(stdout, outR); copied <- struct{}{} }()
-	go func() { _, _ = io.Copy(stderr, errR); copied <- struct{}{} }()
-	return &piped{cmd: cmd, outR: outR, errR: errR, copied: copied}, nil
+	p := &piped{cmd: cmd, outR: outR, errR: errR, copied: make(chan struct{}, 2), leave: leave}
+	if leave {
+		p.outW, p.errW = &dropping{w: stdout}, &dropping{w: stderr}
+		stdout, stderr = p.outW, p.errW
+	}
+	go func() { _, _ = io.Copy(stdout, outR); p.copied <- struct{}{} }()
+	go func() { _, _ = io.Copy(stderr, errR); p.copied <- struct{}{} }()
+	return p, nil
 }
 
 // end stops whatever the command, which has exited, left running in its
 // process group, and ends the copying of its output.
 func (p *piped) end() {
+	if p.leave {
+		p.release()
+		return
+	}
 	// SIGTERM first, so a program can clean up after itself (the demo
 	// removes its folders).
 	pgid := p.cmd.Process.Pid
@@ -231,6 +281,34 @@ func (p *piped) end() {
 			p.outR.Close()
 			p.errR.Close()
 			<-p.copied
+		}
+	}
+	p.outR.Close()
+	p.errR.Close()
+}
+
+// release is end in sandbox mode (ADR 54): the command has exited and
+// what it left running goes on. Its output is copied until every holder has
+// closed it, or for procSettle, so what a server started in the background
+// prints first (the address it listens on) is part of the result; past
+// that the writers are cut off and the pipes stay open, read and dropped,
+// until the processes holding them end.
+func (p *piped) release() {
+	timeout := time.After(procSettle)
+	for left := 2; left > 0; left-- {
+		select {
+		case <-p.copied:
+		case <-timeout:
+			p.outW.drop()
+			p.errW.drop()
+			go func(copying int) {
+				for ; copying > 0; copying-- {
+					<-p.copied
+				}
+				p.outR.Close()
+				p.errR.Close()
+			}(left)
+			return
 		}
 	}
 	p.outR.Close()
@@ -256,8 +334,8 @@ type holdOutcome struct {
 // as N.exit. A command that cannot be left (the session is closing, a file
 // cannot be made) is stopped at the limit, as every command used to be. An
 // abort stops it at once.
-func runHolding(ctx context.Context, cmd *exec.Cmd, limit time.Duration, ps *Procs, outTap, errTap *outputTap) (holdOutcome, error) {
-	run, err := startPiped(cmd, outTap, errTap)
+func runHolding(ctx context.Context, cmd *exec.Cmd, limit time.Duration, ps *Procs, outTap, errTap *outputTap, leave bool) (holdOutcome, error) {
+	run, err := startPiped(cmd, outTap, errTap, leave)
 	if err != nil {
 		return holdOutcome{}, err
 	}

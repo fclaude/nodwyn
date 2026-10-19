@@ -107,6 +107,19 @@ func IsProtected(rel string) bool {
 	return false
 }
 
+// nodwynFolder reports whether rel, a protected path, is in nodwyn's own
+// folder of the repository, under its name or its former one. Case is
+// ignored, as IsProtected ignores it.
+func nodwynFolder(rel string) bool {
+	rel = strings.ToLower(filepath.ToSlash(filepath.Clean(rel)))
+	for _, p := range []string{".nodwyn/", ".nibb/"} {
+		if strings.HasPrefix(rel, p) || rel+"/" == p {
+			return true
+		}
+	}
+	return false
+}
+
 // ProtectedPaths makes every write to a protected path a security confirm.
 // Those files hold code that later runs with the user's authority — git
 // hooks, CI definitions, the Makefile and scripts, and .nodwyn/init.scm, which
@@ -117,6 +130,11 @@ type ProtectedPaths struct {
 	// Mounts are judged relative to their own folder: a mounted repository's
 	// .git/hooks is as protected as the root's.
 	Mounts []Mount
+	// Sandbox is sandbox mode (ADR 54): the machine is a disposable sandbox
+	// nobody's authority outlives, so of the protected paths only nodwyn's
+	// own folder (.nodwyn/, and .nibb/ until it has moved) still needs a
+	// person; a task's Makefile, scripts/ and .git/ are the task's.
+	Sandbox bool
 }
 
 // Name identifies the checker in the log.
@@ -138,7 +156,7 @@ func (pp ProtectedPaths) Check(_ context.Context, p *scheme.Prim, args []scheme.
 			rel = r
 		}
 	}
-	if !IsProtected(rel) {
+	if !IsProtected(rel) || pp.Sandbox && !nodwynFolder(rel) {
 		return Decision{Verdict: Allow}
 	}
 	return Decision{Verdict: Confirm, Security: true,

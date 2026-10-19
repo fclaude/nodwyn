@@ -386,7 +386,9 @@ never reloads by itself, since a reload loses the replies being written.
 
 `shell-exec` runs a command to completion, and stops whatever it left
 running in the background when it ends (SIGTERM, then SIGKILL two seconds
-later): a server started with `&` does not outlive the call. A `bash -c`
+later): a server started with `&` does not outlive the call. In
+[sandbox mode](#sandbox-mode-a-disposable-machine) it does: what the command
+starts in the background keeps running after the call and the session. A `bash -c`
 command line runs with `pipefail`, so `make test | tail -n 40` reports the
 tests' failure rather than `tail`'s success. In a lean session
 ([unattended runs](#unattended-runs)) a long output is not poured into the
@@ -914,6 +916,79 @@ turns are bounded by `--max-turns` and `--budget-wall`, and its spend by
 tool confirms inside each turn; going on to the next turn still waits for a
 yes at the run checkpoint, from the browser or the terminal client, unless
 the run is `--unattended`.
+
+### Sandbox mode: a disposable machine
+
+A benchmark such as Terminal-Bench gives the agent a task inside a
+container that is thrown away afterwards: configure a server in `/etc`,
+install a package, start a service the task's tests talk to once the agent
+is done. The repository pin refuses all of that, and `shell-exec` stops the
+service when the command that started it returns. For such a machine, and
+only there, say so:
+
+```bash
+nodwyn run --sandbox container --repo /app --task task.md --max-turns 1 --budget-wall 14m
+```
+
+`--sandbox container` declares that the whole machine is the run's
+disposable sandbox (ADR 54). Nothing else turns it on: not config.toml, not
+a repository, not `--yolo`. In it:
+
+- The file tools may read and write any path, and a command may name any
+  path. Still refused: nodwyn's own configuration and data directories, the
+  credential directories (`~/.ssh`, `~/.aws`, `~/.gnupg`, …) and, for the file
+  tools, credential-shaped files (`.env*`, `*.pem`, `id_*`, …), exactly as
+  everywhere else; a command line that names a path in those directories is
+  refused outright, with a message that nothing of it ran. Secrets in what
+  the model reads are redacted as always, and commands get the same scrubbed
+  environment (`PATH`, `HOME`, `LANG`, … and `TMPDIR`), not the machine's
+  other variables.
+- A write to the folder's `Makefile`, `scripts/` or `.git/` goes ahead; only
+  nodwyn's own folder, `.nodwyn/`, still needs a person, so it is refused.
+- Nobody is asked anything: the run is `--yolo --unattended` whether you
+  say so or not, and `--judge` is refused with it.
+- What a command starts in the background (`nohup server &`, `setsid`, a
+  service that daemonises) keeps running when the command returns and when
+  the session ends; the call still returns as soon as the command's own
+  program exits, with what the background process printed in its first
+  second. Its later output is read and dropped while the daemon runs: a
+  server that should outlive the daemon too sends its output to a file. A
+  command still running at `shell-exec`'s limit is the one exception: it is
+  stopped when the session ends, as elsewhere. The scratch directory is kept
+  when the session ends, since such a process has `TMPDIR` set to it.
+- The folder need not be a git repository, and may be any folder, `/` and
+  your home directory included, but nodwyn's or the denylist's directories.
+  The lean prompt names the folder, says the machine is a disposable
+  sandbox whose files are the model's to change, and that relative paths are
+  relative to the folder; the loop never says "No file has changed", since a
+  command may change any file on the machine where neither git nor the file
+  tools look. Without git there are no git tools, no kept passing state and
+  no worktree, as in any folder that is not a repository.
+- The first time a turn ends on the model's word, the model is asked once
+  to check its result as someone who did not watch it work would: whether
+  any part only makes the checks it ran pass (values hard-coded to match an
+  expected output, special cases for the inputs it tried, expected results
+  or fallbacks left in place, checks edited or skipped), and to replace such
+  a part with a real solution, or remove it and say in its answer what does
+  not work. The turn then goes on until the model answers again. A turn a
+  budget or the progress guard stops is not asked, and a resumed run may be
+  asked once more. Each time the log has a note beginning "sandbox finish
+  check:".
+- The same call four times in a row does not stop the turn, as it does
+  elsewhere: waiting on a long job with one command is legitimate, and the
+  run's wall-clock and tool-call budgets bound it. The fourth result, and
+  every fourth after it, tells the model it has run that exact call so many
+  times in a row, and the log has a note beginning "progress warning:". The
+  progress guard's other stops are as elsewhere.
+
+`run.state` records `sandbox`, and a resume is in sandbox mode only when it
+says `--sandbox container` again. The full profile's prompts are not
+changed: they still tell the model that paths stay inside the repository,
+so sandbox mode is meant for the lean loop, an unattended run's default.
+
+Never use it on a machine you keep. The guard then protects only nodwyn's own
+files and your credentials, and anything else on the machine is the
+model's to change.
 
 ### Standing approvals
 

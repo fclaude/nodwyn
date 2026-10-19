@@ -1080,7 +1080,7 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
 
 ## Supervised and unattended run methods
 
-- `run.start {repo, task, wall, max_turns, auto_approve, unattended?, judge?, cost?}` creates a new daemon-owned session
+- `run.start {repo, task, wall, max_turns, auto_approve, unattended?, judge?, cost?, sandbox?}` creates a new daemon-owned session
   and returns `{id, state}`. `wall` is a positive duration; `max_turns` is 1–10000;
   `auto_approve` (required, true or false) answers the run's ordinary tool
   confirms, as `--yolo` does. `unattended` (optional) makes a run nobody
@@ -1090,19 +1090,26 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
   excludes `auto_approve`) has the judge answer ordinary tool confirms; it
   needs a configured judge. `cost` (optional, US dollars) is the run's spend
   limit, replacing `budget.cost_hard`; it is kept on resume, and the turn that
-  reaches it ends with outcome `spend_limit` and the run `limited`. `state`
-  reports the flags. A guard decision
+  reaches it ends with outcome `spend_limit` and the run `limited`.
+  `sandbox` (optional; `"container"` is the only value) is sandbox mode (ADR
+  54): the person declares the machine the run's disposable sandbox, so its
+  tools may reach any path but nodwyn's own directories and credential
+  files, what its commands start in the background keeps running, and the
+  run is unattended and auto-approved whatever `unattended` and
+  `auto_approve` say; it excludes `judge`, and its `repo` may be any existing
+  folder, the whole disk or the home directory too, but nodwyn's or the
+  denylist's directories. `state` reports the flags. A guard decision
   answered by the judge has actor `judge`; one declined because nobody was
   there to ask, actor `unattended`.
 - `run.info {id}` returns task, original deadline, maximum and consumed turns,
   status and reason, and for a run this daemon drives, how it was started
-  (`unattended`, `auto_approve`, `judge`). A saved formerly running run is
+  (`unattended`, `auto_approve`, `judge`, `sandbox`). A saved formerly running run is
   reported paused.
 - `run.stop {id}` cancels the driver and its active turn or checkpoint.
-- `run.resume {id, auto_approve?, unattended?, judge?}` explicitly reopens a stopped run at a recorded turn boundary,
+- `run.resume {id, auto_approve?, unattended?, judge?, sandbox?}` explicitly reopens a stopped run at a recorded turn boundary,
   preserving its original deadline and turn count. No transient grants survive,
   and the flags are never read back from the log: omitted, the run resumes
-  supervised.
+  supervised, and outside sandbox mode.
 
 Run methods are for `nodwyn run`, a batch tool for scripts and benchmarks
 (ADR 35), over local RPC. The browser starts every task as a chat
@@ -1121,7 +1128,7 @@ fields are described by the generated schema. A `turn.end` that is not
 had got to: the plan's marks and next step, the files the file tools wrote,
 the last `shell-exec` and how it ended (read from the log; nothing is run). An unattended run's
 `run.checkpoint` has actor `unattended` and a `reason`, and `run.state`
-records `unattended`, `auto_approve`, `judge` and a run's own `cost`.
+records `unattended`, `auto_approve`, `judge`, `sandbox` and a run's own `cost`.
 `turn.end.outcome` is `completed`, `stopped`, `hard_budget`, `spend_limit`
 (the task's spend limit; no turn follows it), `canceled` or `error`. A
 budget checkpoint on spend has dimension `cost`, its amounts in millionths
