@@ -31,8 +31,18 @@ func runTask(args []string) error {
 	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
 	judge := flags.Bool("judge", false, "the judge answers this run's ordinary confirms instead of a person, allowing a call only when it judges it called for and safe; security confirms are declined; needs a [judge] server whose key is stored")
 	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done or skipped")
+	sandbox := flags.String("sandbox", "", `"container" declares this machine the run's disposable sandbox (ADR 54): its tools may read and write any path but nodwyn's own directories and credential files, what its commands start in the background keeps running, and it implies --yolo and --unattended. Only for a machine that is thrown away after the run`)
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *sandbox != "" {
+		if *sandbox != "container" {
+			return errors.New(`--sandbox takes "container": the machine nodwyn runs on is a disposable container`)
+		}
+		if *judge {
+			return errors.New("--sandbox and --judge exclude each other: a sandbox run answers its ordinary confirms itself, as --yolo does")
+		}
+		*yolo, *unattended = true, true
 	}
 	var params any
 	if command == "start" {
@@ -69,6 +79,10 @@ func runTask(args []string) error {
 		if *cost > 0 {
 			params.(map[string]any)["cost"] = *cost
 		}
+		if *sandbox != "" {
+			params.(map[string]any)["sandbox"] = *sandbox
+			fmt.Fprintln(os.Stderr, "sandbox: this machine is the run's disposable sandbox; its tools may change any file but nodwyn's own and credential files, and what it starts in the background keeps running")
+		}
 		if *yolo {
 			fmt.Fprintf(os.Stderr, "yolo: this run's ordinary confirms are answered yes in %s; denials and security confirms still stop it\n", root)
 		}
@@ -81,17 +95,20 @@ func runTask(args []string) error {
 		}
 		var invalid bool
 		flags.Visit(func(f *flag.Flag) {
-			resumeFlag := command == "resume" && (f.Name == "yolo" || f.Name == "unattended" || f.Name == "judge")
+			resumeFlag := command == "resume" && (f.Name == "yolo" || f.Name == "unattended" || f.Name == "judge" || f.Name == "sandbox")
 			if f.Name != "socket" && !resumeFlag {
 				invalid = true
 			}
 		})
 		if invalid {
-			return errors.New("run status/stop accepts only --socket and a session ID, and resume also --yolo, --judge and --unattended; limits never reset")
+			return errors.New("run status/stop accepts only --socket and a session ID, and resume also --yolo, --judge, --unattended and --sandbox; limits never reset")
 		}
 		if command == "resume" {
 			// How the run goes on is said again at every resume.
 			params = map[string]any{"id": flags.Arg(0), "auto_approve": *yolo, "unattended": *unattended, "judge": *judge}
+			if *sandbox != "" {
+				params.(map[string]any)["sandbox"] = *sandbox
+			}
 		} else {
 			params = map[string]string{"id": flags.Arg(0)}
 		}
