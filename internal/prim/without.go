@@ -415,7 +415,9 @@ func execCheck(parent context.Context, o Options, name string, args []string, de
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 5 * time.Second
-	err := runStopping(cmd, stdout, stderr)
+	// The harness's own re-run of a check stops what it left, sandbox or not:
+	// the model did not start it.
+	err := runStopping(cmd, stdout, stderr, false)
 	if parent.Err() != nil {
 		return 0, parent.Err()
 	}
