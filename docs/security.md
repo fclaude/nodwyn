@@ -113,7 +113,7 @@ file system opens `.env` for `.ENV`.
 
 ## Sandbox mode
 
-`nodwyn run --sandbox container` (ADR 54) is the person's declaration that
+`nodwyn run --sandbox container` (ADR 55) is the person's declaration that
 the machine is a disposable container whose every file is the run's. Only
 that flag turns it on: no configuration key, repository file, Scheme or
 model call can. It changes four checkers and nothing else. The repository

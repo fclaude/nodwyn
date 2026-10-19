@@ -425,7 +425,7 @@ bypass above, and the refusal where a lean session nobody approves may use
 `echo OUT`, `for` over repository files and interpreters, `ls OUT | head`,
 `>&2`. The existing argv trigger tests pass unchanged.
 
-## Amendment 2026-10-18: in sandbox mode only the denylist's directories are outside (ADR 54)
+## Amendment 2026-10-18: in sandbox mode only the denylist's directories are outside (ADR 55)
 
 A run started with `--sandbox container` declares the machine its
 disposable sandbox. There the argv trigger judges a command line's paths

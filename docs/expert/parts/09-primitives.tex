@@ -100,7 +100,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(judge-yes-no state question)}, \code{judge-score}, \code{judge-choice} & ask the task's judge (the model's only at \code{judge.content = "full"}; Chapter~\ref{ch:keys}) \\
 \code{(judge-available?)} & whether the task has a judge now whose key is stored (the plan gate asks it) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
-\code{(sandbox?)} & whether the run is in sandbox mode (\code{nodwyn run --sandbox container}, ADR 54): the machine is its disposable sandbox, every path but nodwyn's own and credential files is the tools', and nobody approves anything; the default loop then asks the model once to check its result (\code{sandbox-finish-message}) \\
+\code{(sandbox?)} & whether the run is in sandbox mode (\code{nodwyn run --sandbox container}, ADR 55): the machine is its disposable sandbox, every path but nodwyn's own and credential files is the tools', and nobody approves anything; the default loop then asks the model once to check its result (\code{sandbox-finish-message}) \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions; the second is also the model's tool \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, as the system prompt carries it \\
 \code{(request-context)} & what the latest request answers: the agent's last answer before it, and the names of the files attached to it (the loop's; Chapter~\ref{ch:turn}) \\

@@ -13,7 +13,7 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
-// run.start with sandbox "container" (ADR 54) starts a run that is
+// run.start with sandbox "container" (ADR 55) starts a run that is
 // unattended and auto-approved without saying so, in a folder a run is
 // otherwise refused, the home directory itself, and records that it is in
 // sandbox mode; a resume is in sandbox mode only when it says so again.

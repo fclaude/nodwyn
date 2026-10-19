@@ -101,7 +101,7 @@ func TestCLIBoundedRun(t *testing.T) {
 	if state.Status != "completed" || state.Turns != 1 || state.Sandbox {
 		t.Fatalf("%+v", state)
 	}
-	// --sandbox container is sandbox mode (ADR 54), which needs neither
+	// --sandbox container is sandbox mode (ADR 55), which needs neither
 	// --yolo nor --unattended said: it is both.
 	if err := json.Unmarshal(invoke("start", "--socket", socket, "--repo", repo, "--task", task, "--budget-wall", "1m", "--max-turns", "1", "--sandbox", "container"), &started); err != nil || started.ID == "" {
 		t.Fatalf("start --sandbox %v %+v", err, started)

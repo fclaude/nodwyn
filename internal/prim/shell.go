@@ -22,7 +22,7 @@ import (
 func shellExec(o Options) *scheme.Prim {
 	files := &outputFiles{}
 	// What a command leaves running in the background is stopped when it
-	// ends, except in sandbox mode, where it keeps running (ADR 54).
+	// ends, except in sandbox mode, where it keeps running (ADR 55).
 	background := " Whatever the program leaves running in the background is stopped when it ends; a program that keeps running goes to shell-start."
 	if o.Sandbox {
 		background = " Whatever the program starts in the background keeps running after it ends."
@@ -178,7 +178,7 @@ func shellExec(o Options) *scheme.Prim {
 // through pipes this function owns, so Wait returns as soon as the program
 // itself exits rather than when the last holder of its output does.
 //
-// With leave, in sandbox mode (ADR 54), what the command left running is
+// With leave, in sandbox mode (ADR 55), what the command left running is
 // not stopped: on a Terminal-Bench task the server the agent starts with
 // `nohup server &` is what the task's tests talk to after the agent is done.
 func runStopping(cmd *exec.Cmd, stdout, stderr io.Writer, leave bool) error {
@@ -287,7 +287,7 @@ func (p *piped) end() {
 	p.errR.Close()
 }
 
-// release is end in sandbox mode (ADR 54): the command has exited and
+// release is end in sandbox mode (ADR 55): the command has exited and
 // what it left running goes on. Its output is copied until every holder has
 // closed it, or for procSettle, so what a server started in the background
 // prints first (the address it listens on) is part of the result; past

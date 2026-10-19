@@ -45,7 +45,7 @@ func (m sandboxMachine) denylist() guard.PathDenylist {
 	return d
 }
 
-// Sandbox mode (ADR 54) lets the file tools reach any path on the machine,
+// Sandbox mode (ADR 55) lets the file tools reach any path on the machine,
 // which the repository pin refuses by default; the credential denylist, a
 // checker of its own, still refuses nodwyn's directories and credential
 // files in either mode.

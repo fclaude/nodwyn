@@ -618,7 +618,7 @@ fails after the change's run failed is the comparison done, and the failing
 run is not told. After `finish-no-change-message` a turn that has run a test
 or check may end unchanged: the code may already do what the request asks,
 and the message says to show it with a check (ADR 32, amended 2026-10-10).
-In sandbox mode (`(sandbox?)`, ADR 54) no turn is told that nothing
+In sandbox mode (`(sandbox?)`, ADR 55) no turn is told that nothing
 changed: the whole machine is the workspace, and a command may change a file
 anywhere on it that neither git nor the file tools see. When such a turn first ends with a change
 and none of those reminders is due, the finish review
@@ -727,7 +727,7 @@ it work would, and to replace what only makes its checks pass with a real
 solution or remove it and say what does not work. It is said once in the
 session (`sandbox-finish-said`), in either profile and under `lean-quiet`
 too, never after a stop or to a turn that is stopping (`turn-stopping`), and
-the log has a note beginning "sandbox finish check:" (ADR 54, amended
+the log has a note beginning "sandbox finish check:" (ADR 55, amended
 2026-10-19).
 When a person reads the turn's answer before anything else happens,
 `(reviewed?)` (a chat's turn, or a supervised run's turn that a run
@@ -857,7 +857,7 @@ call starts the count again, and so does the reminder; 0 turns it off.
 | | |
 |---|---|
 | `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`nodwyn run --yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`). `[approval]` (ADR 35) does not make it true: a chat whose commands the judge answers still has a person to ask |
-| `(sandbox?)` | true in sandbox mode (`nodwyn run --sandbox container`, ADR 54): the machine is the session's disposable sandbox, its tools reach any path but nodwyn's own directories and credential files, and nobody approves anything (`(unattended?)` is true too). The lean prompt says so (§9.8), the default loop does not tell a turn that no file changed, since a command may change any file on the machine, and asks the model once to check its result as someone who did not watch it work would (`sandbox-finish-message`, §9) |
+| `(sandbox?)` | true in sandbox mode (`nodwyn run --sandbox container`, ADR 55): the machine is the session's disposable sandbox, its tools reach any path but nodwyn's own directories and credential files, and nobody approves anything (`(unattended?)` is true too). The lean prompt says so (§9.8), the default loop does not tell a turn that no file changed, since a command may change any file on the machine, and asks the model once to check its result as someone who did not watch it work would (`sandbox-finish-message`, §9) |
 
 A reply's `done` is `"length"` when the model reached the output cap (the
 model's reply cap: its `max_output`, else the longest reply its provider publishes (at most a quarter of its context), else `window.output_reserve`, at most a quarter of a context too small for the window and that reply); the core notes it in the log. What to do is the
@@ -907,7 +907,7 @@ had called them directly. Whatever the strategy does:
   result, and every fourth after it, tells the model so after the tool's
   output (a `fold-result` of it keeps that note after its text; the value
   the strategy reads is the tool's own), and the log has a note beginning
-  "progress warning:" (ADR 54, amended 2026-10-19).
+  "progress warning:" (ADR 55, amended 2026-10-19).
 
 ### 9.1 Prompts
 

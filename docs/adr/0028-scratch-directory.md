@@ -161,7 +161,7 @@ Consequences:
   that kills a child session (`TestResumeAfterProcessKilled`) gives it a
   `TMPDIR` that goes with the test.
 
-## Amendment 2026-10-18: a sandbox session keeps its scratch directory (ADR 54)
+## Amendment 2026-10-18: a sandbox session keeps its scratch directory (ADR 55)
 
 In sandbox mode what a session's commands start in the background keeps
 running after the session, with `TMPDIR` set to its scratch directory, so the

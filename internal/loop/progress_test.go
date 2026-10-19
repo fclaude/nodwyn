@@ -82,7 +82,7 @@ func TestCallIdentity(t *testing.T) {
 	}
 }
 
-// In sandbox mode (warnRepeats, ADR 54) the same call run four times in a
+// In sandbox mode (warnRepeats, ADR 55) the same call run four times in a
 // row is a warning at every fourth run, not a stop, and a different call
 // starts the count again. The other stops are as they were: a denied call
 // retried three times, ten failures in a row, the same call among them.

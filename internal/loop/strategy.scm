@@ -182,7 +182,7 @@
         ((optimize-request? request) (optimize-turn request))
         (else (default-agent-turn request))))
 
-;; The finish check of a run in sandbox mode ((sandbox?), ADR 54, amended
+;; The finish check of a run in sandbox mode ((sandbox?), ADR 55, amended
 ;; 2026-10-19): the first time a turn ends on the model's word (a reply
 ;; without tool calls, no reminder or review due), the model is asked to look
 ;; at its result as someone who did not watch it work would
@@ -1790,7 +1790,7 @@
                                     (git-shows? written before))
                                 edited))
                    (gap (cond ((or turn-stopping review-made) #f)
-                              ;; In sandbox mode (ADR 54) the whole machine is the
+                              ;; In sandbox mode (ADR 55) the whole machine is the
                               ;; workspace: neither git nor the file tools see what a
                               ;; command changed outside the root (a config in /etc, a
                               ;; package), so nothing says that no file changed.

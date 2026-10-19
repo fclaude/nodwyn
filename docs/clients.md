@@ -213,7 +213,7 @@ in with the person's passkey after a touch of it (ADR 30, amended
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
 | Start, stop, resume a run | shows a run and **Stop** aborts it; starts none (ADR 35) | follows a run and answers its checkpoint | — | `nodwyn run` |
-| A run in sandbox mode, on a disposable machine whose every path but nodwyn's own and credential files is its tools' (`sandbox`, ADR 54) | shows it as the unattended run it is; starts none | follows it | — | `nodwyn run --sandbox container`, and again at `resume` |
+| A run in sandbox mode, on a disposable machine whose every path but nodwyn's own and credential files is its tools' (`sandbox`, ADR 55) | shows it as the unattended run it is; starts none | follows it | — | `nodwyn run --sandbox container`, and again at `resume` |
 
 ## Not built, in the order proposed
 

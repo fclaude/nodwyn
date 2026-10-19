@@ -504,14 +504,14 @@ requires positive turn limits. The choice is a `session.limits` record,
 kept on resume. A paired device can neither make the choice nor change it.
 Runs keep theirs: `session.limits.set` is refused during a run.
 
-## Amendment 2026-10-18: a sandbox run is unattended and auto-approved (ADR 54)
+## Amendment 2026-10-18: a sandbox run is unattended and auto-approved (ADR 55)
 
 `run.start` and `run.resume` take `sandbox: "container"`, which makes the
 run unattended and auto-approved whatever `unattended` and `auto_approve`
 say, and excludes `judge`; `run.state` records `sandbox`. Like the other
 flags it is never read back from the log: a resume says it again.
 
-## Amendment 2026-10-19: in sandbox mode the same call warns (ADR 54)
+## Amendment 2026-10-19: in sandbox mode the same call warns (ADR 55)
 
 In a run in sandbox mode the same tool and arguments four times in a row no
 longer end the turn: the fourth result, and every fourth after it, tells
@@ -520,4 +520,4 @@ the model so after the tool's output, the log records a note beginning
 training job with one command line was stopped before the job finished,
 and such a run is bounded by its wall-clock and tool-call budgets. The
 guard's other stops, and this one in every other session, are unchanged
-(ADR 54, amended 2026-10-19).
+(ADR 55, amended 2026-10-19).

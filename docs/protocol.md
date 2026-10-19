@@ -1092,7 +1092,7 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
   limit, replacing `budget.cost_hard`; it is kept on resume, and the turn that
   reaches it ends with outcome `spend_limit` and the run `limited`.
   `sandbox` (optional; `"container"` is the only value) is sandbox mode (ADR
-  54): the person declares the machine the run's disposable sandbox, so its
+  55): the person declares the machine the run's disposable sandbox, so its
   tools may reach any path but nodwyn's own directories and credential
   files, what its commands start in the background keeps running, and the
   run is unattended and auto-approved whatever `unattended` and

@@ -82,7 +82,7 @@ type RepoPin struct {
 	// Mounts are the workspace's folders outside the root (ADR 22 §1),
 	// reached by absolute path. A read-only mount refuses every write.
 	Mounts []Mount
-	// Sandbox is sandbox mode (ADR 54): a run started with --sandbox
+	// Sandbox is sandbox mode (ADR 55): a run started with --sandbox
 	// container declares the whole machine its disposable sandbox, so every
 	// path is inside. The credential denylist, a checker of its own, still
 	// refuses nodwyn's directories and credential files. False, the default,
@@ -353,7 +353,7 @@ type ArgvTrigger struct {
 	Temp     string   // the system's /tmp, resolved, for a lean session nobody approves (TempDir); "" for none
 	Network  []string // program names
 	Patterns []string // substrings of the joined command line
-	// Sandbox, set in sandbox mode (ADR 54), is the session's credential
+	// Sandbox, set in sandbox mode (ADR 55), is the session's credential
 	// denylist: the machine is the session's disposable sandbox, so a path
 	// on the command line is outside only in the directories the denylist
 	// keeps off limits (nodwyn's own configuration and data, ~/.ssh and the

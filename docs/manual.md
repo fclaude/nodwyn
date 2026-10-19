@@ -931,7 +931,7 @@ nodwyn run --sandbox container --repo /app --task task.md --max-turns 1 --budget
 ```
 
 `--sandbox container` declares that the whole machine is the run's
-disposable sandbox (ADR 54). Nothing else turns it on: not config.toml, not
+disposable sandbox (ADR 55). Nothing else turns it on: not config.toml, not
 a repository, not `--yolo`. In it:
 
 - The file tools may read and write any path, and a command may name any

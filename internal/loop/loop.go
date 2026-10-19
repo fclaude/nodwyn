@@ -91,7 +91,7 @@ type Config struct {
 	Root string
 	// Profile is ProfileLean or ProfileFull; empty is lean.
 	Profile string
-	// Sandbox is sandbox mode (ADR 54): the progress guard warns the model
+	// Sandbox is sandbox mode (ADR 55): the progress guard warns the model
 	// of the same call run four times in a row instead of ending the turn.
 	Sandbox bool
 }

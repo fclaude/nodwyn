@@ -130,7 +130,7 @@ type ProtectedPaths struct {
 	// Mounts are judged relative to their own folder: a mounted repository's
 	// .git/hooks is as protected as the root's.
 	Mounts []Mount
-	// Sandbox is sandbox mode (ADR 54): the machine is a disposable sandbox
+	// Sandbox is sandbox mode (ADR 55): the machine is a disposable sandbox
 	// nobody's authority outlives, so of the protected paths only nodwyn's
 	// own folder (.nodwyn/, and .nibb/ until it has moved) still needs a
 	// person; a task's Makefile, scripts/ and .git/ are the task's.

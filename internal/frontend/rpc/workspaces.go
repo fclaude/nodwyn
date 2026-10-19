@@ -537,7 +537,7 @@ func (s *server) folder(name, path string) *rpcError {
 	return nil
 }
 
-// sandboxFolder is folder for a run in sandbox mode (ADR 54), whose person
+// sandboxFolder is folder for a run in sandbox mode (ADR 55), whose person
 // declared the whole machine its disposable sandbox: there the folder is
 // only where relative paths point, so it may be the whole disk, the home
 // directory, or one holding nodwyn's or the denylist's directories, which the

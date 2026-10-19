@@ -46,7 +46,7 @@ type State struct {
 	// budget.cost_hard for its session; 0 keeps the configured one. A
 	// resume keeps it, as it keeps the deadline: it only limits.
 	Cost float64 `json:"cost,omitempty"`
-	// Sandbox: the run is in sandbox mode (ADR 54), which makes it
+	// Sandbox: the run is in sandbox mode (ADR 55), which makes it
 	// unattended and auto-approved too. Not restored from the log either.
 	Sandbox bool `json:"sandbox,omitempty"`
 }

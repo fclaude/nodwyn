@@ -1,4 +1,4 @@
-# ADR 0054: Sandbox mode, a run on a disposable machine
+# ADR 0055: Sandbox mode, a run on a disposable machine
 
 - Status: accepted; implemented 2026-10-18; amended 2026-10-19 (a finish
   check, and a repeated call warns). Amends 17 (the argv trigger), 18

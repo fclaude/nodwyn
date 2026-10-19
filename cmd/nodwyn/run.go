@@ -31,7 +31,7 @@ func runTask(args []string) error {
 	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
 	judge := flags.Bool("judge", false, "the judge answers this run's ordinary confirms instead of a person, allowing a call only when it judges it called for and safe; security confirms are declined; needs a [judge] server whose key is stored")
 	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done or skipped")
-	sandbox := flags.String("sandbox", "", `"container" declares this machine the run's disposable sandbox (ADR 54): its tools may read and write any path but nodwyn's own directories and credential files, what its commands start in the background keeps running, and it implies --yolo and --unattended. Only for a machine that is thrown away after the run`)
+	sandbox := flags.String("sandbox", "", `"container" declares this machine the run's disposable sandbox (ADR 55): its tools may read and write any path but nodwyn's own directories and credential files, what its commands start in the background keeps running, and it implies --yolo and --unattended. Only for a machine that is thrown away after the run`)
 	if err := flags.Parse(args); err != nil {
 		return err
 	}

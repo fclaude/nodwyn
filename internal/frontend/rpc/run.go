@@ -28,7 +28,7 @@ type runParams struct {
 	// replaces budget.cost_hard. Omitted, the configured one applies.
 	Cost float64 `json:"cost,omitempty"`
 	// Sandbox "container" declares the machine the run's disposable
-	// sandbox (ADR 54): the guard lets its tools reach any path but
+	// sandbox (ADR 55): the guard lets its tools reach any path but
 	// nodwyn's own directories and credential files, what its commands
 	// start in the background keeps running, and it is unattended and
 	// auto-approved. Omitted, the run is pinned to its folder as any other.
@@ -196,7 +196,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 }
 
 // sandboxMode reads a run's sandbox parameter: "container" is sandbox mode
-// (ADR 54), "" none, and anything else, or sandbox mode with the judge,
+// (ADR 55), "" none, and anything else, or sandbox mode with the judge,
 // which it excludes as auto_approve does, is refused.
 func sandboxMode(value string, judge bool) (bool, *rpcError) {
 	switch value {

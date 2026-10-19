@@ -607,7 +607,7 @@ type RunState struct {
 	// Cost: the run's spend limit in US dollars, when it set its own.
 	Cost float64 `json:"cost,omitempty"`
 	// Sandbox: the run declared the machine its disposable sandbox
-	// (--sandbox container, ADR 54), which also makes it unattended and
+	// (--sandbox container, ADR 55), which also makes it unattended and
 	// auto-approved. Like those it is said again at each resume.
 	Sandbox bool `json:"sandbox,omitempty"`
 }

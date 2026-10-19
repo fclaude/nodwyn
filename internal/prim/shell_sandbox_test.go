@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// In sandbox mode (ADR 54) what a command starts in the background keeps
+// In sandbox mode (ADR 55) what a command starts in the background keeps
 // running after the command returns, and after the session ends: on a
 // Terminal-Bench task the server the agent starts with `nohup server &` is
 // what the task's tests talk to once the agent is done. The call still

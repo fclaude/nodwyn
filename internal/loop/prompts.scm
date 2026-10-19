@@ -57,7 +57,7 @@
 ;; and a nudge that moved behaviour from 3% to 61% (git log -S) moved the
 ;; score not at all, at 13% more cost. A sentence about a tool is said only
 ;; when the tool is offered (ADR 32, amended 2026-10-17).
-;; In sandbox mode ((sandbox?), ADR 54) the folder is a disposable machine's
+;; In sandbox mode ((sandbox?), ADR 55) the folder is a disposable machine's
 ;; working directory, often no repository, and every path on the machine is
 ;; the tools': the first two sentences say so, where the repository's would
 ;; tell the model its paths stop at the root, which they do not there.

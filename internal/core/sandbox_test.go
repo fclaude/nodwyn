@@ -15,7 +15,7 @@ import (
 
 func sandboxOptions(o *Options) { o.Sandbox = true }
 
-// A session in sandbox mode (ADR 54), as a Terminal-Bench task container
+// A session in sandbox mode (ADR 55), as a Terminal-Bench task container
 // has one: a working directory that is no git repository, a file outside it
 // the task asks to change, and a run nobody watches. Sandbox mode alone
 // makes the session unattended and auto-approved, so it runs the lean loop,
@@ -165,7 +165,7 @@ const sandboxCheck = "Before you finish, check the result as someone who did not
 
 // A turn of a sandbox run that ends on the model's word is asked once to
 // look at its result as someone who did not watch it work would, and may go
-// on working (ADR 54, amended 2026-10-19): twice a sandbox run passed a
+// on working (ADR 55, amended 2026-10-19): twice a sandbox run passed a
 // task's checks with a result shaped to them and did not say so. It is asked
 // in the lean profile, which a sandbox run has unless told otherwise, and in
 // the full one; once in the session, so a later turn is not; with a note in
@@ -226,7 +226,7 @@ func TestASandboxRunIsAskedOnceToCheckItsResult(t *testing.T) {
 }
 
 // In sandbox mode the same call four times in a row warns the model and the
-// turn goes on (ADR 54, amended 2026-10-19): a sandbox run waiting on a long
+// turn goes on (ADR 55, amended 2026-10-19): a sandbox run waiting on a long
 // training job polled its log with one command line, and the progress guard
 // ended the run before the training finished. The fourth result and the
 // eighth say so after the command's output, as the model reads them, and the

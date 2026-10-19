@@ -206,7 +206,7 @@ nodwyn run --sandbox container --task task.txt --repo /app --budget-wall 14m --m
 
 `--sandbox container` (`run.start {sandbox: "container"}`) says the machine
 is a disposable container whose every file is the run's, as a benchmark's
-task container is (ADR 54, [manual](manual.md#sandbox-mode-a-disposable-machine)).
+task container is (ADR 55, [manual](manual.md#sandbox-mode-a-disposable-machine)).
 The run is unattended and `--yolo` without saying so, and excludes
 `--judge`; its tools may reach any path but nodwyn's own directories and
 credential files; what its commands start in the background keeps running

@@ -3014,7 +3014,7 @@ check was said and what the model did after it.
 
 ## Amendment 2026-10-18: the lean loop in sandbox mode
 
-ADR 54 adds sandbox mode, a run on a disposable machine such as a
+ADR 55 adds sandbox mode, a run on a disposable machine such as a
 Terminal-Bench task container, where the folder is often no repository and
 every path but nodwyn's own and credential files is the tools'. Two things
 the lean loop says were false there, and are said differently only there,
@@ -3041,7 +3041,7 @@ as they were, as `TestASandboxSessionChangesFilesOutsideItsFolder` and
   has changed" after nearly every such turn, falsely, and cost a request.
   In sandbox mode it is not said, in either profile.
 
-`shell-exec`'s behaviour changes too (ADR 54 §4): in sandbox mode what a
+`shell-exec`'s behaviour changes too (ADR 55 §4): in sandbox mode what a
 command starts in the background keeps running. The lean description never
 spoke of background processes and is unchanged; the full one says so.
 
@@ -3050,7 +3050,7 @@ the repository; sandbox mode is meant for the lean loop.
 
 ## Amendment 2026-10-19: a sandbox run's finish check
 
-In sandbox mode only (`(sandbox?)`, ADR 54), the default loop says one more
+In sandbox mode only (`(sandbox?)`, ADR 55), the default loop says one more
 thing as a turn ends: the first time a turn of the session ends on the
 model's word, `sandbox-finish-message` asks the model to check its result as
 someone who did not watch it work would, to replace a part that only makes
@@ -3062,5 +3062,5 @@ loop. It comes from Terminal-Bench
 shaped to them (three pixel values hard-coded; expected pages left in place
 as a fallback behind a deploy hook) and said nothing of it. It is said under
 `lean-quiet` too, in either profile, since it is sandbox mode's and not a
-rung of the lean ladder; no other session hears it. Not yet measured; ADR 54,
+rung of the lean ladder; no other session hears it. Not yet measured; ADR 55,
 amended 2026-10-19, has the rest.

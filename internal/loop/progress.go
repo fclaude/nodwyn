@@ -34,7 +34,7 @@ type turnProgress struct {
 	polls    int             // consecutive reads of a command that was still running
 	screens  int             // consecutive calls that drove a terminal
 	// warnRepeats makes the same call run repeats times in a row a warning
-	// to the model rather than a stop (sandbox mode, ADR 54).
+	// to the model rather than a stop (sandbox mode, ADR 55).
 	warnRepeats bool
 	// warned is, under warnRepeats, how many times in a row the call observed
 	// last has run when that is a multiple of repeats, else 0: its result
@@ -43,7 +43,7 @@ type turnProgress struct {
 }
 
 // repeats is how many runs in a row of the same call end the turn. In
-// sandbox mode (ADR 54, amended 2026-10-19) they do not: the result of every
+// sandbox mode (ADR 55, amended 2026-10-19) they do not: the result of every
 // repeats-th run says so to the model and the turn goes on. A run there is
 // bounded by its wall-clock and tool-call budgets, and waiting on a long job
 // with one command is legitimate: a task that trained a model in the

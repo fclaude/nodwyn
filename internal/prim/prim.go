@@ -77,7 +77,7 @@ type Options struct {
 	// refused outright (ADR 32, amended 2026-10-17); "" for none. The core
 	// sets it.
 	Temp string
-	// Sandbox is sandbox mode (ADR 54), which only a run started with
+	// Sandbox is sandbox mode (ADR 55), which only a run started with
 	// --sandbox container is in: the machine is the session's disposable
 	// sandbox. The pin then allows any path, the argv trigger refuses only
 	// paths in the denylist's directories, of the protected paths only

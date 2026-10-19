@@ -88,7 +88,7 @@ type Options struct {
 	// branch of its own, instead of in Repo (ADR 34). The person asks for
 	// it; nothing the model does can.
 	Worktree bool
-	// Sandbox is sandbox mode (ADR 54): the person declares the whole
+	// Sandbox is sandbox mode (ADR 55): the person declares the whole
 	// machine the session's disposable sandbox, as a benchmark's task
 	// container is (nodwyn run --sandbox container). The guard then lets
 	// the tools reach any path but nodwyn's own directories and credential

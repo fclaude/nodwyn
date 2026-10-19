@@ -42,7 +42,7 @@ func (s *Session) registerPlanRequired() error {
 		{
 			Name: "sandbox?",
 			Meta: scheme.Meta{
-				Doc:    "True in sandbox mode (nodwyn run --sandbox container, ADR 54): the machine is the session's disposable sandbox, every path but nodwyn's own directories and credential files is the tools', and nobody approves anything. The lean prompt says so, the default loop does not tell a turn that no file changed, since a command may change any file on the machine, and it asks the model once to check its result as someone who did not watch it work would (sandbox-finish-message).",
+				Doc:    "True in sandbox mode (nodwyn run --sandbox container, ADR 55): the machine is the session's disposable sandbox, every path but nodwyn's own directories and credential files is the tools', and nobody approves anything. The lean prompt says so, the default loop does not tell a turn that no file changed, since a command may change any file on the machine, and it asks the model once to check its result as someone who did not watch it work would (sandbox-finish-message).",
 				Hidden: true,
 				Origin: "builtin",
 			},
