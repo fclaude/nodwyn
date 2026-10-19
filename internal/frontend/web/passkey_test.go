@@ -549,10 +549,11 @@ func TestThisComputersCookieMakesNoPasskey(t *testing.T) {
 			}
 		}
 	}
-	// open is a console's socket, as a browser at host opens it with cookie.
-	open := func(host, cookie string) *websocket.Conn {
+	// open is a console's socket, as a browser at host opens it with header
+	// (a device's cookie, or this computer's token).
+	open := func(host string, header http.Header) *websocket.Conn {
 		t.Helper()
-		header := http.Header{"Origin": {b.scheme(host) + "://" + host}, "Cookie": {cookie}}
+		header.Set("Origin", b.scheme(host)+"://"+host)
 		conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header, Host: host})
 		if err != nil {
 			t.Fatal(err)
@@ -575,9 +576,8 @@ func TestThisComputersCookieMakesNoPasskey(t *testing.T) {
 		return at, at.post("/passkey/register", body)
 	}
 
-	// The cookie a server on loopback was sent: it may review the project,
-	// and not trust it.
-	computer := open(b.local, b.cookieName()+"="+testSession)
+	// This computer's console may review the project, and not trust it.
+	computer := open(b.local, http.Header{"Authorization": {"Bearer " + testSession}})
 	if _, rerr := call(computer, "workspace.save", map[string]any{"path": repo, "name": "work", "mounts": []any{}}); rerr != nil {
 		t.Fatal(rerr)
 	}
@@ -603,7 +603,7 @@ func TestThisComputersCookieMakesNoPasskey(t *testing.T) {
 		evil, w := register(made.Code, "evil", newAuthenticator(t))
 		granted := false
 		if w.Code == http.StatusOK {
-			_, rerr := call(open("desk.example", deviceCookie+"="+evil.cookies[0].Value), "trust.set", map[string]any{"repo": repo, "revision": review.Revision})
+			_, rerr := call(open("desk.example", http.Header{"Cookie": {deviceCookie + "=" + evil.cookies[0].Value}}), "trust.set", map[string]any{"repo": repo, "revision": review.Revision})
 			granted = rerr == nil && trusted()
 		}
 		t.Fatalf("this computer's cookie made an invitation that registers a passkey: registering one of its own: %d %s; then trusting the project as that device: %v", w.Code, strings.TrimSpace(w.Body.String()), granted)
@@ -649,7 +649,7 @@ func TestThisComputersCookieMakesNoPasskey(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("the terminal's invitation: %d %s", w.Code, w.Body)
 	}
-	if _, rerr := call(open("desk.example", deviceCookie+"="+laptop.cookies[0].Value), "trust.set", map[string]any{"repo": repo, "revision": review.Revision}); rerr != nil || !trusted() {
+	if _, rerr := call(open("desk.example", http.Header{"Cookie": {deviceCookie + "=" + laptop.cookies[0].Value}}), "trust.set", map[string]any{"repo": repo, "revision": review.Revision}); rerr != nil || !trusted() {
 		t.Fatalf("the person's device trusting the project: %+v", rerr)
 	}
 }

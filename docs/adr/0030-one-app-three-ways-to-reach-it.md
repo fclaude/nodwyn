@@ -654,7 +654,7 @@ Considered and not chosen:
   the first registration wins, so a server on loopback could still be first.
 - **No invitations from this computer at all.** A device that only answers
   can do what the cookie already does while the console runs, but it lasts
-  after the console stops; see what remains below.
+  after the console stops; the next amendment closes that another way.
 - **A check in the daemon.** The passkey's tier is the bridge's alone:
   `refuseDevice` in `internal/frontend/rpc/peer.go` refuses only a client
   that claims a device and no passkey. A check there would not have stopped
@@ -666,11 +666,10 @@ Considered and not chosen:
   console to claim itself (its connection claims nothing, as a terminal's
   does) and would repeat the bridge's `tierPasskey`. Not built.
 
-What remains: this computer's cookie still does the rest of setup until the
-console stops, and an invitation it makes pairs a device that answers, for
-as long as that device is used. A server on loopback that the browser
-visits can do both. Closing that needs a host name of the console's own
-(amended 2026-10-16), still not built.
+What remained, that a server on loopback the browser visited could take
+this computer's cookie and with it do the rest of setup and pair a device
+that answers, is closed by the next amendment: this computer's sign-in is no
+cookie.
 
 Checks: `TestThisComputersCookieMakesNoPasskey` in `internal/frontend/web`
 walks the chain over the console's socket and a real daemon (on HEAD the
@@ -680,3 +679,74 @@ terminal's invitation still makes the person's device, which trusts the
 project), and the `remote` browser check, where this computer's own page,
 opened by the launch with its ticket, asks for a plain invitation and the
 device that uses it at `desk.localhost` is paired without a passkey.
+
+## Amendment 2026-10-19: this computer's sign-in is no cookie
+
+The amendment of 2026-10-16 made this computer's cookie the run's session,
+and said that closing what remained needed a host name of the console's own,
+not built. What remained was more than using this console until it stops.
+The bridge lets this computer's console call every method but `session.eval`
+and the passkey's, and the daemon refuses its choices only to a paired
+device. So a server on loopback that the browser visited (a task's dev
+server, a container's published port, another account's process), having
+read the cookie, could open a task and answer its shell approval or turn on
+"don't ask", point a task's model at a server of its own, make a schedule or
+a workflow that runs after the console stops, and pair a device that answers.
+Refusing or bounding this console's invitations would have closed one lasting
+route of many.
+
+1. **The page keeps this computer's sign-in.** Pairing with the code or the
+   launch ticket answers with the run's session in its body (`{"session":
+   ...}`) and sets no cookie. The page keeps it in `localStorage` for the
+   console's origin (`nodwyn.session`). The origin includes the port, so a
+   page of another port or name cannot read it, and the browser sends it
+   nowhere by itself. The page sends it in the `Authorization: Bearer` header
+   of `/paired` and `/attach`, and on its socket, where a browser sets no
+   header, as the subprotocol `nodwyn.session.TOKEN` beside `nodwyn`. The
+   bridge chooses `nodwyn` on every console socket, those opened only to say
+   why they close too, since a browser that offered subprotocols refuses an
+   answer without one. It takes the token only from this computer, as it took
+   the cookie. A page holding an earlier run's token forgets it when
+   `/paired` says the console does not take it, and pairs again. Where
+   storage is unavailable the page keeps the token until it is closed.
+2. **What it gives up.** HttpOnly: script running on the console's origin can
+   read the token. Such script could already drive the socket with the
+   cookie, and the console runs only its own scripts (`script-src 'self'`),
+   building session content as text, so little is lost. Safari may clear what
+   a page stored for a site not used for seven days; the token lasts one run
+   of the console anyway, and the page then pairs again.
+3. **Kept.** Passkey invitations (the amendment above) and `trust.set` (ADR
+   45) stay refused to this computer's console. They cost the person a
+   terminal command, and keep any other leak of this computer's sign-in, now
+   or later, from making a lasting person.
+
+Considered and not chosen:
+
+- **A host name of the console's own**, a random `*.localhost`, keeps the
+  cookie but needs every browser and webview to resolve the name. Chromium
+  does, and so did this Mac's resolver when checked on 2026-10-19; older
+  macOS WebKit and Linux WebKitGTK without systemd-resolved or nss-myhostname
+  were not verified, and a launch there would open a page that does not load,
+  saying nothing. It also moves the console's origin, which loses once what
+  the browser kept for it. Storage needs no name.
+- **Refusing or bounding this console's invitations** (none at all, or
+  devices forgotten when the run that let them in stops), for the reason
+  above. A device it invites answers, as one a device invites does.
+
+Not changed: a device's sign-in is still a cookie for the console's names,
+which another HTTP service on the same name receives (amended 2026-09-30);
+the bridge renews it as the device is used and a passkey sign-in sets it.
+Moving it is not built. The pairing code, the launch ticket and the protocol
+are unchanged.
+
+Checks: `TestThisComputersSignInIsNoCookie` in `internal/frontend/web`
+(pairing by code and by ticket answers with the token and sets no cookie; the
+header and the subprotocol are taken, and the bridge chooses `nodwyn`; a
+cookie holding the token, an earlier run's token, the code, and the token from
+another machine are not; on HEAD pairing answered 204 with the cookie). The
+`reconnect` browser check pairs this computer's page with the code, has the
+same browser visit a server on another loopback port, and checks that the
+server was sent no cookie and its page finds no session in its storage, that
+the browser holds no cookie for the console, and that the console loaded again
+is still paired; on HEAD the server was sent the cookie. The other console
+checks pair through the token as they did through the cookie.

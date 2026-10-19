@@ -135,10 +135,12 @@ device in Settings on a device already paired, \emph{and a device name}.
 Over https an invitation from the terminal, or from a device signed in
 with your passkey after a touch of it, also makes a passkey there; your
 other devices then sign in with that passkey, with no invitation. One made
-in this computer's own browser lets in a device that only answers: the
-browser sends that sign-in to every server on loopback it visits, a task's
-dev server among them, and a passkey made with it would outlast the console
-and could trust a project's startup code. A device stays signed
+in this computer's own browser lets in a device that only answers: making the
+person, who may trust a project's startup code, stays with the terminal and
+the passkey. That browser's sign-in is a token its page keeps in the
+browser's storage for the console's origin and sends itself, not a cookie,
+which the browser sent to every server on loopback, a task's dev server among
+them. A device stays signed
 in for as long as it is used, and only 90 days without use sign it out.
 Only hashes of its token and of invitations, and the passkey's public key,
 are stored. Every answer from it is recorded with its name, \code{via

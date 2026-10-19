@@ -1054,10 +1054,10 @@ async function showDevices(node, ctx) {
       toast(`The passkey ${name} signs nothing in from now on.`);
     });
   // An invitation from the person's device may make a passkey on the device
-  // that uses it, after a touch. One from this computer, whose sign-in the
-  // browser sends to every server on this computer it visits, or from a
-  // device that only answers, lets in a device that only answers: the first
-  // passkey comes from nodwyn devices invite (ADR 30, amended 2026-10-19).
+  // that uses it, after a touch. One from this computer or from a device that
+  // only answers lets in a device that only answers: the first passkey comes
+  // from nodwyn devices invite, so that no leak of this computer's sign-in
+  // makes the person (ADR 30, amended 2026-10-19).
   const invite = () =>
     act(async () => {
       const made = await conn.call("devices.invite", { passkey: person });
@@ -1137,7 +1137,7 @@ async function showDevices(node, ctx) {
           h("span", { class: "mono" }, "nodwyn devices invite"),
           " on its computer, or Invite a device here. A paired device answers and sends messages. Over https an invitation from ",
           h("span", { class: "mono" }, "nodwyn devices invite"),
-          " or from a device signed in with your passkey also makes a passkey on the device, and a device signed in with one makes this computer's choices too, and changes settings and keys after a touch of it. One made in this computer's browser makes none: the browser sends its sign-in to every server on this computer it visits.",
+          " or from a device signed in with your passkey also makes a passkey on the device, and a device signed in with one makes this computer's choices too, and changes settings and keys after a touch of it. One made in this computer's browser makes none: your first passkey comes from the terminal.",
         ),
       ].filter(Boolean),
     );

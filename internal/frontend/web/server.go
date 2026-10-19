@@ -65,10 +65,9 @@ type bridge struct {
 	readOnly     bool
 	ctx          context.Context
 	socket, code string
-	// session is what this computer's paired browser holds in its cookie:
-	// random for each run and good only until it stops, never the pairing
-	// code, which a browser sends to every other server on the loopback
-	// address and which could pair a device for months.
+	// session is what this computer's paired page holds, in its own
+	// storage: random for each run and good only until it stops, never the
+	// pairing code, which could pair a device for months.
 	session string
 	devices *Devices
 	extra   []string
@@ -335,7 +334,37 @@ func (b *bridge) asset(w http.ResponseWriter, r *http.Request) {
 	http.ServeFileFS(w, r, files, name)
 }
 
-func (b *bridge) cookieName() string { return "nodwyn_ui_" + strings.ReplaceAll(b.local, ":", "_") }
+// This computer's page signs in with the run's session (ADR 30, amended
+// 2026-10-19), which it keeps in its origin's storage and sends itself: in
+// the Authorization header of a request, and on its socket, where a browser
+// sets no header, as the subprotocol sessionProtocol followed by the token,
+// beside socketProtocol, which the bridge chooses. A cookie would be sent by
+// the browser to every server on the loopback address, whatever its port,
+// and so to a task's dev server; storage is the origin's, port included.
+const (
+	socketProtocol  = "nodwyn"
+	sessionProtocol = "nodwyn.session."
+)
+
+// accepting is how every console socket is accepted: choosing the console's
+// subprotocol, which a browser that offered one requires of the answer, even
+// a socket opened only to say why it closes.
+var accepting = &websocket.AcceptOptions{Subprotocols: []string{socketProtocol}}
+
+// sessionOf is the token a request of this computer's page carries, or "".
+func sessionOf(r *http.Request) string {
+	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+		return token
+	}
+	for _, offered := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, protocol := range strings.Split(offered, ",") {
+			if token, ok := strings.CutPrefix(strings.TrimSpace(protocol), sessionProtocol); ok {
+				return token
+			}
+		}
+	}
+	return ""
+}
 
 // deviceCookie is shared by every name this console answers to: a device
 // stays paired across restarts, which change the pairing code and port.
@@ -355,8 +384,8 @@ func (b *bridge) authenticated(r *http.Request) (Device, bool) {
 	if b.remote(r) {
 		return Device{}, false
 	}
-	cookie, err := r.Cookie(b.cookieName())
-	return Device{}, err == nil && subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(b.session)) == 1
+	token := sessionOf(r)
+	return Device{}, token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(b.session)) == 1
 }
 
 // signIn gives a device's browser the cookie that holds its token, good for
@@ -473,12 +502,12 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Device pairing is not enabled", http.StatusForbidden)
 		return
 	}
-	// This machine: HttpOnly keeps the capability out of script; strict
-	// origin and host checks protect it from pages on another loopback
-	// port. The browser still sends it to every server on this address, so
-	// it is the run's session, not the code.
-	http.SetCookie(w, &http.Cookie{Name: b.cookieName(), Value: b.session, Path: "/", HttpOnly: true, Secure: b.secure(r.Host), SameSite: http.SameSiteStrictMode})
-	w.WriteHeader(http.StatusNoContent)
+	// This machine: the page that paired keeps the run's session itself
+	// (sessionOf), so no other server on this address is sent it. The
+	// answer is readable only by this console's own pages, since the bridge
+	// allows no other origin.
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"session": b.session})
 }
 
 func readOnly(method string) bool {
@@ -544,13 +573,13 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 		// A refused handshake is all a browser learns of an HTTP error,
 		// which the console reads as "not paired": the socket opens and
 		// closes saying why instead.
-		if conn, err := websocket.Accept(w, r, nil); err == nil {
+		if conn, err := websocket.Accept(w, r, accepting); err == nil {
 			conn.Close(websocket.StatusTryAgainLater, "nodwyn is not running on this computer")
 		}
 		return
 	}
 	defer client.Close()
-	conn, err := websocket.Accept(w, r, nil)
+	conn, err := websocket.Accept(w, r, accepting)
 	if err != nil {
 		return
 	}
@@ -809,7 +838,7 @@ const (
 	tierAnswer              // every paired device: answers and steers
 	tierPerson              // the person's device: this computer's choices
 	tierSetup               // the person's device after a touch: setup and secrets
-	tierPasskey             // the same, and no one else: not this computer's cookie
+	tierPasskey             // the same, and no one else: not this computer's console
 )
 
 // tierOf places a method. Only operations with a complete browser view join
@@ -852,10 +881,11 @@ func (b *bridge) tierOf(method string) tier {
 	case "host.list":
 		return tierPerson
 	// Trusting a project lets its Scheme run as the person: it needs the
-	// passkey, though this computer's own console may do the rest of setup,
-	// since the cookie of that console goes to every server on loopback,
-	// a task's dev server among them (ADR 30, amended 2026-10-16; ADR 45,
-	// amended 2026-10-17). `nodwyn trust` is this computer's way.
+	// passkey, though this computer's own console may do the rest of setup.
+	// That console's sign-in was a cookie every server on loopback was sent
+	// (ADR 45, amended 2026-10-17); it no longer is (ADR 30, amended
+	// 2026-10-19), and the grant stays the passkey's, so that no leak of that
+	// sign-in grants it. `nodwyn trust` is this computer's way.
 	case "trust.set":
 		return tierPasskey
 	// A log is the record of what a session did, devices included (ADR 39).
@@ -874,7 +904,7 @@ func (b *bridge) tierOf(method string) tier {
 	// The console's own methods (deviceMethod). A plain invitation lets in
 	// a device that only answers, so a device may make one; one that may
 	// register a passkey is the person's device's, after a touch, and never
-	// this computer's cookie's (deviceMethod).
+	// this computer's console's (deviceMethod).
 	switch method {
 	// A device may end its own pairing: another nodwyn that unlinks asks it
 	// (ADR 54).
@@ -1047,10 +1077,12 @@ func (b *bridge) deviceMethod(req request, device Device, c caller) (json.RawMes
 		// inviting does. One that may register a passkey makes the device
 		// that uses it the person's, who may trust a project's startup code
 		// (ADR 45), so it is a setup action of the person's device, and not
-		// this computer's: the browser sends this computer's cookie to every
-		// server on loopback, and a passkey made with it would outlast the
-		// console and reach it from wherever the console is reached (ADR 30,
-		// amended 2026-10-19). The terminal makes the first one.
+		// this computer's console's, whose sign-in was a cookie every server
+		// on loopback was sent: a passkey made with it outlasted the console
+		// and reached it from wherever the console is reached (ADR 30,
+		// amended 2026-10-19). The person stays the terminal's to make, and
+		// their passkey's, so that no leak of this computer's sign-in makes
+		// one. The terminal makes the first one.
 		invite := func() (string, time.Time, error) { return b.devices.Invite(by, false) }
 		if p.Passkey {
 			switch {

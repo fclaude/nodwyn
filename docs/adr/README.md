@@ -31,7 +31,7 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC; amended: what the judge is told about a call; what needs a plan, a chat's earlier messages, and looking)
 - [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (amends plan P5; implemented, amended for the judge tools and judged approval)
 - [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (implemented)
-- [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented; amended: a chat-completions model takes images unless it says not; the version store is the repository's own folder)
+- [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented; amended: a chat-completions model takes images unless it says not)
 - [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (implemented: remote servers, and contained ones in podman or docker)
 - [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (implemented, from the console too; W5 builds on it)
 - [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output
@@ -39,7 +39,7 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0027](./0027-models-and-narrowed-contexts.md) — Configured models and narrowed contexts
 - [0028](./0028-scratch-directory.md) — A scratch directory beside the repository (amended: in the data directory, excepted from the denylist; then in the system's temporary directory, outside the protected ones)
 - [0029](./0029-optional-tool-parameters.md) — Optional tool parameters
-- [0030](./0030-one-app-three-ways-to-reach-it.md) — One app, three ways to reach it: desktop, browser, phone (amended: a computer nobody sits at, where devices pair by invitation and the person signs in with a passkey; another nodwyn links as a device, ADR 54; this computer's cookie makes no passkey)
+- [0030](./0030-one-app-three-ways-to-reach-it.md) — One app, three ways to reach it: desktop, browser, phone (amended: a computer nobody sits at, where devices pair by invitation and the person signs in with a passkey; another nodwyn links as a device, ADR 54; this computer's sign-in makes no passkey and is no cookie)
 - [0031](./0031-renamed-to-nodwyn.md) — The project is renamed nodwyn
 - [0032](./0032-working-habits.md) — The default loop works the way pil did (amended 2026-10-17: a lean profile for sessions nobody approves, and a full one; 2026-10-18: the lean prompt carries AGENTS.md, this repository's completeness rules are in its own init.scm, and sandbox mode's lean prompt and no-change reminder)
 - [0033](./0033-go-126-base.md) — Go 1.26 is the base

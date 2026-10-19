@@ -21,6 +21,39 @@ const retryLast = 30000;
 // look open with nobody at the other end.
 const aliveWait = 10000;
 
+// This computer's sign-in is the run's session, which the bridge gives the
+// page that pairs with the launch ticket or the code (ADR 30, amended
+// 2026-10-19). The page keeps it in this origin's storage and sends it
+// itself, in the Authorization header of a request and, since a browser sets
+// no header on a socket, as a subprotocol beside the console's own. Storage is
+// this origin's alone, its port included; a cookie was sent by the browser to
+// every server on the loopback address, a task's dev server among them. A
+// device's browser holds no session: its cookie, for its host name, is its
+// sign-in. Where storage is unavailable the page keeps it until it is closed.
+const sessionKey = "nodwyn.session";
+let unstored = "";
+function session() {
+  try {
+    return localStorage.getItem(sessionKey) || unstored;
+  } catch {
+    return unstored;
+  }
+}
+function keepSession(token) {
+  unstored = token;
+  try {
+    if (token) localStorage.setItem(sessionKey, token);
+    else localStorage.removeItem(sessionKey);
+  } catch {
+    /* kept in the page alone */
+  }
+}
+// signedIn is headers with this computer's sign-in, when the page has one.
+export function signedIn(headers = {}) {
+  const token = session();
+  return token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
+}
+
 export class Connection {
   // host names the linked host this connection reaches, or is "" for this
   // computer.
@@ -123,7 +156,8 @@ export class Connection {
     this.fail("Reconnecting; no operation was retried.");
     this.setState("connecting");
     const scheme = location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(`${scheme}://${location.host}${this.path}`);
+    const token = session();
+    const socket = new WebSocket(`${scheme}://${location.host}${this.path}`, token ? ["nodwyn", `nodwyn.session.${token}`] : []);
     this.socket = socket;
     let opened = false;
     socket.onopen = async () => {
@@ -190,6 +224,8 @@ export class Connection {
       // paired is this computer's connection's to find out.
       if (!opened && !this.host && (await paired()) === false) {
         if (this.socket) return;
+        // A session the console does not take is an earlier run's.
+        keepSession("");
         this.retries = 0;
         this.setState("unpaired");
         return;
@@ -243,7 +279,7 @@ export class Connection {
 // stopped console (tailscale serve) answers with a 5xx.
 async function paired() {
   try {
-    const response = await fetch("/paired", { credentials: "same-origin", cache: "no-store" });
+    const response = await fetch("/paired", { credentials: "same-origin", cache: "no-store", headers: signedIn() });
     if (response.status >= 500) return null;
     return response.ok && (await response.json()).paired === true;
   } catch {
@@ -252,8 +288,8 @@ async function paired() {
 }
 
 // pair exchanges a pairing code (typed), an invitation or a launch ticket
-// (from the URL fragment, which is never sent to a server) for the bridge's
-// cookie.
+// (from the URL fragment, which is never sent to a server) for a sign-in: a
+// device's cookie, or this computer's session, which the page keeps.
 export async function pair(body) {
   const response = await fetch("/pair", {
     method: "POST",
@@ -265,6 +301,7 @@ export async function pair(body) {
     const text = (await response.text()).trim();
     throw new Error(text || "Pairing failed.");
   }
+  if (response.status === 200) keepSession((await response.json()).session || "");
 }
 
 // takeInvite removes an invitation from the address bar and returns it: a

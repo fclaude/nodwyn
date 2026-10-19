@@ -4,6 +4,7 @@
 // An image is not extracted: the daemon asks first whether it may go to the
 // model as it is, and its upload waits for that answer, which arrives as an
 // ordinary confirm in the conversation.
+import { signedIn } from "./connection.js";
 import { h, icon, sizeOf } from "./dom.js";
 
 const MAX = 20 << 20;
@@ -72,7 +73,7 @@ export class Attachments {
         method: "POST",
         body: file,
         credentials: "same-origin",
-        headers: { "Content-Type": "application/octet-stream" },
+        headers: signedIn({ "Content-Type": "application/octet-stream" }),
       });
       const text = await response.text();
       if (!response.ok) throw new Error(`${file.name}: ${text.trim() || response.statusText}`);

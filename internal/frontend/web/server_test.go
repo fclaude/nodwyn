@@ -48,8 +48,8 @@ func TestBrowserAuthorityBoundary(t *testing.T) {
 		{"loopback-origin", "POST", "/pair", "127.0.0.1:34567", "http://127.0.0.1:44444", "same-site", `{"code":"` + testCode + `"}`, 403},
 		{"missing-origin", "POST", "/pair", "127.0.0.1:34567", "", "", `{"code":"` + testCode + `"}`, 403},
 		{"bad-code", "POST", "/pair", "127.0.0.1:34567", "http://127.0.0.1:34567", "same-origin", `{"code":"wrong"}`, 403},
-		{"pair", "POST", "/pair", "127.0.0.1:34567", "http://127.0.0.1:34567", "same-origin", `{"code":"` + testCode + `"}`, 204},
-		{"no-cookie", "GET", "/socket", "127.0.0.1:34567", "http://127.0.0.1:34567", "same-origin", "", 403},
+		{"pair", "POST", "/pair", "127.0.0.1:34567", "http://127.0.0.1:34567", "same-origin", `{"code":"` + testCode + `"}`, 200},
+		{"not-signed-in", "GET", "/socket", "127.0.0.1:34567", "http://127.0.0.1:34567", "same-origin", "", 403},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(tt.method, "http://"+tt.host+tt.path, strings.NewReader(tt.body))
@@ -68,11 +68,10 @@ func TestBrowserAuthorityBoundary(t *testing.T) {
 			if strings.Contains(w.Body.String(), testCode) {
 				t.Fatal("code echoed in body")
 			}
-			if tt.name == "pair" {
-				cookies := w.Result().Cookies()
-				if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode {
-					t.Fatal(cookies)
-				}
+			// The page that paired keeps the run's session itself: no
+			// cookie, which every server on loopback would be sent.
+			if tt.name == "pair" && (len(w.Result().Cookies()) != 0 || !strings.Contains(w.Body.String(), `"session":"`+testSession+`"`)) {
+				t.Fatal(w.Result().Cookies(), w.Body.String())
 			}
 		})
 	}
@@ -129,7 +128,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
-	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+	header := http.Header{"Origin": {server.URL}, "Authorization": {"Bearer " + testSession}}
 	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatal(err)
@@ -245,7 +244,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
-	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+	header := http.Header{"Origin": {server.URL}, "Authorization": {"Bearer " + testSession}}
 	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatal(err)
@@ -534,7 +533,7 @@ func TestLaunchTicketPairsOnceAndExpires(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w := post(`{"ticket":"` + ticket + `"}`); w.Code != http.StatusNoContent || len(w.Result().Cookies()) != 1 {
+	if w := post(`{"ticket":"` + ticket + `"}`); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"session":"`+s.b.session+`"`) {
 		t.Fatalf("first use: %d %s", w.Code, w.Body.String())
 	}
 	if w := post(`{"ticket":"` + ticket + `"}`); w.Code != http.StatusForbidden {
@@ -617,10 +616,11 @@ func TestRemoteDevicesPairByInvitationAndCannotWidenPolicy(t *testing.T) {
 	if device, ok := s.b.authenticated(r); !ok || device.Name != "phone" || device.Passkey != "" || device.By != Terminal {
 		t.Fatalf("device cookie: %+v %v", device, ok)
 	}
-	// The local cookie means nothing from another machine.
-	r.Header.Set("Cookie", s.b.cookieName()+"="+s.b.session)
+	// This computer's token means nothing from another machine.
+	r.Header.Del("Cookie")
+	r.Header.Set("Authorization", "Bearer "+s.b.session)
 	if _, ok := s.b.authenticated(r); ok {
-		t.Fatal("local cookie accepted remotely")
+		t.Fatal("this computer's token accepted remotely")
 	}
 	// Even arriving from loopback with this console's own address (a proxy
 	// that keeps the Host header), a device is remote.
@@ -723,7 +723,7 @@ func TestASharedConsolePairsThisComputerOnlyByTicket(t *testing.T) {
 		t.Fatalf("the code paired this computer on a shared console: %d", w.Code)
 	}
 	ticket, _ := s.Ticket()
-	if w := post(`{"ticket":"` + ticket + `"}`); w.Code != http.StatusNoContent {
+	if w := post(`{"ticket":"` + ticket + `"}`); w.Code != http.StatusOK {
 		t.Fatalf("a launch ticket: %d %s", w.Code, w.Body)
 	}
 	r := httptest.NewRequest("GET", "http://127.0.0.1:7777/pair", nil)
@@ -778,7 +778,7 @@ func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 		req, _ := http.NewRequest("POST", server.URL+"/attach?id="+details.ID+"&name="+name, strings.NewReader(body))
 		req.Header.Set("Origin", server.URL)
 		if cookie {
-			req.Header.Set("Cookie", b.cookieName()+"="+testSession)
+			req.Header.Set("Authorization", "Bearer "+testSession)
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -876,28 +876,87 @@ func TestRevokingADeviceClosesItsOpenConsole(t *testing.T) {
 	}
 }
 
-// Pairing this computer's browser gives it the run's session, not the code:
-// the browser sends the cookie to every server on the loopback address, and
-// the code can pair a device for months. A cookie holding the code is no
-// pairing.
-func TestLocalCookieHoldsTheSessionNotTheCode(t *testing.T) {
-	b := &bridge{ctx: context.Background(), code: testCode, session: testSession}
-	b.listensAt("127.0.0.1:34567")
-	r := httptest.NewRequest("POST", "http://127.0.0.1:34567/pair", strings.NewReader(`{"code":"`+testCode+`"}`))
-	r.RemoteAddr = "127.0.0.1:50000"
-	r.Header.Set("Origin", "http://127.0.0.1:34567")
-	r.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	b.ServeHTTP(w, r)
-	cookies := w.Result().Cookies()
-	if w.Code != 204 || len(cookies) != 1 || cookies[0].Value == testCode || cookies[0].Value != testSession {
-		t.Fatalf("pairing set %d %+v", w.Code, cookies)
+// This computer's page holds its sign-in itself (ADR 30, amended 2026-10-19).
+// Pairing with the code or the launch ticket answers with the run's token and
+// sets no cookie, which the browser sent to every server on the loopback
+// address that it visited; the page sends the token in its requests and among
+// its socket's subprotocols, and the bridge takes it there, from this computer
+// alone. A cookie carrying it, an earlier run's token and the pairing code are
+// no sign-in.
+func TestThisComputersSignInIsNoCookie(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	b := &bridge{ctx: ctx, socket: filepath.Join(t.TempDir(), "no-daemon.sock"), code: testCode, session: testSession, tickets: map[string]time.Time{}}
+	server := httptest.NewUnstartedServer(b)
+	b.listensAt(server.Listener.Addr().String())
+	server.Start()
+	defer server.Close()
+	ticket, err := (&Server{b: b}).Ticket()
+	if err != nil {
+		t.Fatal(err)
 	}
-	r = httptest.NewRequest("GET", "http://127.0.0.1:34567/socket", nil)
-	r.RemoteAddr = "127.0.0.1:50000"
-	r.Header.Set("Cookie", b.cookieName()+"="+testCode)
-	if _, ok := b.authenticated(r); ok {
-		t.Fatal("a cookie holding the pairing code was taken as paired")
+	for _, body := range []string{`{"code":"` + testCode + `"}`, `{"ticket":"` + ticket + `"}`} {
+		r := httptest.NewRequest("POST", "http://"+b.local+"/pair", strings.NewReader(body))
+		r.RemoteAddr = "127.0.0.1:50000"
+		r.Header.Set("Origin", "http://"+b.local)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		b.ServeHTTP(w, r)
+		var paired struct {
+			Session string `json:"session"`
+		}
+		if w.Code != http.StatusOK || len(w.Result().Cookies()) != 0 || json.Unmarshal(w.Body.Bytes(), &paired) != nil || paired.Session != testSession {
+			t.Fatalf("pairing with %s: %d %v %s", body, w.Code, w.Result().Cookies(), w.Body)
+		}
+	}
+	signedIn := func(from string, header http.Header) bool {
+		t.Helper()
+		r := httptest.NewRequest("GET", "http://"+b.local+"/paired", nil)
+		r.RemoteAddr = from
+		for k, v := range header {
+			r.Header[k] = v
+		}
+		w := httptest.NewRecorder()
+		b.ServeHTTP(w, r)
+		return strings.TrimSpace(w.Body.String()) == `{"paired":true}`
+	}
+	here := "127.0.0.1:50000"
+	if !signedIn(here, http.Header{"Authorization": {"Bearer " + testSession}}) || !signedIn(here, http.Header{"Sec-Websocket-Protocol": {"nodwyn, nodwyn.session." + testSession}}) {
+		t.Fatal("the token the page sends is not taken")
+	}
+	for name, header := range map[string]http.Header{
+		"a cookie holding the token": {"Cookie": {"nodwyn_ui_" + strings.ReplaceAll(b.local, ":", "_") + "=" + testSession}},
+		"an earlier run's token":     {"Authorization": {"Bearer test-only-an-earlier-run-000000000000000"}},
+		"the pairing code":           {"Authorization": {"Bearer " + testCode}},
+	} {
+		if signedIn(here, header) {
+			t.Fatalf("%s was taken as this computer's sign-in", name)
+		}
+	}
+	if signedIn("100.64.0.9:50000", http.Header{"Authorization": {"Bearer " + testSession}}) {
+		t.Fatal("this computer's token was taken from another machine")
+	}
+	// A browser's socket: the token among the subprotocols it offers, and
+	// the bridge choosing the console's own. With no daemon it opens, and
+	// closes saying so; without the token it is refused.
+	dial := func(protocols ...string) (*websocket.Conn, error) {
+		conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {server.URL}}, Subprotocols: protocols})
+		return conn, err
+	}
+	conn, err := dial("nodwyn", "nodwyn.session."+testSession)
+	if err != nil {
+		t.Fatalf("the page's socket was refused: %v", err)
+	}
+	defer conn.CloseNow()
+	if conn.Subprotocol() != "nodwyn" {
+		t.Fatalf("the bridge chose the subprotocol %q", conn.Subprotocol())
+	}
+	if _, _, err := conn.Read(ctx); websocket.CloseStatus(err) != websocket.StatusTryAgainLater {
+		t.Fatalf("closed with %v", err)
+	}
+	if conn, err := dial("nodwyn"); err == nil {
+		conn.CloseNow()
+		t.Fatal("a socket without the token was taken")
 	}
 }
 
@@ -912,7 +971,7 @@ func TestSocketSaysTheDaemonIsNotRunning(t *testing.T) {
 	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
-	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+	header := http.Header{"Origin": {server.URL}, "Authorization": {"Bearer " + testSession}}
 	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatalf("the socket was refused: %v", err)
@@ -937,24 +996,24 @@ func TestPairedSaysWhetherTheConsoleTakesThisBrowser(t *testing.T) {
 	b := &bridge{ctx: context.Background(), code: testCode, session: testSession, devices: devices, extra: []string{"desk.test:34567"}}
 	b.listensAt("127.0.0.1:34567")
 	for _, tt := range []struct {
-		name, host, from, cookie, site string
+		name, host, from, header, site string
 		status                         int
 		body                           string
 	}{
-		{"this computer", "127.0.0.1:34567", "127.0.0.1:50000", b.cookieName() + "=" + testSession, "same-origin", 200, `{"paired":true}`},
-		{"an earlier run", "127.0.0.1:34567", "127.0.0.1:50000", b.cookieName() + "=test-only-an-earlier-run-000000000000000", "same-origin", 200, `{"paired":false}`},
+		{"this computer", "127.0.0.1:34567", "127.0.0.1:50000", "Authorization=Bearer " + testSession, "same-origin", 200, `{"paired":true}`},
+		{"an earlier run", "127.0.0.1:34567", "127.0.0.1:50000", "Authorization=Bearer test-only-an-earlier-run-000000000000000", "same-origin", 200, `{"paired":false}`},
 		{"never paired", "127.0.0.1:34567", "127.0.0.1:50000", "", "same-origin", 200, `{"paired":false}`},
-		{"a paired device", "desk.test:34567", "100.101.102.103:50000", deviceCookie + "=" + phone, "same-origin", 200, `{"paired":true}`},
-		{"a revoked device", "desk.test:34567", "100.101.102.103:50000", deviceCookie + "=" + tablet, "same-origin", 200, `{"paired":false}`},
-		{"this computer's cookie from another", "desk.test:34567", "100.101.102.103:50000", b.cookieName() + "=" + testSession, "same-origin", 200, `{"paired":false}`},
-		{"another site", "127.0.0.1:34567", "127.0.0.1:50000", b.cookieName() + "=" + testSession, "cross-site", 403, ""},
+		{"a paired device", "desk.test:34567", "100.101.102.103:50000", "Cookie=" + deviceCookie + "=" + phone, "same-origin", 200, `{"paired":true}`},
+		{"a revoked device", "desk.test:34567", "100.101.102.103:50000", "Cookie=" + deviceCookie + "=" + tablet, "same-origin", 200, `{"paired":false}`},
+		{"this computer's token from another", "desk.test:34567", "100.101.102.103:50000", "Authorization=Bearer " + testSession, "same-origin", 200, `{"paired":false}`},
+		{"another site", "127.0.0.1:34567", "127.0.0.1:50000", "Authorization=Bearer " + testSession, "cross-site", 403, ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest("GET", "http://"+tt.host+"/paired", nil)
 			r.RemoteAddr = tt.from
 			r.Header.Set("Sec-Fetch-Site", tt.site)
-			if tt.cookie != "" {
-				r.Header.Set("Cookie", tt.cookie)
+			if name, value, ok := strings.Cut(tt.header, "="); ok {
+				r.Header.Set(name, value)
 			}
 			w := httptest.NewRecorder()
 			b.ServeHTTP(w, r)
@@ -996,7 +1055,7 @@ func TestASilentConsoleIsPingedAndClosed(t *testing.T) {
 	defer server.Close()
 	open := func() *websocket.Conn {
 		t.Helper()
-		header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+		header := http.Header{"Origin": {server.URL}, "Authorization": {"Bearer " + testSession}}
 		conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 		if err != nil {
 			t.Fatal(err)
@@ -1077,7 +1136,7 @@ func TestASlowCallHoldsUpNothingElse(t *testing.T) {
 	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
-	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+	header := http.Header{"Origin": {server.URL}, "Authorization": {"Bearer " + testSession}}
 	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatal(err)
@@ -1230,7 +1289,7 @@ func TestAnOversizedMessageIsAnsweredNotFatal(t *testing.T) {
 	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
-	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+	header := http.Header{"Origin": {server.URL}, "Authorization": {"Bearer " + testSession}}
 	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatal(err)

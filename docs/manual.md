@@ -470,10 +470,7 @@ monitor and the pager switched off. The status names every changed file; a
 diff leaves out the contents of credential-shaped files.
 Kept versions are the undo for what git cannot give back: before a write,
 nodwyn keeps a file's content unless git has it committed and unchanged
-(`nodwyn versions`, `nodwyn undo`). The store, `.nodwyn/versions`, must be a
-folder of the repository's own: where `.nodwyn`, the store or anything in it
-is a link (a repository can commit one), the write fails, naming the path,
-rather than keep the version wherever the link points.
+(`nodwyn versions`, `nodwyn undo`).
 
 In the console's **Changes** tab, click a filename to expand the latest recorded
 approval preview, with line numbers and addition/deletion counts; long lines
@@ -3030,9 +3027,11 @@ an invitation; open the console's address on your laptop or phone, name the
 device and enter it, and **Connect and make a passkey**. Your other devices
 sign in with that passkey (**Sign in with a passkey**), with no invitation,
 or are invited from Settings › Keys & devices of a device signed in with it.
-An invitation made in a browser on the server itself makes no passkey: that
-browser's sign-in is sent to every server on the server's loopback address
-it visits, so the first passkey always comes from `nodwyn devices invite`.
+An invitation made in a browser on the server itself makes no passkey, so
+the first passkey always comes from `nodwyn devices invite`: making the person
+stays with the terminal and the passkey. That browser's own sign-in is kept by
+the page, in its storage for the console's address, and no other server on
+the computer's loopback address is sent it.
 A device stays signed in for
 as long as it is used, and 90 days without use sign it out; restarting or
 upgrading nodwyn signs nobody out. A device signed in with the passkey makes

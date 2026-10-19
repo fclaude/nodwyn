@@ -28,7 +28,7 @@ func (b *bridge) connectHost(w http.ResponseWriter, r *http.Request, device Devi
 	ctx, cancel := context.WithCancel(b.ctx)
 	defer cancel()
 	refuse := func(code websocket.StatusCode, reason string) {
-		if conn, err := websocket.Accept(w, r, nil); err == nil {
+		if conn, err := websocket.Accept(w, r, accepting); err == nil {
 			conn.Close(code, closeReason(reason))
 		}
 	}
@@ -56,7 +56,7 @@ func (b *bridge) connectHost(w http.ResponseWriter, r *http.Request, device Devi
 		return
 	}
 	defer link.Close()
-	conn, err := websocket.Accept(w, r, nil)
+	conn, err := websocket.Accept(w, r, accepting)
 	if err != nil {
 		return
 	}

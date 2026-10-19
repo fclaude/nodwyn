@@ -156,7 +156,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	// The laptop's console opens a socket for workshop.
 	open := func() *websocket.Conn {
 		t.Helper()
-		header := http.Header{"Origin": {laptopServer.URL}, "Cookie": {laptop.cookieName() + "=" + testSession}}
+		header := http.Header{"Origin": {laptopServer.URL}, "Authorization": {"Bearer " + testSession}}
 		conn, _, err := websocket.Dial(ctx, "ws://"+laptop.local+"/socket?host=workshop", &websocket.DialOptions{HTTPHeader: header})
 		if err != nil {
 			t.Fatal(err)
@@ -223,7 +223,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	}
 	upload, _ := http.NewRequest("POST", laptopServer.URL+"/attach?host=workshop&id="+details.ID+"&name=notes.md", strings.NewReader("# Notes\nhello"))
 	upload.Header.Set("Origin", laptopServer.URL)
-	upload.Header.Set("Cookie", laptop.cookieName()+"="+testSession)
+	upload.Header.Set("Authorization", "Bearer "+testSession)
 	resp, err := http.DefaultClient.Do(upload)
 	if err != nil {
 		t.Fatal(err)

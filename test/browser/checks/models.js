@@ -636,8 +636,10 @@ check(async () => {
 
   // ---------- an effort the model does not take is refused, not dropped ----------
   const refused = await page.evaluate(async (taskId) => {
-    // The console offers no way to ask for it; the daemon refuses it all the same.
-    const socket = new WebSocket(`ws://${location.host}/socket`);
+    // The console offers no way to ask for it; the daemon refuses it all the
+    // same. The socket signs in as the console's does, with the session the
+    // page keeps (ADR 30, amended 2026-10-19).
+    const socket = new WebSocket(`ws://${location.host}/socket`, ["nodwyn", `nodwyn.session.${localStorage.getItem("nodwyn.session")}`]);
     await new Promise((resolve) => (socket.onopen = resolve));
     const ask = (id, method, params) => new Promise((resolve) => {
       socket.onmessage = (m) => { const f = JSON.parse(m.data); if (f.id === id) resolve(f); };

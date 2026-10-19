@@ -350,8 +350,9 @@ their revision; **Trust this revision** sends that revision, after a touch of th
 passkey, and the daemon refuses it if the files changed since; **Revoke trust**
 asks first. Files too large to read whole are not offered. This computer's own
 console and a device paired by invitation can read the state but not grant it
-(this computer's cookie goes to every server on loopback, a task's dev server
-among them): `nodwyn trust` is the way there. Existing tasks must be restarted
+(this computer's sign-in was a cookie every server on loopback was sent, and
+the grant stays the passkey's so that no leak of that sign-in grants it):
+`nodwyn trust` is the way there. Existing tasks must be restarted
 after a grant or a revocation, to load or discard their code and grants.
 
 **The model picker.** Under the message box of the New task window, and under
@@ -715,11 +716,13 @@ synced to the person's other devices, or the one on their phone through the
 browser's QR code. A device paired without one signs in with it from Settings
 › Keys & devices. The person's first passkey comes from `nodwyn devices
 invite`: an invitation made in this computer's own browser lets in a device
-that only answers, as one from such a device does, since the browser sends
-this computer's sign-in to every server on this computer it visits (a task's
-dev server, a container's published port), and a passkey made with it would
-outlast the console, be reached wherever the console is, and could trust a
-project's startup code (ADR 30, amended 2026-10-19). The person's device makes the choices this computer makes:
+that only answers, as one from such a device does. This computer's sign-in was
+a cookie the browser sent to every server on this computer it visited (a
+task's dev server, a container's published port), and a passkey made with it
+outlasted the console, was reached wherever the console is, and could trust a
+project's startup code; the person stays the terminal's and the passkey's to
+make, so that no leak of this computer's sign-in makes one (ADR 30, amended
+2026-10-19). The person's device makes the choices this computer makes:
 a task's model, judge and helpers, its turn limits, its schedule, a key the
 model asks for, unlocking the keychain. To change setup (Settings, providers
 and models, credentials and OAuth sign-in, the keychain's creation and
@@ -822,12 +825,18 @@ also prints a random pairing code for another browser on this computer;
 paste that code into its page. With `--listen` or `--name` it prints none:
 other machines reach that console, which pairs devices by invitation and
 this computer only by the launch ticket (Other devices, above). The code is never put in a URL or session log.
-Keep it in the terminal rather than sharing it. The browser receives an
-HttpOnly, SameSite=Strict session cookie holding a token made for this run,
-never the code; no credential is written to browser local/session storage.
-Browsers send a loopback cookie to every port on that address, so a server on
-another port of 127.0.0.1 that this browser visits receives the token and
-could use this console until it stops; it cannot pair another device.
+Keep it in the terminal rather than sharing it. The page that paired receives
+a token made for this run, never the code, and keeps it in the browser's local
+storage for the console's origin, which a page of another port or name cannot
+read; it sends the token itself, in its requests' `Authorization` header and
+among the subprotocols of its socket, and the console takes it only from this
+computer, until it stops. It is no cookie (ADR 30, amended 2026-10-19):
+browsers send a loopback cookie to every port on that address, so a server on
+another port of 127.0.0.1 that this browser visited, such as a task's dev
+server, received it and could use this console as you. What stays possible is
+script running on the console's own origin, which the console allows only from
+itself (`script-src 'self'`), session content being shown as text. A browser
+whose site data is cleared pairs again with the code or a launch ticket.
 Without `--listen`, restarting the bridge creates a new code and session and
 takes the port it had the last time when that port is free (kept in the
 data directory as `console-port`), so what the console keeps in this browser,
@@ -861,8 +870,9 @@ before applying live events, deduplicating durable sequence numbers. Reloading
 the page reads that prefix again. Statistics includes usage from the recorded
 replies in that history, just as it does for replies delivered live; nested
 shell decisions inside read-style wrappers do not interrupt replay. Browser
-reload retains pairing through the session cookie, and the address keeps the
-task, so the same task opens again.
+reload retains pairing through the session the page keeps (a device's
+through its cookie), and the address keeps the task, so the same task opens
+again.
 
 A connection that drops comes back by itself. The banner over the page says
 it is disconnected and counts down to the next try: a second, then two, four

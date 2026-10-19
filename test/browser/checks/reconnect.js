@@ -8,6 +8,7 @@
 // leaves an always-on computer, and the pages say so and offer Reload.
 const assert = require("assert");
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, shows, until, step, ready, check } = require("../lib");
@@ -142,6 +143,32 @@ check(async () => {
   await computer.click("button[type=submit]");
   await ready(computer);
   step("this computer's browser is paired too");
+
+  // The page keeps that sign-in in its origin's storage and sends it itself
+  // (ADR 30, amended 2026-10-19). A server on another port of the loopback
+  // address that the same browser visits, as a task's dev server would be,
+  // is sent no cookie and finds no session in its own storage; the console,
+  // loaded again, is still paired.
+  const visits = [];
+  const devServer = http.createServer((req, res) => {
+    visits.push(req.headers);
+    res.end("<!doctype html><title>a dev server</title>");
+  });
+  await new Promise((resolve) => devServer.listen(0, "127.0.0.1", resolve));
+  const devPage = await computerContext.newPage();
+  await devPage.goto(`http://127.0.0.1:${devServer.address().port}/`);
+  const found = await devPage.evaluate(() => ({ cookie: document.cookie, session: localStorage.getItem("nodwyn.session") }));
+  await devPage.close();
+  await new Promise((resolve) => devServer.close(resolve));
+  assert.ok(visits.length > 0, "the dev server was not visited");
+  assert.deepStrictEqual(visits.map((h) => h.cookie || ""), visits.map(() => ""), "a server on another loopback port was sent a cookie");
+  assert.deepStrictEqual(found, { cookie: "", session: null }, "a page on another loopback port found this computer's sign-in");
+  assert.deepStrictEqual(await computerContext.cookies(), [], "the browser holds a cookie for this computer's console");
+  assert.match(await computer.evaluate(() => localStorage.getItem("nodwyn.session") || ""), /^[A-Za-z0-9_-]{43}$/, "the console's page keeps no session");
+  await computer.reload();
+  await ready(computer);
+  assert.strictEqual(await computer.$("#pair-code"), null, "the console loaded again asks to pair");
+  step("a server on another loopback port is sent nothing of this computer's sign-in, which the page keeps");
 
   // Both consoles stop and start again. The phone's pairing outlives its;
   // this computer's was for the run that stopped.

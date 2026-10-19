@@ -143,3 +143,6 @@ granted trust (reproduced on 2026-10-19). An invitation that may register a
 passkey now comes from `nodwyn devices invite` or from a device signed in
 with a passkey after a touch, never from this computer's console (ADR 30,
 amended 2026-10-19, which records the chain, the decision and the checks).
+This computer's sign-in is no longer a cookie either (ADR 30, amended
+2026-10-19 a second time). The grant stays the passkey's all the same, so that
+no other leak of that sign-in, now or later, grants trust.
