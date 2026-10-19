@@ -345,17 +345,9 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 	line := strings.Join(argv, " ")
 	var reasons []string
 	security := false
-	for _, tok := range argv {
-		base := filepath.Base(tok)
-		for _, n := range a.Network {
-			if base == n {
-				reasons = append(reasons, "command line uses the network tool "+n)
-			}
-		}
-	}
-	for _, pat := range a.Patterns {
-		if strings.Contains(line, pat) {
-			reasons = append(reasons, "command line matches the hard-trigger pattern "+strings.TrimSpace(pat))
+	note := func(reason string) {
+		if !slices.Contains(reasons, reason) {
+			reasons = append(reasons, reason)
 		}
 	}
 	// A shell's -c line is read word by word (scriptWords), the shell itself
@@ -368,6 +360,38 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			commands = append([]scriptCommand{{words: argv[:2]}}, parsed...)
 		}
 	}
+	// The network tools and the hard-trigger patterns are looked for in the
+	// argv as it is and in each command of a -c line as the shell splits it:
+	// bash -c "curl ..." is one word to the first, and "git  push" matches
+	// no pattern spelled with one space.
+	tools := slices.Clone(argv)
+	texts := []string{line}
+	for _, command := range commands {
+		for i := range programs(command.words) {
+			tools = append(tools, command.words[i])
+		}
+		texts = append(texts, strings.Join(command.words, " "))
+	}
+	for _, tok := range tools {
+		base := filepath.Base(tok)
+		for _, n := range a.Network {
+			if base == n {
+				note("command line uses the network tool " + n)
+			}
+		}
+	}
+	for _, pat := range a.Patterns {
+		for _, text := range texts {
+			if strings.Contains(text, pat) {
+				note("command line matches the hard-trigger pattern " + strings.TrimSpace(pat))
+				break
+			}
+		}
+	}
+	// A command that reads its input for arguments (xargs, a while read
+	// loop) takes as its list what another command of the line prints or
+	// lists, through a pipe, a group or a file.
+	fed := slices.ContainsFunc(commands, func(c scriptCommand) bool { return takesInput(c.words) })
 	var flagged []string
 	// outside asks about tok when it names a path outside the repository
 	// and the scratch directory, unless ok, given the path, lets it be. Each
@@ -378,7 +402,7 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		}
 		for _, part := range strings.Split(a.spelled(tok), "=") {
 			if path := a.outsidePart(part, ok); path != "" {
-				reasons = append(reasons, "command line names a path outside the repository: "+path)
+				note("command line names a path outside the repository: " + path)
 				flagged = append(flagged, path)
 				security = true
 				return
@@ -405,13 +429,24 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 				for _, part := range strings.Split(value, ":") {
 					outside(part, inEnvironment)
 				}
-			case kind == accessNone:
-			case kind == accessNames && !command.sub:
+			case kind == accessPrints && !command.sub && !command.piped && !fed:
+				// What echo prints is text. Taken as arguments (in a
+				// substitution, in a pipe, or by a command that reads its
+				// input for them) it is a path: cat $(echo /etc/hosts),
+				// echo /etc/hosts | xargs cat.
+			case kind == accessNames && !command.sub && !fed:
 				// Names and metadata are shown, never contents. Inside a
-				// substitution they may become another command's
-				// arguments, so there only an environment's may be named.
-			case kind == accessNames || kind == accessReads:
+				// substitution, or before a command that reads them for
+				// arguments (find /etc | xargs cat), they may become
+				// another command's arguments, so there only an
+				// environment's may be named.
+			case kind == accessNames || kind == accessReads || kind == accessPrints:
 				outside(tok, inEnvironment)
+			case kind == accessLoop:
+				// The body takes each word of the list as a path or a
+				// program (for f in /etc/*; do cat $f; done): the
+				// interpreters a loop tries are the ones let through.
+				outside(tok, func(path string) bool { return isSystemBinary(path) || inEnvironment(path) })
 			case kind == accessSource:
 				outside(tok, sourceable)
 			default:

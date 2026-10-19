@@ -230,3 +230,140 @@ func TestArgvTriggerAsksWhatACommandDoesWithAPath(t *testing.T) {
 		t.Errorf("a /tmp path's refusal does not say where a throwaway file goes: %+v", d)
 	}
 }
+
+// What echo and printf print and what a for loop lists are no file access
+// until another command takes them for its arguments (ADR 17, amended
+// 2026-10-19). A path outside the repository is a security confirm that no
+// standing approval, judge or unattended setting answers, and these forms
+// read it all the same: cat $(echo /outside), echo /outside | xargs cat, a
+// for loop over /outside/* with cat $f in its body, find /outside | xargs
+// cat. The listings and prints that stay unasked are the ones nothing reads:
+// echo and printf by themselves, a for loop over the repository's files or
+// over interpreters, ls and find piped to a filter.
+func TestArgvTriggerReadsWhatFeedsAnotherCommand(t *testing.T) {
+	repo, outside, base := t.TempDir(), t.TempDir(), t.TempDir()
+	secret := filepath.Join(outside, "secret")
+	if err := os.WriteFile(secret, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conda := filepath.Join(base, "miniconda3")
+	python := filepath.Join(conda, "envs", "testbed", "bin", "python")
+	for _, dir := range []string{filepath.Join(conda, "conda-meta"), filepath.Join(conda, "envs", "testbed", "conda-meta"), filepath.Dir(python)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(python, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "src", "a.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		"cat $(echo " + secret + ")",
+		"cat $(printf %s " + secret + ")",
+		"cat `echo " + secret + "`",
+		"cat \"$(echo " + secret + ")\"",
+		"cat \"$(ls " + outside + ")\"",
+		"cat \"`echo " + secret + "`\"",
+		"echo \"x: $(printf %s \"" + secret + "\") y\"| xargs",
+		"cat \"$(cat \"$(echo " + secret + ")\")\"",
+		"X=$(echo " + secret + "); cat \"$X\"",
+		"echo " + secret + " | xargs cat",
+		"printf '%s\\n' " + secret + " | xargs cat",
+		"echo " + secret + " |& xargs cat",
+		"echo " + secret + " | while read f; do cat \"$f\"; done",
+		"(echo " + secret + ") | xargs cat",
+		"{ echo " + secret + "; } | xargs cat",
+		"true && echo " + secret + " | sh",
+		"for f in " + outside + "/*; do cat $f; done",
+		"for f in " + secret + "; do cat \"$f\"; done",
+		"for f in " + outside + "/*; do echo $f; done | xargs cat",
+		"find " + outside + " | xargs cat",
+		"ls -d " + outside + "/* | xargs cat",
+		"find " + outside + " -type f | while read f; do cat \"$f\"; done",
+		"echo hi >&" + secret,
+		"echo hi >& " + secret,
+		"echo hi 2>&" + secret,
+		"echo hi >>&" + secret,
+	} {
+		d := argvVerdict(repo, "bash", "-c", line)
+		if d.Verdict != guard.Confirm || !d.Security || !strings.Contains(d.Reason, outside) {
+			t.Errorf("%q was not a security path confirm: %+v", line, d)
+		}
+	}
+	// Where nobody could approve the path (a lean session nobody approves,
+	// which may use /tmp) it is refused outright, as any outside path is.
+	if temp := guard.TempDir(); temp != "" {
+		trigger := guard.DefaultArgvTrigger(repo)
+		trigger.Temp = temp
+		for _, line := range []string{"cat $(echo " + secret + ")", "echo " + secret + " | xargs cat", "for f in " + secret + "; do cat $f; done", "echo hi >&" + secret} {
+			if d := trigger.Check(scheme.WithOrigin(context.Background(), scheme.OriginModel), shellP(), shellArgs("bash", "-c", line)); d.Verdict != guard.Deny {
+				t.Errorf("%q was not refused where nobody approves: %+v", line, d)
+			}
+		}
+	}
+	for _, line := range []string{
+		"echo " + secret,
+		"printf '%s\\n' " + secret + " > notes.txt",
+		"echo hello | tr a-z A-Z",
+		"echo " + python + " | head -n 1",
+		"cat $(echo " + python + ")",
+		"echo \"$(date) in $(pwd)\"",
+		"P=\"$(ls -d " + conda + "/envs/*/bin/python | head -1)\"; \"$P\" -V",
+		"cat \"$(git rev-parse --show-toplevel)/src/a.go\"",
+		"echo \"a (b) $(echo 'c)')\"",
+		"for f in src/*.go; do cat $f; done",
+		"for p in /usr/bin/python3 " + python + "; do echo -n \"$p: \"; $p -V; done",
+		"for p in " + conda + "/envs/*/bin/python; do $p -V; done",
+		"ls " + outside + " | head -n 3",
+		"find " + outside + " -name 'sec*' 2>/dev/null | sort | head",
+		"ls -d " + outside + "/* | wc -l",
+		"echo hi >&2",
+		"python -c 'print(1)' 2>&1 | tail -n 5",
+		"python -c 'print(1)' >&2",
+		"python -c 'print(1)' >&- 2>&-",
+		"echo hi >& notes.txt",
+	} {
+		if d := argvVerdict(repo, "bash", "-c", line); d.Verdict != guard.Allow {
+			t.Errorf("%q asked: %+v", line, d)
+		}
+	}
+}
+
+// The network tools and the hard-trigger patterns are looked for in the
+// commands a -c line holds, as they are in an argv: bash -c "curl ..." named
+// no network tool and "git  push" matched no pattern when the line was read
+// as one word, or as a string with its spaces as they were typed.
+func TestArgvTriggerFindsNetworkToolsAndPatternsInAScript(t *testing.T) {
+	repo := t.TempDir()
+	for _, line := range []string{
+		"curl https://example.com",
+		"cd src && curl -s https://example.com | head",
+		"echo $(wget -qO- https://example.com)",
+		"env FOO=1 ssh host true",
+		"timeout 5 nc -z host 22",
+		"git  push origin main",
+		"git\tpush",
+		"echo ok; git push",
+		"sudo  rm -rf build",
+	} {
+		if d := argvVerdict(repo, "bash", "-c", line); d.Verdict != guard.Confirm || d.Security {
+			t.Errorf("%q was not a plain confirm: %+v", line, d)
+		}
+	}
+	// A tool named in text is no command: a pattern, a message, an argument.
+	for _, line := range []string{
+		"grep -rn curl src",
+		"echo 'use curl here'",
+		"git commit -m 'push it'",
+		"ls curl",
+	} {
+		if d := argvVerdict(repo, "bash", "-c", line); d.Verdict != guard.Allow {
+			t.Errorf("%q asked: %+v", line, d)
+		}
+	}
+}

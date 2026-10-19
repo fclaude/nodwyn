@@ -80,12 +80,25 @@ runs without the question, as a program on `PATH` does, and sed, awk, grep and
 rg scripts or patterns and `git log -L` ranges are not read as paths (ADR 17,
 amended 2026-10-10). What the command does with a path decides the rest: a
 program that only lists names and metadata (`ls`, `find` without actions,
-`stat`, `which`) may name any path, except inside a substitution; one that only
+`stat`, `which`) may name any path, except inside a substitution or in a line
+that reads its input for arguments (`xargs`, `parallel`, `read`); one that only
 reads (`cat`, `grep`, `head`) and `source` may use paths in such an
-environment; a `for` list and what `echo` prints are no file access; and an
-assignment's `:`-separated paths are judged one by one. A command that writes or
+environment; what `echo` and `printf` print is no file access, unless it is in
+a substitution (quoted or not), goes into a pipe or the line has such a reader;
+a `for` list may name only a Python environment's paths and the system's
+binaries, since its body takes each word as a path; and an assignment's
+`:`-separated paths are judged one by one. `>&FILE` is a redirection to FILE,
+as `&>FILE` is; `>&2` and `2>&1` are descriptors. A command that writes or
 runs what it names outside, a read outside an environment and `cd` outside still
-ask. The model may therefore list any folder unasked, names but not contents.
+ask. The model may therefore list any folder unasked, names but not contents
+(ADR 17, amended 2026-10-19). The network tools and the hard-trigger patterns
+are looked for in each command of a `-c` line as well as in the argv, so
+`bash -c "curl …"` and `git  push` ask as `curl` and `git push` do.
+
+The trigger reads words, not code. A path inside an interpreter's program
+(`python3 -c`), in a nested `sh -c` or `eval` string, in a here-document or
+here-string handed to `xargs`, or in a file a command wrote earlier and another
+reads, is not seen.
 
 These checks inspect argv and executable paths, not binary signatures or the
 behaviour of an approved process. Builds and tests execute project code with the

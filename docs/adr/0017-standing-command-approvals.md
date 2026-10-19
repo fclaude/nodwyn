@@ -369,3 +369,58 @@ runs in the repository root, so the path is written relative to it
 (`pathRisk`, `TestAbsoluteRepositoryPathRefusalSaysToWriteItRelative`).
 Nothing else about the decision changes; a path outside the repository gets
 the reason it had.
+
+## Amendment 2026-10-19: what a command prints or lists is a path once another command takes it
+
+The amendment of 2026-10-10 (what a command does with a path) let a `for`
+list and what `echo` and `printf` print be no file access, and let a program
+that lists names (`ls`, `find`) name any path outside a substitution. That
+holds while nothing takes the words for arguments, and a security audit of
+2026-10-19 found six lines that make something do so, each reproduced with
+`argvVerdict` on `038d1d1` where `OUT` is outside the repository: `cat
+$(echo OUT)`, `cat $(printf %s OUT)`, `echo OUT | xargs cat`, `for f in
+OUT/*; do cat $f; done` and `echo hi >&OUT` all got no question, against the
+security confirm that `cat OUT` and `cat $(ls OUT)` got. A path outside is a
+question that neither a standing approval, the judge, "Don't ask" nor `--yolo`
+answers; through these forms it was none, and the model could read `~/.ssh`
+or nodwyn's keychain and config through the shell. The same audit's `cat
+"$(echo OUT)"` was open for the same reason: a substitution inside double
+quotes was text, not a command.
+
+- What `echo` and `printf` print needs no question only when nothing takes it:
+  in a substitution (quoted or not, or backquoted), before a `|` (`|&`
+  included; `||` feeds nothing) or in a line where a command reads its input
+  for arguments (`xargs`, `parallel`, `read`, `mapfile`, `readarray`; the
+  line, not the pipe, since `{ echo OUT; } | xargs cat` and `echo OUT > f;
+  xargs cat < f` are as much a list of paths). Otherwise its words are judged
+  as a read's are: a Python environment's may be named.
+- A names-only program stays unasked outside a substitution, but not in a line
+  with such a reader (`find OUT | xargs cat` lists full paths), where it is
+  judged as in a substitution. `find / -name python3.6 | head` is unchanged.
+- A `for` list is judged: its body uses each word as a path or a program. A
+  Python environment's paths, matched as globs, and the binaries `isSystemBinary`
+  knows (`/usr/bin/python3`) may be listed, which is what the benchmark's loops
+  over interpreters did. A glob that matches nothing is no longer let through.
+- `>&FILE` and `>&` followed by a word are a redirection to that file, as
+  `&>FILE`; only `>&2`, `2>&1` and `>&-` are descriptors.
+- A substitution inside double quotes is a command of its own, `$(…)` or
+  backquoted, and is read as one outside quotes is.
+- The network tools and the hard-trigger patterns are looked for in each
+  command of a `-c` line, the programs wrappers run included, as well as in
+  the argv as before: `bash -c "curl …"` named no tool, and `git  push` matched
+  no pattern spelled with one space. This only adds questions (plain
+  confirms, answered as any is).
+
+Not read, and still open: the trigger reads words, not code. An interpreter's
+program (`python3 -c "open('/etc/hosts')"`), a nested `sh -c` or `eval` string,
+a here-document or here-string handed to `xargs`, a path written to a file one
+command and read by another, and `find OUT | python3 reader.py` name a path the
+words do not spell. The guard is not a sandbox; an operating-system one is the
+answer there.
+
+Evidence: `TestArgvTriggerReadsWhatFeedsAnotherCommand` and
+`TestArgvTriggerFindsNetworkToolsAndPatternsInAScript` fail on `038d1d1` (every
+bypass above, and the refusal where a lean session nobody approves may use
+`/tmp`) and pass with the change; the first also pins what stays unasked:
+`echo OUT`, `for` over repository files and interpreters, `ls OUT | head`,
+`>&2`. The existing argv trigger tests pass unchanged.

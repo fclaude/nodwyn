@@ -22,12 +22,14 @@ import (
 
 // scriptCommand is one simple command of a -c line as the argv trigger reads
 // it: its words, assignments before the program included, the files its
-// redirections name, and whether it runs inside a command substitution,
-// whose output another command may then use as its own arguments.
+// redirections name, whether it runs inside a command substitution, whose
+// output another command may then use as its own arguments, and whether its
+// output goes into a pipe, where the next command may do the same.
 type scriptCommand struct {
 	words   []string
 	targets []string
 	sub     bool
+	piped   bool
 }
 
 var assignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
@@ -102,8 +104,29 @@ func scriptWords(line string) ([]scriptCommand, bool) {
 		case c == '"':
 			j := i + 1
 			for ; j < len(line) && line[j] != '"'; j++ {
-				if line[j] == '\\' && j+1 < len(line) {
+				switch {
+				case line[j] == '\\' && j+1 < len(line):
 					j++
+				case line[j] == '$' && j+1 < len(line) && line[j+1] == '(', line[j] == '`':
+					// The shell runs a substitution inside double quotes
+					// too: "$(ls /etc)" is a command of its own.
+					from := j + 1
+					if line[j] == '$' {
+						from = j + 2
+					}
+					end := substEnd(line, from, line[j] == '`')
+					if end < 0 {
+						return nil, false
+					}
+					inner, ok := scriptWords(line[from:end])
+					if !ok {
+						return nil, false
+					}
+					for _, cmd := range inner {
+						cmd.sub = true
+						out = append(out, cmd)
+					}
+					j = end
 				}
 			}
 			if j >= len(line) {
@@ -163,15 +186,38 @@ func scriptWords(line string) ([]scriptCommand, bool) {
 			for i+1 < len(line) && (line[i+1] == '>' || line[i+1] == '<' || line[i+1] == '|') {
 				i++
 			}
-			if i+1 < len(line) && line[i+1] == '&' { // >&2, 2>&1: a descriptor, not a file
+			if i+1 < len(line) && line[i+1] == '&' {
+				// >&2 and 2>&1 duplicate a descriptor, >&- closes one; any
+				// other word is a file, as after &>: >&/path sends both
+				// streams there.
 				i++
+				fd := false
 				for i+1 < len(line) && strings.IndexByte("0123456789-", line[i+1]) >= 0 {
 					i++
+					fd = true
 				}
-				continue
+				if fd {
+					continue
+				}
 			}
 			target = true
-		case c == '\n' || c == ';' || c == '|' || c == '&' || c == '(' || c == ')' || c == '`':
+		case c == '|':
+			// A pipe feeds the command before it, or the group a ) closed, to
+			// the one after (|& with its error output too); || is an or-list,
+			// which feeds nothing.
+			if i+1 < len(line) && line[i+1] == '|' {
+				i++
+				endCommand()
+				continue
+			}
+			if i+1 < len(line) && line[i+1] == '&' {
+				i++
+			}
+			endCommand()
+			if n := len(out); n > 0 {
+				out[n-1].piped = true
+			}
+		case c == '\n' || c == ';' || c == '&' || c == '(' || c == ')' || c == '`':
 			endCommand()
 			switch {
 			case c == '(':
@@ -194,6 +240,50 @@ func scriptWords(line string) ([]scriptCommand, bool) {
 	}
 	endCommand()
 	return out, true
+}
+
+// substEnd returns the index that closes a substitution whose inside starts
+// at start: the next backquote of a backquoted command (tick), else the
+// matching ) of a $(; -1 when nothing closes it. Quotes and escapes inside a
+// $( are skipped.
+func substEnd(line string, start int, tick bool) int {
+	if tick {
+		for k := start; k < len(line); k++ {
+			switch line[k] {
+			case '\\':
+				k++
+			case '`':
+				return k
+			}
+		}
+		return -1
+	}
+	depth := 1
+	for k := start; k < len(line); k++ {
+		switch line[k] {
+		case '\\':
+			k++
+		case '\'':
+			j := strings.IndexByte(line[k+1:], '\'')
+			if j < 0 {
+				return -1
+			}
+			k += j + 1
+		case '"':
+			for k++; k < len(line) && line[k] != '"'; k++ {
+				if line[k] == '\\' {
+					k++
+				}
+			}
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth == 0 {
+				return k
+			}
+		}
+	}
+	return -1
 }
 
 // wordEnd returns the index of the last character of the word that starts
@@ -351,13 +441,17 @@ var devices = map[string]bool{"/dev/null": true, "/dev/stdin": true, "/dev/stdou
 // find / -name python3.6), activating it (source
 // /opt/miniconda3/etc/profile.d/conda.sh, 89 of them), reading its packages,
 // and for loops over candidate interpreters (ADR 17, amended 2026-10-10:
-// what a command does with a path).
+// what a command does with a path). What these only name or print is not read
+// when nothing takes it for arguments, and something does when it is in a
+// substitution, goes into a pipe or reaches a command that reads its input
+// for them (ADR 17, amended 2026-10-19).
 const (
 	accessAny    = iota // it may read, change or run what it is given
 	accessNames         // names and metadata only
 	accessReads         // contents, read and never changed
 	accessSource        // the file runs in the shell itself
-	accessNone          // no file access: a for loop's list, what echo prints
+	accessPrints        // no file access: what echo prints, unless it is taken as arguments
+	accessLoop          // a for loop's list: the body takes each word as a path or a program
 )
 
 // namesOnly show the names and metadata of what they are given; find is one
@@ -402,10 +496,30 @@ func access(words []string) int {
 		return accessReads
 	case base == "source" || base == ".":
 		return accessSource
-	case base == "for" || base == "echo" || base == "printf":
-		return accessNone
+	case base == "for":
+		return accessLoop
+	case base == "echo" || base == "printf":
+		return accessPrints
 	}
 	return accessAny
+}
+
+// inputTakers turn the lines of their input into arguments of a command, or
+// into the variables a loop's body then uses as paths: what an echo or a find
+// writes before them is a list of the files they act on. A program that opens
+// what its input names in its own code (a script reading its standard input)
+// is out of sight of a reader of words, which only says what a line spells out.
+var inputTakers = map[string]bool{"xargs": true, "parallel": true, "read": true, "mapfile": true, "readarray": true}
+
+// takesInput reports whether the command of words, or a program a wrapper runs
+// in it, is one of inputTakers.
+func takesInput(words []string) bool {
+	for i := range programs(words) {
+		if inputTakers[filepath.Base(words[i])] {
+			return true
+		}
+	}
+	return false
 }
 
 // ShellCommands is the simple commands a command line runs, each as its
