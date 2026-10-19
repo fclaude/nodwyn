@@ -160,3 +160,11 @@ Consequences:
 - Tests that start sessions leave nothing behind when they close them; a test
   that kills a child session (`TestResumeAfterProcessKilled`) gives it a
   `TMPDIR` that goes with the test.
+
+## Amendment 2026-10-18: a sandbox session keeps its scratch directory (ADR 54)
+
+In sandbox mode what a session's commands start in the background keeps
+running after the session, with `TMPDIR` set to its scratch directory, so the
+directory is not removed when the session closes: a server whose temporary
+files went there would fail without it. The machine is thrown away with it.
+Every other session removes its directory as above.

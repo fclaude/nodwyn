@@ -1178,6 +1178,10 @@ model may hand work to with the \code{delegate} tool, chosen when the task
 opened (none by default, which leaves the tool out). So is
 \code{(tool-names)}, the tools the model is offered: a helper is offered all
 of them but \code{delegate}.
+\code{(sandbox?)} says whether the run is in sandbox mode
+(\code{nodwyn run --sandbox container}, ADR 54), on a disposable machine
+whose every path but nodwyn's own and credential files is the tools': the
+lean prompt then says so, and no turn is told that nothing changed.
 \end{sloppypar}
 
 \section{Not in \nodwyn{} Scheme}

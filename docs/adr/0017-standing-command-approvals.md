@@ -369,3 +369,14 @@ runs in the repository root, so the path is written relative to it
 (`pathRisk`, `TestAbsoluteRepositoryPathRefusalSaysToWriteItRelative`).
 Nothing else about the decision changes; a path outside the repository gets
 the reason it had.
+
+## Amendment 2026-10-18: in sandbox mode only the denylist's directories are outside (ADR 54)
+
+A run started with `--sandbox container` declares the machine its
+disposable sandbox. There the argv trigger judges a command line's paths
+against the session's credential denylist alone: a path in one of its
+directories (nodwyn's configuration and data, `~/.ssh`, `~/.aws` and the
+rest), as the system reaches it, is refused outright, and every other path
+is inside. Programs, flag values and glob places are judged as everywhere
+else; the network tools and hard-trigger patterns still ask, and the run
+answers them. Every other session is judged as above.

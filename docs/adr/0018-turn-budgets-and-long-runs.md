@@ -503,3 +503,10 @@ hard limit of 0 is now none in every dimension, as it was for spend, and
 requires positive turn limits. The choice is a `session.limits` record,
 kept on resume. A paired device can neither make the choice nor change it.
 Runs keep theirs: `session.limits.set` is refused during a run.
+
+## Amendment 2026-10-18: a sandbox run is unattended and auto-approved (ADR 54)
+
+`run.start` and `run.resume` take `sandbox: "container"`, which makes the
+run unattended and auto-approved whatever `unattended` and `auto_approve`
+say, and excludes `judge`; `run.state` records `sandbox`. Like the other
+flags it is never read back from the log: a resume says it again.
