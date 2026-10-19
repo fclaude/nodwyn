@@ -131,6 +131,51 @@ func TestSandboxModeLetsACommandNameAnyPathButTheDenylistsDirectories(t *testing
 	}
 }
 
+// What echo or printf prints, what a for loop lists and what find names is
+// a path once another command takes it (ADR 17, amended 2026-10-19), and in
+// sandbox mode such a path is judged as any other there: refused in the
+// denylist's directories, inside everywhere else. Read as text, as sandbox
+// mode first read it, cat $(echo ~/.ssh/id_ed25519) reached the key that cat
+// ~/.ssh/id_ed25519 is refused.
+func TestSandboxModeJudgesWhatFeedsAnotherCommandByTheDenylist(t *testing.T) {
+	m := newSandboxMachine(t)
+	deny := m.denylist()
+	sandbox := guard.DefaultArgvTrigger(m.root)
+	sandbox.Sandbox = &deny
+	plain := guard.DefaultArgvTrigger(m.root)
+	ctx := scheme.WithOrigin(context.Background(), scheme.OriginModel)
+	verdict := func(a guard.ArgvTrigger, line string) guard.Decision {
+		return a.Check(ctx, shellP(), shellArgs("bash", "-c", line))
+	}
+	key := filepath.Join(m.home, ".ssh", "id_ed25519")
+	for _, line := range []string{
+		"cat $(echo ~/.ssh/id_ed25519)",
+		"cat \"$(printf %s " + key + ")\"",
+		"echo " + key + " | xargs cat",
+		"for f in " + m.home + "/.ssh/*; do cat $f; done",
+		"find " + m.data + " | xargs cat",
+		"echo hi >&" + m.data + "/x",
+	} {
+		d := verdict(sandbox, line)
+		if d.Verdict != guard.Deny || !strings.Contains(d.Reason, "in a directory nodwyn keeps off limits in sandbox mode too") {
+			t.Errorf("in sandbox mode %q: %+v", line, d)
+		}
+	}
+	for _, line := range []string{
+		"cat $(echo " + m.system + "/hosts)",
+		"echo " + m.system + "/hosts | xargs cat",
+		"for f in " + m.system + "/*; do cat $f; done",
+		"find " + m.system + " | xargs cat",
+	} {
+		if d := verdict(sandbox, line); d.Verdict != guard.Allow {
+			t.Errorf("in sandbox mode %q: %+v", line, d)
+		}
+		if d := verdict(plain, line); d.Verdict != guard.Confirm || !d.Security {
+			t.Errorf("by default %q: %+v", line, d)
+		}
+	}
+}
+
 // In sandbox mode a write to a task's Makefile, scripts/ or .git/ goes
 // ahead, which by default needs a person; nodwyn's own folder still does.
 func TestSandboxModeKeepsOnlyNodwynsFolderProtected(t *testing.T) {

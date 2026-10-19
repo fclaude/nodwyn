@@ -433,5 +433,10 @@ against the session's credential denylist alone: a path in one of its
 directories (nodwyn's configuration and data, `~/.ssh`, `~/.aws` and the
 rest), as the system reaches it, is refused outright, and every other path
 is inside. Programs, flag values and glob places are judged as everywhere
-else; the network tools and hard-trigger patterns still ask, and the run
-answers them. Every other session is judged as above.
+else, and so are the words the amendment above makes paths, what `echo`,
+`printf`, a `for` list or a names-only program hands to another command:
+`cat $(echo ~/.ssh/id_rsa)` is refused as `cat ~/.ssh/id_rsa` is
+(`TestSandboxModeJudgesWhatFeedsAnotherCommandByTheDenylist`, which fails
+on sandbox mode's branch before it met that amendment). The network tools
+and hard-trigger patterns still ask, and the run answers them. Every other
+session is judged as above.

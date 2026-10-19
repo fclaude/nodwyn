@@ -76,6 +76,12 @@ boundary, and the pin only stands in the task's way.
      own files in any mode: `openssl ... -keyout server.key` is the work of
      several tasks. Network tools and the hard-trigger patterns (`rm -rf`,
      `git push`) still raise their ordinary confirms, which the run answers.
+     Which words are paths is the argv trigger's reading in every mode,
+     since ADR 17's amendment of 2026-10-19 what `echo`, `printf`, a `for`
+     list or a names-only program hands to another command included: `cat
+     $(echo ~/.ssh/id_rsa)` and `find ~/.ssh | xargs cat` are refused as
+     `cat ~/.ssh/id_rsa` is, and `echo /etc/hosts | xargs cat` goes ahead
+     (`TestSandboxModeJudgesWhatFeedsAnotherCommandByTheDenylist`).
    - `ProtectedPaths.Sandbox`: a task's `Makefile`, `scripts/`, `.git/`,
      `.github/` and `.gitea/` are the task's to write; nodwyn's own folder,
      `.nodwyn/` (and `.nibb/`), still needs a person, and so is refused.
