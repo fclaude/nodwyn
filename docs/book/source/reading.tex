@@ -30,7 +30,7 @@ Owner & Question it answers \\
 \file{cmd/} & Which mode starts, which configuration is used, and which frontend owns interaction? \\
 \file{internal/core/} & How is one session assembled, serialised, resumed and closed? \\
 \file{internal/loop/} & Which Scheme strategy runs, and which host invariants constrain model requests and tool replies? \\
-\file{internal/scheme/} & What does evaluation mean, and how does every primitive reach the guard? \\
+\file{scheme/} in Brote & What does evaluation mean, and how does every primitive reach the guard? \\
 \file{internal/prim/} & What does an allowed filesystem, process, git or integration operation actually do? \\
 \file{internal/guard/} & May this declared operation run with these arguments and this origin? \\
 \file{internal/window/} & Which logged events become the next provider-neutral request? \\
@@ -96,7 +96,7 @@ defaults from a conversation's later model choice.
   wrap dispatch; the host implementation in \src{internal/loop/tools.go}
   records the call, converts named JSON arguments and applies the primitive.
   \src{internal/loop/turn.go} tracks the calls that still need replies.
-\item Find \code{applyPrim} in \src{internal/scheme/prim.go}. Read the
+\item Find \code{applyPrim} in \file{scheme/prim.go} in Brote. Read the
   guard call before reading any filesystem implementation. Follow it to
   \src{internal/guard/guard.go} and the path checkers in
   \src{internal/guard/checkers.go}. Only then read the \code{fs-read}
@@ -317,19 +317,21 @@ each new definition represents before using this pattern elsewhere.
 
 \section{The language below the strategy}
 
-Start with \src{internal/scheme/value.go}, \src{internal/scheme/reader.go}
-and \src{internal/scheme/env.go}: values, syntax and lexical bindings.
-Then read \src{internal/scheme/interp.go}, moving to the
+The interpreter is not in this repository: it is Brote, a module Nodwyn
+imports as \code{github.com/fclaude/brote/scheme}, and its source is in the
+module cache once \code{go mod download} has run. Start with \file{value.go},
+\file{reader.go} and \file{env.go} there: values, syntax and lexical bindings.
+Then read \file{interp.go}, moving to the
 \file{forms\_*.go} files only when the evaluator dispatches to them.
-\src{internal/scheme/prelude/base.scm} builds convenience procedures over
+\file{prelude/base.scm} builds convenience procedures over
 the Go builtins. Compare one definition, such as a list operation, with
 the builtin it calls instead of trying to memorise the whole prelude.
 
-\src{internal/scheme/prim.go} is the extension contract. Parameter types
+\file{prim.go} is the extension contract. Parameter types
 make schemas; roles tell the guard what arguments mean. Follow a value's
-taint through \src{internal/scheme/taint.go} and the taint builtins.
+taint through \file{taint.go} and the taint builtins.
 Ordinary errors, denials and halts have different meanings; read
-\src{internal/scheme/errors.go} and \src{internal/scheme/halt.go} before
+\file{errors.go} and \file{halt.go} before
 assuming that Scheme's \code{guard} can catch every failure.
 
 \section{Default loop and its wrappers}
@@ -406,7 +408,7 @@ own PDF bookmark and complete numbered listing. In a checkout, these
 commands locate definitions and their consumers without a model call:
 \begin{sh}
 rg -n 'func .*Send|func .*startTurn' internal/core
-rg -n 'applyPrim|Before\(' internal/scheme internal/guard
+rg -n 'applyPrim|Before\(' $(go list -m -f '{{.Dir}}' github.com/fclaude/brote) internal/guard
 rg -n 'define .*run-calls|base-run-calls' internal/loop
 rg -n 'KindToolResult|ToolResult' internal/log internal/loop internal/window
 rg -n '^func Test' internal/core/strategy_test.go

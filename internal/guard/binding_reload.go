@@ -2,8 +2,8 @@ package guard
 
 import (
 	"context"
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // BindingReload refreshes the session snapshot before any egress checker runs.

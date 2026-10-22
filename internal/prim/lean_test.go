@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // registered is the interpreter of a repository with one file, with the tools

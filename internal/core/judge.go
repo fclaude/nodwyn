@@ -7,10 +7,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // judgeConfirmer answers a session's confirms with the judge instead of

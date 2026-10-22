@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/llm"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 type openAITransport func(*http.Request) (*http.Response, error)

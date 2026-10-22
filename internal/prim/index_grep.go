@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Every candidate file is one guarded fs-read, and each read's guard

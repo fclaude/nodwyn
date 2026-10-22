@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // editView is a harness with fixture.go holding text and every confirm

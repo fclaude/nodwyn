@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
 	nlog "github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 type harness struct {

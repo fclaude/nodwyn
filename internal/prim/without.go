@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // check-without asks whether a check tests each part of a change: the

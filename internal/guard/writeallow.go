@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // WriteAllow holds standing approvals for writes by path prefix, the

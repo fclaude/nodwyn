@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 func shellExec(o Options) *scheme.Prim {

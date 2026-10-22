@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // The scratch directory is a second root for absolute paths only: relative

@@ -57,11 +57,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // JudgeOptions are the judge a task asks, separate from the host services.

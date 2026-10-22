@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // landRig is a repository with a bare remote its main tracks, a clean

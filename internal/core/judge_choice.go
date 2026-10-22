@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/prim"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // JudgeChoice names the judge a task asks (ADR 47): a [servers.NAME] whose

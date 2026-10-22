@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // gitTimeout bounds one git-status or git-diff.

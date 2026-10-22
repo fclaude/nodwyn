@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 func gitRepo(t *testing.T) (string, *scheme.Interp) {

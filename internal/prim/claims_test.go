@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // adr is an ADR as HEAD has it, with its first amendment.

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // schemeRig is a repository with files, and the tools a lean session has:

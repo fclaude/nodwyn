@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/guard"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // A contained MCP server's tool sends to its container, which may pass

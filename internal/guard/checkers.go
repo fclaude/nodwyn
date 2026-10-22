@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // pathArg is one path argument: Role "path", what the primitive acts on

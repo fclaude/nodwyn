@@ -14,12 +14,12 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/policyfile"
 	"github.com/fclaude/nodwyn/internal/redact"
 	"github.com/fclaude/nodwyn/internal/retrieval"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // The repository index (ADR 50): index-search's "repo" scope ranks chunks

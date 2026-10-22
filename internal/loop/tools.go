@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // runTool evaluates one tool call as a Scheme application (ADR 3) with

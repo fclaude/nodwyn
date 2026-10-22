@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/prim"
-	"github.com/fclaude/nodwyn/internal/scheme"
 	"github.com/fclaude/nodwyn/test/fakes/home"
 )
 

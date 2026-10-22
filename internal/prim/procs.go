@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 	"golang.org/x/sys/unix"
 )
 

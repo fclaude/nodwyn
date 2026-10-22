@@ -4,8 +4,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // egressFacts is what E3 needs to judge a call: whether it carries a credential,

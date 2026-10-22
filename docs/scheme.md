@@ -12,6 +12,13 @@ here fails the suite.
 
 §10 lists what is deliberately absent.
 
+The language itself (§§1-8 and §10) is implemented by **Brote**, the Scheme
+interpreter nodwyn imports as `github.com/fclaude/brote/scheme` (a module of its
+own since 2026-10-22, ADR 7). Brote's `docs/scheme.md` is the source of truth for
+those sections, which are kept here so that this file reads whole; where the two
+differ, Brote's wins for the language. What is nodwyn's own is the host
+primitives (§5), the guard (§7) and the agent loop (§9).
+
 ---
 
 ## 1. Lexical syntax
@@ -420,7 +427,7 @@ redaction (SPEC Risk 1).
 
 ## 6. Prelude
 
-`internal/scheme/prelude/*.scm` is embedded in the binary and loaded into the global
+Brote's `scheme/prelude/*.scm` is embedded in the binary and loaded into the global
 environment before anything else. It defines, in Scheme:
 
 | | |

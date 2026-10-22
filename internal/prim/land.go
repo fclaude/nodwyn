@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // git-land lands a worktree session's work on its base branch: the step

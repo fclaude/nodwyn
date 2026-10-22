@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // The names a request gives: hyphenated, underscored and dotted words,

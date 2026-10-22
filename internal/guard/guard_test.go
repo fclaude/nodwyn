@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 type fixed struct {

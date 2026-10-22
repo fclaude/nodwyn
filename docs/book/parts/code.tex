@@ -533,7 +533,7 @@ func (l *Loop) apply(ctx context.Context, tc llm.ToolCall) (scheme.Value, error)
 
 \section{The single exit}
 
-\file{internal/scheme/prim.go}. Whatever the caller\,---\,the loop,
+\file{scheme/prim.go} in Brote, the interpreter module. Whatever the caller\,---\,the loop,
 \code{map}, \code{apply}, a registered tool's body, the REPL\,---\,every
 primitive application reaches this function and no other. After a check
 for cancellation: arity, then the \code{\$TMPDIR} rewrite of path and
@@ -1747,7 +1747,7 @@ force before the request it rebuilds.
 \chapter{Conventions}
 
 \paragraph{Metadata is the contract.} A primitive's \code{scheme.Meta}
-(\file{internal/scheme/prim.go}) is its whole declaration: apart from the
+(\file{scheme/prim.go} in Brote) is its whole declaration: apart from the
 arguments and the origin, it is all the guard knows about a call. The model's tool schema (\code{Prim.Schema}) and the
 guard's judgement both come from it and cannot drift.
 
@@ -1815,7 +1815,7 @@ A checker that switches on a primitive's name is a bug; none in
 \file{internal/guard} does.
 
 \paragraph{Origins.} A context carries who initiated the evaluation
-(\file{internal/scheme/origin.go}): \code{user} (the REPL, \code{:eval},
+(\file{scheme/origin.go} in Brote): \code{user} (the REPL, \code{:eval},
 \file{init.scm}, and any context with no origin), \code{model} (a tool
 call), or \code{harness} (the loop's strategy, its prompts and the plan
 gate). Every \code{guard.decision} records it. Some primitives act on it:

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // A bash -c line gets pipefail before its first short option; anything

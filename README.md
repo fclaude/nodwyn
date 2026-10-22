@@ -97,6 +97,21 @@ make promote    # accept + selfcheck, then ~/.local/bin/nodwyn-stable and nodwyn
 Requires Go 1.26 or newer (ADR 33). `make lint` builds its `staticcheck`
 from the module (`go.mod`'s `tool`), so nothing else needs installing.
 
+The Scheme interpreter is a separate module, `github.com/fclaude/brote`, which
+lives on the private Gitea until it is published. Until then Go has to be told
+to fetch it from there:
+
+```sh
+go env -w GOPRIVATE=github.com/fclaude/brote
+git config --global \
+  url."ssh://git@git.example.com:2222/fc/brote.git".insteadOf \
+  "https://github.com/fclaude/brote"
+```
+
+The second line rewrites that one repository's URL and nothing else under
+`github.com/fclaude/`. A machine without SSH access to the Gitea cannot build
+nodwyn until Brote is public.
+
 Text search (`index-grep`) uses the shared guard and produces session-scoped
 results. The model also searches by words (`index-search`): the
 repository, from an index of the files git lists that nodwyn keeps in its

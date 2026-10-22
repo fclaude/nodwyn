@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/event"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 func policyDone(t *testing.T, s *Session, answer func(event.Confirm)) event.Policy {

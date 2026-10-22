@@ -12,9 +12,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/redact"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 func resolve(pin guard.RepoPin, c *scheme.Call, i int) (string, error) {

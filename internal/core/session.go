@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
@@ -22,7 +23,6 @@ import (
 	"github.com/fclaude/nodwyn/internal/loop"
 	"github.com/fclaude/nodwyn/internal/mcp"
 	"github.com/fclaude/nodwyn/internal/prim"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Session is one conversation with one log.

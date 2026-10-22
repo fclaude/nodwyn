@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // fakeChange is a change given as the files HEAD has and the files there are

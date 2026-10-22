@@ -3,8 +3,8 @@ package core
 import (
 	"strings"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // The plan gate is Scheme (internal/loop/plan.scm): the judge's questions,

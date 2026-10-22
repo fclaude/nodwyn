@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Options configure the host primitives.

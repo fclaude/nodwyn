@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 

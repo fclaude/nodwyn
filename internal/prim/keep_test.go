@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // keepRepo is a git work tree with a commit, and the keeper for it with a

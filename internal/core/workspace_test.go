@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
-	"github.com/fclaude/nodwyn/internal/scheme"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 

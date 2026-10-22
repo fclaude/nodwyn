@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/mcp"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // MCP servers (ADR 22 §4, ADR 23): at construction the session connects to

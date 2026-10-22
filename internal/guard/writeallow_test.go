@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 var writePrim = &scheme.Prim{Name: "fs-edit", Meta: scheme.Meta{Doc: "d", Irreversible: true, Params: []scheme.Param{

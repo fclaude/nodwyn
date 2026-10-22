@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/llm"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // turnState is what the primitives share during one turn.

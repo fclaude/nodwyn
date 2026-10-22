@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/scheme"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 

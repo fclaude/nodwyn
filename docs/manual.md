@@ -45,7 +45,7 @@ This is the spine. Read these in order and you have read the system.
 | 4 | [internal/window/window.go](../internal/window/window.go) `Build` | elides oldest tool results *in place* so the request prefix never changes |
 | 5 | [internal/llm/ollama.go](../internal/llm/ollama.go) `Chat` | native `/api/chat` streaming; thinking separated; tool-call args stay JSON objects |
 | 6 | [internal/loop/tools.go](../internal/loop/tools.go) `apply` | `Prim.ArgsFromJSON` orders named JSON args into positional Scheme values; `WithOrigin(ctx, OriginModel)` |
-| 7 | [internal/scheme/prim.go](../internal/scheme/prim.go) `applyPrim` | **the single Scheme→Go exit**: arity check, `gate.Before`, the handler, then the result's taint (`taintResult`) |
+| 7 | Brote's `scheme/prim.go` (the module `github.com/fclaude/brote`) `applyPrim` | **the single Scheme→Go exit**: arity check, `gate.Before`, the handler, then the result's taint (`taintResult`) |
 | 8 | [internal/guard/guard.go](../internal/guard/guard.go) `Before` | checkers run in order; strictest verdict wins; a standing approval outranks confirm, never deny; every host-reaching decision is logged |
 | 9 | [internal/guard/checkers.go](../internal/guard/checkers.go), [allow.go](../internal/guard/allow.go) | the bootstrap envelope: `MetaPolicy`, `RepoPin`, `PathDenylist`, `ArgvTrigger`, `CommandAllow` |
 | 10 | [internal/prim/fs.go](../internal/prim/fs.go), [shell.go](../internal/prim/shell.go) | the host primitives; `Meta.Params[].Role` is what the guard reads; `Preview` renders the diff for the prompt |
@@ -55,7 +55,7 @@ This is the spine. Read these in order and you have read the system.
 
 | Package | Owns | Start with |
 |---|---|---|
-| `internal/scheme` | the language: values, reader, eval/apply, builtins, primitive table | [docs/scheme.md](scheme.md) then `interp.go` `Eval` |
+| `github.com/fclaude/brote/scheme` | the language, imported from Brote, a module of its own: values, reader, eval/apply, builtins, primitive table | [docs/scheme.md](scheme.md) then Brote's `interp.go` `Eval` |
 | `internal/guard` | the one decision point and its checkers | `guard.go` `Before` |
 | `internal/prim` | host primitives and the diff; the document tools; the judge's primitives and tools | `prim.go` `Register`, `Checkers`; `docs.go`; `judge.go` |
 | `internal/llm` | the provider seam, the Ollama, OpenAI-compatible and Anthropic clients, what a request cost | `llm.go` `Provider`; `cost.go` |
@@ -103,13 +103,13 @@ Read a test when you want to know what a claim actually means.
 | Claim (SPEC) | Enforced by |
 |---|---|
 | The log is the single source of truth | `nodwyn replay` reproduces a transcript from the file alone; `window.Build` takes only events; [log_test.go](../internal/log/log_test.go) round-trips and repairs |
-| The interpreter is the only Scheme→Go surface; the guard sits on it | `applyPrim` is the only caller of `Prim.Handler`; [scheme_test.go](../internal/scheme/scheme_test.go) `TestGateIsTheSingleExit` records every crossing including through `map`/`apply`/`sort` |
-| Loading `.scm` cannot change evaluation | `TestKernelFixed`: only the primitive table grew, and `define-syntax` stays a plain binding |
-| Proper tail calls | `TestTailCalls`: 200k iterations in nine tail positions under an 8 MB stack cap |
-| Every primitive is documented | `TestDocCoverage` (builtins) and `TestSessionPrimitivesAreDocumented` (host and loop primitives) fail for any primitive missing from `docs/scheme.md` |
+| The interpreter is the only Scheme→Go surface; the guard sits on it | `applyPrim` is the only caller of `Prim.Handler`; Brote's `scheme_test.go` `TestGateIsTheSingleExit` records every crossing including through `map`/`apply`/`sort` |
+| Loading `.scm` cannot change evaluation | Brote's `TestKernelFixed`: only the primitive table grew, and `define-syntax` stays a plain binding |
+| Proper tail calls | Brote's `TestTailCalls`: 200k iterations in nine tail positions under an 8 MB stack cap |
+| Every primitive is documented | Brote's `TestDocCoverage` (builtins, against Brote's reference) and `TestSessionPrimitivesAreDocumented` (every primitive a session registers, builtins included, against `docs/scheme.md`) fail for any primitive missing |
 | A loop strategy cannot skip the invariants | [strategy_test.go](../internal/core/strategy_test.go): fabricated or rewritten calls refused, unanswered calls answered, stops uncatchable, provenance kept |
 | Agent behaviours are user code, not core features | [userland_test.go](../internal/core/userland_test.go): each behaviour is written as a user's `init.scm`; one that needs Go marks a gap in the core |
-| A handle can never become text | `TestHandlePrintsOpaque` |
+| A handle can never become text | Brote's `TestHandlePrintsOpaque` |
 | The core knows nothing about terminals | [scripts/lint-boundaries.sh](../scripts/lint-boundaries.sh) in `make lint` |
 | No path exists for the canary to leak | [test/exfil](../test/exfil/): each scenario runs in a real session (the guard core assembles) and asserts the decision, whether a confirm is a security confirm no standing approval may waive, *and* greps the canary out of the log, the output and the requests to the model |
 | Request prefix is byte-stable | [session_test.go](../internal/core/session_test.go) `TestTurnWithToolCall` compares request N's messages with request N+1's prefix |
@@ -748,7 +748,7 @@ does not offer declines.
   confirmed by the user` and moves on.
 - `a` — yes, and a **standing approval for this session**: for a command
   line, its prefix (`go test`, `rg`, …); for a write, the file's directory
-  (`internal/scheme/`). Not persisted.
+  (`internal/guard/`). Not persisted.
 - `t` — writes only: yes, and approve every further write **until this
   turn ends** (with `writes = "ask"`). The diff of each auto-approved write
   is logged and shown dimmed as it happens.

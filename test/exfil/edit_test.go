@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/guard"
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/prim"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // ADR 43: an edit through a credential's placeholder keeps the credential in

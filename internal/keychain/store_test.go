@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // newStore makes a keychain at a temp path with fast KDF params (tests must

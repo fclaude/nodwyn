@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Keeper keeps a git work tree's uncommitted changes as they stood at the

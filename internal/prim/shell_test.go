@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // Output that reaches the cap exactly at the end of one write, as io.Copy's

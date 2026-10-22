@@ -13,8 +13,6 @@ OUTPUT = Path(__file__).with_name("catalogue.tex")
 GROUPS = [
     ("cmd", "Starting the binaries",
      r"Begin with \src{cmd/nodwyn/main.go} and its command dispatch. The mode files assemble options and hand interaction to a frontend. The schema command emits the RPC contract; the egress command starts the proxy used by contained servers. Platform-specific app files have build constraints: read those before assuming all implementations run in one binary."),
-    ("internal/scheme", "The Scheme interpreter",
-     r"Read value, reader, environment and interpreter first; then follow primitive application in \src{internal/scheme/prim.go}. The forms files implement evaluation rules, while builtins implement callable operations. JSON conversion, origin and taint cross the host boundary, so they are part of the security contract as well as language conveniences. Tests: \file{internal/scheme/scheme\_test.go}, \file{taint\_test.go} and \file{json\_test.go}."),
     ("internal/schedule", "Civil-time recurrence without timers",
      r"Read \src{internal/schedule/schedule.go} for the rules a schedule runs on (set times on chosen days, an interval within a daily window, monthly dates or a weekday of the month, once), the five repeats from before rules read as rules, the sentence that says a rule, summer-time resolution and missed-time coalescing. This package computes occurrences only; the RPC daemon owns the timer and lock, and core stores schedule records in the session log. Its tests keep the old repeats' arithmetic as an oracle and cover skipped and repeated minutes."),
     ("internal/watch", "Reading what a workflow's source has now",
@@ -80,7 +78,6 @@ GROUPS = [
 ]
 
 SCHEME_ORDER = [
-    "internal/scheme/prelude/base.scm",
     *[f"internal/loop/{name}.scm" for name in (
         "strategy", "prompts", "compact", "agents", "optimize", "plan",
         "shell", "hygiene", "readdef", "envhint", "checkloop")],

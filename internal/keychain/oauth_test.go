@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 )
 

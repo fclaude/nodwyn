@@ -10,11 +10,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/memory"
 	"github.com/fclaude/nodwyn/internal/prim"
 	"github.com/fclaude/nodwyn/internal/retrieval"
-	"github.com/fclaude/nodwyn/internal/scheme"
 	"github.com/fclaude/nodwyn/internal/window"
 )
 

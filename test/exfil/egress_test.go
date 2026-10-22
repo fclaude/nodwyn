@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
@@ -21,7 +22,6 @@ import (
 	"github.com/fclaude/nodwyn/internal/keychain"
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/prim"
-	"github.com/fclaude/nodwyn/internal/scheme"
 	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 

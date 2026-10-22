@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // scheme offers the model the language the harness is written in (the lean

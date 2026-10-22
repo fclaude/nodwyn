@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // A lean session nobody approves may use /tmp as it uses its scratch

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // A plan can be written as Scheme data, one form per step (planspec.scm):

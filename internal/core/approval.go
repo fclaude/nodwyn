@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // A session a person can answer asks them less (ADR 35). approval.writes

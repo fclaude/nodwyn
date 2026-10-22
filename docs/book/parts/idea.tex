@@ -79,7 +79,7 @@ them.
 \end{enumerate}
 
 Invariant~4 is the one you will meet first in the code: \code{applyPrim} in
-\file{internal/scheme/prim.go} is the only caller of any primitive's handler,
+\file{scheme/prim.go} in Brote is the only caller of any primitive's handler,
 and a test records every crossing to prove it. Invariant~1 is the one that
 shapes everything you will not see: there is no ``conversation state'' object
 anywhere; there are events, and functions that fold them. Invariant~5 is the

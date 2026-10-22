@@ -15,9 +15,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Verdict is the outcome class of a Decision.

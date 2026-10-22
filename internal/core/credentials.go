@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
@@ -21,7 +22,6 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/loop"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 type secretReply struct {

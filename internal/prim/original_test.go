@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // phraseCheck is a repository whose "tests" are files under tests/ holding a

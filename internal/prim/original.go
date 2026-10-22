@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // original-tests runs the check again with the existing tests a turn edited

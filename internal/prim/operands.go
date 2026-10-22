@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // change-dropped-conditions names the parts of a condition that a change

@@ -52,3 +52,37 @@ stack, measured on 2026-10-16 with and without `-race`, so the limit stays
 near 50 MB. The reader, the printer, `equal?` and `json-emit` take the same
 bound, and `load` refuses a file it is already loading. The kernel's
 semantics are otherwise unchanged (docs/scheme.md §3).
+
+## Amendment 2026-10-22: the interpreter is Brote
+
+The interpreter was extracted from `internal/scheme` into its own module,
+`github.com/fclaude/brote` (package `scheme`), so that nodwyn and the Coigüe
+editor embed one implementation of this language. What this amendment decides:
+
+- **Brote owns the language.** Values, reader, `eval`/`apply`, builtins, the
+  primitive table, the prelude, the conformance suite (`TestConformance`,
+  `TestDocCoverage`, `TestKernelFixed`, `TestTailCalls`, `TestGateIsTheSingleExit`
+  and the rest of `scheme_test.go`) and the language reference now live in
+  Brote. Nodwyn keeps the host primitives, the guard, credentials, the loop and
+  everything that registers a primitive or installs a gate.
+- **The extraction changed nothing.** Brote's `scheme/` is `internal/scheme` at
+  commit `3846cd7f`, file for file, but for the package comment and the docs
+  path in one test. Error strings and doc strings that nodwyn's tests and
+  prompts assert on are unchanged, and the API still carries what nodwyn
+  needed (egress declarations, provenance tags, tool schemas, origin, the gate).
+  Narrowing that API waits until a second host shows which parts it uses.
+- **How nodwyn gets it.** `go.mod` requires a pseudo-version of Brote's commit.
+  The module path says GitHub, where there is no repository; until Brote is
+  public, a machine needs `GOPRIVATE=github.com/fclaude/brote` and a git
+  `insteadOf` that sends that one URL to `ssh://git@git.example.com:2222/fc/brote.git`
+  (README, "Requires"). A build without that access fails at `go mod download`;
+  the Beauties publisher is such a build (its recipe in `beauties/packages` and
+  its read access to `fc/brote` have to change before a nodwyn that requires
+  Brote is pushed to main). Brote's MIT licence is bundled into
+  `nodwyn licenses` like any dependency's.
+- **`nodwyn repl` and `nodwyn eval`** run Brote's `repl` package and
+  `scheme.LoadFile`; the standalone interpreter for everyone else is `brote`.
+- **`docs/scheme.md` keeps the language sections** so that it reads whole, and
+  says that Brote's reference wins where they differ. Two copies drift; once
+  Brote's repository is public this file links to it for those sections instead.
+

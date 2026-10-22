@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // change-removals says what an uncommitted change takes away that its own

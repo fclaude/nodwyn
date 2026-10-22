@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // CommandAllow holds the user's standing approvals for command lines: a

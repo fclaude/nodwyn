@@ -9,12 +9,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/policyfile"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // How an upload to Google Docs is handled is a setting the person chooses

@@ -3,9 +3,9 @@ package core
 import (
 	"context"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // StartEval is the asynchronous, serialized frontend entrypoint for user

@@ -13,8 +13,8 @@ import (
 
 	// The emulator the primitives use is linked in by the binary; a test
 	// binary links it itself.
+	"github.com/fclaude/brote/scheme"
 	_ "github.com/fclaude/nodwyn/internal/frontend/termvt"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 func termInterp(t *testing.T) (*scheme.Interp, *Terms) {

@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // tests-for answers "which tests exercise this file, and how do I run them":

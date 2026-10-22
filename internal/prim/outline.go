@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/guard"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // outline gives the model the shape of a file without its text: each class,

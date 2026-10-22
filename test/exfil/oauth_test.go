@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
-	"github.com/fclaude/nodwyn/internal/scheme"
 	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 )
 

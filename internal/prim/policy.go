@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/policyfile"
 	"github.com/fclaude/nodwyn/internal/redact"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // MaxPolicyBytes bounds a policy file read or written through

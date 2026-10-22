@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // The changes to fs-edit of 2026-10-17 (a line, the closest text, where the

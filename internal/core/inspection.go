@@ -5,8 +5,8 @@ import (
 	"crypto/rand"
 	"errors"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/event"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // ReadFriction starts a user-origin inspection through the ordinary interpreter

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fclaude/nodwyn/internal/frontend/plain"
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/repl"
+	"github.com/fclaude/brote/scheme"
 )
 
 // repl evaluates Scheme from stdin. It has no host primitives and no
@@ -16,7 +16,7 @@ func (c *cli) repl() error {
 		return err
 	}
 	in := scheme.New(scheme.WithOutput(os.Stdout))
-	return plain.SchemeREPL(context.Background(), in, os.Stdin, os.Stdout, true)
+	return repl.Run(context.Background(), in, os.Stdin, os.Stdout, repl.Options{Prompt: "nodwyn> ", Continue: "...>  "})
 }
 
 // eval runs Scheme files, or a single expression with -e.

@@ -2,8 +2,8 @@ package loop
 
 import (
 	"context"
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/budget"
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Handover reuses compact-note without applying compact-context's narrowing.

@@ -3,7 +3,7 @@ package guard
 import (
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 // credPrim builds a test prim with credential + dest + method + position params.

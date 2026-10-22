@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/brote/scheme"
 )
 
 func procInterp(t *testing.T) (*scheme.Interp, *Procs) {
