@@ -10,9 +10,8 @@ loop, `docs/` the decisions (`docs/adr`), the Scheme reference
 surveying the code), the book and the expert guide,
 `test/` the exfiltration suite, fakes, browser checks and session fixtures.
 The Scheme interpreter is not in this repository: it is the module
-`github.com/fclaude/brote` (ADR 7). Until it is public a machine builds nodwyn
-with `GOPRIVATE=github.com/fclaude/brote` and a git `insteadOf` for that URL
-(README, "Requires"); a change to the language (a form, a builtin, the reader,
+`github.com/fclaude/brote` (ADR 7), public, so a stock Go environment fetches
+it; a change to the language (a form, a builtin, the reader,
 the primitive table) is made in Brote, tested there, and then pinned here with
 `go get github.com/fclaude/brote@<commit>`.
 

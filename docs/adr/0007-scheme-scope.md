@@ -72,13 +72,9 @@ editor embed one implementation of this language. What this amendment decides:
   needed (egress declarations, provenance tags, tool schemas, origin, the gate).
   Narrowing that API waits until a second host shows which parts it uses.
 - **How nodwyn gets it.** `go.mod` requires a pseudo-version of Brote's commit.
-  The module path says GitHub, where there is no repository; until Brote is
-  public, a machine needs `GOPRIVATE=github.com/fclaude/brote` and a git
-  `insteadOf` that sends that one URL to `ssh://git@git.example.com:2222/fc/brote.git`
-  (README, "Requires"). A build without that access fails at `go mod download`;
-  the Beauties publisher is such a build (its recipe in `beauties/packages` and
-  its read access to `fc/brote` have to change before a nodwyn that requires
-  Brote is pushed to main). Brote's MIT licence is bundled into
+  Brote is public on GitHub, so a stock Go environment fetches it with no
+  `GOPRIVATE` and no git configuration (a clean `git archive` of this tree
+  builds that way). Brote's MIT licence is bundled into
   `nodwyn licenses` like any dependency's.
 - **`nodwyn repl` and `nodwyn eval`** run Brote's `repl` package and
   `scheme.LoadFile`; the standalone interpreter for everyone else is `brote`.
