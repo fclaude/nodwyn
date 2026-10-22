@@ -71,7 +71,7 @@ editor embed one implementation of this language. What this amendment decides:
   prompts assert on are unchanged, and the API still carries what nodwyn
   needed (egress declarations, provenance tags, tool schemas, origin, the gate).
   Narrowing that API waits until a second host shows which parts it uses.
-- **How nodwyn gets it.** `go.mod` requires a pseudo-version of Brote's commit.
+- **How nodwyn gets it.** `go.mod` requires Brote at its tag, v0.1.0 (a later change to the language is pinned by commit until it is tagged).
   Brote is public on GitHub, so a stock Go environment fetches it with no
   `GOPRIVATE` and no git configuration (a clean `git archive` of this tree
   builds that way). Brote's MIT licence is bundled into

@@ -13,7 +13,7 @@ The Scheme interpreter is not in this repository: it is the module
 `github.com/fclaude/brote` (ADR 7), public, so a stock Go environment fetches
 it; a change to the language (a form, a builtin, the reader,
 the primitive table) is made in Brote, tested there, and then pinned here with
-`go get github.com/fclaude/brote@<commit>`.
+`go get github.com/fclaude/brote@<tag or commit>`.
 
 ## Validating a change
 

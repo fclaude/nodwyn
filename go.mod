@@ -11,7 +11,7 @@ require (
 	github.com/charmbracelet/x/vt v0.1.0
 	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
-	github.com/fclaude/brote v0.0.0-20261022105232-9d54fb38ce27
+	github.com/fclaude/brote v0.1.0
 	github.com/wailsapp/wails/v3 v3.0.0-beta.28
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sys v0.48.0
