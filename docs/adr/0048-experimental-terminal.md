@@ -152,3 +152,21 @@ there is no terminal. `internal/loop` checks the progress guard. neovim and
 tmux were also driven by hand through the primitives on 2026-10-14: neovim
 opened a file, took an insertion and wrote it; tmux split a window, ran a
 command in each pane, was left, and was attached again.
+
+## Amendment 2026-10-22: closing the set names the tmux socket
+
+The private `TMUX_TMPDIR` did not keep the person's tmux safe on its own: given
+a `TMUX_TMPDIR` that does not exist, tmux (3.7c) falls back to `/tmp/tmux-UID`,
+the person's own server. Closing the set removed the directory, and closing it
+a second time (a session closes, then its cleanup does, as the tests do) ran
+`tmux kill-server` against the removed one. Run inside tmux, the tests ended
+the person's server and the session working in it; a kernel trace showed the
+server sending itself SIGTERM as the term tests closed.
+
+Closing the set now names the socket (`tmux -S <dir>/tmux-UID/default
+kill-server`), and only when that socket exists, so a second close does
+nothing. `TestTermCloseNamesItsOwnTmuxSocketAndOnlyOnce` records what Close
+asks of a fake `tmux` on `PATH`, so it fails on the old code without a real
+server in reach. To run the term tests where a real tmux could be hit, hide
+its socket directory first: `unshare -Urm sh -c 'mount -t tmpfs tmpfs
+/tmp/tmux-$(id -u) && go test ./internal/prim -run TestTerm'`.

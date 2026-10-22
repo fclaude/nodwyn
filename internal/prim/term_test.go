@@ -15,6 +15,7 @@ import (
 	// binary links it itself.
 	"github.com/fclaude/brote/scheme"
 	_ "github.com/fclaude/nodwyn/internal/frontend/termvt"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 func termInterp(t *testing.T) (*scheme.Interp, *Terms) {
@@ -272,6 +273,33 @@ func TestTermTmuxIsPrivateAndEndsWithTheSession(t *testing.T) {
 	}
 	if err := exec.Command("tmux", "-S", socket, "list-sessions").Run(); err == nil {
 		t.Fatal("the tmux server outlived the session")
+	}
+}
+
+// Close runs twice in practice (the session closes, then its cleanup does),
+// and the second time the private tmux directory is gone. tmux given only a
+// TMUX_TMPDIR that does not exist falls back to /tmp/tmux-UID, the person's
+// own server, so a kill-server then ended their tmux (and the session they
+// were working in). A fake tmux records what Close asks of it, so this test
+// never reaches a real server, whatever the code does.
+func TestTermCloseNamesItsOwnTmuxSocketAndOnlyOnce(t *testing.T) {
+	bin := t.TempDir()
+	calls := filepath.Join(bin, "calls")
+	must.WriteFile(t, filepath.Join(bin, "tmux"), []byte("#!/bin/sh\necho \"$*\" >> "+calls+"\n"), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	in, ts := termInterp(t)
+	evalStr(t, in, `(term-open "cat" (list))`)
+	socket := filepath.Join(ts.tmuxDir, fmt.Sprintf("tmux-%d", os.Getuid()), "default")
+	must.MkdirAll(t, filepath.Dir(socket), 0o700)
+	must.WriteFile(t, socket, nil, 0o600)
+	ts.Close()
+	ts.Close() // the cleanup registered by termInterp does the same
+	got, err := os.ReadFile(calls)
+	if err != nil {
+		t.Fatalf("Close did not ask tmux to stop the server it may have started: %v", err)
+	}
+	if want := "-S " + socket + " kill-server\n"; string(got) != want {
+		t.Fatalf("tmux was asked:\n%swant exactly:\n%s", got, want)
 	}
 }
 

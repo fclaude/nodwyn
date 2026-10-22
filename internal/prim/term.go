@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -274,13 +275,20 @@ func (ts *Terms) Close() {
 		return
 	}
 	// A tmux server leaves the terminal that started it (it detaches into a
-	// session of its own), so hanging up does not reach it.
-	if path, err := exec.LookPath("tmux"); err == nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cmd := exec.CommandContext(ctx, path, "kill-server")
-		cmd.Env = []string{"TMUX_TMPDIR=" + dir}
-		_ = cmd.Run()
-		cancel()
+	// session of its own), so hanging up does not reach it. The socket is named
+	// with -S, and only if it is there: given just TMUX_TMPDIR, tmux falls back
+	// to /tmp/tmux-UID when that directory is gone, which is the person's own
+	// server. Close can run twice (a session closes, then its cleanup does), and
+	// the second time the directory is gone.
+	socket := filepath.Join(dir, fmt.Sprintf("tmux-%d", os.Getuid()), "default")
+	if _, err := os.Stat(socket); err == nil {
+		if path, err := exec.LookPath("tmux"); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			cmd := exec.CommandContext(ctx, path, "-S", socket, "kill-server")
+			cmd.Env = []string{"TMUX_TMPDIR=" + dir}
+			_ = cmd.Run()
+			cancel()
+		}
 	}
 	_ = os.RemoveAll(dir)
 }
