@@ -12,12 +12,26 @@ import { h, icon } from "./dom.js";
 
 let current = null; // { select, pop, rows, active, typed, typedAt, watch }
 
+// Whether the latest mouse event moved the pointer. A list that opens under a
+// pointer at rest is sent a mouse event for the pointer's unchanged position
+// when the layout settles, and that one is not the person hovering a row: it
+// would take the active row from the keyboard.
+let pointer = { x: NaN, y: NaN };
+let pointerMoved = false;
+
+// How long a typed letter waits for the next one of the same word.
+const typeAheadMs = 700;
+
 // A phone or tablet keeps the system's picker, which is better there than
 // any list drawn by a page.
 const finePointer = () => matchMedia("(pointer: fine)").matches;
 const plain = (select) => select instanceof HTMLSelectElement && !select.multiple && select.size <= 1 && !select.disabled;
 
 export function installDropdowns() {
+  document.addEventListener("mousemove", (event) => {
+    pointerMoved = event.screenX !== pointer.x || event.screenY !== pointer.y;
+    pointer = { x: event.screenX, y: event.screenY };
+  }, true);
   document.addEventListener("mousedown", onMouseDown, true);
   document.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("resize", () => current && place());
@@ -64,7 +78,9 @@ function openKey(event) {
     case " ":
       event.preventDefault();
       event.stopPropagation();
-      if (c.typed && event.key === " ") return typeAhead(" ");
+      // A space is part of a word only while one is being typed: a person who
+      // typed a letter and waited, as a native list allows, is choosing.
+      if (c.typed && Date.now() - c.typedAt <= typeAheadMs && event.key === " ") return typeAhead(" ");
       return choose(c.rows[c.active]);
     case "Escape":
       event.preventDefault();
@@ -92,7 +108,7 @@ function open(select) {
       h("span", { class: "dd-label" }, option.label || "\u00a0"),
     );
     row.addEventListener("click", () => choose(rows.find((r) => r.row === row)));
-    row.addEventListener("mouseover", () => !disabled && activate(rows.findIndex((r) => r.row === row)));
+    row.addEventListener("mousemove", () => pointerMoved && !disabled && activate(rows.findIndex((r) => r.row === row)));
     rows.push({ row, option, disabled });
     return row;
   };
@@ -156,7 +172,7 @@ function activate(index) {
 function typeAhead(key) {
   const c = current;
   const now = Date.now();
-  c.typed = now - c.typedAt > 700 ? key : c.typed + key;
+  c.typed = now - c.typedAt > typeAheadMs ? key : c.typed + key;
   c.typedAt = now;
   const word = c.typed.toLowerCase();
   const from = c.typed.length === 1 ? c.active + 1 : c.active;

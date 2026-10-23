@@ -81,6 +81,34 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#schedule-repeat"), "once", "typing a letter did not move to that row");
   step("the keyboard opens, moves and chooses");
 
+  // A pointer resting where the list opens does not take the active row from
+  // the keyboard: the browser repeats the pointer's position when the layout
+  // settles, which is not a hover.
+  // Where the list opens is measured by opening it once, and the pointer is
+  // put there while it is closed.
+  await page.focus("#schedule-repeat");
+  await page.keyboard.press("Space");
+  await page.waitForSelector(".dd-pop");
+  const topRow = await page.locator(".dd-pop .dd-option").first().boundingBox();
+  const rest = { x: topRow.x + topRow.width / 2, y: topRow.y + topRow.height / 2 };
+  await page.keyboard.press("Escape");
+  assert.strictEqual(await count(), 0, "Escape left the list open");
+  await page.mouse.move(rest.x, rest.y);
+  await page.keyboard.press("Space");
+  await page.waitForSelector(".dd-pop");
+  assert.ok(await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest(".dd-option"), rest), "the pointer is not over a row of the list");
+  await page.mouse.move(rest.x, rest.y);
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Enter");
+  assert.strictEqual(await page.inputValue("#schedule-repeat"), "monthly", "a pointer at rest took the row from the keyboard");
+  // A pointer that moves over a row does choose it.
+  await page.keyboard.press("Alt+ArrowDown");
+  await page.waitForSelector(".dd-pop");
+  await page.hover(".dd-pop .dd-option:has-text('Once')");
+  await page.keyboard.press("Enter");
+  assert.strictEqual(await page.inputValue("#schedule-repeat"), "once", "a row the pointer moved over was not active");
+  step("a pointer at rest leaves the keyboard's row alone, and one that moves picks its own");
+
   // Escape closes the list alone: the dialog stays, the value stays.
   await page.keyboard.press("Space");
   await page.waitForSelector(".dd-pop");
@@ -91,6 +119,17 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#schedule-repeat"), "once", "Escape chose a row");
   assert.strictEqual(await page.evaluate(() => document.activeElement.id), "schedule-repeat", "the focus left the select");
   step("Escape closes only the list");
+
+  // A letter typed and then a pause: Space chooses the row, as in a native
+  // list, and is a letter of the word only while one is being typed.
+  await page.keyboard.press("Space");
+  await page.waitForSelector(".dd-pop");
+  await page.keyboard.type("a");
+  await page.waitForTimeout(800);
+  await page.keyboard.press("Space");
+  assert.strictEqual(await count(), 0, "Space after a pause left the list open");
+  assert.strictEqual(await page.inputValue("#schedule-repeat"), "times", "Space after a pause did not choose the typed row");
+  step("Space chooses after a pause in typing");
 
   // A redraw that takes the select away takes the list with it.
   await page.keyboard.press("Space");
