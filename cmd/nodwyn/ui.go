@@ -136,7 +136,7 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 			fmt.Fprintln(os.Stderr, "WARNING: a paired device can read every task, send messages and answer approvals; one signed in")
 			fmt.Fprintln(os.Stderr, "with your passkey over https can also change settings and keys. Revoke one with: nodwyn devices revoke NAME")
 			if !options.NoLinkSettings {
-				fmt.Fprintln(os.Stderr, "Another nodwyn linked with your passkey can change settings; --no-link-settings refuses it.")
+				fmt.Fprintln(os.Stderr, "Another nodwyn linked with your passkey can change limits and models; --no-link-settings refuses it.")
 			}
 		}
 		if !options.TLS && !allHTTPS(r.hosts) {

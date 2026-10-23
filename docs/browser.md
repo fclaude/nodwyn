@@ -1052,7 +1052,7 @@ directory) is sent no token.
 What the link may do is the other host's to say. One invited by your
 device signed in there with your passkey makes your choices for its tasks
 (a task's model, judge, helpers and limits, schedules, a key the model asks
-for, unlocking its keychain), and changes its settings (amended
+for, unlocking its keychain), and changes its limits and models (amended
 2026-10-23); one invited from its terminal answers and starts tasks, as a
 device paired by a plain invitation does. A link changes none of the other
 host's other setup (its folders, MCP servers, credentials, keychain,
@@ -1085,8 +1085,13 @@ this computer's.
 
 **A linked host's Settings** are at `#/host/NAME/settings` (each host's
 card on Hosts has **Settings**, and Settings has a chip for each host when
-there is a link): its General, Models and Judge tabs, read from that host
-and saved there over its socket, named as that host's. They change only
+there is a link): its General and Models tabs, read from that host and
+saved there over its socket, named as that host's. The limits and the
+models of its list change from here; its approvals and policy are shown and
+cannot be chosen, its providers and default model have no control, and its
+Judge tab is its own console's, since those decide what its tasks may do
+unasked or where their content goes, and wait for a touch of your passkey
+that a link cannot give. They change only
 when the link makes your choices there and the host lets it: a host whose
 console was started with `nodwyn ui --no-link-settings` (or `nodwyn app
 --no-link-settings`) refuses every link its settings. Otherwise the page

@@ -15,7 +15,7 @@ import (
 // callerOf is who a request of device comes from, as the console's socket
 // sees it when it opens.
 func (b *bridge) callerOf(r *http.Request, device Device) caller {
-	return caller{local: !b.remoteFor(r, device.Name), person: device.Passkey != "", touched: device.Name != "" && b.touched(device.Hash), link: device.Host}
+	return caller{local: !b.remoteFor(r, device.Name), person: device.Passkey != "", touched: device.Name != "" && !device.Host && b.touched(device.Hash), link: device.Host}
 }
 
 // connectHost relays a console's socket for the linked host name (ADR 54):

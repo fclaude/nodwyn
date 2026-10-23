@@ -3115,8 +3115,12 @@ answers as the laptop's. A notice of the server's task opens it there.
 The server decides what the laptop may do. A laptop linked with an
 invitation from your passkey's device changes the server's settings from
 its own window: **Settings** on the server's card in Hosts, or the server's
-chip at the top of Settings, opens its General, Models and Judge tabs,
-which are saved on the server. To refuse that, start the server's console
+chip at the top of Settings, opens its General and Models tabs, which are
+saved on the server. Its limits and the models of its list change there; what
+its tasks may do without asking (approvals, the policy, the judge) and where
+their content goes (providers, the default model) are shown or left out and
+are changed in its own console, after a touch of your passkey. To refuse
+the rest, start the server's console
 with `nodwyn ui --no-link-settings` (also taken by `nodwyn app`). The rest
 of its setup (keys, folders, connections, devices) is changed in its own
 console: **Open its console** on Hosts.

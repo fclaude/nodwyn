@@ -13,10 +13,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -598,7 +600,9 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 	// device one that only answers at once, though its daemon connection
 	// still carries the passkey; one that touches a passkey reconnects.
 	who := func(now Device) caller {
-		return caller{local: !remote, person: now.Passkey != "" && now.Passkey == device.Passkey, touched: now.Name != "" && b.touched(now.Hash), link: now.Host}
+		// Another nodwyn never touches a passkey, whatever its settings
+		// calls renewed: a touch is the person's, at their own device.
+		return caller{local: !remote, person: now.Passkey != "" && now.Passkey == device.Passkey, touched: now.Name != "" && !now.Host && b.touched(now.Hash), link: now.Host}
 	}
 	revoked := func() {
 		conn.Close(websocket.StatusPolicyViolation, "this device was revoked")
@@ -640,7 +644,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 		// A setup action a device takes renews its touch, and is said in
 		// the audit (Options.Audit), whether it worked or not.
 		audited := access == granted && current.Name != "" && b.tierOf(req.Method) >= tierSetup
-		if audited {
+		if audited && !c.link {
 			b.touch(current.Hash)
 		}
 		var result json.RawMessage
@@ -652,6 +656,8 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 			callErr = errors.New("that message is too large to send: a request is at most 1 MB")
 		case access == needsTouch:
 			callErr = errTouch
+		case access == granted && c.link && linkSettings[req.Method] && linkWidens(req.Method, req.Params) != "":
+			callErr = fmt.Errorf("%s widens what this host's tasks may do: it is changed in the host's own console, after a touch of your passkey", linkWidens(req.Method, req.Params))
 		case access == refused:
 			callErr = errors.New("operation unavailable in this browser mode; use the terminal client")
 			if b.readOnly {
@@ -926,11 +932,58 @@ func (b *bridge) tierOf(method string) tier {
 }
 
 // settingsMethods change what Settings shows, models and their providers
-// included: setup, which another nodwyn that is the person's may also do
-// (access).
+// included: setup, which a device does after a touch.
 var settingsMethods = map[string]bool{
 	"settings.control.write": true, "settings.docs.write": true, "settings.write": true,
 	"settings.provider.write": true, "settings.provider.remove": true, "settings.model.write": true, "settings.model.remove": true, "models.test": true,
+}
+
+// linkSettings are the settings methods another nodwyn that is the person's
+// may also call without a touch (access), those of them that cannot widen
+// what a task may do or where its content goes. A provider's address and
+// key and the default model (settings.provider.write, .remove and
+// settings.control.write) are not here, and settings.write and
+// settings.docs.write are limited by linkWidens.
+var linkSettings = map[string]bool{
+	"settings.write": true, "settings.docs.write": true, "settings.model.write": true, "settings.model.remove": true, "models.test": true,
+}
+
+// widening is the part of Settings that decides what a task may do without
+// asking, or what the judge and the transport allow: a link's token is
+// kept on another computer, so it is not given these without the touch it
+// cannot give (ADR 54, amended 2026-10-23).
+var widening = []string{"approval.", "policy.", "judge."}
+
+// linkWidens says why a call a link makes would widen what the host's tasks
+// may do, "" when it would not. A call it cannot read is refused too.
+func linkWidens(method string, params json.RawMessage) string {
+	switch method {
+	case "settings.write":
+		var p struct {
+			Set map[string]json.RawMessage `json:"set"`
+		}
+		if json.Unmarshal(params, &p) != nil {
+			return "its settings could not be read"
+		}
+		for _, name := range slices.Sorted(maps.Keys(p.Set)) {
+			if slices.ContainsFunc(widening, func(prefix string) bool { return strings.HasPrefix(name, prefix) }) {
+				return name
+			}
+		}
+	case "settings.docs.write":
+		var p struct {
+			GoogleUpload string `json:"google_upload"`
+		}
+		if json.Unmarshal(params, &p) != nil {
+			return "its settings could not be read"
+		}
+		// Never asking about an upload to Google Docs is the widening one:
+		// asking and refusing narrow.
+		if p.GoogleUpload == "allow" {
+			return "docs.google_upload"
+		}
+	}
+	return ""
 }
 
 // access is what a caller may do with a method.
@@ -963,13 +1016,14 @@ func (b *bridge) access(method string, c caller) access {
 		return refused
 	case t == tierPerson || c.touched:
 		return granted
-	// Another nodwyn that is the person's changes this computer's settings
-	// without the touch it cannot give, unless this computer's console was
-	// started to refuse it (ADR 54, amended 2026-10-23): its invitation was
-	// made with the person's passkey, which a device would have used to
-	// register one and touch it. One that only answers is not let in, since
-	// whoever holds a plain invitation may say it is another nodwyn.
-	case c.link && settingsMethods[method] && !b.noLinkSettings:
+	// Another nodwyn that is the person's changes some of this computer's
+	// settings without the touch it cannot give, unless this computer's
+	// console was started to refuse it (ADR 54, amended 2026-10-23): its
+	// invitation was made with the person's passkey. One that only answers is
+	// not let in, since whoever holds a plain invitation may say it is
+	// another nodwyn. What would widen what a task may do stays behind the
+	// touch (linkWidens), since the link's token is kept on another computer.
+	case c.link && linkSettings[method] && !b.noLinkSettings:
 		return granted
 	}
 	return c.touch()

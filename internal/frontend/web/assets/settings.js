@@ -212,7 +212,7 @@ function input(ctx, name, { placeholder, width = "", prefix = "", suffix = "" } 
     inputmode: spec.kind === "decimal" ? "decimal" : numeric ? "numeric" : null,
     autocomplete: "off",
     spellcheck: false,
-    disabled: !editable(ctx.conn),
+    disabled: !editable(ctx.conn) || hostLocked(ctx, name),
     placeholder: placeholder ?? (shown(v.default, spec.kind) || "—"),
     oninput: () => {
       edits.set(name, node.value);
@@ -241,7 +241,8 @@ function choice(ctx, name, options, redraw) {
           class: "chip",
           id: `set-${name}-${value || "default"}`,
           "aria-pressed": String(String(current) === String(value)),
-          disabled: !editable(ctx.conn),
+          disabled: !editable(ctx.conn) || hostLocked(ctx, name),
+          title: hostLocked(ctx, name) ? `Changed in ${ctx.host}'s own console` : null,
           onclick: () => {
             edits.set(name, value);
             saveError = "";
@@ -275,11 +276,17 @@ const tabs = [
   { id: "keys", label: "Keys & devices" },
   { id: "browser", label: "This browser" },
 ];
-// hostTabs are a linked host's (ADR 54, amended 2026-10-23): its settings,
-// models and judge, which another nodwyn that is the person's may change.
-// Its keychain, credentials and devices are changed in its own console, and
-// this browser is this computer's.
-const hostTabs = tabs.filter((t) => ["general", "models", "judge"].includes(t.id));
+// hostTabs are a linked host's (ADR 54, amended 2026-10-23): its settings
+// and models, which another nodwyn that is the person's may change. The
+// judge is all of what the host refuses a link, with its keychain,
+// credentials and devices, which are changed in its own console; this
+// browser is this computer's.
+const hostTabs = tabs.filter((t) => ["general", "models"].includes(t.id));
+// hostLocked is whether a setting is one a linked host does not let this
+// window change: what a task may do without asking, the policy and the
+// judge widen it, so they wait for a touch of the passkey at the host's own
+// console (the host's linkWidens refuses them).
+const hostLocked = (ctx, name) => !!ctx.host && /^(approval|policy|judge)\./.test(name);
 // moved are tabs that held one rarely used section each and were folded into
 // General's Advanced fold; their addresses still open it.
 const moved = new Set(["context", "tools"]);
@@ -371,7 +378,7 @@ export function renderSettings(root, ctx) {
       h("h1", {}, host ? `${host}'s settings` : "Settings"),
       hostPicker(ctx),
       host
-        ? h("p", { class: "lede", id: "save-rule" }, `The settings tasks on ${host} start with, read from ${host} and saved there. A choice made here waits in the bar at the foot of the page and is saved with the others; a provider or a model is saved in its own form. ${host}'s keychain, credentials and devices are changed in its own console.`)
+        ? h("p", { class: "lede", id: "save-rule" }, `The settings tasks on ${host} start with, read from ${host} and saved there. A choice made here waits in the bar at the foot of the page and is saved with the others; a model is saved in its own form. What a task may do without asking (approvals, the policy, the judge), the providers, the default model, the keychain, credentials and devices are changed in ${host}'s own console, after a touch of your passkey.`)
         : h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys, the passphrase and starting at login act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
       refused ? hostRefusal(ctx) : null,
       !host && known && !editable(conn) ? h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
@@ -523,7 +530,9 @@ function docsRow(ctx, redraw) {
         class: "chip",
         id: `set-${docsUpload}-${value}`,
         "aria-pressed": String(current === value),
-        disabled: !editableDocs,
+        // Never asking is what a linked host does not let this window choose.
+        disabled: !editableDocs || (value === "allow" && !!ctx.host),
+        title: value === "allow" && ctx.host ? `Changed in ${ctx.host}'s own console` : null,
         onclick: () => {
           edits.set(docsUpload, value);
           saveError = "";

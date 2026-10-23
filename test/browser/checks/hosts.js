@@ -314,20 +314,29 @@ check(async () => {
   await page.waitForSelector("main.settings-page [role=tablist]");
   await shows(page, "main.settings-page h1", "workshop's settings");
   assert.strictEqual(await page.locator("#host-settings-refused").count(), 0, "workshop's Settings refuse the vouched link");
-  assert.deepStrictEqual(await page.$$eval("main.settings-page [role=tab]", (tabs) => tabs.map((t) => t.textContent.trim())), ["General", "Models", "Judge"], "workshop's Settings tabs");
+  assert.deepStrictEqual(await page.$$eval("main.settings-page [role=tab]", (tabs) => tabs.map((t) => t.textContent.trim())), ["General", "Models"], "workshop's Settings tabs");
+  // What would widen what a task may do waits for the touch a link cannot
+  // give: the approvals are shown and cannot be chosen, and so is never asking
+  // about an upload.
+  assert.strictEqual(await page.locator("[id='set-approval.writes-ask']").isDisabled(), true, "a link can choose how workshop asks before writes");
+  assert.strictEqual(await page.locator("[id='set-approval.dont_ask-true']").isDisabled(), true, "a link can switch Don't ask on at workshop");
   const configOf = (w) => fs.readFileSync(`${w.root}/config/nodwyn/config.toml`, "utf8");
   const laptopConfig = configOf(laptop);
-  await page.click("[id='set-approval.writes-ask']");
+  await page.click("#advanced > summary");
+  await page.fill("[id='set-budget.tool_calls_soft']", "40");
   await page.waitForSelector(".save-bar:not([hidden]) .btn.accent");
   await page.screenshot({ path: `${out}/workshop-settings.png` });
   await page.click(".save-bar .btn.accent");
-  await until("workshop's config.toml to ask before writes", () => /\[approval\][^[]*writes = "ask"/.test(configOf(workshop)));
-  assert.deepStrictEqual(of(sent.workshop, "settings.write"), [{ set: { "approval.writes": "ask" } }], "the setting went to workshop");
+  await until("workshop's config.toml to ask at 40 tool calls", () => /\[budget\][^[]*tool_calls_soft = 40/.test(configOf(workshop)));
+  assert.deepStrictEqual(of(sent.workshop, "settings.write"), [{ set: { "budget.tool_calls_soft": 40 } }], "the setting went to workshop");
   assert.strictEqual(of(sent.local, "settings.write").length, 0, "workshop's setting went to the laptop");
   assert.strictEqual(configOf(laptop), laptopConfig, "workshop's setting changed the laptop's config.toml");
   await until("the save bar gone", async () => await page.locator(".save-bar").isHidden());
-  assert.strictEqual(await page.getAttribute("[id='set-approval.writes-ask']", "aria-pressed"), "true", "workshop's Settings do not show the saved choice");
-  step("a link vouched for by the person's passkey changes workshop's settings from this window, and not the laptop's");
+  assert.strictEqual(await page.inputValue("[id='set-budget.tool_calls_soft']"), "40", "workshop's Settings do not show the saved value");
+  await page.click("main.settings-page [role=tab]:has-text('Models')");
+  await page.waitForSelector("#settings-panel-models");
+  assert.strictEqual(await page.locator("#add-provider").count(), 0, "a link can add a provider at workshop");
+  step("a link vouched for by the person's passkey changes workshop's limits from this window, and not the laptop's, and cannot choose its approvals");
 
   // workshop's console started with --no-link-settings refuses it: its
   // Settings say so once the link is back, and show no control.

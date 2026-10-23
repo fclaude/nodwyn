@@ -124,7 +124,7 @@ function defaultRow(ctx, redraw) {
   return row(
     "Default for new tasks",
     picker.el,
-    h("p", { class: "hint" }, "New tasks start on this model and effort, and ask the default ", h("a", { href: desk.at("settings/judge") }, "judge"), ". A task's own choice, under its message box, changes only that task. Tasks already open keep what they started with."),
+    h("p", { class: "hint" }, "New tasks start on this model and effort, and ask the default ", ctx.host ? "judge" : h("a", { href: desk.at("settings/judge") }, "judge"), ". A task's own choice, under its message box, changes only that task. Tasks already open keep what they started with."),
   );
 }
 

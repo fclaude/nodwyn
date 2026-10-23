@@ -204,7 +204,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	if !strings.HasSuffix(greeting.Peer, " via web:laptop passkey:phone") {
 		t.Fatalf("workshop's daemon sees the link as %q", greeting.Peer)
 	}
-	for method, want := range map[string]bool{"session.open": true, "session.model.set": true, "schedule.set": true, "settings.write": true, "settings.provider.write": true, "models.test": true, "devices.revoke": false, "session.delete": false, "startup.write": false, "devices.leave": true} {
+	for method, want := range map[string]bool{"session.open": true, "session.model.set": true, "schedule.set": true, "settings.write": true, "settings.model.write": true, "models.test": true, "settings.provider.write": false, "settings.provider.remove": false, "settings.control.write": false, "devices.revoke": false, "session.delete": false, "startup.write": false, "devices.leave": true} {
 		if slices.Contains(greeting.Methods, method) != want {
 			t.Errorf("a link the person's passkey vouched for is offered %s: %v, want %v", method, !want, want)
 		}
@@ -218,17 +218,40 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 			Set   bool `json:"set"`
 		} `json:"values"`
 	}
-	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"approval.writes": "ask"}}, &settings); err != nil {
+	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"budget.tool_calls_soft": 40}}, &settings); err != nil {
 		t.Fatalf("the vouched link's settings.write: %v", err)
 	}
-	if v := settings.Values["approval.writes"]; v.Value != "ask" || !v.Set {
+	if v := settings.Values["budget.tool_calls_soft"]; v.Value != float64(40) || !v.Set {
 		t.Fatalf("workshop's settings after the link's write: %+v", v)
 	}
-	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || !bytes.Contains(written, []byte(`writes = "ask"`)) {
+	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || !bytes.Contains(written, []byte(`tool_calls_soft = 40`)) {
 		t.Fatalf("workshop's config.toml after the link's write: %s %v", written, err)
 	}
-	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("writes")) {
+	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("tool_calls_soft")) {
 		t.Fatalf("the link's write changed the laptop's config.toml: %s", mine)
+	}
+	// What would widen what a task may do waits for a touch, which a link
+	// cannot give, even in a call that also holds a setting it may change.
+	for _, set := range []map[string]any{{"approval.dont_ask": true}, {"policy.allow_insecure_http": true}, {"judge.server": nil}, {"budget.tool_calls_hard": 90, "approval.writes": "ask"}} {
+		if err := call(conn, "settings.write", map[string]any{"set": set}, &settings); err == nil || !strings.Contains(err.Error(), "widens what this host's tasks may do") {
+			t.Errorf("the vouched link's settings.write of %v: %v", set, err)
+		}
+	}
+	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || bytes.Contains(written, []byte("dont_ask")) || bytes.Contains(written, []byte("tool_calls_hard")) || bytes.Contains(written, []byte(`writes = "ask"`)) {
+		t.Fatalf("a refused write changed workshop's config.toml: %s %v", written, err)
+	}
+	if err := call(conn, "settings.docs.write", map[string]any{"google_upload": "allow"}, &settings); err == nil || !strings.Contains(err.Error(), "docs.google_upload") {
+		t.Errorf("the vouched link's settings.docs.write allow: %v", err)
+	}
+	if err := call(conn, "settings.provider.write", map[string]any{"provider": "ollama", "url": "http://127.0.0.1:1"}, &settings); err == nil {
+		t.Error("the vouched link wrote a provider")
+	}
+	// A setting it changed is no touch of a passkey: the rest of setup stays
+	// refused to it afterwards, as it was before.
+	for _, method := range []string{"mcp.remove", "credentials.remove", "startup.write", "trust.set", "host.unlink"} {
+		if err := call(conn, method, map[string]any{}, &settings); err == nil || !strings.Contains(err.Error(), "not available from this device") {
+			t.Errorf("after changing a setting the vouched link's %s: %v", method, err)
+		}
 	}
 
 	// A task on workshop, started and given a file from the laptop's console.
@@ -337,10 +360,10 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 			t.Errorf("a link from workshop's terminal is offered %s: %v, want %v", method, !want, want)
 		}
 	}
-	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"approval.writes": nil}}, &settings); err == nil {
+	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"budget.tool_calls_soft": nil}}, &settings); err == nil {
 		t.Fatal("a link from workshop's terminal changed workshop's settings")
 	}
-	if written, _ := os.ReadFile(tarroPaths.ConfigFile); !bytes.Contains(written, []byte(`writes = "ask"`)) {
+	if written, _ := os.ReadFile(tarroPaths.ConfigFile); !bytes.Contains(written, []byte(`tool_calls_soft = 40`)) {
 		t.Fatalf("a refused write changed workshop's config.toml: %s", written)
 	}
 	conn.Close(websocket.StatusNormalClosure, "")
@@ -416,7 +439,10 @@ func TestOnlyThePersonUsesThisComputersLinks(t *testing.T) {
 // started with --no-link-settings, which still lets the person's own
 // devices in.
 func TestALinkChangesTheHostsSettings(t *testing.T) {
-	settings := []string{"settings.write", "settings.control.write", "settings.docs.write", "settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test"}
+	settings := []string{"settings.write", "settings.docs.write", "settings.model.write", "settings.model.remove", "models.test"}
+	// Where a task's content goes is the touch's: a provider's address and
+	// key, and the default model.
+	touch := []string{"settings.control.write", "settings.provider.write", "settings.provider.remove"}
 	other := []string{"host.link", "host.unlink", "startup.write", "devices.revoke", "passkeys.remove", "session.delete", "credentials.add", "keychain.passphrase", "mcp.save", "workspace.save", "trust.set"}
 	person, answers := caller{person: true, link: true}, caller{link: true}
 	b := &bridge{devices: OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))}
@@ -434,9 +460,14 @@ func TestALinkChangesTheHostsSettings(t *testing.T) {
 			t.Errorf("%s is refused to this computer or to a device that touched", method)
 		}
 	}
-	for _, method := range other {
+	for _, method := range append(touch, other...) {
 		if got := b.access(method, person); got != refused {
 			t.Errorf("the person's link is given %s: %v, want refused", method, got)
+		}
+	}
+	for _, method := range touch {
+		if !b.allowed(method, caller{local: true}) || !b.allowed(method, caller{person: true, touched: true}) || b.access(method, caller{person: true}) != needsTouch {
+			t.Errorf("%s is not setup for this computer and the person's device", method)
 		}
 	}
 
@@ -446,12 +477,38 @@ func TestALinkChangesTheHostsSettings(t *testing.T) {
 	}
 
 	blocked := &bridge{noLinkSettings: true, devices: b.devices}
-	for _, method := range settings {
+	for _, method := range append(settings, touch...) {
 		if got := blocked.access(method, person); got != refused {
 			t.Errorf("with --no-link-settings the person's link is given %s: %v", method, got)
 		}
 		if !blocked.allowed(method, caller{local: true}) || !blocked.allowed(method, caller{person: true, touched: true}) || blocked.access(method, caller{person: true}) != needsTouch {
 			t.Errorf("--no-link-settings keeps %s from this computer or the person's device", method)
+		}
+	}
+}
+
+// A link changes the settings that cannot widen what a task may do, and none
+// of the approvals, the policy or the judge, nor an upload to Google Docs
+// that is never asked about (ADR 54, amended 2026-10-23).
+func TestLinkWidens(t *testing.T) {
+	for _, tt := range []struct {
+		name, method, params, want string
+	}{
+		{"a budget", "settings.write", `{"set":{"budget.tool_calls_soft":40,"loop.shell_timeout":"2m"}}`, ""},
+		{"a notice", "settings.write", `{"set":{"notify.desktop":true,"mcp.runtime":null}}`, ""},
+		{"a window", "settings.write", `{"set":{"window.high_water":9000}}`, ""},
+		{"an approval", "settings.write", `{"set":{"approval.commands":"ask"}}`, "approval.commands"},
+		{"Don't ask taken away", "settings.write", `{"set":{"approval.dont_ask":null}}`, "approval.dont_ask"},
+		{"the policy", "settings.write", `{"set":{"policy.allow_insecure_http":false}}`, "policy.allow_insecure_http"},
+		{"the judge", "settings.write", `{"set":{"budget.cost_hard":1,"judge.approve_threshold":0.5}}`, "judge.approve_threshold"},
+		{"unreadable", "settings.write", `[]`, "its settings could not be read"},
+		{"uploads asked", "settings.docs.write", `{"google_upload":"ask"}`, ""},
+		{"uploads refused", "settings.docs.write", `{"google_upload":"deny"}`, ""},
+		{"uploads allowed", "settings.docs.write", `{"google_upload":"allow"}`, "docs.google_upload"},
+		{"a model", "settings.model.write", `{"server":"p","model":"m"}`, ""},
+	} {
+		if got := linkWidens(tt.method, json.RawMessage(tt.params)); got != tt.want {
+			t.Errorf("%s: linkWidens = %q, want %q", tt.name, got, tt.want)
 		}
 	}
 }

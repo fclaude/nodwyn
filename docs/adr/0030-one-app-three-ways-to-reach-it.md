@@ -610,9 +610,10 @@ choices; it is never offered setup, since it cannot touch a passkey, and it
 may revoke itself (`devices.leave`). Settings › Keys & devices and `nodwyn
 devices` say a device is another nodwyn. ADR 54 records the rest.
 (Amended 2026-10-23: a link that makes the person's choices also changes the
-host's settings, without a touch, unless the host's console is started with
-`--no-link-settings`; the rest of setup stays refused to it. ADR 54's
-amendment of that date says why.)
+host's limits and models, without a touch, unless the host's console is
+started with `--no-link-settings`; what would widen what a task may do
+(approvals, the policy, the judge, providers, the default model) and the rest
+of setup stay refused to it. ADR 54's amendment of that date says why.)
 
 ## Amendment 2026-10-19: this computer's cookie makes no passkey
 
