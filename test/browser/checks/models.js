@@ -226,11 +226,34 @@ check(async () => {
   await page.waitForSelector("#model-form");
   assert.strictEqual(await page.locator("#model-form .test-result").count(), 0, "a cancelled form's test result showed in the next one");
   await page.click("#model-form button:text-is('Cancel')");
+  // Add a model on a provider opens the form in that provider's card, where
+  // its button was: below every provider, it was out of sight once there
+  // were a few. The card says which provider, so the form keeps it.
+  await page.click("#add-model-127-0-0-1");
+  await page.waitForSelector("#provider-127-0-0-1 .provider-models > #model-form");
+  assert.strictEqual(await page.locator("#add-model-127-0-0-1").count(), 0, "the provider's Add button stayed beside its form");
+  assert.strictEqual(await page.inputValue("#model-provider"), "127-0-0-1");
+  assert.ok(await page.isDisabled("#model-provider"), "a form opened in a provider's card can be moved to another provider");
+  assert.ok(await page.locator("#model-form").evaluate((f) => { const r = f.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; }), "the form opened out of sight");
+  await page.click("#model-form button:text-is('Cancel')");
+  // Add a model under the list keeps the form beside its own button, with
+  // the provider to choose.
+  await page.click("#add-model");
+  await page.waitForSelector("#model-form");
+  assert.strictEqual(await page.locator(".provider-card #model-form").count(), 0, "Add a model under the list opened in a card");
+  assert.ok(!(await page.isDisabled("#model-provider")), "Add a model under the list has its provider fixed");
+  await page.click("#model-form button:text-is('Cancel')");
+  step("Add a model on a provider opens in its card; Add a model under the list opens below it");
 
   // ---------- the key is replaced under Credentials; the same test now passes ----------
   // A key's value is changed in one place: the provider's form has no field
   // for a key that is stored, and links to it.
   await page.click("#provider-127-0-0-1 button:text-is('Edit')");
+  // Edit opens the provider's form in its card, where it was clicked, not
+  // below every provider; the card's Edit is gone while it is open.
+  await page.waitForSelector("#provider-127-0-0-1 > #provider-form");
+  assert.strictEqual(await page.locator("#provider-127-0-0-1 > .provider-actions button:text-is('Edit')").count(), 0, "the card's Edit stayed beside its open form");
+  assert.ok(await page.locator("#provider-form").evaluate((f) => { const r = f.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; }), "the provider form opened out of sight");
   assert.strictEqual(await page.locator("#provider-key").count(), 0, "the provider form takes a new key as well as Credentials");
   await shows("#provider-form", "Replace it under Credentials");
   await page.click("#provider-form a:text-is('Replace it under Credentials')");
@@ -294,6 +317,16 @@ check(async () => {
   step("a provider on OpenAI's Responses API is asked there, with the model's effort, and moved back");
 
   // ---------- a second provider at an address already in use ----------
+  // Add a provider opens its form below the list, where its button was, so a
+  // window shorter than the list still shows it.
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await page.click("#add-provider");
+  await page.waitForSelector("#provider-form");
+  assert.strictEqual(await page.locator(".provider-card #provider-form").count(), 0, "Add a provider opened in a provider's card");
+  assert.ok(await page.locator("#provider-form").evaluate((f) => { const r = f.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; }), "Add a provider's form opened out of sight");
+  await page.click("#provider-form >> text=Cancel");
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  step("a provider's Edit opens in its card; Add a provider opens below the list, in sight");
   const providersBefore = await page.locator("[data-provider]").count();
   await page.click("#add-provider");
   await page.click("#preset-other");
@@ -346,6 +379,8 @@ check(async () => {
   await shows("[data-model='control']", "context as the provider says · no prices");
   await page.click("[data-model='control'] button:text-is('Edit')");
   await page.waitForSelector("#model-form");
+  // Edit opens the form right under the model's row, not below every provider.
+  assert.strictEqual(await page.locator("#provider-127-0-0-1 [data-model='control'] + #model-form").count(), 1, "Edit did not open the form under its model");
   assert.strictEqual(await page.getAttribute("#model-vision-true", "aria-pressed"), "true", "a model is not taken to read images until it is said not to");
   await page.fill("#model-num_ctx", "1,050,000");
   // The reply cap comes out of the context, and the form says what the
@@ -1185,10 +1220,16 @@ check(async () => {
   await page.reload();
   await page.waitForSelector("#provider-openai");
   await page.click("#provider-openai button:text-is('Edit')");
+  // The form opens in the card whose Edit was clicked, and the keychain's
+  // form beside it, in that card and outside the provider form.
+  await page.waitForSelector("#provider-openai > #provider-form");
+  assert.strictEqual(await page.locator(".provider-card:not(#provider-openai) #provider-form").count(), 0, "the provider form opened in another card");
   await page.click("#provider-auth-chatgpt");
   await page.waitForSelector("#provider-account");
   assert.ok(await page.isDisabled("#provider-connect-chatgpt"), "sign-in allowed with a locked keychain");
   assert.ok(await page.isDisabled("#provider-save"));
+  assert.strictEqual(await page.locator("#provider-openai > #provider-keychain").count(), 1, "the keychain's form is not beside the provider form in its card");
+  assert.strictEqual(await page.locator("#provider-form #provider-keychain").count(), 0, "the keychain's form is inside the provider form");
   await page.fill("#keychain-pass", "fake-ui-passphrase");
   await page.click("button:text-is('Unlock')");
   await page.waitForSelector("#provider-account option[value='fake-plan-two']", { state: "attached" });

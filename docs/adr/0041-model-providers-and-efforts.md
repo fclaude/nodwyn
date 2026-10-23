@@ -613,3 +613,24 @@ log has shown; more retries or longer waits for a relayed failure, since the
 one in the evidence was a single request; the wait in the retry's note; and
 Settings' model test (`models.test`), which still reports a relayed 404 as
 `no_model`, sending one request and no retries.
+
+## Amendment 2026-10-23: a form opens where it was asked for
+
+Settings › Models drew the provider form, the keychain's form beside it and
+the model form below every provider card, so with a few providers the form a
+button opened was out of sight. Each now opens where its button was: a
+provider's Edit in its card, under its buttons, with the keychain's form beside
+it in that card (still a form of its own, not inside the provider form); Add
+a model on a provider in that card, where its button was, with the provider
+fixed, since the card says which; a model's Edit under that model; Add a
+provider and the Add a model under the list below the list, where their
+buttons are, so they are in sight however long it is. A card's own Edit or
+Add a model is hidden while its form is open there. The first run's forms
+(`#first-model`) are unchanged.
+
+Tests: the `models` browser check finds each form in its card or under its
+model (it waited in vain for `#provider-127-0-0-1 .provider-models >
+#model-form`, and then for `#provider-127-0-0-1 > #provider-form`, on the
+code before), the keychain's form in `#provider-openai` outside the provider
+form, and Add a provider's form below the list and on screen in a 500-pixel
+window.

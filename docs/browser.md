@@ -246,7 +246,10 @@ unsaved changes keeps those made in every tab. The tabs:
   be used and, when not, the sentence that says what to fix (needs its key,
   keychain locked, key not allowed, not answering); **Test** sends it one short
   request and shows the reply or the provider's refusal; **Check again** asks
-  every server now; **Add a provider** and **Edit** take a preset (which says
+  every server now; **Add a provider** and **Edit** (whose form opens where it
+  was asked for: below the list for Add a provider, in the provider's card
+  for Edit, with the keychain's form beside it in that card when a key needs
+  it unlocked) take a preset (which says
   the kind), an address, a dialect, a name (under a **More** fold, when
   adding) and an API key (kept in the keychain, bound for the provider's
   requests and its model list, never in the page again; the form takes a key
@@ -255,6 +258,9 @@ unsaved changes keeps those made in every tab. The tabs:
   The models under each provider are the list the pickers offer, each with the
   efforts it takes and
   a line saying its context length and prices; **Add a model** and **Edit**
+  (whose form opens where it was asked for: in the provider's card for its
+  own Add a model, which keeps that provider, under the model for Edit, and
+  below the list for the Add a model there)
   take a provider, a model id (suggested from what the provider lists, asked
   with its key as the form opens, and offered as buttons when the list is
   short) and, under a **More** fold that is closed when adding and open when

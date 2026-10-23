@@ -996,6 +996,11 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .provider-models > .hint { margin: 10px 0 0; }
 .provider-models > .row-actions { padding-top: 10px; }
 .provider-models.strays { border: 1px dashed var(--line); border-radius: var(--radius); }
+/* A model form opened in a provider's card, where its button or its model was. */
+.provider-models > .model-form { margin: 10px 0 0; }
+/* A provider form opened in its card, under the card's actions, with the
+   keychain's form beside it when a key needs it. */
+.provider-card > .provider-form, .provider-card > #provider-keychain { margin: 0 16px 12px; }
 /* Settings › Judge (ADR 47) */
 .judges { display: flex; flex-direction: column; gap: 10px; }
 .judge-card { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding-bottom: 12px; }

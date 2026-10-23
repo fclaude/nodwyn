@@ -2095,9 +2095,15 @@ default judge is on the Judge tab):
   the reply, *the server did not accept the key (401)*, *no model*, *it refused
   the request* (an effort the model does not take, for one), or *no quota*. A
   provider that models are on is not removed; its key stays in the keychain
-  (Connections › Credentials removes it).
+  (Connections › Credentials removes it). A provider's **Edit** opens its
+  form in its card, under its buttons, with the keychain's form beside it when
+  a key needs the keychain unlocked; **Add a provider** opens the form below
+  the list, where its button was.
 - The models under each provider are the list the pickers
-  offer: `[control]` and each `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
+  offer: `[control]` and each `[models.NAME]`. A provider's **Add a model on
+  NAME** opens the model form in its card, for that provider, and a model's
+  **Edit** opens it under the model; **Add a model** below the list opens it
+  there, with the provider to choose. **Add a model** takes a provider, a model id (the provider's
   own list, asked with its key as the form opens, is offered as buttons when
   it is short) and, under a **More** fold that is closed when adding, the
   efforts it takes: *As published* (offered once the id is given, for a model its

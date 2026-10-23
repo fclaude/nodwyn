@@ -143,6 +143,25 @@ function providerRows(ctx, redraw) {
   const placed = new Set(providers.flatMap((p) => onProvider(p).map((c) => c.name)));
   const strays = choices.filter((c) => !placed.has(c.name));
   const modelsEditable = editable && conn.has("settings.model.write");
+  // The model form is drawn where it was opened (openModel), and below the
+  // list when it was opened there or its place is no longer drawn.
+  let formPlaced = false;
+  const formAt = (place) => (ui.model?.place === place ? ((formPlaced = true), modelForm(ctx, redraw)) : null);
+  // A key is kept in the keychain, which is under Keys & devices: a provider
+  // form that needs it while it is locked, or not made yet, has its form
+  // beside it, as the first run does, rather than a way off the page. It is
+  // a form of its own: forms do not nest.
+  const needsKeychain = ui.provider && (hasKey(ui.provider.kind) || ui.provider.authentication === "chatgpt") && !desk.keychain?.unlocked;
+  // The provider form changing a provider is drawn in its card, where its
+  // Edit was, and the one adding a provider below the list, where Add a
+  // provider was: below every provider it was out of sight once there were
+  // a few. A card whose provider is gone leaves it below the list.
+  const editing = (p) => ui.provider?.mode === "edit" && ui.provider.name === p.name;
+  let providerPlaced = false;
+  const providerForms = () => {
+    providerPlaced = true;
+    return [providerForm(ctx, redraw), needsKeychain ? h("div", { class: "callout plain", id: "provider-keychain" }, keychainForm(ctx, { onDone: redraw })) : null];
+  };
   const list = providers.map((p) => {
     const key = `provider:${p.name}`;
     const status = worst(desk, p);
@@ -171,35 +190,29 @@ function providerRows(ctx, redraw) {
         "div",
         { class: "row-actions provider-actions" },
         h("button", { type: "button", class: "btn small", disabled: !first || !conn.has("models.test") || result?.pending, title: first ? "Sends one short request to a model on this provider, as a task would" : "Add a model on this provider to test it", onclick: () => test(ctx, key, first ? { name: first } : null, redraw) }, "Test"),
-        editable && !p.inline ? h("button", { type: "button", class: "btn small", onclick: () => openProvider(ctx, p, redraw) }, "Edit") : null,
+        editable && !p.inline && !editing(p) ? h("button", { type: "button", class: "btn small", onclick: () => openProvider(ctx, p, redraw) }, "Edit") : null,
         editable && !p.inline ? removal({ label: "Remove", consequence: "Remove it? Its key stays in the keychain.", asking: ui.removing === key, ask: () => ((ui.removing = key), redraw()), cancel: () => ((ui.removing = ""), redraw()), run: () => removeProvider(ctx, p.name, redraw), disabled: users.length > 0, title: users.length ? `Still used by ${users.join(", ")}` : "" }) : null,
       ),
+      editing(p) ? providerForms() : null,
       p.inline ? h("p", { class: "hint" }, "Given by a model's own table in config.toml. Choosing a default model on a provider moves it to one.") : null,
       resultLine(result),
       h(
         "div",
         { class: "models provider-models" },
-        models.length ? models.map((c) => modelRow(ctx, c, redraw)) : h("p", { class: "hint" }, p.inline ? "" : "No model on it yet."),
+        models.length ? models.map((c) => [modelRow(ctx, c, redraw), formAt(`model:${c.name}`)]) : h("p", { class: "hint" }, p.inline ? "" : "No model on it yet."),
+        formAt(`provider:${p.name}`),
         modelsEditable && !p.inline && carriesModels(p) && !ui.model
           ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", id: `add-model-${p.name}`, dataset: { addModel: p.name }, onclick: () => openModel(null, redraw, p.name) }, icon("plus", 12), `Add a model on ${p.name}`))
           : null,
       ),
     );
   });
-  const form = ui.provider ? providerForm(ctx, redraw) : null;
-  // A key is kept in the keychain, which is under Keys & devices: a provider
-  // form that needs it while it is locked, or not made yet, has its form
-  // beside it, as the first run does, rather than a way off the page. It is
-  // a form of its own: forms do not nest.
-  const needsKeychain = ui.provider && (hasKey(ui.provider.kind) || ui.provider.authentication === "chatgpt") && !desk.keychain?.unlocked;
-  const keychain = needsKeychain ? h("div", { class: "callout plain", id: "provider-keychain" }, keychainForm(ctx, { onDone: redraw })) : null;
   return row(
     "Providers and their models",
     providers.length ? h("div", { class: "providers" }, list) : h("p", { class: "hint" }, "No provider yet. Add the server your models are on."),
     strays.length ? h("div", { class: "models provider-models strays" }, h("p", { class: "hint" }, "On no provider listed here:"), strays.map((c) => modelRow(ctx, c, redraw))) : null,
-    form,
-    keychain,
-    ui.model ? modelForm(ctx, redraw) : null,
+    ui.provider && !providerPlaced ? providerForms() : null,
+    ui.model && !formPlaced ? modelForm(ctx, redraw) : null,
     h(
       "div",
       { class: "row-actions" },
@@ -761,6 +774,10 @@ function openModel(c, redraw, server = "") {
   ui.results.delete("form");
   ui.model = modelDraft(c);
   if (server) ui.model.server = server;
+  // The form opens where it was asked for: under the model Edit was clicked
+  // on, or in the card of the provider whose Add a model was. Below every
+  // provider it was out of sight once there were a few.
+  ui.model.place = c ? `model:${c.name}` : server ? `provider:${server}` : "";
   redraw();
 }
 
@@ -823,7 +840,9 @@ function modelForm(ctx, redraw, first = false) {
   // it off.
   if (adding && !f.cacheChosen) f.settings.cache_control = providerOf(desk, f.server)?.provider === "anthropic" ? "ephemeral" : "";
   const efforts = effortsOf(f);
-  const server = h("select", { class: "input", id: "model-provider", disabled: !adding, onchange: () => ((f.server = server.value), askOffered(ctx, f.server, redraw), askPublished(ctx, f, redraw), redraw()) }, providers.map((p) => h("option", { value: p.name }, `${p.name} · ${p.host}`)));
+  // A form in a provider's card adds a model on that provider: the card says
+  // which, and another provider's model would not appear where it is added.
+  const server = h("select", { class: "input", id: "model-provider", disabled: !adding || !!f.place, onchange: () => ((f.server = server.value), askOffered(ctx, f.server, redraw), askPublished(ctx, f, redraw), redraw()) }, providers.map((p) => h("option", { value: p.name }, `${p.name} · ${p.host}`)));
   server.value = f.server;
   // The models the provider lists are asked for as the form opens, so there
   // is something to pick from without a click in the field first.
