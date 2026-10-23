@@ -423,15 +423,44 @@ function hostPicker(ctx) {
 // settings (--no-link-settings), and where they are changed instead.
 function hostRefusal(ctx) {
   const { conn, host, hostAddress } = ctx;
-  const why = conn.has("session.model.set")
-    ? `${host} does not let other nodwyns change its settings: its console was started with --no-link-settings, or is older than this one.`
-    : `This computer only answers on ${host}: its link was made with an invitation from ${host}'s terminal, or at an address where a browser could not use a passkey. To change ${host}'s settings here, link it again with an invitation made by your device signed in there with your passkey.`;
+  const open = hostAddress ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: hostAddress, target: "_blank", rel: "noopener noreferrer" }, `Open ${host}'s console`)) : null;
+  if (conn.has("session.model.set"))
+    return h("div", { class: "callout plain", id: "host-settings-refused" }, h("p", {}, `${host} does not let other nodwyns change its settings: its console was started with --no-link-settings, or is older than this one.`), open);
+  // A link that only answers was let in by an invitation that vouched with
+  // no passkey (ADR 54 §5), or linked at an address where none can be used.
+  // People read the earlier one-sentence account of this as a riddle, so
+  // this says what the link can do, why, and the steps that change it.
+  const plain = !!hostAddress && !passkeyAddress(hostAddress);
   return h(
     "div",
     { class: "callout plain", id: "host-settings-refused" },
-    h("p", {}, why),
-    hostAddress ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: hostAddress, target: "_blank", rel: "noopener noreferrer" }, `Open ${host}'s console`)) : null,
+    h("p", {}, `From here you can start tasks on ${host} and answer their questions, but not change ${host}'s settings or choose the model its tasks use.`),
+    plain
+      ? h("p", {}, `This computer reaches ${host} at ${hostAddress}. A browser can use a passkey only at an https address or a localhost name, so a link made at this one never makes your choices, whatever invitation made it.`)
+      : h("p", {}, `${host} lets a linked computer make those choices only when its invitation came from a browser signed in to ${host} with your passkey. This link's invitation came from ${host}'s terminal, or from ${host}'s own browser, which do not use a passkey.`),
+    h("p", {}, "To make your choices here:"),
+    h(
+      "ol",
+      {},
+      h("li", {}, `Open ${host}'s console at its https address, signed in with your passkey. A browser without one gets one by pairing with an invitation from `, h("span", { class: "mono" }, "nodwyn devices invite"), ` in ${host}'s terminal.`),
+      h("li", {}, "There, in Settings › Keys & devices, choose Invite a device."),
+      h("li", {}, `Here, on `, h("a", { href: "#/hosts" }, "Hosts"), `, unlink ${host} and add it again${plain ? " at its https address" : ""} with that invitation.`),
+    ),
+    open,
   );
+}
+
+// passkeyAddress reports whether a link made at address can carry a passkey,
+// as the host's bridge judges it (passkeyHost): https or a localhost name,
+// and a name rather than an IP address.
+function passkeyAddress(address) {
+  try {
+    const { protocol, hostname } = new URL(address);
+    if (/^\d+(\.\d+){3}$/.test(hostname) || hostname.startsWith("[")) return false;
+    return protocol === "https:" || hostname === "localhost" || hostname.endsWith(".localhost");
+  } catch {
+    return false;
+  }
 }
 
 // drawBar shows the unsaved edits and saves them together. The config.toml

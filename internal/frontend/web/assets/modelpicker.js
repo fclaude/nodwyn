@@ -232,7 +232,7 @@ export class ModelPicker {
           "p",
           { class: `mp-note ${line.kind || ""}`, role: line.kind === "error" ? "alert" : null },
           line.text,
-          line.fix ? [" ", h("a", { href: line.fix.startsWith("Set") ? "#/" : line.fix.includes("Judge") ? "#/settings/judge" : "#/settings/models" }, line.fix)] : null,
+          line.fix ? [" ", h("a", { href: line.href || (line.fix.startsWith("Set") ? "#/" : line.fix.includes("Judge") ? "#/settings/judge" : "#/settings/models") }, line.fix)] : null,
         ),
       ),
     );

@@ -3126,6 +3126,16 @@ the rest, start the server's console
 with `nodwyn ui --no-link-settings` (also taken by `nodwyn app`). The rest
 of its setup (keys, folders, connections, devices) is changed in its own
 console: **Open its console** on Hosts.
+
+A laptop that only answers on the server, its link made with an invitation
+from the server's terminal or at an address where a browser cannot use a
+passkey (plain http other than a `localhost` name, or an IP address), chooses
+no model there: Home shows the server's default model with **Why can't I
+choose?**, and a task's model says so too. Both lead to the server's
+Settings, which list the steps: sign in to the server's console with your
+passkey, at its https address, make an invitation in its
+Settings › Keys & devices, then unlink the server on the laptop and add it
+again with that invitation.
 Revoking the laptop there ends the link, and Hosts says the server refuses
 it; **Unlink** on the laptop forgets the link and asks the server to forget
 the laptop too, saying when it could not. The laptop reaches the server

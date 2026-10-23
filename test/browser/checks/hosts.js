@@ -143,6 +143,13 @@ check(async () => {
   await shows(page, ".ask-bar .where", workshop.modelHost);
   // A device that answers on workshop chooses no model there, as a paired phone does not.
   assert.strictEqual(await page.locator("#new-task-model-model").count(), 0, "the laptop is offered workshop's model picker");
+  // It says why, and the link opens workshop's Settings, which say how to change it.
+  await page.click("#host-model-why");
+  await page.waitForFunction(() => location.hash === "#/host/workshop/settings");
+  await page.waitForSelector("#host-settings-refused");
+  await shows(page, "#host-settings-refused", "not change workshop's settings or choose the model its tasks use");
+  await page.click("a.new-task");
+  await page.waitForSelector(".work-in-host:has-text('Folders on workshop')");
   await page.click("text=Add a folder");
   await page.fill("#add-path", `${workshop.root}/work`);
   await page.click("button:has-text('Use this folder')");
@@ -163,6 +170,9 @@ check(async () => {
     return fs.existsSync(dir) && fs.readdirSync(dir).some((d) => fs.existsSync(`${dir}/${d}/notes.md`));
   });
   await page.waitForSelector(".task-meta .host-chip:has-text('workshop')");
+  // Its model cannot be changed from here either, and the picker says why.
+  await page.waitForSelector("#task-model .mp-note:has-text('This computer only answers on workshop, so it cannot choose the model')");
+  assert.strictEqual(await page.getAttribute("#task-model .mp-note a:has-text(\"workshop's Settings\")", "href"), "#/host/workshop/settings", "the task's note does not link workshop's Settings");
   await page.waitForSelector(".ask-card .btn.accent", { timeout: 20000 });
   await page.screenshot({ path: `${out}/workshop-task.png` });
   step("a task started on workshop, in workshop's folder and on its model, with a file sent there, asks on its page");
@@ -242,7 +252,9 @@ check(async () => {
   await page.click("#host-settings-workshop");
   await page.waitForFunction(() => location.hash === "#/host/workshop/settings");
   await shows(page, "main.settings-page h1", "workshop's settings");
-  await shows(page, "#host-settings-refused", "This computer only answers on workshop", "Open workshop's console");
+  // The link was made at an IP address over plain http, where no browser
+  // uses a passkey, so the page says that is what to change.
+  await shows(page, "#host-settings-refused", "From here you can start tasks on workshop and answer their questions", `This computer reaches workshop at ${tarroAddress}`, "Settings › Keys & devices", "add it again at its https address", "Open workshop's console");
   await shows(page, "#settings-hosts", "This computer", "workshop");
   assert.strictEqual(await page.locator("main.settings-page [role=tablist], main.settings-page .settings-panel input, main.settings-page .settings-panel button").count(), 0, "workshop's Settings show controls to a link that answers");
   assert.ok(of(sent.workshop, "settings.read").length > 0, "workshop's settings were not read over workshop's socket");
@@ -300,6 +312,29 @@ check(async () => {
   await phone.waitForSelector("#invitation");
   const vouched = (await phone.textContent("#invitation strong")).trim();
   await phoneContext.close();
+
+  // An invitation from workshop's terminal, at the localhost name where a
+  // passkey could be used, still makes a link that answers: workshop's
+  // Settings say the invitation is what to change.
+  const plainInvite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
+  await page.click("#add-host");
+  await page.fill("#host-address", `http://localhost:${port}`);
+  await page.fill("#host-as", "laptop");
+  await page.fill("#host-name", "workshop");
+  await page.fill("#host-invite", plainInvite);
+  await page.click("#add-host-form button[type=submit]");
+  await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('ready')", { timeout: 20000 });
+  await shows(page, "#hosts .host-card[data-host='workshop']", "Answers");
+  await page.click("#host-settings-workshop");
+  await page.waitForSelector("#host-settings-refused");
+  await shows(page, "#host-settings-refused", "This link's invitation came from workshop's terminal", "Invite a device", "unlink workshop and add it again with that invitation");
+  assert.ok(!(await page.innerText("#host-settings-refused")).includes("This computer reaches workshop at"), "a localhost link is told its address is the fault");
+  await page.screenshot({ path: `${out}/workshop-settings-terminal.png` });
+  await page.evaluate(() => (location.hash = "#/hosts"));
+  await page.click("#unlink-workshop");
+  await page.click("#unlink-workshop-confirm");
+  await until("workshop unlinked again", async () => (await page.locator("#hosts .host-card[data-host='workshop']").count()) === 0);
+  step("a terminal invitation at a localhost name: workshop's Settings say the invitation is what to change");
 
   await page.click("#add-host");
   await page.fill("#host-address", `http://localhost:${port}`);

@@ -829,7 +829,8 @@ export class TaskView {
     else if (this.modelChanged) notes.push({ text: `Takes effect from your next message: ${words(m)}.` });
     if (m.notice) notes.push({ kind: "error", text: `The model chosen while the response ran could not be applied: ${m.notice}. The conversation keeps ${words(m)}.` });
     if (m.unavailable) notes.push({ kind: "error", text: `This conversation's model is not available (${m.unavailable}). Nothing is sent until you choose one.` });
-    if (!canChoose) notes.push({ text: "The model is chosen on the computer nodwyn runs on." });
+    if (!canChoose && this.desk.host) notes.push({ text: `This computer only answers on ${this.desk.host}, so it cannot choose the model of ${this.desk.host}'s tasks.`, fix: `${this.desk.host}'s Settings say how to change that`, href: this.desk.at("settings") });
+    else if (!canChoose) notes.push({ text: "The model is chosen on the computer nodwyn runs on." });
     else if (running) notes.push({ text: "Stop the run to change the model." });
     // The judge the task asks (ADR 47) is chosen beside its model, on this
     // computer, between turns: the daemon refuses a change while a response

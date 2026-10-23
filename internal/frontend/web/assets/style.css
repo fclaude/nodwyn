@@ -326,6 +326,7 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .ask-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ask-bar .btn { background: var(--bg); border-color: var(--line); }
 .ask-bar .where { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-left: auto; }
+.ask-bar .where-why { font-size: 12px; white-space: nowrap; }
 .ask-hint { margin-top: -6px; }
 /* The rare choices behind one control: a count says how many are off their
    defaults (home.js). */
@@ -1021,6 +1022,10 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .advanced > .settings-section { margin-top: 12px; }
 .callout.warn { flex-direction: column; }
 .callout.warn p { margin: 0; }
+/* A linked host's refusal of its settings reads as an account and steps. */
+#host-settings-refused { flex-direction: column; gap: 8px; }
+#host-settings-refused p, #host-settings-refused ol { margin: 0; }
+#host-settings-refused ol { padding-left: 20px; display: grid; gap: 4px; }
 .mp-summary-judge[hidden], .mp-field[hidden] { display: none; }
 .more-settings > summary { cursor: pointer; font-weight: 500; font-size: 13px; color: var(--ink-2); }
 .more-settings > .field { margin-top: 14px; }
@@ -1141,7 +1146,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   /* Send stays on the first row, beside Attach and Options; the model
      takes the row under them. */
   .ask-bar .send-round { order: 2; margin-left: auto; }
-  .ask-bar .model-picker, .ask-bar .where { order: 3; }
+  .ask-bar .model-picker, .ask-bar .where, .ask-bar .where-why { order: 3; }
   /* The options open across the composer, not from the button's left edge. */
   .ask { position: relative; }
   .options { position: static; }
