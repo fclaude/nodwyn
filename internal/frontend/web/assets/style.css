@@ -1224,6 +1224,18 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .runs-on select:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
 .runs-on option { background: var(--surface); color: var(--ink); font-size: 13px; }
 .work-in-host { margin-left: 4px; }
+/* The list every select opens (dropdown.js): the system's own popup is white
+   in the app window, so this one is drawn in the console's colours. */
+.dd-pop {
+  position: fixed; z-index: 40; overflow-y: auto; padding: 4px; font-size: 13px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow);
+}
+.dd-option { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px 0 6px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.dd-option.active { background: var(--selected); }
+.dd-option[aria-disabled="true"] { color: var(--faint); cursor: default; }
+.dd-mark { display: inline-flex; flex: 0 0 14px; justify-content: center; color: var(--accent-link); }
+.dd-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dd-group { padding: 8px 8px 2px; font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--faint); }
 .host-card { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
 .host-icon {
   flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2);

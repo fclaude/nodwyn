@@ -11,6 +11,7 @@ import { TaskView } from "./task.js";
 import { renderWorkspaces, renderConnections } from "./pages.js";
 import { renderWorkflows } from "./workflows.js";
 import { Hosts, renderHosts } from "./hosts.js";
+import { installDropdowns } from "./dropdown.js";
 import { renderSettings, applyTheme, storedTheme, applyThinking, storedThinking } from "./settings.js";
 
 applyTheme(storedTheme());
@@ -477,6 +478,8 @@ conn.onState(async (state, detail) => {
 setInterval(() => {
   for (const entry of hosts.live()) entry.desk.refreshModels(false, true);
 }, 60000);
+
+installDropdowns();
 
 // ⌘N / Ctrl+N: a new task, as the sidebar promises.
 document.addEventListener("keydown", (event) => {

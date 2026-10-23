@@ -1011,7 +1011,7 @@ client for session data. There is no JavaScript build system, second history sto
 connection to the bridge, one per host; `desk.js` holds what every page reads
 (tasks, what needs you), one per host; `hosts.js` the hosts and their page; `sidebar.js`, `home.js`, `task.js`, `transcript.js` and `pages.js`
 draw the views; `prompts.js` renders review choices; `setup.js` the keychain
-forms; `modelpicker.js` the model and effort picker of the New task window, a conversation and Settings; `models.js` Settings › Models, whose provider and model forms the first run draws too; `credentials.js` Connections › Credentials; `attach.js` attachments; `markdown.js` model replies;
+forms; `modelpicker.js` the model and effort picker of the New task window, a conversation and Settings; `models.js` Settings › Models, whose provider and model forms the first run draws too; `credentials.js` Connections › Credentials; `attach.js` attachments; `dropdown.js` the list every select opens, drawn in the console's colours instead of the system's white popup (the select keeps its value and events; a phone keeps the system's picker); `markdown.js` model replies;
 `inspectors.js` fixed snapshots from the same redacted records; `policy.js`
 policy drafts and review controls; `dom.js` the helpers that keep every string
 text. A pinned WebSocket library avoids a
