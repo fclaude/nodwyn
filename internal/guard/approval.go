@@ -73,6 +73,17 @@ func (p Prompt) ApprovalOptions() ApprovalOptions {
 // Ordinary reports whether p is an ordinary write or command: not a
 // security confirm and not a protected path. These are what "don't ask"
 // answers (ADR 17), whether or not a standing approval could cover them.
+// git-land is one too, though it names no path or command line: the person
+// who switched "don't ask" on has said to stop asking about the work they
+// watch, and landing it is the end of that work (ADR 34, amended). It
+// matches by name as core's upload does; an MCP tool is named server/tool,
+// so none can take it.
 func (p Prompt) Ordinary() bool {
-	return !p.Security && !IsProtected(p.Path) && (p.Path != "" || len(p.Argv) > 0)
+	if p.Security || IsProtected(p.Path) {
+		return false
+	}
+	return p.Path != "" || len(p.Argv) > 0 || p.Prim == landPrim
 }
+
+// landPrim is the primitive that lands a worktree session's work.
+const landPrim = "git-land"

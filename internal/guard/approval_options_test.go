@@ -6,6 +6,37 @@ import (
 	"github.com/fclaude/nodwyn/internal/binding"
 )
 
+// "Don't ask" answers what is ordinary. git-land has neither a path nor a
+// command line, and it is what a person who has switched it on means by
+// "commit and push"; no other call without one is waived, and a security
+// confirm never is.
+func TestLandPromptIsOrdinary(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		prompt Prompt
+		want   bool
+	}{
+		{"git-land", Prompt{Prim: "git-land"}, true},
+		{"git-land, security", Prompt{Prim: "git-land", Security: true}, false},
+		{"upload", Prompt{Prim: "google-doc-upload"}, false},
+		{"other tool", Prompt{Prim: "chat/post_message"}, false},
+		{"write", Prompt{Prim: "fs-write", Path: "notes/a.md"}, true},
+		{"command", Prompt{Prim: "shell-exec", Argv: []string{"go", "test"}}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.prompt.Ordinary(); got != tt.want {
+				t.Fatalf("Ordinary() = %v, want %v", got, tt.want)
+			}
+			if tt.prompt.Path != "" || len(tt.prompt.Argv) > 0 {
+				return
+			}
+			if o := tt.prompt.ApprovalOptions(); o.Session || o.Turn {
+				t.Fatalf("offers a standing answer: %+v", o)
+			}
+		})
+	}
+}
+
 func TestApprovalOptionsMatchSupportedScopes(t *testing.T) {
 	row := &binding.Binding{Class: "service", Dest: "api.test"}
 	for _, tt := range []struct {

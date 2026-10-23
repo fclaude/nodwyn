@@ -522,7 +522,7 @@ refuses a change that adds credential-shaped text, pushes to the base's
 upstream by fast-forward only, and fast-forwards your checkout of the base
 branch when it is clean (a checkout with changes of its own is left alone,
 and the answer says so). It asks you first, as any call that cannot be
-undone does. Commits are signed as your git configuration says, with your
+undone does, unless **Don't ask** is on for the task, which answers it too. Commits are signed as your git configuration says, with your
 own agent; if signing fails it stops and says so rather than commit
 unsigned, and a prompt nobody can answer (a passphrase) fails at once
 instead of hanging. A rebase conflict stops it with the files named; the
@@ -996,7 +996,8 @@ model's to change.
 
 In the console, **Don't ask: approve writes and commands** under the composer
 stops the questions for one task: its ordinary writes and commands are
-approved without asking until you uncheck it or the task closes. Protected
+approved without asking until you uncheck it or the task closes. Landing a worktree task's work (git-land)
+counts as one, so it goes ahead too. Protected
 paths and writes that look like a key still ask, and nothing the guard
 refuses is allowed. No Scheme can turn it on, a repository's `init.scm`
 included, and it is never saved: a resumed task asks again. Line mode's

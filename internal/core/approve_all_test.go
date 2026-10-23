@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
 )
 
@@ -124,6 +125,45 @@ func TestApproveAllAnswersOrdinaryWritesAndCommands(t *testing.T) {
 	}
 	if on, _ := r.s.ApproveAll(); on {
 		t.Fatal("still on")
+	}
+}
+
+// "Don't ask" answers git-land, which has no path or command line of its
+// own, for the person who turned it on; a security confirm of it, any other
+// call without a path, and git-land once it is off still ask.
+func TestApproveAllAnswersGitLand(t *testing.T) {
+	t.Parallel()
+	r := newAskingRig(t)
+	a := answering(t, r.s, "n")
+	ctx := context.Background()
+	land := guard.Prompt{Prim: "git-land", Args: `"message"`, Reasons: []string{"git-land commits, rebases and pushes this session's work to its base branch"}}
+	if err := r.s.SetApproveAll(true, "unix:uid=1"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.s.ConfirmApproval(ctx, land)
+	if err != nil || !got.Allowed || got.Scope != "all" || got.Actor != "unix:uid=1" {
+		t.Fatalf("git-land under don't ask: %+v, %v", got, err)
+	}
+	if asked := a.list(); len(asked) != 0 {
+		t.Fatalf("asked about %v", asked)
+	}
+	secure := land
+	secure.Security = true
+	other := guard.Prompt{Prim: "chat/post_message"}
+	for _, p := range []guard.Prompt{secure, other} {
+		if got, err := r.s.ConfirmApproval(ctx, p); err != nil || got.Allowed {
+			t.Fatalf("%+v was answered: %+v, %v", p, got, err)
+		}
+	}
+	if err := r.s.SetApproveAll(false, "unix:uid=1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := r.s.ConfirmApproval(ctx, land); err != nil || got.Allowed {
+		t.Fatalf("git-land after don't ask was turned off: %+v, %v", got, err)
+	}
+	if asked := a.list(); len(asked) != 3 || asked[0] != "git-land" || asked[1] != "chat/post_message" || asked[2] != "git-land" {
+		// The security git-land came first, then the other call, then git-land.
+		t.Fatalf("asked about %v", asked)
 	}
 }
 

@@ -620,3 +620,25 @@ or model argument selects another credential. Existing prompt suppression and
 signing behaviour remain. `TestGitLandUsesTheRepositoriesSSHCommand` performs
 fetch and push against a temporary local bare repository through a fake SSH
 transport, and fails on the old code because it chose the default instead.
+
+## Amendment 2026-10-23: "Don't ask" answers git-land
+
+The 2026-10-05 amendment left git-land asking every time, and "Don't ask:
+approve writes and commands" did not reach it: the switch answers an ordinary
+write or command (`Prompt.Ordinary`, ADR 17), and git-land has neither a path
+nor a command line, so with the switch on, a task still stopped at the landing
+with "No standing answer is offered for this call".
+
+`Prompt.Ordinary` now also holds for a git-land confirm that is not a security
+confirm. With "Don't ask" on, the person has said to stop asking about this
+task; landing it is the end of the same work, so it goes through, the answer
+logged with who turned the switch on (scope `all`) and a question already
+waiting answered when the switch is checked. Nothing else changes: no standing
+answer is offered for git-land (the switch is the approval, and nothing is
+installed), a security confirm of it still asks, git-land's own refusals (a
+credential-shaped addition, a hooks path inside the worktree, a conflict, a
+non-fast-forward push) still stop it, other calls without a path (an MCP
+tool, an upload) still ask, and the switch stays a person's: no Scheme turns
+it on. The judge and `approval.commands` already covered git-land.
+`TestLandPromptIsOrdinary` and `TestApproveAllAnswersGitLand` fail without it.
+The `push = [URL, ...]` list in `.nodwyn/allow.toml` is still not built.

@@ -488,3 +488,11 @@ here-string handed to `xargs`, a path one command writes for another to read.
 `TestSandboxModeJudgesANestedShellsScriptByTheDenylist` fail on `5a33587` (32
 of their lines) and pass with the change; the other argv trigger tests are
 unchanged.
+
+## Amendment 2026-10-23: "don't ask" answers git-land
+
+`Prompt.Ordinary` also holds for a git-land confirm that is not a security
+confirm, though it names no path or command line, so "Don't ask" lands a
+worktree task's work unasked ([ADR 34](0034-sessions-in-git-worktrees.md),
+amended the same day). No other call without a path or command line is
+answered by it.

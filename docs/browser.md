@@ -927,7 +927,7 @@ prompt. Eligible ordinary calls also offer the displayed command/write prefix fo
 this session, or ordinary writes for this turn. Security and protected-path
 confirmations remain one-time only; no grant overrides a denial. Under the
 composer, **Don't ask: approve writes and commands** answers every ordinary
-write and command in that task without asking, and the question waiting when
+write and command in that task without asking (and a worktree task's git-land), and the question waiting when
 it is checked, until it is unchecked or the task closes; security and
 protected-path questions still ask, the conversation says when it was switched
 and each call it approved says so. It is the daemon's, not Scheme's
