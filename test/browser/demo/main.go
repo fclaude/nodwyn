@@ -588,7 +588,6 @@ func respond(req fake.Request) fake.Turn {
 	var last string
 	var results []string // the tool results since the request
 	rounds, images := 0, 0
-	titling := false // the request asks for a task's title (session-title-prompt)
 	for _, raw := range req.Messages {
 		var m struct {
 			Role      string            `json:"role"`
@@ -599,8 +598,6 @@ func respond(req fake.Request) fake.Turn {
 		_ = json.Unmarshal(raw, &m)
 		images += len(m.Images)
 		switch {
-		case m.Role == "system" && strings.HasPrefix(m.Content, "Write a short title"):
-			titling = true
 		case m.Role == "user" && strings.HasPrefix(m.Content, taskHeader):
 			last, rounds, results = m.Content[len(taskHeader):], 0, nil
 		case m.Role == "user" && strings.HasPrefix(m.Content, planHeader):
@@ -614,16 +611,6 @@ func respond(req fake.Request) fake.Turn {
 		}
 	}
 	time.Sleep(pace)
-	if titling {
-		// A task is named by the model from its first message (ADR 39,
-		// amended 2026-10-23); tasks.js checks it with this one. Every other
-		// title is left empty, so the task keeps its first message as its
-		// title and the checks that find a task by it still do.
-		if strings.Contains(last, "login page keeps sending me back") {
-			return fake.Turn{Content: "Fix login redirect"}
-		}
-		return fake.Turn{}
-	}
 	if len(req.Tools) == 0 {
 		// The plan names its change, its test, its docs and its check, as
 		// the planner is asked to (prompts.scm, plan-shape).
@@ -631,6 +618,16 @@ func respond(req fake.Request) fake.Turn {
 			"2. Test: app.test.js \"rows tell sessions apart\" — two sessions that start alike get different rows; fails today: a row shows only the title and the repository.\n" +
 			"3. Docs: notes/todo.md — tick off \"tell sessions apart\".\n" +
 			"4. Check: ls -la, then the list at phone width.", Chunk: 24}
+	}
+	if strings.Contains(last, "login page keeps sending me back") {
+		// A task is named by the model in its first reply (ADR 39, amended
+		// 2026-10-23); tasks.js checks it with this one. The other tasks are
+		// never named, so they keep their first message as their title and the
+		// checks that find a task by it still do.
+		if rounds == 0 {
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "n1", Name: "name-task", Args: map[string]any{"title": "Fix login redirect"}}, {ID: "n2", Name: "fs-list", Args: map[string]any{"path": "."}}}}
+		}
+		return fake.Turn{Content: "Looked at the login page.", Chunk: 12}
 	}
 	if strings.HasPrefix(last, "Describe") {
 		return fake.Turn{Content: fmt.Sprintf("This request carries %d image(s). The demo model does not look at them.", images), Chunk: 16}

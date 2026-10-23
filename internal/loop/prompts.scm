@@ -115,6 +115,7 @@
    (scratch-rule (scratch-dir))
    working-rules
    (git-rule)
+   (name-task-rule)
    (worktree-section)
    (workspace-section)
    (project-instructions-section)
@@ -242,6 +243,19 @@
 (define (git-rule)
   (if (guard (e (else #f)) (primitive-info "git-diff") #t)
       "\n- Before you finish, look at your change as git shows it, with git-status and git-diff (they need no approval): it should hold the whole change and nothing else, no stray scripts, backups or debugging output, and nothing the change does not use (a function or field that nothing calls or reads)."
+      ""))
+
+;; The system prompt's rule for naming the task, or "" where name-task is not
+;; offered (a session the daemon did not open, or a lean one). The list of
+;; tasks showed a request cut down, which reads badly as a name ("hey, so the
+;; login page keeps sending me back to / after I sign in, can you look…"), and
+;; a request of its own to the model for a title cost a round trip the first
+;; turn waited for. So the model names the task in its first reply, with a
+;; few words of output next to its first step; a reply that does not leaves
+;; the task read by its first message as before (ADR 39, amended 2026-10-23).
+(define (name-task-rule)
+  (if (guard (e (else #f)) (primitive-info "name-task") #t)
+      "\n- Your first reply in a conversation also names the task: call name-task with three to seven words saying what the request asks, as it would read in a list of tasks, together with your first step and not instead of it. If it answers that the task has a name already, go on without a word about it. Call it once."
       ""))
 
 ;; How to work, in both system prompts (ADR 32): the habits that held up
@@ -991,13 +1005,6 @@
   (string-append
    (if (string-empty? focus) "" (string-append "Focus on: " focus "\n\n"))
    "History of this repository's sessions (newest first):\n\n" history))
-
-;; The system prompt of the request for a task's title (agents.scm,
-;; session-title): the person's first message is the request's one message.
-;; The title is what the task list shows in place of that message, cut down,
-;; which read badly as a name (ADR 39, amended 2026-10-23).
-(define session-title-prompt
-  "Write a short title, of three to seven words, for the task the user's message asks for, as it would appear in a list of tasks. Reply with the title alone: no quotes, no full stop, no explanation, and do not do the task.")
 
 ;; Compaction's request for a handover note (compact.scm). A note that
 ;; kept a conclusion and dropped what it rested on ("the bug does not

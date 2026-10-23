@@ -633,12 +633,9 @@ check(async () => {
   await page.press("#reply", "Enter");
   await page.waitForFunction(() => document.querySelector(".transcript").innerText.includes("Answered by reasoner with medium effort."));
   await idle();
-  // The first message is sent twice at its effort: once for the task's title,
-  // which the model writes from it (ADR 39, amended 2026-10-23), then for the
-  // turn.
   assert.deepStrictEqual(
-    (await provider()).filter((r) => r[3] === 200 && r[0] === "reasoner").map((r) => r[1]).slice(-6),
-    ["medium", "low", "low", "high", "high", "medium"],
+    (await provider()).filter((r) => r[3] === 200 && r[0] === "reasoner").map((r) => r[1]).slice(-5),
+    ["medium", "low", "high", "high", "medium"],
     "the provider saw the wrong efforts (its first is the Test above)",
   );
   await openActivity("Next message: reasoner · medium effort");

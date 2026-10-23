@@ -61,6 +61,11 @@ type Options struct {
 	// summary of each build or refresh (index.update).
 	IndexDir    string
 	IndexRecord func(nlog.IndexUpdate)
+	// NameTask names the session (the name-task tool, ADR 39, amended
+	// 2026-10-23): it returns what the tool answers, or an error when the
+	// name is not usable. nil offers no such tool, as in every session the
+	// daemon did not open.
+	NameTask func(title string) (string, error)
 	// Conversation is index-search's scopes the core keeps (ADR 50): scope
 	// "conversation", the session's own, and "earlier", the project's other
 	// tasks; nil for none.
@@ -161,6 +166,11 @@ func Register(in *scheme.Interp, o Options) error {
 	}
 	for _, p := range prims {
 		if err := in.Register(p); err != nil {
+			return err
+		}
+	}
+	if o.NameTask != nil {
+		if err := in.Register(nameTask(o)); err != nil {
 			return err
 		}
 	}
@@ -486,6 +496,33 @@ func projectNotesSave(o Options) *scheme.Prim {
 				return scheme.Value{}, err
 			}
 			return scheme.Void, nil
+		},
+	}
+}
+
+// nameTask builds (name-task title): the model names the task from its first
+// request, for the list a person reads their tasks in. The core decides
+// whether the task may still be named and records the name as the model's;
+// the call is the model's own words and moves nothing outside the session's
+// log.
+func nameTask(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "name-task",
+		Meta: scheme.Meta{
+			Doc:    "Name this task for the list its person reads their tasks in: three to seven words saying what the request asks, with no quotes, no full stop and none of the request's own wording about how it is asked. Call it once, in your first reply, together with your first step. It answers that the task has a name already when a person or an earlier call gave one, and then it changes nothing.",
+			Params: []scheme.Param{{Name: "title", Type: "string", Doc: "the task's name, three to seven words"}},
+			Host:   true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			title, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			answer, err := o.NameTask(title)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			return scheme.Str(answer), nil
 		},
 	}
 }

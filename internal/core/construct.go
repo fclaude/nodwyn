@@ -48,11 +48,11 @@ type Options struct {
 	// a soft budget checkpoint continues up to the hard limit, and both are
 	// recorded as answered by "unattended".
 	Unattended bool
-	// Titles asks the model, once the session's first message is in, for a
-	// short title to list the task by (ADR 39, amended 2026-10-23). The
-	// daemon sets it for the tasks it lists; off, the default, asks nothing,
-	// so an embedder or a test whose model is scripted request by request is
-	// not sent a request it did not expect.
+	// Titles offers the model the name-task tool, to name the task from its
+	// first request for the list it is shown in (ADR 39, amended
+	// 2026-10-23). The daemon sets it for the tasks it lists; off, the
+	// default, offers no such tool, so an embedder's or a test's tool list is
+	// the one it had.
 	Titles bool
 	// InitFile explicitly authorises an init file on behalf of a Go embedder.
 	// Empty loads <Repo>/.nodwyn/init.scm only after user-owned project trust.
@@ -349,6 +349,9 @@ func (s *Session) primitiveOptions() prim.Options {
 		po.IndexRecord = func(u log.IndexUpdate) { _, _ = s.Record(log.KindIndexUpdate, u) }
 	}
 	po.BindingsPath = o.Paths.Bindings
+	if o.Titles {
+		po.NameTask = s.nameTask
+	}
 	po.ShellTimeout = shellTimeout
 	// P3 egress: the session is the CredentialStore (it owns the keychain,
 	// the masked prompt, and the log). Bootstrap leaves this nil.

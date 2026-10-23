@@ -1,7 +1,7 @@
 package core
 
 import (
-	"context"
+	"errors"
 	"strings"
 	"unicode/utf8"
 
@@ -17,36 +17,28 @@ const titleActor = "model"
 // name (rpc maxName): a line in a list.
 const maxTitle = 120
 
-// untitledAndUnasked says whether a session whose log is events has had no
-// message yet and no name: only then is its first message the one a title
-// is asked for. A session a person or a workflow named before it was
-// written to keeps that name, and a session resumed with messages in it is
-// not asked again.
-func untitledAndUnasked(events []log.Event) bool {
-	for _, ev := range events {
-		if ev.Kind == log.KindUserMsg || ev.Kind == log.KindSessionTitle {
-			return false
+// nameTask answers the name-task tool: the model's name for the session,
+// from its first request (ADR 39, amended 2026-10-23). It goes through the
+// session's own Record, so it crosses the log's redaction boundary as a
+// person's name does. A session that has any session.title in its log, a
+// person's, a workflow's, an earlier call's or one a person took back with
+// an empty name, is not named again: a name a person gave or took back is
+// theirs, and a model that calls the tool again changes nothing. A model
+// that never calls it leaves the task read by its first message, as before.
+func (s *Session) nameTask(reply string) (string, error) {
+	title := cleanTitle(reply)
+	if title == "" {
+		return "", errors.New("name-task takes three to seven words naming the task")
+	}
+	for _, ev := range s.EventsSoFar() {
+		if ev.Kind == log.KindSessionTitle {
+			return "The task has a name already; nothing changed.", nil
 		}
 	}
-	return true
-}
-
-// titleFrom asks the model for a short title for request, the session's
-// first message, and records it as the session's name, attributed to the
-// model (ADR 39, amended 2026-10-23). It goes through the session's own
-// Record, so it crosses the log's redaction boundary as a person's name
-// does. The question is asked in a context of its own, folded away before
-// the turn starts, so the conversation never sees it. A failed request or
-// an empty reply records nothing: the task is read by its first message, as
-// before, and the turn goes on.
-func (s *Session) titleFrom(ctx context.Context, request string) {
-	reply, err := s.loop.Title(ctx, request)
-	if err != nil {
-		return
+	if _, err := s.Record(log.KindSessionTitle, log.SessionTitle{Actor: titleActor, Title: title}); err != nil {
+		return "", err
 	}
-	if title := cleanTitle(reply); title != "" {
-		_, _ = s.Record(log.KindSessionTitle, log.SessionTitle{Actor: titleActor, Title: title})
-	}
+	return "Named.", nil
 }
 
 // cleanTitle is a model's reply made a title: its whitespace collapsed as

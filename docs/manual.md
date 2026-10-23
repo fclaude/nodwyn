@@ -584,13 +584,15 @@ amended 2026-10-05).
 
 ### Naming, archiving and deleting tasks
 
-A task is listed by a short title the model writes from its first message,
-when nothing has named it yet, until you name it; when the model gives
-none, by the first sentence of its first message. The title is asked
-once, as the first message is sent, of the model the task talks to, in a
-request of its own that the conversation does not see (ADR 39, amended
-2026-10-23). In the console, the pencil beside a task's heading renames it,
-and an empty name takes the title back to the first message; a closed
+A task is listed by a short title the model gives it, when nothing has
+named it yet, until you name it; when the model gives none, by the first
+sentence of its first message. The model is asked, in the system prompt, to
+name the task in its first reply, next to its first step, with a tool of
+its own (`name-task`): a few words of output in the reply it was making
+anyway, not a request of its own. Only the tasks the daemon opens have the
+tool, and an unattended run does not (ADR 39, amended 2026-10-23). In the
+console, the pencil beside a task's heading renames it, and an empty name
+takes the title back to the first message; a closed
 task can be archived, which takes it off the task list until you unarchive
 or resume it, or deleted, which removes its conversation and log for good
 and leaves the files it changed. The sidebar lists tasks under their

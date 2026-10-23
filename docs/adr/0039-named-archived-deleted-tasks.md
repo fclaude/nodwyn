@@ -78,37 +78,48 @@ record of what devices did. A device signed in with the person's passkey
 deletes one after a touch of that passkey, as it changes setup (ADR 30,
 amended 2026-10-17).
 
-## Amendment 2026-10-23: the model names a task from its first message
+## Amendment 2026-10-23: the model names a task in its first reply
 
 A task nobody had named was listed by its first message cut down, which
 read badly: a request written as a person talks ("hey, so the login page
 keeps sending me back…") is not a name. A task the daemon opens is now
-named by the model, from its first message, when nothing has named it yet.
+named by the model, when nothing has named it yet.
 
-- **When.** Once, on the session's first message, before the turn on it
-  starts, when the log holds no earlier message and no `session.title`: a
-  name a person or a workflow gave the task before it was written to is
-  kept, a later message asks nothing, and a session resumed with messages
-  in it is never asked. The daemon (`nodwyn daemon`, `nodwyn app`) asks,
+The first design asked the conversation's model for a title in a request
+of its own, before the turn on the first message. It was a round trip the
+first turn waited for, on every new task, and it was replaced the same day
+by a tool the model calls in a reply it was making anyway: a few words of
+output instead of a second request.
+
+- **The tool.** `name-task` takes `title`, three to seven words
+  (`prim/prim.go`). The daemon (`nodwyn daemon`, `nodwyn app`) offers it
   through `core.Options.Titles`; a session embedded without it, as the
-  tests' are, makes no such request.
-- **How.** `(session-title request)` (`agents.scm`) asks the conversation's
-  own model with `session-title-prompt` as a sub-agent with no tools and no
-  rounds, so the request crosses the guard and is logged as every other
-  model request is, its context is folded before the turn starts, failure
-  included, and the conversation never sees it. It goes to the model the
-  task already talks to, so it sends nothing anywhere the task would not.
-  It costs one short request, which the turn waits for, so the name is
-  shown from the start rather than when a long first turn ends.
-- **What is recorded.** The reply, its whitespace collapsed as a person's
+  tests' are, has no such tool and its prompt does not mention it, so its
+  tool list and its scripted model are as they were. The lean profile's
+  tool list is `shell-exec` and `fs-edit`, so a session nobody approves is
+  not offered it and its task is read by its first message, as before.
+- **Prompting for it.** The interactive system prompt says, where the tool
+  is offered (`name-task-rule`, `prompts.scm`), that the first reply also
+  names the task, together with the first step and not instead of it, once,
+  and that an answer saying the task has a name is gone on from in silence.
+  It is a line of the prompt's fixed part, so it stays in the cached
+  prefix. It is not a working rule of ADR 32, and has no measurement
+  behind it beyond the failure it answers (the first message as a name).
+- **What is recorded.** The title, its whitespace collapsed as a person's
   name is, without the quotes or the full stop around it, and at most 120
-  characters, is recorded as `session.title` with actor `model` through
-  the session's own `Record`, so it crosses the log's redaction as a
-  person's name does. A failed request or an empty reply records nothing,
-  and the task is read by its first message as before.
+  characters, is recorded as `session.title` with actor `model` through the
+  session's own `Record`, so it crosses the log's redaction as a person's
+  name does. An empty title is refused, and the model is told so.
+- **Once, and never over a name.** When the log holds any `session.title`
+  the call answers that the task has a name already and records nothing: a
+  name a person or a workflow gave, one the model gave, and a name a person
+  took back with an empty one all count, so the model does not name a task
+  twice and never replaces a person's choice. A workflow's session has its
+  name before its first message, and its model is told so if it calls.
+- **A model that does not call it** leaves the task read by its first
+  message, as before; nothing waits for the name and nothing retries.
 - **A person's name still wins.** A rename records a later `session.title`,
   which is the title; an empty rename takes the name back, the model's
-  included, and the task is read by its first message again: the model is
-  not asked twice.
+  included, and the task is read by its first message again.
 - Not built: `nodwyn sessions` and the TUI's list still show first
   messages, as above.

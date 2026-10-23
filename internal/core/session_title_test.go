@@ -15,9 +15,9 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
-// titleRig is newRig for a session that asks the model for its title, as
-// the daemon's sessions do (Options.Titles).
-func titleRig(t *testing.T, turns ...fake.Turn) *rig {
+// titleRig is newRig for a session that offers the model name-task, as the
+// daemon's sessions do (Options.Titles), or not.
+func titleRig(t *testing.T, titles bool, turns ...fake.Turn) *rig {
 	t.Helper()
 	repo := t.TempDir()
 	must.WriteFile(t, filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
@@ -27,7 +27,7 @@ func titleRig(t *testing.T, turns ...fake.Turn) *rig {
 	cfg.Control.URL = srv.URL
 	cfg.Control.Model = "test-model"
 	logb := &bytes.Buffer{}
-	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb, Titles: true})
+	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb, Titles: titles})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,13 +83,31 @@ func messages(t *testing.T, req fake.Request) []struct{ Role, Content string } {
 	return out
 }
 
+// offers says whether a request offers the tool name.
+func offers(req fake.Request, name string) bool {
+	for _, raw := range req.Tools {
+		if strings.Contains(string(raw), `"name":"`+name+`"`) {
+			return true
+		}
+	}
+	return false
+}
+
 const longFirst = "hey, so the login page keeps sending me back to / after I sign in, can you look at it and fix whatever is wrong please"
 
-// The model names a task from its first message, in a request of its own
-// that offers no tools and that the conversation never sees, and the task
-// is listed by that name rather than by the message cut down.
-func TestModelTitlesSessionFromFirstMessage(t *testing.T) {
-	r := titleRig(t, fake.Turn{Content: "Fix login redirect"}, fake.Turn{Content: "Looked at it."})
+// naming is a reply that calls name-task with title next to the first step.
+func naming(title string) fake.Turn {
+	return fake.Turn{ToolCalls: []fake.ToolCall{
+		{ID: "n", Name: "name-task", Args: map[string]any{"title": title}},
+		{ID: "l", Name: "fs-list", Args: map[string]any{"path": "."}},
+	}}
+}
+
+// The model names a task in its first reply, beside its first step: the
+// task is listed by that name rather than by the message cut down, and the
+// name cost no request of its own.
+func TestModelNamesTaskInItsFirstReply(t *testing.T) {
+	r := titleRig(t, true, naming("Fix login redirect"), fake.Turn{Content: "Looked at it."})
 	r.send(longFirst)
 	titles, info := r.titles()
 	if len(titles) != 1 || titles[0].Title != "Fix login redirect" || titles[0].Actor != "model" {
@@ -99,50 +117,100 @@ func TestModelTitlesSessionFromFirstMessage(t *testing.T) {
 		t.Fatalf("Title() = %q, want the model's title", got)
 	}
 	if len(r.srv.Requests) != 2 {
-		t.Fatalf("%d requests, want the title's and the turn's", len(r.srv.Requests))
+		t.Fatalf("%d requests, want the turn's two: naming asks nothing of its own", len(r.srv.Requests))
 	}
-	asked := r.srv.Requests[0]
-	if len(asked.Tools) != 0 {
-		t.Errorf("the title request offered %d tools", len(asked.Tools))
+	first := r.srv.Requests[0]
+	if !offers(first, "name-task") {
+		t.Error("the first request does not offer name-task")
 	}
-	msgs := messages(t, asked)
-	if len(msgs) != 2 || msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "short title") || msgs[1].Content != longFirst {
-		t.Errorf("the title request was %+v, want the title prompt and the first message alone", msgs)
+	var told bool
+	for _, m := range messages(t, first) {
+		told = told || (m.Role == "system" && strings.Contains(m.Content, "names the task: call name-task"))
 	}
-	for _, m := range messages(t, r.srv.Requests[1]) {
-		if strings.Contains(m.Content, "short title") || m.Content == "Fix login redirect" {
-			t.Errorf("the turn's request carries the title exchange: %+v", m)
+	if !told {
+		t.Error("the system prompt does not ask for the name")
+	}
+	if !strings.Contains(string(r.srv.Requests[1].Raw), "Named.") {
+		t.Error("the model was not told the task is named")
+	}
+}
+
+// A session the daemon did not open is offered no such tool and its prompt
+// does not mention it, so a model scripted request by request and a
+// project's tool list are as they were.
+func TestNameTaskIsOfferedOnlyWhereTitlesAre(t *testing.T) {
+	r := titleRig(t, false, fake.Turn{Content: "Looked."})
+	r.send(longFirst)
+	first := r.srv.Requests[0]
+	if offers(first, "name-task") {
+		t.Error("name-task is offered without Options.Titles")
+	}
+	for _, m := range messages(t, first) {
+		if strings.Contains(m.Content, "name-task") {
+			t.Errorf("the prompt names a tool that is not offered: %.80s", m.Content)
 		}
 	}
 }
 
-// Only the first message is titled: a later one asks nothing.
-func TestModelTitleAskedOnlyOnFirstMessage(t *testing.T) {
-	r := titleRig(t, fake.Turn{Content: "Fix login redirect"}, fake.Turn{Content: "Looked."}, fake.Turn{Content: "Fixed."})
-	r.send(longFirst)
-	r.send("now also fix the logout page, which has the same problem")
-	titles, info := r.titles()
-	if len(titles) != 1 {
-		t.Fatalf("%d session.title records, want 1: %+v", len(titles), titles)
-	}
-	if len(r.srv.Requests) != 3 {
-		t.Fatalf("%d requests, want 3: one title and two turns", len(r.srv.Requests))
-	}
-	if got := info.Title(); got != "Fix login redirect" {
-		t.Fatalf("Title() = %q", got)
+// The task is named once. A name a person or a workflow gave, and one a
+// person took back with an empty name, are not replaced by a later call,
+// and the model is told so.
+func TestNameTaskKeepsExistingName(t *testing.T) {
+	for name, named := range map[string][]log.SessionTitle{
+		"a person's":   {{Actor: "local", Title: "My name"}},
+		"a workflow's": {{Actor: "workflow", Title: "My name"}},
+		"taken back":   {{Actor: "local", Title: "My name"}, {Actor: "local", Title: ""}},
+		"its own":      {{Actor: "model", Title: "My name"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := titleRig(t, true, naming("Fix login redirect"), fake.Turn{Content: "Looked."})
+			for _, n := range named {
+				if _, err := r.s.Record(log.KindSessionTitle, n); err != nil {
+					t.Fatal(err)
+				}
+			}
+			r.send(longFirst)
+			titles, info := r.titles()
+			if len(titles) != len(named) {
+				t.Fatalf("records = %+v, want only %+v", titles, named)
+			}
+			if want := named[len(named)-1].Title; want != "" && info.Title() != want {
+				t.Fatalf("Title() = %q, want %q kept", info.Title(), want)
+			}
+			if !strings.Contains(string(r.srv.Requests[1].Raw), "has a name already") {
+				t.Error("the model was not told the task has a name")
+			}
+		})
 	}
 }
 
-// A reply is made a title as a person's name is made one: its whitespace
+// A model that never calls it, or calls it with nothing, leaves the task
+// read by its first message as before, and the turn goes on.
+func TestNameTaskFallsBackToTheFirstMessage(t *testing.T) {
+	for name, first := range map[string]fake.Turn{
+		"not called": {ToolCalls: []fake.ToolCall{{ID: "l", Name: "fs-list", Args: map[string]any{"path": "."}}}},
+		"blank":      naming(" \n\t "),
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := titleRig(t, true, first, fake.Turn{Content: "Looked."})
+			r.send("Fix the login redirect. It sends me back to / after I sign in")
+			titles, info := r.titles()
+			if len(titles) != 0 {
+				t.Fatalf("records = %+v, want none", titles)
+			}
+			if got := info.Title(); got != "Fix the login redirect" {
+				t.Fatalf("Title() = %q, want the first sentence", got)
+			}
+		})
+	}
+}
+
+// A name is made a title as a person's is made one: its whitespace
 // collapsed, without the quotes and the full stop a model puts around one,
 // and no longer than a name may be.
-func TestModelTitleCleansReply(t *testing.T) {
-	r := titleRig(t, fake.Turn{Content: "  \"Fix\n login   redirect.\" "}, fake.Turn{Content: "Looked."})
-	r.send(longFirst)
-	if titles, _ := r.titles(); len(titles) != 1 || titles[0].Title != "Fix login redirect" {
-		t.Errorf("records = %+v, want Fix login redirect", titles)
-	}
+func TestCleanTitle(t *testing.T) {
 	for reply, want := range map[string]string{
+		"  \"Fix\n login   redirect.\" ":  "Fix login redirect",
 		"  Fix   login\tredirect  ":       "Fix login redirect",
 		"\n\n**`Fix login redirect.`**\n": "Fix login redirect",
 		"\u201cFix login redirect\u201d":  "Fix login redirect",
@@ -155,59 +223,5 @@ func TestModelTitleCleansReply(t *testing.T) {
 	long := cleanTitle(strings.Repeat("word ", 40))
 	if n := utf8.RuneCountInString(long); n > maxTitle || n < maxTitle/2 || strings.HasSuffix(long, " ") {
 		t.Errorf("a 200-character reply became %d characters: %q", n, long)
-	}
-}
-
-// A task named before its first message, by a person or a workflow, keeps
-// its name, and the model is not asked for one: the fake's script has no
-// title reply, so a title request would fail the test.
-func TestModelTitleKeepsExistingName(t *testing.T) {
-	for _, named := range []log.SessionTitle{{Actor: "local", Title: "My name"}, {Actor: "workflow", Title: "#3 nightly"}} {
-		t.Run(named.Actor, func(t *testing.T) {
-			r := titleRig(t, fake.Turn{Content: "Looked."})
-			if _, err := r.s.Record(log.KindSessionTitle, named); err != nil {
-				t.Fatal(err)
-			}
-			r.send(longFirst)
-			titles, info := r.titles()
-			if len(titles) != 1 || info.Title() != named.Title {
-				t.Fatalf("records = %+v, Title() = %q, want %q kept", titles, info.Title(), named.Title)
-			}
-		})
-	}
-}
-
-// When the model gives no title, nothing is recorded, the turn goes on, and
-// the task is read by its first message as before.
-func TestModelTitleFailureFallsBack(t *testing.T) {
-	for name, reply := range map[string]fake.Turn{
-		"error": {Status: 400},
-		"blank": {Content: " \n\t "},
-	} {
-		t.Run(name, func(t *testing.T) {
-			r := titleRig(t, reply, fake.Turn{Content: "Looked."})
-			r.send("Fix the login redirect. It sends me back to / after I sign in")
-			titles, info := r.titles()
-			if len(titles) != 0 {
-				t.Fatalf("records = %+v, want none", titles)
-			}
-			if got := info.Title(); got != "Fix the login redirect" {
-				t.Fatalf("Title() = %q, want the first sentence", got)
-			}
-			evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var said bool
-			for _, ev := range evs {
-				var resp log.LLMResp
-				if ev.Kind == log.KindLLMResp && ev.Decode(&resp) == nil && resp.Content == "Looked." {
-					said = true
-				}
-			}
-			if !said {
-				t.Fatal("the turn did not go on after the title failed")
-			}
-		})
 	}
 }

@@ -63,9 +63,7 @@ func controlOn(url, model string) string {
 }
 
 func TestCLIResume(t *testing.T) {
-	// The daemon asks the model for the task's title first (ADR 39, amended
-	// 2026-10-23), and only for its first message.
-	srv := fake.New(fake.Turn{Content: "First ask"}, fake.Turn{Content: "original answer"}, fake.Turn{Content: "continued answer"})
+	srv := fake.New(fake.Turn{Content: "original answer"}, fake.Turn{Content: "continued answer"})
 	defer srv.Close()
 	dir := t.TempDir()
 	repo := t.TempDir()
@@ -94,7 +92,7 @@ func TestCLIResume(t *testing.T) {
 	if !strings.Contains(out, "repo  "+config.CanonicalPath(repo)) || strings.Count(out, "original answer") != 1 || strings.Count(out, "Session resumed;") != 1 {
 		t.Fatalf("bad resume transcript:\n%s", out)
 	}
-	if !strings.Contains(string(srv.Requests[len(srv.Requests)-1].Raw), "original answer") {
+	if !strings.Contains(string(srv.Requests[1].Raw), "original answer") {
 		t.Fatal("resumed model lost context")
 	}
 	listing := run("", "sessions")
@@ -104,9 +102,7 @@ func TestCLIResume(t *testing.T) {
 }
 
 func TestCLIBudgetCheckpoint(t *testing.T) {
-	// The daemon asks the model for the task's title first (ADR 39, amended
-	// 2026-10-23).
-	srv := fake.New(fake.Turn{Content: "List twice"}, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}}, fake.Turn{Content: "finished"})
+	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}}, fake.Turn{Content: "finished"})
 	defer srv.Close()
 	dir := t.TempDir()
 	writeConfig(t, dir, controlOn(srv.URL, "test-model")+"[budget]\ntool_calls_soft=1\ntool_calls_hard=3\n")
@@ -123,14 +119,7 @@ func TestCLIBudgetCheckpoint(t *testing.T) {
 			t.Fatalf("missing %q:\n%s", want, out)
 		}
 	}
-	// The turn's own requests, which offer tools: the title's offers none.
-	turn := 0
-	for _, r := range srv.Requests {
-		if len(r.Tools) > 0 {
-			turn++
-		}
-	}
-	if turn != 2 {
+	if len(srv.Requests) != 2 {
 		t.Fatal("checkpoint failed to resume the turn")
 	}
 }
