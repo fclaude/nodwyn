@@ -56,8 +56,11 @@ func TestSandboxModeLetsTheFileToolsReachTheWholeMachine(t *testing.T) {
 		return c.Check(ctx, writeP(), []scheme.Value{scheme.Str(path), scheme.Str("x")})
 	}
 	outside := []string{filepath.Join(m.system, "hosts"), filepath.Join(m.home, ".bashrc"), "/usr/local/bin/server", "../etc/hosts"}
-	plain := guard.RepoPin{Root: m.root, Temp: guard.TempDir()}
-	sandbox := guard.RepoPin{Root: m.root, Temp: guard.TempDir(), Sandbox: true}
+	// A directory of its own stands for /tmp: the machine's paths are made in
+	// the test's, which are in /tmp wherever TMPDIR is not set.
+	temp := t.TempDir()
+	plain := guard.RepoPin{Root: m.root, Temp: temp}
+	sandbox := guard.RepoPin{Root: m.root, Temp: temp, Sandbox: true}
 	for _, path := range outside {
 		if d := write(plain, path); d.Verdict != guard.Deny {
 			t.Errorf("by default a write to %s: %+v", path, d)

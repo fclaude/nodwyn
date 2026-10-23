@@ -297,7 +297,9 @@ func TestArgvTriggerReadsWhatFeedsAnotherCommand(t *testing.T) {
 	}
 	// Where nobody could approve the path (a lean session nobody approves,
 	// which may use /tmp) it is refused outright, as any outside path is.
-	if temp := guard.TempDir(); temp != "" {
+	// A directory of its own stands for /tmp, so the paths made above, which are
+	// in /tmp wherever TMPDIR is not set, are outside it.
+	if temp := t.TempDir(); temp != "" {
 		trigger := guard.DefaultArgvTrigger(repo)
 		trigger.Temp = temp
 		for _, line := range []string{"cat $(echo " + secret + ")", "echo " + secret + " | xargs cat", "for f in " + secret + "; do cat $f; done", "echo hi >&" + secret} {
@@ -422,7 +424,9 @@ func TestArgvTriggerReadsANestedShellsScript(t *testing.T) {
 		}
 	}
 	// Where nobody could approve the path it is refused outright.
-	if temp := guard.TempDir(); temp != "" {
+	// A directory of its own stands for /tmp, so the paths made above, which are
+	// in /tmp wherever TMPDIR is not set, are outside it.
+	if temp := t.TempDir(); temp != "" {
 		trigger := guard.DefaultArgvTrigger(repo)
 		trigger.Temp = temp
 		for _, line := range []string{"sh -c 'cat " + secret + "'", "eval cat " + secret} {

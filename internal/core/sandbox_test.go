@@ -8,12 +8,33 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func sandboxOptions(o *Options) { o.Sandbox = true }
+
+// machineOutsideTemp is a directory for a test's "machine" that is not in
+// /tmp, which a session nobody approves may write to (guard.TempDir): a
+// test directory is in /tmp wherever TMPDIR is not set, and a file there is
+// no longer outside what the session may change. It is in /var/tmp then, or
+// the test is skipped on a machine without one.
+func machineOutsideTemp(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	temp := guard.TempDir()
+	if rel, err := filepath.Rel(temp, dir); temp == "" || err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return dir
+	}
+	alt, err := os.MkdirTemp("/var/tmp", "nodwyn-test-")
+	if err != nil {
+		t.Skipf("the test's directories are in /tmp, and there is no /var/tmp for a machine outside it: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(alt) })
+	return alt
+}
 
 // A session in sandbox mode (ADR 55), as a Terminal-Bench task container
 // has one: a working directory that is no git repository, a file outside it
@@ -24,7 +45,7 @@ func sandboxOptions(o *Options) { o.Sandbox = true }
 // refused.
 func TestASandboxSessionChangesFilesOutsideItsFolder(t *testing.T) {
 	useProfile(t, "")
-	machine := t.TempDir()
+	machine := machineOutsideTemp(t)
 	conf := filepath.Join(machine, "etc", "app.conf")
 	must.MkdirAll(t, filepath.Dir(conf), 0o755)
 	edit := fake.Turn{ToolCalls: []fake.ToolCall{{ID: "e1", Name: "fs-edit", Args: map[string]any{"path": conf, "old": "port=80", "new": "port=8080"}}}}
