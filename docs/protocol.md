@@ -931,7 +931,13 @@ page's socket with 1008 (the page stops trying) or 1013 (it tries again),
 with the reason. The host's own console sees an ordinary device: its
 `/pair` takes `host: true` for another nodwyn, which `devices.list` then
 reports as `host`; such a device is offered no method that would wait for a
-passkey touch, which it cannot give; and any device may ask `devices.leave
+passkey touch, which it cannot give, but for the settings methods
+(`settings.write`, `settings.control.write`, `settings.docs.write`,
+`settings.provider.write`, `settings.provider.remove`,
+`settings.model.write`, `settings.model.remove`, `models.test`), which it
+is granted with no touch when it is the person's, unless the host's console
+was started with `--no-link-settings` (ADR 54, amended 2026-10-23); and any
+device may ask `devices.leave
 {}` to be revoked itself. Whether it makes the person's choices there is
 decided by the invitation it used: one made by a device of the person's that
 proved itself with a passkey, at an address where a passkey works (https or a

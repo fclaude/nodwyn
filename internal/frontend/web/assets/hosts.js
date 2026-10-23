@@ -161,7 +161,11 @@ export function renderHosts(root, ctx) {
     const actions = [];
     if (!e.name) actions.push(h("a", { class: "btn small", href: "#/settings" }, "Settings"));
     else {
-      actions.push(h("a", { class: "btn small", href: e.info.address, target: "_blank", rel: "noopener noreferrer", title: "Its setup is changed there, where your passkey signs you in" }, `Open ${e.name}'s console`));
+      // Its settings open in this window, over its connection, which says
+      // whether it lets this computer change them (ADR 54, amended
+      // 2026-10-23); the rest of its setup is changed in its own console.
+      actions.push(h("a", { class: "btn small", href: e.desk.at("settings"), id: `host-settings-${e.name}` }, "Settings"));
+      actions.push(h("a", { class: "btn small", href: e.info.address, target: "_blank", rel: "noopener noreferrer", title: "The rest of its setup is changed there, where your passkey signs you in" }, `Open ${e.name}'s console`));
       if (e.conn.state === "down" || e.conn.state === "unpaired") actions.push(h("button", { type: "button", class: "btn small", onclick: () => e.conn.connect() }, "Try now"));
       if (conn.has("host.unlink"))
         actions.push(
@@ -221,7 +225,7 @@ export function renderHosts(root, ctx) {
         canLink && !adding ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "add-host", onclick: () => { adding = true; redraw(); document.getElementById("host-address")?.focus(); } }, icon("plus", 15), "Add a host")) : null,
         adding && canLink ? addHost(ctx, redraw) : null,
         h("section", { class: "stack-md", "aria-label": "Hosts" }, hosts.all().map(card)),
-        h("p", { class: "hint" }, "Linking makes this computer a device of the other host, named as you choose. That host decides what it may do: one invited by your device signed in there with your passkey makes your choices for its tasks, and one invited from its terminal answers. Its setup is changed in its own console, and it can unlink this computer there."),
+        h("p", { class: "hint" }, "Linking makes this computer a device of the other host, named as you choose. That host decides what it may do: one invited by your device signed in there with your passkey makes your choices for its tasks and changes its settings here, unless that host refuses it, and one invited from its terminal answers. The rest of its setup is changed in its own console, and it can unlink this computer there."),
       ),
     ),
   );
@@ -293,7 +297,7 @@ function addHost(ctx, redraw) {
       },
     },
     h("h2", {}, "Add a host"),
-    h("p", { class: "hint" }, "On the other host, make an invitation: ", h("span", { class: "mono" }, "nodwyn devices invite"), " in its terminal, or Settings › Keys & devices in its console. One made by your device signed in there with your passkey lets this computer make your choices for that host's tasks; one from its terminal lets it answer."),
+    h("p", { class: "hint" }, "On the other host, make an invitation: ", h("span", { class: "mono" }, "nodwyn devices invite"), " in its terminal, or Settings › Keys & devices in its console. One made by your device signed in there with your passkey lets this computer make your choices for that host's tasks and change its settings; one from its terminal lets it answer."),
     h("div", { class: "field" }, h("label", { for: "host-address" }, "The host's address"), address),
     h("div", { class: "field" }, h("label", { for: "host-as" }, "This computer's name there"), as, h("p", { class: "hint" }, "What the host records each answer you give from here with.")),
     h("div", { class: "field" }, h("label", { for: "host-name" }, "What to call the host here"), name, h("p", { class: "hint" }, "Lower-case letters, digits, dots or dashes; the first part of its address if left empty.")),

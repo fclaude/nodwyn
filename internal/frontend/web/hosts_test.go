@@ -65,11 +65,11 @@ func tempRoot(t *testing.T, prefix string) string {
 // 54): the token is kept in the laptop's keychain, bound to the host's name,
 // and the laptop's console reaches the host's tasks through the laptop's
 // daemon, as the host's device. The host decides what that device may do:
-// one invited by the person's passkey device makes the person's choices but
-// is offered no setup, one invited from the terminal answers. The host's
-// revocation closes the open socket and refuses the next; an address changed
-// in hosts.toml is sent no cookie; unlinking tells the host and forgets the
-// token, its bindings and the line.
+// one invited by the person's passkey device makes the person's choices and
+// changes the host's settings, but is offered no other setup, one invited
+// from the terminal answers. The host's revocation closes the open socket
+// and refuses the next; an address changed in hosts.toml is sent no cookie;
+// unlinking tells the host and forgets the token, its bindings and the line.
 func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -77,7 +77,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	// The host, workshop: a daemon and a console other machines reach, at a
 	// localhost name, where a browser could use passkeys.
 	tarroRoot := tempRoot(t, "nodwyn-workshop-")
-	tarroSocket, _ := startDaemon(t, ctx, tarroRoot, nil)
+	tarroSocket, tarroPaths := startDaemon(t, ctx, tarroRoot, nil)
 	devices := OpenDevices(filepath.Join(tarroRoot, "devices.toml"))
 	workshop := &bridge{ctx: ctx, socket: tarroSocket, code: testCode, session: testSession, devices: devices, recheck: 50 * time.Millisecond}
 	tarroServer := httptest.NewUnstartedServer(workshop)
@@ -204,10 +204,31 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	if !strings.HasSuffix(greeting.Peer, " via web:laptop passkey:phone") {
 		t.Fatalf("workshop's daemon sees the link as %q", greeting.Peer)
 	}
-	for method, want := range map[string]bool{"session.open": true, "session.model.set": true, "schedule.set": true, "settings.write": false, "devices.revoke": false, "session.delete": false, "devices.leave": true} {
+	for method, want := range map[string]bool{"session.open": true, "session.model.set": true, "schedule.set": true, "settings.write": true, "settings.provider.write": true, "models.test": true, "devices.revoke": false, "session.delete": false, "startup.write": false, "devices.leave": true} {
 		if slices.Contains(greeting.Methods, method) != want {
 			t.Errorf("a link the person's passkey vouched for is offered %s: %v, want %v", method, !want, want)
 		}
+	}
+
+	// It changes workshop's settings, and not the laptop's (ADR 54, amended
+	// 2026-10-23).
+	var settings struct {
+		Values map[string]struct {
+			Value any  `json:"value"`
+			Set   bool `json:"set"`
+		} `json:"values"`
+	}
+	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"approval.writes": "ask"}}, &settings); err != nil {
+		t.Fatalf("the vouched link's settings.write: %v", err)
+	}
+	if v := settings.Values["approval.writes"]; v.Value != "ask" || !v.Set {
+		t.Fatalf("workshop's settings after the link's write: %+v", v)
+	}
+	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || !bytes.Contains(written, []byte(`writes = "ask"`)) {
+		t.Fatalf("workshop's config.toml after the link's write: %s %v", written, err)
+	}
+	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("writes")) {
+		t.Fatalf("the link's write changed the laptop's config.toml: %s", mine)
 	}
 
 	// A task on workshop, started and given a file from the laptop's console.
@@ -303,7 +324,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	forgotten()
 
 	// One invited from workshop's terminal answers: it starts tasks and answers,
-	// and makes none of the person's choices.
+	// and makes none of the person's choices nor changes workshop's settings.
 	plain, _, _ := devices.Invite(Terminal, true)
 	link(plain)
 	conn = open()
@@ -311,10 +332,16 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	if !strings.HasSuffix(greeting.Peer, " via web:laptop") {
 		t.Fatalf("workshop's daemon sees the answering link as %q", greeting.Peer)
 	}
-	for method, want := range map[string]bool{"session.open": true, "session.answer": true, "session.model.set": false, "schedule.set": false} {
+	for method, want := range map[string]bool{"session.open": true, "session.answer": true, "session.model.set": false, "schedule.set": false, "settings.write": false} {
 		if slices.Contains(greeting.Methods, method) != want {
 			t.Errorf("a link from workshop's terminal is offered %s: %v, want %v", method, !want, want)
 		}
+	}
+	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"approval.writes": nil}}, &settings); err == nil {
+		t.Fatal("a link from workshop's terminal changed workshop's settings")
+	}
+	if written, _ := os.ReadFile(tarroPaths.ConfigFile); !bytes.Contains(written, []byte(`writes = "ask"`)) {
+		t.Fatalf("a refused write changed workshop's config.toml: %s", written)
 	}
 	conn.Close(websocket.StatusNormalClosure, "")
 
@@ -376,9 +403,55 @@ func TestOnlyThePersonUsesThisComputersLinks(t *testing.T) {
 			t.Errorf("%s is not setup", method)
 		}
 	}
-	// A link never touches, so a setup method is refused to it outright
-	// rather than offered for a touch it cannot give.
-	if b.access("settings.write", caller{person: true, link: true}) != refused || b.access("settings.write", caller{person: true}) != needsTouch {
+	// A link never touches, so a setup method other than the settings is
+	// refused to it outright rather than offered for a touch it cannot give.
+	if b.access("host.link", caller{person: true, link: true}) != refused || b.access("host.link", caller{person: true}) != needsTouch {
 		t.Error("a link is offered setup")
+	}
+}
+
+// Another nodwyn that is the person's changes this computer's settings
+// without a touch (ADR 54, amended 2026-10-23), and nothing else of its
+// setup; one that only answers does not, nor does any link of a console
+// started with --no-link-settings, which still lets the person's own
+// devices in.
+func TestALinkChangesTheHostsSettings(t *testing.T) {
+	settings := []string{"settings.write", "settings.control.write", "settings.docs.write", "settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test"}
+	other := []string{"host.link", "host.unlink", "startup.write", "devices.revoke", "passkeys.remove", "session.delete", "credentials.add", "keychain.passphrase", "mcp.save", "workspace.save", "trust.set"}
+	person, answers := caller{person: true, link: true}, caller{link: true}
+	b := &bridge{devices: OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))}
+	for _, method := range settings {
+		if got := b.access(method, person); got != granted {
+			t.Errorf("the person's link is given %s: %v, want granted", method, got)
+		}
+		if got := b.access(method, answers); got != refused {
+			t.Errorf("a link that only answers is given %s: %v, want refused", method, got)
+		}
+		if got := b.access(method, caller{person: true}); got != needsTouch {
+			t.Errorf("the person's device is given %s before a touch: %v", method, got)
+		}
+		if !b.allowed(method, caller{local: true}) || !b.allowed(method, caller{person: true, touched: true}) {
+			t.Errorf("%s is refused to this computer or to a device that touched", method)
+		}
+	}
+	for _, method := range other {
+		if got := b.access(method, person); got != refused {
+			t.Errorf("the person's link is given %s: %v, want refused", method, got)
+		}
+	}
+
+	readOnly := &bridge{readOnly: true, devices: b.devices}
+	if readOnly.access("settings.write", person) != refused {
+		t.Error("a read-only console lets a link change its settings")
+	}
+
+	blocked := &bridge{noLinkSettings: true, devices: b.devices}
+	for _, method := range settings {
+		if got := blocked.access(method, person); got != refused {
+			t.Errorf("with --no-link-settings the person's link is given %s: %v", method, got)
+		}
+		if !blocked.allowed(method, caller{local: true}) || !blocked.allowed(method, caller{person: true, touched: true}) || blocked.access(method, caller{person: true}) != needsTouch {
+			t.Errorf("--no-link-settings keeps %s from this computer or the person's device", method)
+		}
 	}
 }

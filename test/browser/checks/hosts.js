@@ -25,13 +25,15 @@ check(async () => {
   const workshop = await world("workshop");
   const laptop = await world("laptop");
 
-  // workshop: a daemon and a console other machines reach.
+  // workshop: a daemon and a console other machines reach, at its address and
+  // at a localhost name, where a browser makes passkeys.
   const tarroDaemon = start(process.env.NODWYN, ["daemon", "--no-keychain"], { env: workshop.env });
   await line(tarroDaemon, /(listening)/, "stderr");
   let port, tarroUI;
+  const tarroConsole = (...more) => start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--name", `localhost:${port}`, "--no-open", ...more], { env: workshop.env });
   for (let attempt = 1; !tarroUI; attempt++) {
     port = await freePort();
-    const started = start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--no-open"], { env: workshop.env });
+    const started = tarroConsole();
     try {
       await line(started, /(Browser view)/, "stderr");
       tarroUI = started;
@@ -234,6 +236,27 @@ check(async () => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   step("nothing sideways at a phone's width");
 
+  // workshop's Settings open in this window, over workshop's socket (ADR 54,
+  // amended 2026-10-23). This link only answers there, so the page says why
+  // it changes nothing, and shows no control.
+  await page.click("#host-settings-workshop");
+  await page.waitForFunction(() => location.hash === "#/host/workshop/settings");
+  await shows(page, "main.settings-page h1", "workshop's settings");
+  await shows(page, "#host-settings-refused", "This computer only answers on workshop", "Open workshop's console");
+  await shows(page, "#settings-hosts", "This computer", "workshop");
+  assert.strictEqual(await page.locator("main.settings-page [role=tablist], main.settings-page .settings-panel input, main.settings-page .settings-panel button").count(), 0, "workshop's Settings show controls to a link that answers");
+  assert.ok(of(sent.workshop, "settings.read").length > 0, "workshop's settings were not read over workshop's socket");
+  await page.screenshot({ path: `${out}/workshop-settings-answers.png` });
+  // This computer's are a click away, with their controls.
+  await page.click("#settings-hosts a[data-host='']");
+  await page.waitForFunction(() => location.hash === "#/settings");
+  await page.waitForSelector("main.settings-page [role=tablist]");
+  assert.strictEqual(await page.locator("#host-settings-refused").count(), 0, "this computer's Settings say workshop's refusal");
+  assert.strictEqual((await page.innerText("main.settings-page h1")).trim(), "Settings", "this computer's Settings are named for workshop");
+  await page.evaluate(() => (location.hash = "#/hosts"));
+  await page.waitForSelector("#hosts .host-card[data-host='workshop']");
+  step("workshop's Settings, from Hosts, say that a link that answers changes none of them");
+
   // workshop revokes the laptop: the window says so, and stops trying.
   execFileSync(process.env.NODWYN, ["devices", "revoke", "laptop"], { env: workshop.env });
   await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('refused')", { timeout: 20000 });
@@ -251,4 +274,70 @@ check(async () => {
   assert.doesNotMatch(fs.readFileSync(`${laptop.root}/config/nodwyn/bindings.toml`, "utf8"), /nodwyn-host-workshop/, "the token is still bound");
   assert.strictEqual(await page.locator(".nav-host").count(), 0, "the sidebar still groups by host with no link");
   step("Unlink forgets the link, and the window is as it was");
+
+  // A link vouched for by the person's passkey changes workshop's settings
+  // here (ADR 54, amended 2026-10-23). workshop's phone, signed in at the
+  // localhost name with a passkey made by Chromium's virtual authenticator,
+  // makes the invitation.
+  const phoneContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const phone = watch(await phoneContext.newPage(), "workshop's phone");
+  const cdp = await phoneContext.newCDPSession(phone);
+  await cdp.send("WebAuthn.enable");
+  await cdp.send("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+  const first = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
+  expectError(/^WebSocket connection to 'ws:\/\/localhost:\d+\/socket' failed: .*403$/);
+  await phone.goto(`http://localhost:${port}/#invite=${first}`);
+  await phone.waitForSelector("#pair-invite");
+  await phone.fill("#pair-device", "phone");
+  await phone.click("button[type=submit]:has-text('Connect and make a passkey')");
+  await ready(phone);
+  await phone.evaluate(() => (location.hash = "#/settings/keys"));
+  await phone.click("#devices-invite");
+  // An invitation that may make a passkey waits for a touch, unless the one
+  // just made still counts.
+  await phone.waitForSelector("#invitation, #touch-confirm");
+  if (await phone.locator("#touch-confirm").count()) await phone.click("#touch-confirm");
+  await phone.waitForSelector("#invitation");
+  const vouched = (await phone.textContent("#invitation strong")).trim();
+  await phoneContext.close();
+
+  await page.click("#add-host");
+  await page.fill("#host-address", `http://localhost:${port}`);
+  await page.fill("#host-as", "laptop");
+  await page.fill("#host-name", "workshop");
+  await page.fill("#host-invite", vouched);
+  await page.click("#add-host-form button[type=submit]");
+  await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('ready')", { timeout: 20000 });
+  await shows(page, "#hosts .host-card[data-host='workshop']", "Makes your choices");
+  assert.match(fs.readFileSync(`${workshop.root}/config/nodwyn/devices.toml`, "utf8"), /name = "laptop"[^[]*passkey = "phone"[^[]*host = true/, "workshop's devices.toml has the laptop vouched for by the phone's passkey");
+  await page.click("#host-settings-workshop");
+  await page.waitForSelector("main.settings-page [role=tablist]");
+  await shows(page, "main.settings-page h1", "workshop's settings");
+  assert.strictEqual(await page.locator("#host-settings-refused").count(), 0, "workshop's Settings refuse the vouched link");
+  assert.deepStrictEqual(await page.$$eval("main.settings-page [role=tab]", (tabs) => tabs.map((t) => t.textContent.trim())), ["General", "Models", "Judge"], "workshop's Settings tabs");
+  const configOf = (w) => fs.readFileSync(`${w.root}/config/nodwyn/config.toml`, "utf8");
+  const laptopConfig = configOf(laptop);
+  await page.click("[id='set-approval.writes-ask']");
+  await page.waitForSelector(".save-bar:not([hidden]) .btn.accent");
+  await page.screenshot({ path: `${out}/workshop-settings.png` });
+  await page.click(".save-bar .btn.accent");
+  await until("workshop's config.toml to ask before writes", () => /\[approval\][^[]*writes = "ask"/.test(configOf(workshop)));
+  assert.deepStrictEqual(of(sent.workshop, "settings.write"), [{ set: { "approval.writes": "ask" } }], "the setting went to workshop");
+  assert.strictEqual(of(sent.local, "settings.write").length, 0, "workshop's setting went to the laptop");
+  assert.strictEqual(configOf(laptop), laptopConfig, "workshop's setting changed the laptop's config.toml");
+  await until("the save bar gone", async () => await page.locator(".save-bar").isHidden());
+  assert.strictEqual(await page.getAttribute("[id='set-approval.writes-ask']", "aria-pressed"), "true", "workshop's Settings do not show the saved choice");
+  step("a link vouched for by the person's passkey changes workshop's settings from this window, and not the laptop's");
+
+  // workshop's console started with --no-link-settings refuses it: its
+  // Settings say so once the link is back, and show no control.
+  tarroUI.kill("SIGTERM");
+  await tarroUI.exited;
+  tarroUI = tarroConsole("--no-link-settings");
+  await line(tarroUI, /(Browser view)/, "stderr");
+  await page.waitForSelector("#host-settings-refused:has-text('workshop does not let other nodwyns change its settings')", { timeout: 30000 });
+  assert.strictEqual(await page.locator("main.settings-page [role=tablist], main.settings-page .settings-panel input, main.settings-page .settings-panel button").count(), 0, "workshop's Settings show controls it refuses");
+  assert.strictEqual(of(sent.workshop, "settings.write").length, 1, "a refused link sent workshop a setting");
+  await page.screenshot({ path: `${out}/workshop-settings-refused.png` });
+  step("workshop started with --no-link-settings refuses the link its settings, and Settings say so");
 });

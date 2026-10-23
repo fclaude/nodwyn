@@ -1,6 +1,7 @@
 # ADR 0054: Several hosts in one window
 
-- Status: accepted; §1–§8 implemented 2026-10-18; §9 not built
+- Status: accepted; §1–§8 implemented 2026-10-18; §9 not built, but for
+  a linked host's Settings (amended 2026-10-23)
 - Date: 2026-10-18
 - Amends: 30 (a link is a device of the other host), 52 (§6, several hosts
   in one app)
@@ -94,7 +95,9 @@ Weighed and not chosen:
    does. One made by `nodwyn devices invite` or the host's own console,
    which vouch with no passkey, makes a link that answers. A link never changes the host's setup, since it cannot
    touch a passkey: the host's bridge offers it no setup method, and the
-   Hosts page opens the host's own console for that. The host's Settings ›
+   Hosts page opens the host's own console for that (amended 2026-10-23: a
+   link that is the person's changes the host's settings, unless the host
+   refuses it). The host's Settings ›
    Keys & devices says the device is another nodwyn.
 6. **Unlinking forgets the token, its binding rows and the line in
    `hosts.toml`,** having first asked the host to forget this computer
@@ -109,12 +112,14 @@ Weighed and not chosen:
    computer and each link, with its state, address, the name this computer
    has there and what it may do there, Add a host, Unlink, and a link to the
    host's own console. With no link the window is as it was. Settings,
-   Connections, Workspaces and Workflows are this computer's.
+   Connections, Workspaces and Workflows are this computer's (amended
+   2026-10-23: Settings also shows a linked host's).
 8. **Notices are per host:** a linked host's task that asks shows the same
    fixed notice, and opening it opens that task on that host.
 9. **Not built:** a home host that a phone reaches every host through
    (plan.md, Next 1.4); the TUI and line mode, which see this computer
-   only; a linked host's Settings in this window.
+   only; a linked host's Settings in this window (built 2026-10-23, see the
+   amendment).
 
 ## Evidence
 
@@ -154,3 +159,81 @@ show.
   reads it can act on the host as this computer until the host revokes it.
 - Every request for a linked host passes this computer's daemon, so the
   window shows a host only while this computer's daemon runs.
+
+## Amendment 2026-10-23: a linked host's settings
+
+The person could not change a linked host's settings from the window: §5
+offered a link no setup method, since setup waits for a touch of the
+passkey and a link cannot give one, and §7 kept Settings to this computer.
+They asked to change them, by default, with a way for a host to refuse it.
+
+**Decision.**
+
+1. **A link that is the person's changes the host's settings without a
+   touch.** The host's bridge grants a link vouched for by the person's
+   passkey (§5: `devices.toml` names its passkey) the settings methods:
+   `settings.write`, `settings.control.write`, `settings.docs.write`,
+   `settings.provider.write`, `settings.provider.remove`,
+   `settings.model.write`, `settings.model.remove` and `models.test`. It
+   says its hello with that passkey, so the host's daemon takes it as the
+   person's and refuses it nothing of these; the daemon is unchanged. The
+   bridge's audit records each such change, as it records a device's.
+2. **A link that only answers does not.** `host: true` on `/pair` is the
+   pairing side's own word, so whoever holds a plain invitation, the kind
+   given to a phone that answers, could pair as a link; granting settings to
+   every link would let any such invitation choose where the host's tasks
+   send their content (a provider's address). A vouched invitation already
+   lets whoever uses it make a passkey and change setup after touching it,
+   so granting its link the settings gives it nothing more. A vouched link
+   also exists only where a browser could use a passkey (https or a
+   `localhost` name), so a provider's key typed into the host's Settings
+   does not cross the network in clear.
+3. **The rest of setup stays refused to every link:** workspaces, MCP
+   servers, credentials, the keychain's creation and passphrase, deleting a
+   task, a task's bindings and policy, starting at login, linking, devices
+   and passkeys, and `trust.set`. Those are changed in the host's own
+   console.
+4. **A host refuses its links the settings with `--no-link-settings`**, a
+   flag of `nodwyn ui` and `nodwyn app` beside `--listen`, read when the
+   console starts, as `--read-only` is. It is off by default. The flag is
+   written by whoever starts the host's console: a command line, or a unit
+   or login item the person wrote on that host. No console method sets it,
+   and it is not a setting, so a link that changes settings cannot change
+   it. A person who would rather a stolen keychain on the linking computer
+   could not change the host's settings starts the host with it.
+5. **The window shows a linked host's Settings** at
+   `#/host/NAME/settings/TAB`, read and saved over that host's socket:
+   General, Models and Judge, with the host named in the heading. Settings
+   chooses whose settings it shows when there is a link, and each host's
+   card on Hosts opens its Settings. When the host's hello does not offer
+   `settings.write`, the page says why (this computer only answers there,
+   or the host refuses its links the settings) and shows no control. The
+   edits waiting in the save bar are cleared when another host's settings
+   are shown, so none is saved to the wrong host. Keys & devices and This
+   browser stay this computer's, and so do Connections, Workspaces and
+   Workflows.
+
+**Evidence.** `TestALinkChangesTheHostsSettings` places every settings
+method for a vouched link (granted), for one that only answers (refused),
+for the person's device before a touch (asked for one), and on a read-only
+console and one started with `--no-link-settings` (refused to the link,
+still granted to this computer and to a device that touched). It also checks
+that the link is still refused the rest of setup, `trust.set` included.
+`TestALinkedHostIsReachedThroughThisComputersDaemon` sends `settings.write`
+through `/socket?host=workshop` from a vouched link: workshop's `config.toml`
+changes and the laptop's does not. The answering link is offered no
+`settings.write`, and one it sends anyway leaves workshop's file as it was.
+The `hosts` browser check opens workshop's Settings from Hosts with a link that
+answers, and sees the refusal and no control. It then links again with an
+invitation made by workshop's phone, signed in with a passkey from Chromium's
+virtual authenticator at `localhost:PORT` (the vouched link in a browser,
+which this ADR's Evidence had left unverified). It chooses Ask me for file
+changes and saves, and workshop's `config.toml` changes and the laptop's does
+not. Last, it restarts workshop's console with `--no-link-settings`, and the
+page says workshop refuses it and shows no control.
+
+**Consequences.** Whoever reads the linking computer's keychain can now also
+change the host's settings, models and providers included, until the host
+revokes the link or is started with `--no-link-settings` (§Consequences
+above). A host older than this one offers a vouched link no settings, which
+the page says as it says a host's refusal.

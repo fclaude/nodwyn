@@ -166,8 +166,11 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
   font-size: 13px; color: var(--ink);
 }
 .chip .sub { color: var(--faint); }
-.chip[aria-pressed="true"] { background: var(--invert-bg); color: var(--invert-fg); border-color: var(--invert-bg); }
+.chip[aria-pressed="true"], .chip[aria-current="page"] { background: var(--invert-bg); color: var(--invert-fg); border-color: var(--invert-bg); }
 .chip[aria-pressed="true"] .sub { color: var(--invert-faint); }
+/* Settings' host picker: links that look like chips (ADR 54). */
+a.chip { text-decoration: none; }
+.settings-hosts { margin: 4px 0 12px; }
 .chip.dashed { border-style: dashed; border-color: var(--ghost); color: var(--muted); }
 .pill {
   display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;

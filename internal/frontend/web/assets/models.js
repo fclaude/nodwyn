@@ -124,7 +124,7 @@ function defaultRow(ctx, redraw) {
   return row(
     "Default for new tasks",
     picker.el,
-    h("p", { class: "hint" }, "New tasks start on this model and effort, and ask the default ", h("a", { href: "#/settings/judge" }, "judge"), ". A task's own choice, under its message box, changes only that task. Tasks already open keep what they started with."),
+    h("p", { class: "hint" }, "New tasks start on this model and effort, and ask the default ", h("a", { href: desk.at("settings/judge") }, "judge"), ". A task's own choice, under its message box, changes only that task. Tasks already open keep what they started with."),
   );
 }
 
@@ -416,7 +416,7 @@ function providerForm(ctx, redraw, first = false) {
     hasKey(f.kind) && !plan
       ? adding || !f.hasKey || !sameHostNow || f.credentialClass
         ? field("provider-key", "API key", key, !keychainReady ? "Create or unlock the keychain first: keys are kept there, never in config.toml." : "Stored encrypted and sent only to this address. Every model on this provider uses it.")
-        : h("div", { class: "field" }, h("label", {}, "API key"), h("p", { class: "hint", id: "provider-key-stored" }, "Stored encrypted and sent only to this address. ", h("a", { href: "#/connections/credentials" }, "Replace it under Credentials"), "."))
+        : h("div", { class: "field" }, h("label", {}, "API key"), h("p", { class: "hint", id: "provider-key-stored" }, "Stored encrypted and sent only to this address. ", ctx.host ? `Replace it under Credentials in ${ctx.host}'s own console` : h("a", { href: "#/connections/credentials" }, "Replace it under Credentials"), "."))
       : null,
     plan ? h("div", { class: "chatgpt-setup" },
       h("p", { class: "hint" }, "Use your eligible ChatGPT plan quota. Sign in with OpenAI in your browser; no API key or client id is needed. Save the provider to allow model requests and model discovery. OpenAI decides model access and remaining quota."),

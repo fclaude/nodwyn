@@ -39,6 +39,10 @@ type remoteFlags struct {
 	// certificate for that name (ADR 30, amended 2026-10-17).
 	acme, acmeEmail, acmeDirectory string
 	acmeAccept                     bool
+	// noLinkSettings refuses another nodwyn linked to this one the settings
+	// it may otherwise change (ADR 54, amended 2026-10-23). It is a flag of
+	// whoever starts the console, which no console can change.
+	noLinkSettings bool
 }
 
 // shared reports whether the flags make the console reachable from other
@@ -54,6 +58,7 @@ func (r *remoteFlags) register(flags *flag.FlagSet) {
 	flags.BoolVar(&r.acmeAccept, "acme-accept-terms", false, "accept the ACME CA's terms of service, which --acme needs")
 	flags.StringVar(&r.acmeEmail, "acme-email", "", "an address the CA may write to about the certificate (optional)")
 	flags.StringVar(&r.acmeDirectory, "acme-directory", "", "the CA's ACME directory URL (default: Let's Encrypt's; a staging or private CA's goes here)")
+	flags.BoolVar(&r.noLinkSettings, "no-link-settings", false, "refuse other nodwyns linked to this one the settings they may otherwise change")
 }
 
 // listener opens the console's listener: loopback on a random port, or the
@@ -120,6 +125,7 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 		options.TLS = true
 	}
 	options.Hosts = r.hosts
+	options.NoLinkSettings = r.noLinkSettings
 	if r.shared() {
 		options.Devices = webui.OpenDevices(devicesFile(paths))
 		options.Audit = os.Stderr
@@ -129,6 +135,9 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 		} else {
 			fmt.Fprintln(os.Stderr, "WARNING: a paired device can read every task, send messages and answer approvals; one signed in")
 			fmt.Fprintln(os.Stderr, "with your passkey over https can also change settings and keys. Revoke one with: nodwyn devices revoke NAME")
+			if !options.NoLinkSettings {
+				fmt.Fprintln(os.Stderr, "Another nodwyn linked with your passkey can change settings; --no-link-settings refuses it.")
+			}
 		}
 		if !options.TLS && !allHTTPS(r.hosts) {
 			fmt.Fprintln(os.Stderr, "Without --tls-cert traffic is unencrypted unless the network encrypts it (a tailnet does).")

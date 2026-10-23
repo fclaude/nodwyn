@@ -1052,11 +1052,14 @@ directory) is sent no token.
 What the link may do is the other host's to say. One invited by your
 device signed in there with your passkey makes your choices for its tasks
 (a task's model, judge, helpers and limits, schedules, a key the model asks
-for, unlocking its keychain); one invited from its terminal answers and
-starts tasks, as a device paired by a plain invitation does. A link never
-changes the other host's setup, since it cannot touch a passkey: **Open its
-console** opens that host's own console in the browser, where your passkey
-signs you in. That host's Settings › Keys & devices and `nodwyn devices`
+for, unlocking its keychain), and changes its settings (amended
+2026-10-23); one invited from its terminal answers and starts tasks, as a
+device paired by a plain invitation does. A link changes none of the other
+host's other setup (its folders, MCP servers, credentials, keychain,
+devices, starting at login, trust), since that waits for a touch of a
+passkey, which a link cannot give: **Open its console** opens that host's
+own console in the browser, where your passkey signs you in. That host's
+Settings › Keys & devices and `nodwyn devices`
 say the device is another nodwyn, and revoking it there ends the link here:
 the host shows as refused, and **Unlink** forgets it. **Unlink** asks first,
 asks the host to forget this computer, and forgets the token, its binding
@@ -1077,8 +1080,21 @@ The page keeps one origin: a linked host's socket is `/socket?host=NAME` on
 this computer's console, which this computer's daemon relays to that host's
 console, and a file for a linked host's task is `POST /attach?host=NAME`.
 Every request for a linked host passes this computer's daemon, so the window
-shows a host only while it runs. Settings, Connections, Workspaces and
-Workflows stay this computer's.
+shows a host only while it runs. Connections, Workspaces and Workflows stay
+this computer's.
+
+**A linked host's Settings** are at `#/host/NAME/settings` (each host's
+card on Hosts has **Settings**, and Settings has a chip for each host when
+there is a link): its General, Models and Judge tabs, read from that host
+and saved there over its socket, named as that host's. They change only
+when the link makes your choices there and the host lets it: a host whose
+console was started with `nodwyn ui --no-link-settings` (or `nodwyn app
+--no-link-settings`) refuses every link its settings. Otherwise the page
+says why (this computer only answers there, or the host refuses its links
+the settings), shows no control, and offers the host's own console. What
+waits in the save bar is cleared when another host's settings are shown.
+Its keychain, credentials and devices are changed in its own console, and
+This browser is this computer's.
 
 ## Verification and remaining U3 work
 

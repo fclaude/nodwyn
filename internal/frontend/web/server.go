@@ -43,6 +43,10 @@ type Options struct {
 	Socket      string // the daemon the browser's requests are relayed to
 	PairingCode string // printed in the terminal; a browser presents it once
 	ReadOnly    bool   // allow only listing, watching and reading logs
+	// NoLinkSettings refuses the settings methods to another nodwyn linked
+	// to this one, which may otherwise change this computer's settings when
+	// it is the person's (ADR 54, amended 2026-10-23).
+	NoLinkSettings bool
 
 	// Remote pairing (ADR 30). Devices remembers browsers paired from other
 	// machines; without it only this machine's browsers can pair. Hosts are
@@ -62,9 +66,10 @@ type Options struct {
 }
 
 type bridge struct {
-	readOnly     bool
-	ctx          context.Context
-	socket, code string
+	readOnly       bool
+	noLinkSettings bool // Options.NoLinkSettings
+	ctx            context.Context
+	socket, code   string
 	// session is what this computer's paired page holds, in its own
 	// storage: random for each run and good only until it stops, never the
 	// pairing code, which could pair a device for months.
@@ -95,7 +100,7 @@ type Server struct {
 // New prepares a console for options.
 func New(options Options) *Server {
 	session, _ := PairingCode() // crypto/rand does not fail
-	return &Server{b: &bridge{socket: options.Socket, code: options.PairingCode, session: session, readOnly: options.ReadOnly,
+	return &Server{b: &bridge{socket: options.Socket, code: options.PairingCode, session: session, readOnly: options.ReadOnly, noLinkSettings: options.NoLinkSettings,
 		devices: options.Devices, extra: options.Hosts, tls: options.TLS, audit: options.Audit, tickets: map[string]time.Time{}}}
 }
 
@@ -852,6 +857,9 @@ func (b *bridge) tierOf(method string) tier {
 	if readOnly(method) {
 		return tierRead
 	}
+	if settingsMethods[method] {
+		return tierSetup
+	}
 	switch method {
 	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.approval.create", "session.friction", "session.policy.read",
 		"schedule.pause", "schedule.run", "workflow.pause", "workflow.check", "outbox.decide", "session.notes.write", "session.restore", "session.rename", "session.archive":
@@ -889,8 +897,7 @@ func (b *bridge) tierOf(method string) tier {
 	case "trust.set":
 		return tierPasskey
 	// A log is the record of what a session did, devices included (ADR 39).
-	case "session.delete", "session.binding.create", "session.policy.write", "keychain.create", "keychain.passphrase", "settings.control.write", "settings.docs.write", "settings.write",
-		"settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test",
+	case "session.delete", "session.binding.create", "session.policy.write", "keychain.create", "keychain.passphrase",
 		"workspace.save", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull",
 		"credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "credentials.authorize.finish",
 		// What starts at this computer's login is its setup (ADR 30, ADR 53),
@@ -916,6 +923,14 @@ func (b *bridge) tierOf(method string) tier {
 		return tierSetup
 	}
 	return tierNone
+}
+
+// settingsMethods change what Settings shows, models and their providers
+// included: setup, which another nodwyn that is the person's may also do
+// (access).
+var settingsMethods = map[string]bool{
+	"settings.control.write": true, "settings.docs.write": true, "settings.write": true,
+	"settings.provider.write": true, "settings.provider.remove": true, "settings.model.write": true, "settings.model.remove": true, "models.test": true,
 }
 
 // access is what a caller may do with a method.
@@ -947,6 +962,14 @@ func (b *bridge) access(method string, c caller) access {
 	case !c.person:
 		return refused
 	case t == tierPerson || c.touched:
+		return granted
+	// Another nodwyn that is the person's changes this computer's settings
+	// without the touch it cannot give, unless this computer's console was
+	// started to refuse it (ADR 54, amended 2026-10-23): its invitation was
+	// made with the person's passkey, which a device would have used to
+	// register one and touch it. One that only answers is not let in, since
+	// whoever holds a plain invitation may say it is another nodwyn.
+	case c.link && settingsMethods[method] && !b.noLinkSettings:
 		return granted
 	}
 	return c.touch()

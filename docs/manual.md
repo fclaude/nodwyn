@@ -3111,8 +3111,14 @@ folders and model. A task on the server says so in its heading; you answer
 it, message it and give it files from the laptop, and the server records the
 answers as the laptop's. A notice of the server's task opens it there.
 
-The server decides what the laptop may do, and its setup (its Settings,
-keys, folders) is changed in its own console: **Open its console** on Hosts.
+The server decides what the laptop may do. A laptop linked with an
+invitation from your passkey's device changes the server's settings from
+its own window: **Settings** on the server's card in Hosts, or the server's
+chip at the top of Settings, opens its General, Models and Judge tabs,
+which are saved on the server. To refuse that, start the server's console
+with `nodwyn ui --no-link-settings` (also taken by `nodwyn app`). The rest
+of its setup (keys, folders, connections, devices) is changed in its own
+console: **Open its console** on Hosts.
 Revoking the laptop there ends the link, and Hosts says the server refuses
 it; **Unlink** on the laptop forgets the link and asks the server to forget
 the laptop too, saying when it could not. The laptop reaches the server

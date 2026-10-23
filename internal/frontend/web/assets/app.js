@@ -32,9 +32,9 @@ let route = parse();
 let homeState = null;
 let conversationView = null;
 
-// parse reads the route from the address. A task of a linked host, and its
-// search and history, are under #/host/NAME/ (ADR 54); everything else is
-// this computer's.
+// parse reads the route from the address. A task of a linked host, its
+// search and history, and its settings are under #/host/NAME/ (ADR 54);
+// everything else is this computer's.
 function parse() {
   const hash = location.hash.replace(/^#/, "");
   const [path, queryString = ""] = hash.split("?");
@@ -48,7 +48,8 @@ function parse() {
   if (parts[0] === "search" && parts[1]) return { host, name: "search", id: decodeURIComponent(parts[1]), query: query.get("q") || "", scope: query.get("scope") || "project" };
   if (parts[0] === "history" && parts[1] && parts[2]) return { host, name: "history", id: decodeURIComponent(parts[1]), seq: Number(parts[2]), search: query.get("search") || "", query: query.get("q") || "", scope: query.get("scope") || "project" };
   if (parts[0] === "task" && parts[1]) return { host, name: "task", id: decodeURIComponent(parts[1]), review: parts[2] === "review" };
-  if (["settings", "workspaces", "connections", "workflows", "hosts"].includes(parts[0])) return { host: "", name: parts[0], tab: parts[1] };
+  if (parts[0] === "settings") return { host, name: "settings", tab: parts[1] };
+  if (["workspaces", "connections", "workflows", "hosts"].includes(parts[0])) return { host: "", name: parts[0], tab: parts[1] };
   return { host: "", name: "home" };
 }
 // viewKey keys a task's view by its host and id: two hosts may each have a
@@ -297,15 +298,16 @@ function draw(routeChanged, what) {
   $("topbar-count").href = attention === 1 && waiting.length === 1 ? waiting[0].desk.href(waiting[0].item.id) : "#/";
   document.title = attention ? `(${attention}) nodwyn` : "nodwyn";
   const view = $("view");
-  const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.host}:${route.id}` : route.name;
+  const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.host}:${route.id}` : route.name === "settings" ? `settings:${route.host}` : route.name;
   const ctx = { conn, desk, hosts, navigate, rerender: () => render(), pickFolder: window.nodwynPickFolder };
-  // A task of a linked host is drawn once that host's desk is read.
+  // A task of a linked host, or its settings, is drawn once that host's
+  // desk is read.
   const entry = hosts.get(route.host);
-  if (route.host && ["task", "search", "history"].includes(route.name) && !entry?.conn.live) {
+  if (route.host && ["task", "search", "history", "settings"].includes(route.name) && !entry?.conn.live) {
     if (task) putAway(task);
     conversationView?.leave();
     conversationView = null;
-    view.replaceChildren(hostAway(route.host, entry));
+    view.replaceChildren(hostAway(route.host, entry, route.name === "settings" ? "settings" : "task"));
     lastRoute = "";
     return;
   }
@@ -333,7 +335,7 @@ function draw(routeChanged, what) {
   } else if (route.name === "home") {
     homeState = renderHome(view, { ...ctx, keepTop: key === lastRoute && !routeChanged });
   } else if (key !== lastRoute || routeChanged) {
-    if (route.name === "settings") renderSettings(view, { ...ctx, tab: route.tab });
+    if (route.name === "settings") renderSettings(view, settingsCtx(ctx, entry));
     else if (route.name === "workspaces") renderWorkspaces(view, ctx);
     else if (route.name === "connections") renderConnections(view, { ...ctx, tab: route.tab });
     else if (route.name === "workflows") renderWorkflows(view, { ...ctx, tab: route.tab });
@@ -348,7 +350,7 @@ function draw(routeChanged, what) {
   } else if (route.name === "settings" && (!what || what === "setup" || what === "models")) {
     // Settings holds fields being typed into: a task's progress elsewhere
     // does not redraw it.
-    renderSettings(view, { ...ctx, tab: route.tab });
+    renderSettings(view, settingsCtx(ctx, entry));
   } else if ((route.name === "workspaces" || route.name === "connections") && !editing(view)) {
     // Workspaces and Connections read the desk too (the models' state, the
     // folders): drawn once, they stayed on "Checking the configured
@@ -360,16 +362,24 @@ function draw(routeChanged, what) {
   lastRoute = key;
 }
 
-// hostAway is what a linked host's task shows while the host cannot be
-// read: not linked, connecting, or not reachable, and why.
-function hostAway(name, entry) {
+// settingsCtx is what Settings draws from: this computer's connection and
+// desk, or a linked host's, whose settings are read and saved on that host
+// (ADR 54, amended 2026-10-23).
+function settingsCtx(ctx, entry) {
+  if (!route.host) return { ...ctx, tab: route.tab };
+  return { ...ctx, conn: entry.conn, desk: entry.desk, host: route.host, hostAddress: entry.info?.address || "", tab: route.tab };
+}
+
+// hostAway is what a linked host's task or settings show while the host
+// cannot be read: not linked, connecting, or not reachable, and why.
+function hostAway(name, entry, what = "task") {
   const [title, words] = !entry
     ? [`${name} is not linked`, "This computer has no host of that name. Link it on Hosts."]
     : entry.conn.state === "unpaired"
       ? [`${name} refuses this computer`, entry.detail || "Link it again on Hosts."]
       : entry.conn.state === "down"
-        ? [`${name} is not reachable`, entry.info?.locked || entry.detail || "This page shows its task once it answers."]
-        : [`Connecting to ${name}…`, "The task shows once it answers."];
+        ? [`${name} is not reachable`, entry.info?.locked || entry.detail || `This page shows its ${what} once it answers.`]
+        : [`Connecting to ${name}…`, `${what === "settings" ? "Its settings show" : "The task shows"} once it answers.`];
   return h("main", { class: "page", id: "host-away" }, h("div", { class: "page-col" }, h("h1", {}, title), h("p", { class: "lede" }, words), h("div", { class: "row-actions" }, h("a", { class: "btn", href: "#/hosts" }, "Hosts"), h("a", { class: "btn ghost", href: "#/" }, "Home"))));
 }
 

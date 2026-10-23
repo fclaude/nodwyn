@@ -275,12 +275,21 @@ const tabs = [
   { id: "keys", label: "Keys & devices" },
   { id: "browser", label: "This browser" },
 ];
+// hostTabs are a linked host's (ADR 54, amended 2026-10-23): its settings,
+// models and judge, which another nodwyn that is the person's may change.
+// Its keychain, credentials and devices are changed in its own console, and
+// this browser is this computer's.
+const hostTabs = tabs.filter((t) => ["general", "models", "judge"].includes(t.id));
 // moved are tabs that held one rarely used section each and were folded into
 // General's Advanced fold; their addresses still open it.
 const moved = new Set(["context", "tools"]);
-// tabOf is the tab a route names, else the first.
-export const tabOf = (name) => (tabs.some((t) => t.id === name) ? name : tabs[0].id);
+// tabOf is the tab a route names among shown, else the first.
+export const tabOf = (name, shown = tabs) => (shown.some((t) => t.id === name) ? name : shown[0].id);
 let shownTab = "";
+// shownHost is the host whose settings the page shows ("" for this
+// computer): the edits waiting in the bar are that host's, and go when
+// another host's are shown.
+let shownHost = "";
 
 // advancedOpen is whether General's Advanced fold is open, and
 // passphraseOpen whether the passphrase fold is open on Keys & devices.
@@ -289,8 +298,21 @@ let passphraseOpen = false;
 
 export function renderSettings(root, ctx) {
   const { conn, desk } = ctx;
+  // host names the linked host whose settings these are (ADR 54, amended
+  // 2026-10-23), read and written over its connection; "" is this computer.
+  const host = ctx.host || "";
   const redraw = () => renderSettings(root, ctx);
-  const tab = tabOf(ctx.tab);
+  const shownTabs = host ? hostTabs : tabs;
+  const tab = tabOf(ctx.tab, shownTabs);
+  // Another host's settings are another page: nothing typed for one is
+  // saved to the other.
+  if (host !== shownHost) {
+    edits.clear();
+    discardDefault();
+    saveError = "";
+    shownHost = host;
+    root.querySelector(":scope > main.settings-page")?.remove();
+  }
   // Redrawn in place (a choice, a save, the models' status): keep the
   // scroll position and the field that has focus.
   const before = root.querySelector(":scope > main.settings-page");
@@ -311,7 +333,7 @@ export function renderSettings(root, ctx) {
   // The address of a tab that was folded into General opens its fold.
   if (ctx.tab && moved.has(ctx.tab)) {
     advancedOpen = true;
-    history.replaceState(null, "", "#/settings/general");
+    history.replaceState(null, "", desk.at("settings/general"));
   }
   // Another tab starts at its top; a redraw of the same one stays where it was.
   const scrolled = before && shownTab === tab ? before.scrollTop : 0;
@@ -332,8 +354,11 @@ export function renderSettings(root, ctx) {
     keys: () => [keysSection(ctx, root, redraw)],
     browser: () => [browserSection(ctx), connectionSection(ctx)],
   };
-  const sections = build[tab]().filter(Boolean);
-  const nav = tablist({ label: "Settings", prefix: "settings", tabs, current: tab, href: (id) => `#/settings/${id}` });
+  // A linked host that does not let this computer change its settings shows
+  // none, and says why.
+  const refused = host && known && !editable(conn);
+  const sections = refused ? [] : build[tab]().filter(Boolean);
+  const nav = refused ? null : tablist({ label: "Settings", prefix: "settings", tabs: shownTabs, current: tab, href: (id) => desk.at(`settings/${id}`) });
   const bar = h("div", { class: "save-bar", role: "region", "aria-label": "Unsaved settings", hidden: true });
   refreshBar = () => drawBar(bar, ctx, redraw);
 
@@ -343,9 +368,13 @@ export function renderSettings(root, ctx) {
     h(
       "div",
       { class: "page-col" },
-      h("h1", {}, "Settings"),
-      h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys, the passphrase and starting at login act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
-      known && !editable(conn) ?h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
+      h("h1", {}, host ? `${host}'s settings` : "Settings"),
+      hostPicker(ctx),
+      host
+        ? h("p", { class: "lede", id: "save-rule" }, `The settings tasks on ${host} start with, read from ${host} and saved there. A choice made here waits in the bar at the foot of the page and is saved with the others; a provider or a model is saved in its own form. ${host}'s keychain, credentials and devices are changed in its own console.`)
+        : h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys, the passphrase and starting at login act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
+      refused ? hostRefusal(ctx) : null,
+      !host && known && !editable(conn) ? h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
       nav,
       h("div", { class: "settings-panel", role: "tabpanel", "aria-labelledby": `settings-tab-${tab}`, id: `settings-panel-${tab}` }, ...sections),
       bar,
@@ -367,6 +396,35 @@ export function renderSettings(root, ctx) {
       /* not a text field */
     }
   }
+}
+
+// hostPicker chooses whose settings are shown, when the window shows more
+// than this computer (ADR 54): each host's are read and saved there.
+function hostPicker(ctx) {
+  const { hosts } = ctx;
+  if (!hosts?.several) return null;
+  const current = ctx.host || "";
+  return h(
+    "nav",
+    { class: "row-actions settings-hosts", id: "settings-hosts", "aria-label": "Whose settings" },
+    hosts.all().map((e) => h("a", { class: "chip", href: e.desk.at("settings"), dataset: { host: e.name }, "aria-current": e.name === current ? "page" : null }, e.label)),
+  );
+}
+
+// hostRefusal says why a linked host's settings cannot be changed from here:
+// this computer only answers there, or the host refuses its links the
+// settings (--no-link-settings), and where they are changed instead.
+function hostRefusal(ctx) {
+  const { conn, host, hostAddress } = ctx;
+  const why = conn.has("session.model.set")
+    ? `${host} does not let other nodwyns change its settings: its console was started with --no-link-settings, or is older than this one.`
+    : `This computer only answers on ${host}: its link was made with an invitation from ${host}'s terminal, or at an address where a browser could not use a passkey. To change ${host}'s settings here, link it again with an invitation made by your device signed in there with your passkey.`;
+  return h(
+    "div",
+    { class: "callout plain", id: "host-settings-refused" },
+    h("p", {}, why),
+    hostAddress ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: hostAddress, target: "_blank", rel: "noopener noreferrer" }, `Open ${host}'s console`)) : null,
+  );
 }
 
 // drawBar shows the unsaved edits and saves them together. The config.toml
@@ -631,7 +689,8 @@ function judgeCard(ctx, j, redraw) {
     ? h(
         "div",
         { class: "row-actions" },
-        h("a", { class: "btn small", href: "#/connections/credentials" }, "Replace the key"),
+        // A linked host's credentials are changed in its own console.
+        ctx.host ? null : h("a", { class: "btn small", href: "#/connections/credentials" }, "Replace the key"),
         removal({ label: "Remove", consequence: "Remove it? Its key stays in the keychain.", asking: judgeKeys.removing === j.name, ask: () => ((judgeKeys.removing = j.name), redraw()), cancel: () => ((judgeKeys.removing = ""), redraw()), run: remove, disabled: j.default, title: j.default ? "New tasks ask it: choose another default first" : "" }),
       )
     : null;
@@ -727,7 +786,7 @@ function addJudgeCard(ctx, kind, redraw) {
     { class: "judge-card judge-add", id: `judge-add-card-${kind}`, onsubmit: (event) => (event.preventDefault(), addJudge(ctx, kind, redraw)) },
     h("div", { class: "main" }, h("strong", {}, kind === "jev" ? "Jev" : "OpenAI Decisions"), h("p", { class: "hint" }, what)),
     conn.has("settings.provider.write") ? h("div", { class: "row-actions" }, input, button) : null,
-    unlocked ? null : h("p", { class: "hint" }, "Keys are kept in the keychain: ", h("a", { href: "#/settings/keys" }, "create or unlock it"), " first."),
+    unlocked ? null : ctx.host ? h("p", { class: "hint" }, `Keys are kept in ${ctx.host}'s keychain: unlock it first, from Home with ${ctx.host} chosen to run on.`) : h("p", { class: "hint" }, "Keys are kept in the keychain: ", h("a", { href: "#/settings/keys" }, "create or unlock it"), " first."),
   );
 }
 
@@ -783,7 +842,7 @@ function judgeSection(ctx, redraw, root) {
       judges.length ? h("div", { class: "judges" }, judges.map((j) => judgeCard(ctx, j, redraw))) : h("p", { class: "hint" }, "No judge is set up yet."),
       kinds.has("jev") ? null : addJudgeCard(ctx, "jev", redraw),
       kinds.has("openai") ? null : addJudgeCard(ctx, "openai", redraw),
-      h("p", { class: "hint" }, "An OpenAI judge is on a model provider, listed under ", h("a", { href: "#/settings/models" }, "Models"), ". A key is stored encrypted in the keychain and sent only to its judge's address; ", h("a", { href: "#/connections/credentials" }, "Credentials"), " replaces it."),
+      h("p", { class: "hint" }, "An OpenAI judge is on a model provider, listed under ", h("a", { href: ctx.desk.at("settings/models") }, "Models"), ". A key is stored encrypted in the keychain and sent only to its judge's address; ", ctx.host ? `${ctx.host}'s Credentials, in its own console,` : h("a", { href: "#/connections/credentials" }, "Credentials"), " replaces it."),
     ),
     ...(wrongModel
       ? row(
