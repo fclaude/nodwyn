@@ -77,3 +77,38 @@ Deleting a task stays out of a paired device's reach, since a log is the
 record of what devices did. A device signed in with the person's passkey
 deletes one after a touch of that passkey, as it changes setup (ADR 30,
 amended 2026-10-17).
+
+## Amendment 2026-10-23: the model names a task from its first message
+
+A task nobody had named was listed by its first message cut down, which
+read badly: a request written as a person talks ("hey, so the login page
+keeps sending me back…") is not a name. A task the daemon opens is now
+named by the model, from its first message, when nothing has named it yet.
+
+- **When.** Once, on the session's first message, before the turn on it
+  starts, when the log holds no earlier message and no `session.title`: a
+  name a person or a workflow gave the task before it was written to is
+  kept, a later message asks nothing, and a session resumed with messages
+  in it is never asked. The daemon (`nodwyn daemon`, `nodwyn app`) asks,
+  through `core.Options.Titles`; a session embedded without it, as the
+  tests' are, makes no such request.
+- **How.** `(session-title request)` (`agents.scm`) asks the conversation's
+  own model with `session-title-prompt` as a sub-agent with no tools and no
+  rounds, so the request crosses the guard and is logged as every other
+  model request is, its context is folded before the turn starts, failure
+  included, and the conversation never sees it. It goes to the model the
+  task already talks to, so it sends nothing anywhere the task would not.
+  It costs one short request, which the turn waits for, so the name is
+  shown from the start rather than when a long first turn ends.
+- **What is recorded.** The reply, its whitespace collapsed as a person's
+  name is, without the quotes or the full stop around it, and at most 120
+  characters, is recorded as `session.title` with actor `model` through
+  the session's own `Record`, so it crosses the log's redaction as a
+  person's name does. A failed request or an empty reply records nothing,
+  and the task is read by its first message as before.
+- **A person's name still wins.** A rename records a later `session.title`,
+  which is the title; an empty rename takes the name back, the model's
+  included, and the task is read by its first message again: the model is
+  not asked twice.
+- Not built: `nodwyn sessions` and the TUI's list still show first
+  messages, as above.

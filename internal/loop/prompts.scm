@@ -992,6 +992,13 @@
    (if (string-empty? focus) "" (string-append "Focus on: " focus "\n\n"))
    "History of this repository's sessions (newest first):\n\n" history))
 
+;; The system prompt of the request for a task's title (agents.scm,
+;; session-title): the person's first message is the request's one message.
+;; The title is what the task list shows in place of that message, cut down,
+;; which read badly as a name (ADR 39, amended 2026-10-23).
+(define session-title-prompt
+  "Write a short title, of three to seven words, for the task the user's message asks for, as it would appear in a list of tasks. Reply with the title alone: no quotes, no full stop, no explanation, and do not do the task.")
+
 ;; Compaction's request for a handover note (compact.scm). A note that
 ;; kept a conclusion and dropped what it rested on ("the bug does not
 ;; reproduce", from a check that used a different input than the request's)

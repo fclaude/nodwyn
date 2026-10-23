@@ -421,4 +421,20 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#policy-content"), original, "the draft was not replaced by the file");
   await page.screenshot({ path: `${out}/tasks-policy.png` });
   step("the policy editor asks before discarding a draft");
+
+  // A new task is named by the model from its first message (ADR 39,
+  // amended 2026-10-23): the sidebar and the heading show the model's short
+  // title, not the message cut down, and a person's rename still wins.
+  const longFirst = "hey, so the login page keeps sending me back to / after I sign in, can you look at it and fix whatever is wrong please";
+  await start("console", longFirst);
+  s = await settled("the model's title in the sidebar", (s) => folder(s, "console")?.tasks[0] === "Fix login redirect");
+  await page.waitForFunction(() => document.querySelector(".task-head h1")?.textContent === "Fix login redirect", null, { timeout: 15000 });
+  assert.ok(!s.folders.flatMap((f) => f.tasks).some((t) => t.startsWith("hey, so the login page")), `the first message is still a title: ${JSON.stringify(s)}`);
+  await page.screenshot({ path: `${out}/tasks-model-title.png` });
+  await page.click(".rename-btn");
+  await page.fill(".title-input", "Login bug");
+  await page.press(".title-input", "Enter");
+  await settled("the person's rename over the model's title", (s) => folder(s, "console")?.tasks[0] === "Login bug");
+  assert.strictEqual(await page.textContent(".task-head h1"), "Login bug");
+  step("the model titled a new task from its first message, and a rename replaced it");
 });

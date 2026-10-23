@@ -79,7 +79,7 @@ separate work (ADR 51).
 \begin{tabularx}{\linewidth}{lX}
 \toprule
 \code{session.start}, \code{session.resume}, \code{session.end} & lifecycle; no \code{session.end} after a crash \\
-\code{session.title}, \code{session.archive} & the name you gave the task, and whether it is archived (\adr{39}); the latest of each counts \\
+\code{session.title}, \code{session.archive} & the task's name, the one you gave it or the one the model wrote from its first message (actor \code{model}), and whether it is archived (\adr{39}); the latest of each counts \\
 \code{session.model} & the model the conversation talks to, chosen as it opened or moved to between turns (\adr{40}), with the window's recipe sized for it; the latest one counts \\
 \code{worktree.create}, \code{worktree.restore}, \code{worktree.remove} & the task's own git worktree (\adr{34}): made, made again on resume, removed on close when nothing in it was unlanded \\
 \code{user.msg}, \code{harness.msg} & what you sent; what a strategy added with \code{add-message} \\

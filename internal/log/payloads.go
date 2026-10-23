@@ -412,9 +412,11 @@ type Note struct {
 	Text string `json:"text"`
 }
 
-// SessionTitle is the name a person gave a session (ADR 39). The latest one
-// is the session's title; an empty one takes the name back, and the session
-// is read by its first message again.
+// SessionTitle is a session's name (ADR 39): one a person gave it, one a
+// workflow gave the task it opened, or one the model gave it from its first
+// message (actor "model", ADR 39 amended 2026-10-23). The latest one is the
+// session's title; an empty one takes the name back, and the session is
+// read by its first message again.
 type SessionTitle struct {
 	Actor string `json:"actor,omitempty"`
 	Title string `json:"title"`

@@ -648,8 +648,10 @@ the OAuth account remains stored. `settings.read.servers[].authentication`
 is `"chatgpt"` for OpenAI OAuth credentials when the keychain is unlocked;
 omitted otherwise. No token is returned.
 
-`session.list` entries also carry `title` (the name a person gave the
-session, else the first sentence of the first message, shortened),
+`session.list` entries also carry `title` (the session's name: the one a
+person gave it, else the one the model wrote from its first message, a
+`session.title` record with actor `"model"` (ADR 39, amended 2026-10-23), else
+the first sentence of the first message, shortened),
 `archived` (ADR 39), `started`, `changes` (files the guard allowed the session
 to write, first 50, from `guard.decision` records, which now carry `path`) and
 `run` (the live run, or the last recorded `run.state`). `models.status` sends

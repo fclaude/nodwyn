@@ -79,7 +79,7 @@ const (
 	KindFileVersion      Kind = "file.version"      // a file's previous content kept before a write (ADR 22)
 	KindAttach           Kind = "attach"            // a file the person attached: its extracted, redacted text (ADR 22)
 	KindDocUpload        Kind = "doc.upload"        // a document sent to a document service: file, size, hash, destination, the document's id; never content (W5)
-	KindSessionTitle     Kind = "session.title"     // the name a person gave the session; an empty one gives it back its first message (ADR 39)
+	KindSessionTitle     Kind = "session.title"     // the session's name, given by a person, a workflow or the model from the first message; an empty one gives it back its first message (ADR 39)
 	KindSessionArchive   Kind = "session.archive"   // a person archived the session or brought it back (ADR 39)
 	KindSessionOrigin    Kind = "session.origin"    // the workflow that opened the session, and for which subject (ADR 53)
 	KindIndexUpdate      Kind = "index.update"      // a build or refresh of the repository's index: what it read, removed, skipped and was refused; never content (ADR 50)

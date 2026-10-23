@@ -45,10 +45,11 @@ type SessionInfo struct {
 	Worktree *log.Worktree
 }
 
-// Title is what a person reads a session by: the name they gave it, else
-// the first sentence of the first message when it is short, else its first
-// words. A run's first message is the run's prompt around its task, so a
-// run is read by the task.
+// Title is what a person reads a session by: its name, the one a person
+// gave it or the one the model gave it from its first message (ADR 39,
+// amended 2026-10-23), else the first sentence of the first message when it
+// is short, else its first words. A run's first message is the run's prompt
+// around its task, so a run is read by the task.
 func (i SessionInfo) Title() string {
 	if i.Name != "" {
 		return i.Name

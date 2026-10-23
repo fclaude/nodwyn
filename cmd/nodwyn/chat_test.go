@@ -130,7 +130,10 @@ func TestLineModeRefusesADaemonOfAnotherDataDirectory(t *testing.T) {
 // offer ([approval] dont_ask), as it must for the console's switch; without
 // it --yolo is refused in the daemon's words.
 func TestYoloTurnsOnDontAsk(t *testing.T) {
+	// The daemon asks the model for the task's title first (ADR 39, amended
+	// 2026-10-23).
 	model := fake.NewT(t,
+		fake.Turn{Content: "Write a"},
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "a.txt", "content": "a"}}}},
 		fake.Turn{Content: "written"})
 	dir, repo := t.TempDir(), t.TempDir()
@@ -155,7 +158,9 @@ func TestYoloTurnsOnDontAsk(t *testing.T) {
 // without the Don't ask --yolo turned on; one line mode opened it closes, as
 // quitting always did.
 func TestLineModeLeavesATaskAnotherClientHasOpen(t *testing.T) {
-	model := fake.NewT(t, fake.Turn{Content: "from line mode"})
+	// The daemon asks the model for the task's title first (ADR 39, amended
+	// 2026-10-23).
+	model := fake.NewT(t, fake.Turn{Content: "Hello"}, fake.Turn{Content: "from line mode"})
 	dir, repo := t.TempDir(), t.TempDir()
 	writeConfig(t, dir, controlOn(model.URL, "test-model")+"[approval]\ndont_ask = true\n")
 	env := lineEnv(t, dir)

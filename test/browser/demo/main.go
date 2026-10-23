@@ -303,7 +303,7 @@ func run(seed bool, port int, docs, locked, forged, mailed bool, given string) e
 	if err := config.WriteFile(paths.ConfigFile, raw); err != nil {
 		return err
 	}
-	options := core.Options{Config: cfg, Paths: paths, Version: "demo", Keychain: store, Containers: &container.Runtime{Kind: runtime.Kind, Path: runtime.Path}}
+	options := core.Options{Config: cfg, Paths: paths, Version: "demo", Keychain: store, Titles: true, Containers: &container.Runtime{Kind: runtime.Kind, Path: runtime.Path}}
 
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -588,6 +588,7 @@ func respond(req fake.Request) fake.Turn {
 	var last string
 	var results []string // the tool results since the request
 	rounds, images := 0, 0
+	titling := false // the request asks for a task's title (session-title-prompt)
 	for _, raw := range req.Messages {
 		var m struct {
 			Role      string            `json:"role"`
@@ -598,6 +599,8 @@ func respond(req fake.Request) fake.Turn {
 		_ = json.Unmarshal(raw, &m)
 		images += len(m.Images)
 		switch {
+		case m.Role == "system" && strings.HasPrefix(m.Content, "Write a short title"):
+			titling = true
 		case m.Role == "user" && strings.HasPrefix(m.Content, taskHeader):
 			last, rounds, results = m.Content[len(taskHeader):], 0, nil
 		case m.Role == "user" && strings.HasPrefix(m.Content, planHeader):
@@ -611,6 +614,16 @@ func respond(req fake.Request) fake.Turn {
 		}
 	}
 	time.Sleep(pace)
+	if titling {
+		// A task is named by the model from its first message (ADR 39,
+		// amended 2026-10-23); tasks.js checks it with this one. Every other
+		// title is left empty, so the task keeps its first message as its
+		// title and the checks that find a task by it still do.
+		if strings.Contains(last, "login page keeps sending me back") {
+			return fake.Turn{Content: "Fix login redirect"}
+		}
+		return fake.Turn{}
+	}
 	if len(req.Tools) == 0 {
 		// The plan names its change, its test, its docs and its check, as
 		// the planner is asked to (prompts.scm, plan-shape).

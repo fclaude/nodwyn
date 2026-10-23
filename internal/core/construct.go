@@ -48,6 +48,12 @@ type Options struct {
 	// a soft budget checkpoint continues up to the hard limit, and both are
 	// recorded as answered by "unattended".
 	Unattended bool
+	// Titles asks the model, once the session's first message is in, for a
+	// short title to list the task by (ADR 39, amended 2026-10-23). The
+	// daemon sets it for the tasks it lists; off, the default, asks nothing,
+	// so an embedder or a test whose model is scripted request by request is
+	// not sent a request it did not expect.
+	Titles bool
 	// InitFile explicitly authorises an init file on behalf of a Go embedder.
 	// Empty loads <Repo>/.nodwyn/init.scm only after user-owned project trust.
 	InitFile string

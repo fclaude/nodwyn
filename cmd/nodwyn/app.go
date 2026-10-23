@@ -155,8 +155,9 @@ func ensureDaemon(ctx context.Context, paths config.Paths, socket, command strin
 		return false, nil, err
 	}
 	// The keychain starts locked, and the console, the TUI or line mode asks
-	// for the passphrase; one without a passphrase is opened now.
-	options := core.Options{Config: cfg, Paths: paths, Version: versionString()}
+	// for the passphrase; one without a passphrase is opened now. Its tasks
+	// are named by the model from their first message, as the daemon's are.
+	options := core.Options{Config: cfg, Paths: paths, Version: versionString(), Titles: true}
 	if store, err := keychain.OpenWithoutPassphrase(paths.Keychain); err == nil {
 		if options.Bindings, err = binding.Load(paths.Bindings); err != nil {
 			listener.Close()

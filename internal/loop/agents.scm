@@ -237,3 +237,12 @@
                             (filter (lambda (n) (not (equal? n "delegate"))) (tool-names))
                             "delegate" (list (cons 'model model)))))
               (else (string-append "No model " model " is available to delegate to.\n" (delegate-listing))))))))
+
+;; A task's title (ADR 39, amended 2026-10-23): the host asks it once, after
+;; the session's first message and before its turn, when nothing has named
+;; the task, and records what comes back as the session's name. A sub-agent
+;; with no tools and no rounds, so its context is folded before the turn
+;; starts, even when the request fails, and the conversation never sees the
+;; question. The host cleans the reply and records nothing when it is empty.
+(define (session-title request)
+  (sub-agent session-title-prompt request '() "title" '((rounds . 0))))

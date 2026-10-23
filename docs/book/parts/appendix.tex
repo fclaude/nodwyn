@@ -39,7 +39,7 @@ Kind & What it records \\
 \code{file.version} & a file's previous content, kept in \file{.nodwyn/versions/} before a write: its path, size and hash \\
 \code{doc.upload} & a document sent to Google Drive: file, size, hash, destination, the document's id or why nothing was sent; never content or a token \\
 \code{setting.change} & a setting a person chose at a prompt, such as how uploads to Google Docs are handled: who, the value, whether \file{config.toml} took it \\
-\code{session.title}, \code{session.archive} & the name a person gave the task, and whether it is archived (\adr{39}): who, and the name or the state; the latest of each counts \\
+\code{session.title}, \code{session.archive} & the task's name, given by a person, a workflow or the model from the first message, and whether it is archived (\adr{39}): who, and the name or the state; the latest of each counts \\
 \code{session.model} & the model and reasoning effort the conversation talks to, chosen as it opened or changed (\adr{40}, \adr{41}): from, to, where it is reached, who chose it, and the window's recipe sized for it; one chosen while a turn ran is first recorded as queued, without a recipe; the latest one counts \\
 \code{worktree.create}, \code{worktree.restore}, \code{worktree.remove} & the task's own git worktree (\adr{34}): made, with its repository, path, branch, base and the uncommitted files it does not have; made again by a resume; removed on close with its branch, when nothing in them was unlanded \\
 \code{eval.req}, \code{eval.result} & Scheme you evaluated, and its redacted result \\

@@ -34,7 +34,9 @@ func runDaemon(paths config.Paths, args []string, noKeychain bool) error {
 	if err != nil {
 		return err
 	}
-	options := core.Options{Config: cfg, Paths: paths, Version: versionString()}
+	// The daemon's tasks are listed by name, so it asks the model to name
+	// each from its first message (ADR 39, amended 2026-10-23).
+	options := core.Options{Config: cfg, Paths: paths, Version: versionString(), Titles: true}
 	if !noKeychain {
 		if options.Keychain, options.Bindings, err = openKeychain(paths, false); err != nil {
 			return err

@@ -288,6 +288,7 @@ func (s *Session) runTurn(ctx context.Context, text string, required, reviewed b
 	if !required {
 		earlier = earlierRequests(s.EventsSoFar())
 	}
+	untitled := s.opts.Titles && untitledAndUnasked(s.EventsSoFar())
 	safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
 	if err != nil {
 		return err
@@ -298,6 +299,9 @@ func (s *Session) runTurn(ctx context.Context, text string, required, reviewed b
 	}
 	s.setTurnTask(msg.Text, earlier)
 	touchScratch(s.scratch)
+	if untitled {
+		s.titleFrom(ctx, msg.Text)
+	}
 	if err := s.loop.Turn(ctx, msg.Text); err != nil {
 		return err
 	}
