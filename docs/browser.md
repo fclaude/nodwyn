@@ -1086,9 +1086,10 @@ this computer's.
 **A linked host's Settings** are at `#/host/NAME/settings` (each host's
 card on Hosts has **Settings**, and Settings has a chip for each host when
 there is a link): its General and Models tabs, read from that host and
-saved there over its socket, named as that host's. The limits and the
-models of its list change from here; its approvals and policy are shown and
-cannot be chosen, its providers and default model have no control, and its
+saved there over its socket, named as that host's. The limits, the
+default model and the models of its list change from here; its approvals
+and policy are shown and cannot be chosen, its providers have no control,
+and its
 Judge tab is its own console's, since those decide what its tasks may do
 unasked or where their content goes, and wait for a touch of your passkey
 that a link cannot give. They change only

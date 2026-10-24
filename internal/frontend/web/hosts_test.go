@@ -78,6 +78,9 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	// localhost name, where a browser could use passkeys.
 	tarroRoot := tempRoot(t, "nodwyn-workshop-")
 	tarroSocket, tarroPaths := startDaemon(t, ctx, tarroRoot, nil)
+	// workshop has a provider with two models, the first its default.
+	must.MkdirAll(t, tarroPaths.ConfigDir, 0o700)
+	must.WriteFile(t, tarroPaths.ConfigFile, []byte("[servers.local]\nprovider = \"ollama\"\nurl = \"http://127.0.0.1:9\"\n\n[control]\nserver = \"local\"\nmodel = \"first\"\n\n[models.local-second]\nserver = \"local\"\nmodel = \"second\"\n"), 0o600)
 	devices := OpenDevices(filepath.Join(tarroRoot, "devices.toml"))
 	workshop := &bridge{ctx: ctx, socket: tarroSocket, code: testCode, session: testSession, devices: devices, recheck: 50 * time.Millisecond}
 	tarroServer := httptest.NewUnstartedServer(workshop)
@@ -204,7 +207,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	if !strings.HasSuffix(greeting.Peer, " via web:laptop passkey:phone") {
 		t.Fatalf("workshop's daemon sees the link as %q", greeting.Peer)
 	}
-	for method, want := range map[string]bool{"session.open": true, "session.model.set": true, "schedule.set": true, "settings.write": true, "settings.model.write": true, "models.test": true, "settings.provider.write": false, "settings.provider.remove": false, "settings.control.write": false, "devices.revoke": false, "session.delete": false, "startup.write": false, "devices.leave": true} {
+	for method, want := range map[string]bool{"session.open": true, "session.model.set": true, "schedule.set": true, "settings.write": true, "settings.model.write": true, "models.test": true, "settings.provider.write": false, "settings.provider.remove": false, "settings.control.write": true, "devices.revoke": false, "session.delete": false, "startup.write": false, "devices.leave": true} {
 		if slices.Contains(greeting.Methods, method) != want {
 			t.Errorf("a link the person's passkey vouched for is offered %s: %v, want %v", method, !want, want)
 		}
@@ -229,6 +232,17 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	}
 	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("tool_calls_soft")) {
 		t.Fatalf("the link's write changed the laptop's config.toml: %s", mine)
+	}
+	// It chooses workshop's default model among workshop's providers, as it
+	// chooses a task's.
+	if err := call(conn, "settings.control.write", map[string]any{"name": "local-second"}, &settings); err != nil {
+		t.Fatalf("the vouched link's settings.control.write: %v", err)
+	}
+	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || !bytes.Contains(written, []byte("[control]\nserver = \"local\"\nmodel = \"second\"")) {
+		t.Fatalf("workshop's config.toml after the link chose its default model: %s %v", written, err)
+	}
+	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("second")) {
+		t.Fatalf("the link's default model changed the laptop's config.toml: %s", mine)
 	}
 	// What would widen what a task may do waits for a touch, which a link
 	// cannot give, even in a call that also holds a setting it may change.
@@ -439,10 +453,10 @@ func TestOnlyThePersonUsesThisComputersLinks(t *testing.T) {
 // started with --no-link-settings, which still lets the person's own
 // devices in.
 func TestALinkChangesTheHostsSettings(t *testing.T) {
-	settings := []string{"settings.write", "settings.docs.write", "settings.model.write", "settings.model.remove", "models.test"}
+	settings := []string{"settings.write", "settings.docs.write", "settings.control.write", "settings.model.write", "settings.model.remove", "models.test"}
 	// Where a task's content goes is the touch's: a provider's address and
-	// key, and the default model.
-	touch := []string{"settings.control.write", "settings.provider.write", "settings.provider.remove"}
+	// key. The default model is chosen among the providers already there.
+	touch := []string{"settings.provider.write", "settings.provider.remove"}
 	other := []string{"host.link", "host.unlink", "startup.write", "devices.revoke", "passkeys.remove", "session.delete", "credentials.add", "keychain.passphrase", "mcp.save", "workspace.save", "trust.set"}
 	person, answers := caller{person: true, link: true}, caller{link: true}
 	b := &bridge{devices: OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))}

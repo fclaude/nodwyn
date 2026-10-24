@@ -192,8 +192,8 @@ needs. The console's column is this computer's, and that of a device signed
 in with the person's passkey after a touch of it (ADR 30, amended
 2026-10-17); a device paired by a plain invitation has none of it. Another
 nodwyn linked here with the person's passkey has the first row for a host's
-limits and models, with no touch (not its approvals, policy, judge, providers
-or default model, which wait for a touch), unless this computer's console was started with
+limits, models and default model, with no touch (not its approvals, policy,
+judge or providers, which wait for a touch), unless this computer's console was started with
 `--no-link-settings` (ADR 54, amended 2026-10-23), and none of the rest.
 
 | | Console | TUI | Line mode | CLI |

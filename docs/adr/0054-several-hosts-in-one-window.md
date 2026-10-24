@@ -276,3 +276,39 @@ started with `--no-link-settings` (§Consequences above), but not what its
 tasks may do unasked or where their content goes. A host older than this one
 offers a vouched link no settings, which the page says as it says a host's
 refusal.
+
+## Amendment 2026-10-23: a link chooses the host's default model
+
+The person could not change a linked host's default model from the window:
+the amendment above refused a link `settings.control.write` with the
+providers, as deciding where a task's content goes, so the Models tab drew
+the default picker disabled. They asked to change it.
+
+**Decision.** The host's bridge grants a link vouched for by the person's
+passkey `settings.control.write` without a touch, as it grants
+`settings.model.write`, unless the host's console was started with
+`--no-link-settings`; the hello offers it, and the Models tab's default
+picker saves through the save bar on that host. `settings.provider.write`
+and `settings.provider.remove` stay refused outright, and §2's other
+refusals stand.
+
+**Why the Review's argument does not hold for it.** `settings.control.write`
+takes a `[models.NAME]` entry or a configured server and a model on it,
+never an address or a key (`controlParams`; a provider is saved only by
+`settings.provider.write`). So it chooses among the providers the host's
+own console set up, which is what a link already does for each task with
+`session.model.set`, and what `settings.model.write` already lets it add to
+the list. A stolen link token gains no new destination for a task's content
+from it: it could already start every task on any of those models.
+
+**Evidence.** `TestALinkChangesTheHostsSettings` places
+`settings.control.write` with the granted settings (refused to a link that
+only answers and with `--no-link-settings`, a touch for the person's device
+before one), and the providers still refused.
+`TestALinkedHostIsReachedThroughThisComputersDaemon` sees it in the vouched
+link's hello, and a `settings.control.write` through `/socket?host=workshop`
+changes workshop's `[control]` and not the laptop's. The `hosts` browser check
+finds workshop's default picker enabled over the vouched link, chooses workshop's
+other model, saves, and sees the call sent to workshop only and workshop's
+`config.toml` changed. Each of the three fails on the code before this
+change.

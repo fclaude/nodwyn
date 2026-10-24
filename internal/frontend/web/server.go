@@ -940,12 +940,14 @@ var settingsMethods = map[string]bool{
 
 // linkSettings are the settings methods another nodwyn that is the person's
 // may also call without a touch (access), those of them that cannot widen
-// what a task may do or where its content goes. A provider's address and
-// key and the default model (settings.provider.write, .remove and
-// settings.control.write) are not here, and settings.write and
+// what a task may do or where its content goes. The default model
+// (settings.control.write) is here: it is chosen among the providers
+// already configured, with no address or key, as the link already chooses
+// a task's model (session.model.set). A provider's address and key
+// (settings.provider.write, .remove) are not, and settings.write and
 // settings.docs.write are limited by linkWidens.
 var linkSettings = map[string]bool{
-	"settings.write": true, "settings.docs.write": true, "settings.model.write": true, "settings.model.remove": true, "models.test": true,
+	"settings.write": true, "settings.docs.write": true, "settings.control.write": true, "settings.model.write": true, "settings.model.remove": true, "models.test": true,
 }
 
 // widening is the part of Settings that decides what a task may do without

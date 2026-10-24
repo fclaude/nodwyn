@@ -23,6 +23,9 @@ check(async () => {
     return { root, env, modelHost: new URL(modelURL).host };
   };
   const workshop = await world("workshop");
+  // A second model on workshop's server, for a link to choose as its default.
+  const tarroConfigFile = `${workshop.root}/config/nodwyn/config.toml`;
+  fs.appendFileSync(tarroConfigFile, `\n[models.second]\nurl = "${/url = "([^"]+)"/.exec(fs.readFileSync(tarroConfigFile, "utf8"))[1]}"\nmodel = "second"\n`);
   const laptop = await world("laptop");
 
   // workshop: a daemon and a console other machines reach, at its address and
@@ -371,7 +374,22 @@ check(async () => {
   await page.click("main.settings-page [role=tab]:has-text('Models')");
   await page.waitForSelector("#settings-panel-models");
   assert.strictEqual(await page.locator("#add-provider").count(), 0, "a link can add a provider at workshop");
-  step("a link vouched for by the person's passkey changes workshop's limits from this window, and not the laptop's, and cannot choose its approvals");
+  // The default model is chosen among workshop's providers, as a task's model
+  // is, and saved there with the save bar.
+  assert.strictEqual(await page.isDisabled("#default-model-model"), false, "a link cannot choose workshop's default model");
+  const current = await page.inputValue("#default-model-model");
+  const other = (await page.$$eval("#default-model-model option", (os) => os.map((o) => o.value))).find((v) => v && v !== current);
+  assert.ok(other, "workshop offers no other model to choose as its default");
+  const tarroBefore = configOf(workshop);
+  await page.selectOption("#default-model-model", other);
+  await shows(page, ".save-bar", "1 unsaved change");
+  await page.click(".save-bar .btn.accent");
+  await until("workshop's default model to be saved", () => of(sent.workshop, "settings.control.write").length === 1);
+  assert.strictEqual(of(sent.workshop, "settings.control.write")[0].name, other, "workshop's default went to another model");
+  assert.strictEqual(of(sent.local, "settings.control.write").length, 0, "workshop's default model went to the laptop");
+  await until("workshop's config.toml to change its [control]", () => configOf(workshop) !== tarroBefore);
+  assert.strictEqual(configOf(laptop), laptopConfig, "workshop's default model changed the laptop's config.toml");
+  step("a link vouched for by the person's passkey changes workshop's limits and default model from this window, and not the laptop's, and cannot choose its approvals");
 
   // workshop's console started with --no-link-settings refuses it: its
   // Settings say so once the link is back, and show no control.

@@ -378,7 +378,7 @@ export function renderSettings(root, ctx) {
       h("h1", {}, host ? `${host}'s settings` : "Settings"),
       hostPicker(ctx),
       host
-        ? h("p", { class: "lede", id: "save-rule" }, `The settings tasks on ${host} start with, read from ${host} and saved there. A choice made here waits in the bar at the foot of the page and is saved with the others; a model is saved in its own form. What a task may do without asking (approvals, the policy, the judge), the providers, the default model, the keychain, credentials and devices are changed in ${host}'s own console, after a touch of your passkey.`)
+        ? h("p", { class: "lede", id: "save-rule" }, `The settings tasks on ${host} start with, read from ${host} and saved there. A choice made here waits in the bar at the foot of the page and is saved with the others; a model is saved in its own form. What a task may do without asking (approvals, the policy, the judge), the providers, the keychain, credentials and devices are changed in ${host}'s own console, after a touch of your passkey.`)
         : h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys, the passphrase and starting at login act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
       refused ? hostRefusal(ctx) : null,
       !host && known && !editable(conn) ? h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,

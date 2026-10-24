@@ -612,8 +612,9 @@ devices` say a device is another nodwyn. ADR 54 records the rest.
 (Amended 2026-10-23: a link that makes the person's choices also changes the
 host's limits and models, without a touch, unless the host's console is
 started with `--no-link-settings`; what would widen what a task may do
-(approvals, the policy, the judge, providers, the default model) and the rest
-of setup stay refused to it. ADR 54's amendment of that date says why.)
+(approvals, the policy, the judge, providers) and the rest
+of setup stay refused to it. ADR 54's amendment of that date says why, and
+a later one lets the link choose the default model among the host's providers.)
 
 ## Amendment 2026-10-19: this computer's cookie makes no passkey
 

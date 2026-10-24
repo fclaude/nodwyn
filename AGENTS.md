@@ -155,8 +155,8 @@ A plan's `Docs:` steps name every file this list asks for the change.
   (ADR 30), but for the settings methods in `linkSettings`, which another
   nodwyn linked with the person's passkey is also granted unless the
   console was started with `--no-link-settings`, and not what `linkWidens`
-  names (approvals, policy, judge, providers, the default model; ADR 54,
-  amended 2026-10-23). A link never holds a touch: `caller.touched` is false
+  names (approvals, policy, judge) nor the providers (ADR 54, amended
+  2026-10-23; the default model is granted). A link never holds a touch: `caller.touched` is false
   for it.
 
 ## When nodwyn runs its own tests
