@@ -72,6 +72,9 @@ export function resetModelsUi() {
 }
 
 const row = (label, ...value) => [h("div", { class: "label" }, label), h("div", { class: "value" }, ...value)];
+// canEdit is for the providers: where a task's content goes is the touch's, so
+// a link to another host is never offered it (ADR 54). The models of the list
+// are the model methods' own, which a link is offered (modelsEditable).
 const canEdit = (conn) => conn.has("settings.provider.write");
 
 // providerOf is the provider a model is on, from the settings' providers.
@@ -142,7 +145,7 @@ function providerRows(ctx, redraw) {
   const onProvider = (p) => choices.filter((c) => (c.server ? c.server === p.name : p.inline && c.host === p.host));
   const placed = new Set(providers.flatMap((p) => onProvider(p).map((c) => c.name)));
   const strays = choices.filter((c) => !placed.has(c.name));
-  const modelsEditable = editable && conn.has("settings.model.write");
+  const modelsEditable = conn.has("settings.model.write");
   // The model form is drawn where it was opened (openModel), and below the
   // list when it was opened there or its place is no longer drawn.
   let formPlaced = false;
@@ -220,7 +223,7 @@ function providerRows(ctx, redraw) {
       modelsEditable && !ui.model ? h("button", { type: "button", class: "btn", id: "add-model", disabled: !providers.some(carriesModels), title: providers.some(carriesModels) ? "" : "Add a provider first", onclick: () => openModel(null, redraw) }, icon("plus", 14), "Add a model") : null,
       h("button", { type: "button", class: "btn", id: "check-again", title: "Asks each provider for its models again, without a key", onclick: () => desk.refreshModels(true) }, "Check again"),
     ),
-    !editable ? h("p", { class: "hint" }, "Only the computer nodwyn runs on can change providers.") : null,
+    !editable ? h("p", { class: "hint" }, modelsEditable ? "Models can be added, changed and removed here among the providers listed. Only the computer nodwyn runs on can change providers." : "Only the computer nodwyn runs on can change providers.") : null,
     h(
       "p",
       { class: "hint" },
@@ -470,7 +473,7 @@ async function removeProvider(ctx, name, redraw) {
 // and Test, Edit and Remove.
 function modelRow(ctx, c, redraw) {
   const { conn, desk } = ctx;
-  const editable = canEdit(conn) && conn.has("settings.model.write");
+  const editable = conn.has("settings.model.write");
   const key = `model:${c.name}`;
   const status = statusOf(desk, c.name);
   const result = ui.results.get(key);

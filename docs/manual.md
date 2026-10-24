@@ -2069,7 +2069,8 @@ file loads. Every request
 records the effort it asked for (`llm.req`), and replays to its hash.
 
 **Settings › Models.** The console sets all of this up without the file, on
-this computer only. Each provider is a card with the models on it listed
+this computer. (A linked host's Models tab, below, adds, changes and removes
+models among that host's providers, and no provider.) Each provider is a card with the models on it listed
 under it, and **Add a model** on it there; the default for new tasks is its
 Model · Effort, which waits in Settings' bar with the other settings (the
 default judge is on the Judge tab):
@@ -3119,7 +3120,11 @@ invitation from your passkey's device changes the server's settings from
 its own window: **Settings** on the server's card in Hosts, or the server's
 chip at the top of Settings, opens its General and Models tabs, which are
 saved on the server. Its limits, its default model and the models of its
-list change there; what its tasks may do without asking (approvals, the
+list change there: on the Models tab **Add a model on NAME** (on a provider
+the server already has), **Edit** and **Remove** act on the server's list,
+except that its default model has no Remove. Providers (their addresses and
+keys) are shown but have no Add, Edit or Remove there. What its tasks may do
+without asking (approvals, the
 policy, the judge) and where their content goes (providers) are shown or
 left out and
 are changed in its own console, after a touch of your passkey. To refuse

@@ -26,6 +26,8 @@ check(async () => {
   // A second model on workshop's server, for a link to choose as its default.
   const tarroConfigFile = `${workshop.root}/config/nodwyn/config.toml`;
   fs.appendFileSync(tarroConfigFile, `\n[models.second]\nurl = "${/url = "([^"]+)"/.exec(fs.readFileSync(tarroConfigFile, "utf8"))[1]}"\nmodel = "second"\n`);
+  // And a provider, as a link may put models only on one already there.
+  fs.appendFileSync(tarroConfigFile, `\n[servers.shelf]\nprovider = "openai"\nurl = "${/url = "([^"]+)"/.exec(fs.readFileSync(tarroConfigFile, "utf8"))[1]}"\n`);
   const laptop = await world("laptop");
 
   // workshop: a daemon and a console other machines reach, at its address and
@@ -390,6 +392,53 @@ check(async () => {
   await until("workshop's config.toml to change its [control]", () => configOf(workshop) !== tarroBefore);
   assert.strictEqual(configOf(laptop), laptopConfig, "workshop's default model changed the laptop's config.toml");
   step("a link vouched for by the person's passkey changes workshop's limits and default model from this window, and not the laptop's, and cannot choose its approvals");
+
+  // The models of workshop's list are the link's to add, change and remove,
+  // among the providers workshop has; the providers themselves are not.
+  assert.strictEqual(await page.locator("#provider-shelf .provider-actions button:text-is('Edit'), #provider-shelf .provider-actions button:text-is('Remove')").count(), 0, "a link can change or remove a provider at workshop");
+  await page.click("#add-model-shelf");
+  assert.strictEqual(await page.inputValue("#model-provider"), "shelf", "Add a model on workshop's provider did not choose it");
+  await page.fill("#model-id", "extra");
+  await page.click("#model-save");
+  await page.waitForSelector("[data-model='shelf-extra']");
+  assert.deepStrictEqual(of(sent.workshop, "settings.model.write"), [{ server: "shelf", model: "extra", efforts: [] }], "the model went to workshop");
+  assert.strictEqual(of(sent.local, "settings.model.write").length, 0, "workshop's model went to the laptop");
+  await until("workshop's config.toml to list the model", () => /\[models\.shelf-extra\]\s*server = "shelf"\s*model = "extra"/.test(configOf(workshop)));
+  assert.strictEqual(configOf(laptop), laptopConfig, "workshop's model changed the laptop's config.toml");
+  await page.click("[data-model='shelf-extra'] button:text-is('Edit')");
+  await page.click("#efforts-lmh");
+  await page.click("#model-save");
+  await until("workshop's model to be changed", () => of(sent.workshop, "settings.model.write").length === 2);
+  assert.strictEqual(of(sent.workshop, "settings.model.write")[1].name, "shelf-extra", "the change named another model");
+  assert.deepStrictEqual(of(sent.workshop, "settings.model.write")[1].efforts, ["low", "medium", "high"], "the change did not send the efforts");
+  assert.strictEqual(of(sent.local, "settings.model.write").length, 0, "a change to workshop's model went to the laptop");
+  await page.waitForFunction(() => document.querySelector("[data-model='shelf-extra']")?.textContent.includes("effort: Low"));
+  await shows(page, "[data-model='shelf-extra']", "effort: Low · Medium · High");
+  // The default model has no Remove, a link's or not.
+  await page.click("#add-model-shelf");
+  await page.fill("#model-id", "kept");
+  await page.click("#model-save");
+  await page.waitForSelector("[data-model='shelf-kept']");
+  await page.selectOption("#default-model-model", "shelf-kept");
+  await page.click(".save-bar .btn.accent");
+  await until("workshop's default to be the new model", () => of(sent.workshop, "settings.control.write").length === 2);
+  // The default is kept under [control], so its row is the default's.
+  await page.waitForFunction(() => document.querySelector("[data-model='control']")?.textContent.includes("kept"));
+  await page.waitForSelector("[data-model='control'] .default-badge");
+  assert.strictEqual(await page.locator("[data-model='control'] button:text-is('Remove')").count(), 0, "a link can remove workshop's default model");
+  const beforeRemoval = configOf(workshop);
+  await page.click("[data-model='shelf-extra'] button:text-is('Remove')");
+  assert.strictEqual(of(sent.workshop, "settings.model.remove").length, 0, "Remove removed before it was confirmed");
+  await page.click("[data-model='shelf-extra'] button:text-is('Remove')");
+  await page.waitForSelector("[data-model='shelf-extra']", { state: "detached" });
+  assert.deepStrictEqual(of(sent.workshop, "settings.model.remove"), [{ name: "shelf-extra" }], "the removal went to workshop");
+  assert.strictEqual(of(sent.local, "settings.model.remove").length, 0, "workshop's removal went to the laptop");
+  await until("workshop's config.toml to drop the model", () => configOf(workshop) !== beforeRemoval && !configOf(workshop).includes("shelf-extra"));
+  assert.ok(configOf(workshop).includes('model = "kept"'), "the removal took the default model");
+  assert.strictEqual(configOf(laptop), laptopConfig, "workshop's removal changed the laptop's config.toml");
+  assert.strictEqual(await page.locator("#add-provider").count(), 0, "a link can add a provider at workshop");
+  await page.screenshot({ path: `${out}/workshop-models.png` });
+  step("the link adds, changes and removes models among workshop's providers, from this window and on workshop, and not its default model or its providers");
 
   // workshop's console started with --no-link-settings refuses it: its
   // Settings say so once the link is back, and show no control.

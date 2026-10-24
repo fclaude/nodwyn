@@ -312,3 +312,31 @@ finds workshop's default picker enabled over the vouched link, chooses workshop'
 other model, saves, and sees the call sent to workshop only and workshop's
 `config.toml` changed. Each of the three fails on the code before this
 change.
+
+## Amendment 2026-10-23: the console adds and removes a linked host's models
+
+The host's bridge already offered a vouched link `settings.model.write` and
+`settings.model.remove` (amendment 2026-10-23, §1), but the console's Models
+tab drew its model controls only when the host also offered
+`settings.provider.write`, which a link never has: the person saw a linked
+host's models and could not add, change or remove one from the window.
+
+The Models tab now gates each model control on the model methods alone.
+On a vouched link it offers **Add a model** (and **Add a model on NAME**, on
+each provider the host already has), **Edit** and **Remove**, and sends them
+to the host viewed through its socket, as it does for this computer. The
+default model still has no Remove. **Add a provider** and a provider's
+**Edit** and **Remove** stay for what offers `settings.provider.write`, so a
+link still cannot name a new address or key for a task's content to go to; a
+hint says that providers are changed on the host's own computer. With
+`--no-link-settings` the hello offers neither model method and the tab does
+not open at all.
+
+**Evidence.** The `hosts` browser check, over the vouched link to workshop,
+finds no provider Edit, Remove or Add a provider, adds a model on workshop's
+provider and sees one `settings.model.write` sent to workshop, none to the
+laptop, workshop's `config.toml` gaining the entry and the laptop's unchanged;
+changes its efforts, chooses it as workshop's default and sees no Remove on it;
+removes another and sees `settings.model.remove` with its name sent to workshop
+only and gone from workshop's `config.toml`. It fails on the console before this
+change, which draws no Add a model on that tab.
