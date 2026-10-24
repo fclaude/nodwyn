@@ -46,7 +46,6 @@ reading effort; they are not complexity scores or promised savings.
 | `internal/loop` | 5,100 | A 1,263-line `prims.go` and multiple Scheme wrappers require knowing load order and when names are read. |
 | `internal/frontend/rpc` | 6,100 | Providers, credentials and settings repeat parts of request authorisation and persistence orchestration. |
 | `internal/frontend/web/assets` JavaScript | 8,600 | `task.js` is 1,963 lines; task state, live events and several panels meet there. |
-| `internal/scheme` | 4,100 | Language semantics are specialised, but have a coherent boundary and direct tests. |
 | `internal/prim` | 5,100 | Several primitives combine argument decoding, path policy, effects and result conversion. |
 | `internal/keychain` | 1,800 | Storage, OAuth state and final sinks need careful error/publication reasoning. |
 
@@ -223,5 +222,6 @@ the next. The broader redesign remains a separate choice.
 `internal/frontend/web/licenses.go` already embeds the websocket and font notices,
 and `nodwyn licenses` exposes them. The earlier suggestion that those notices were
 absent from standalone binaries was incorrect. This maintenance plan does not assert
-Apache-2.0 release readiness or change the project's licence; repository licensing,
-provenance and release packaging remain a separate release decision.
+release readiness or change the project's licence. That decision came later: the
+repository is Apache-2.0 from 2026-10-23, and ADR 58 records it with the move of
+releases to GitHub.

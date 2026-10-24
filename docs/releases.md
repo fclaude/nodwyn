@@ -1,142 +1,77 @@
 # Downloadable releases
 
-[Gitea releases](http://git.example.com/fc/nodwyn/releases)
-contain manually requested versioned releases, beginning with `v0.1.0`.
-Pushes run checks and dispatch the private workstation package channel below.
-Versioned archive releases remain manual. Each release names its full source commit. The repository is
-private, so sign in to download. GitHub Actions are disabled on the mirror for now; nothing publishes
-releases to GitHub.
+The [GitHub Releases page](https://github.com/fclaude/nodwyn/releases) has the
+versioned releases, starting with `v0.1.0`. A release is made by hand: nothing
+a push does publishes one. Each release names the full commit it was built
+from.
 
-Each release has eight attachments:
+Every release has eight files:
 
-| Attachment | Contents |
+| File | What's in it |
 | --- | --- |
-| `nodwyn-linux-amd64.tar.gz` | Linux x86-64 executable and Linux x86-64 egress proxy |
-| `nodwyn-linux-arm64.tar.gz` | Linux ARM64 executable and Linux ARM64 egress proxy |
-| `nodwyn-darwin-amd64.tar.gz` | macOS Intel executable and Linux x86-64 egress proxy |
-| `nodwyn-darwin-arm64.tar.gz` | macOS Apple Silicon executable and Linux ARM64 egress proxy |
+| `nodwyn-linux-amd64.tar.gz` | The Linux x86-64 executable and its egress proxy, with `LICENSE` and `NOTICE` |
+| `nodwyn-linux-arm64.tar.gz` | The same for Linux ARM64 |
+| `nodwyn-darwin-amd64.tar.gz` | The macOS Intel executable, and a Linux x86-64 egress proxy |
+| `nodwyn-darwin-arm64.tar.gz` | The macOS Apple Silicon executable, and a Linux ARM64 egress proxy |
 | `nodwyn.pdf` | The design book, built from the release's source |
 | `expert.pdf` | The expert guide, built from the same source |
-| `SOURCE.json` | Full commit, Go version, targets and build limitations |
-| `SHA256SUMS` | SHA-256 digests of the other seven attachments |
+| `SOURCE.json` | The full commit, the Go version, the targets and what the build leaves out |
+| `SHA256SUMS` | SHA-256 digests of the other seven files |
 
-Download the archive for your computer and `SHA256SUMS`. Check its digest with
-`sha256sum nodwyn-linux-amd64.tar.gz` (Linux), or
-`shasum -a 256 nodwyn-darwin-arm64.tar.gz` (macOS), and compare the full digest
-with its entry in `SHA256SUMS`. Extract the archive and keep its two executables
-beside one another in a directory on your `PATH`. `nodwyn version` prints the
-full source commit. These checksums detect damaged or mismatched downloads;
-they are not an independent signature of the release publisher.
+Download the archive for your computer and `SHA256SUMS`. Check the digest with
+`sha256sum nodwyn-linux-amd64.tar.gz` on Linux, or
+`shasum -a 256 nodwyn-darwin-arm64.tar.gz` on macOS, and compare it with the
+matching line of `SHA256SUMS`. Extract the archive and keep its two
+executables next to each other in a directory on your `PATH`. `nodwyn version`
+prints the full commit. The checksums catch a damaged or mismatched download.
+They don't prove who published the release.
 
-The builds have cgo disabled. `nodwyn app` opens the browser, rather than a
-native webview window. macOS binaries are unsigned and not notarised. Only
-Linux amd64 is executed in CI, including the fake-model selfcheck; the other
-three targets are cross-compiled. The egress proxy is always a Linux binary
-because it runs inside the MCP server's Linux container. Use a container image
-with the same architecture as the archive.
+The builds have cgo off, so `nodwyn app` opens your browser; there's no native
+window. The macOS binaries are unsigned and not notarised. CI runs the tests and
+executes only the Linux amd64 build, and cross-compiles the other three. The
+release build also runs the fake-model selfcheck on Linux amd64. The egress proxy is always a Linux binary because it runs inside
+the MCP server's Linux container, so use a container image with the same
+architecture as the archive.
 
-## How publication works
+## How a release is made
 
-The read-only `check` job in `.gitea/workflows/ci.yml` runs acceptance tests,
-publisher tests and all four portable builds. Only a successful manual
-workflow run on `main`, with an explicit `version` such as `v0.1.0`, can start
-the `release` job. Use Gitea Actions, select this workflow and `main`, enter
-the version, then choose Run workflow. That job has the Gitea
-job token's `contents: write` permission; the token is passed only to the
-publisher step. Pull requests and other branches do not publish.
+`ci.yml` runs on every push to `main` and every pull request: the acceptance
+checks, the release builder's tests, `govulncheck`, the four portable builds and
+the browser checks. It has no write permission.
 
-`scripts/release.py build DIRECTORY --version v0.1.0` refuses tracked changes and an occupied
-output directory. It archives the source commit to scratch, builds binaries
-with that commit as their version, runs the Linux amd64 selfcheck, and builds
-both books from their LaTeX sources there. Generated PDFs are not tracked;
-the builder does not reuse local copies or dirty the original checkout.
-Archive ownership and timestamps are normalised; `SOURCE_DATE_EPOCH` comes
-from the commit. This is not a promise of identical output across Go or TeX
-versions, which can differ between runners.
+`release.yml` is started by hand from the Actions tab, on `main`, with a
+version such as `v0.1.0`. It runs `ci.yml` first. Then it builds the release
+with `scripts/release.py build`, which refuses tracked changes and an output
+directory that isn't empty, archives the source commit into scratch, builds the
+binaries with that commit as their version, runs the Linux amd64 selfcheck and
+builds both books from their LaTeX sources. Archive ownership and timestamps are
+fixed, and `SOURCE_DATE_EPOCH` comes from the commit. That doesn't promise
+identical output across Go or TeX versions.
 
-The publisher creates a draft and uploads all eight attachments. It downloads
-them again, checks their inventory, checksums and source commit, and only then
-publishes. Failed uploads leave a draft, not an apparently complete release.
-Requests do not follow redirects or send the token to another origin.
+The workflow uploads the eight files to a draft release, downloads them again,
+and runs `scripts/release.py verify`: the draft has those files and no others,
+each matches `SHA256SUMS`, and `SOURCE.json` names this commit and this version.
+Only then does it publish. If a release or a tag with that version already
+exists, the run stops, so a version belongs to one commit for good. A run that
+fails after it made the draft deletes that draft, and it never deletes a
+published release.
 
-To retry a failed release, rerun the Gitea workflow for the same commit and
-version. Each version is bound to one source commit; another commit cannot
-replace it. Matching
-draft attachments are reused; differing attachments in that same unpublished
-draft are replaced. A published release is never overwritten: a rerun verifies
-its existing downloads. An unrelated release or unexpected attachment causes
-a refusal. There is no release retention or deletion job.
-
-For a local build on Linux amd64, use an empty output directory:
+To build the same files on your own Linux amd64 machine, use an empty directory:
 
 ```sh
 python3 -B -m unittest discover -s test/release -v
 python3 scripts/release.py build /tmp/nodwyn-release-assets --version v0.1.0
 ```
 
-The builder needs Go 1.26, Python 3.12 or newer, bash, make, latexmk and the TeX
-packages used by both books (including Libertine and Inconsolata). The CI job
-installs these on its Alpine runner. The publisher's inputs are `GITEA_URL`,
-`GITEA_REPOSITORY`, `GITEA_TOKEN` and `RELEASE_COMMIT`; CI supplies them. Do not
-put a token in a command line or commit it to the repository.
+You need Go 1.26, Python 3.12 or newer, bash, make, latexmk and the TeX packages
+both books use (including Libertine and Inconsolata).
 
-## Books and the history cleanup
+## Books
 
-Git stores the LaTeX sources and `docs/book/source/catalogue.tex`, not generated
-PDFs. Download `nodwyn.pdf` and `expert.pdf` from a release, or run `make book`
-and `make expert` to build ignored copies in `docs/book/` and `docs/expert/`.
-After changing tracked Go or Scheme files, run
-`python3 docs/book/source/generate.py` and commit the updated catalogue; the
-release builder's `--check` refuses a stale file inventory or line count, and
-`make validate` refuses it first, counting new files git does not track yet.
-
-The PDF cleanup removed `docs/book/nibb.pdf`, `docs/book/nodwyn.pdf`
-and `docs/expert/expert.pdf` throughout the published history. The subsequent
-signing repair preserves every tree, author, committer, timestamp, message
-and parent relationship, including empty commits, while signing each rewritten
-commit with the maintainer's SSH signing key. These are new signatures over
-the cleaned history, not recovered signatures over the original objects.
-
-Before updating either remote, retain complete Git bundles, observed refs and
-an old-to-new commit map outside the repository. Verify every rewritten tree,
-metadata record, parent mapping and signature. Update Gitea and GitHub with
-exact old-object leases so concurrent work is not overwritten. Remove the
-historical milestone, benchmark and automatic build tags from both services.
-Gitea requires a tag for a release, so retain only the requested version tags,
-starting with `v0.1.0`.
-
-Existing release attachments retain their recorded source IDs; use the saved
-commit maps and bundles to trace their provenance. New release assets record
-the signed source commit and requested version in `SOURCE.json`.
-
-Use a fresh clone for new work after the rewrite. Keep an old clone until any
-unpushed work has been recovered, then transplant those changes onto the new
-history; do not merge or push its old history back. Other local worktrees may
-still contain the old commits. Server disk reclamation depends on garbage
-collection, while fresh clones receive the reachable, cleaned history.
-
-The permission model follows [Gitea's job-token documentation](https://docs.gitea.com/usage/actions/token-permissions/).
-
-## Workstation packages from main
-
-Every push to Gitea main queues its exact commit in `beauties/packages` through
-`.gitea/workflows/packages.yml`. After acceptance, browser checks and a
-fake-model selfcheck, Beauties publishes a signed Fedora 44 x86_64 RPM and a
-checksum-pinned Homebrew source formula for Apple Silicon macOS. Both include
-the native desktop window and a Linux egress helper for their architecture.
-`nodwyn version` identifies the full source commit. Package version `0.0.0`
-plus an increasing release/revision identifies this moving main channel.
-
-Enrolled workstations use normal `sudo dnf upgrade nodwyn`, or `brew update`
-and `brew upgrade beauties/tap/nodwyn`. Their routine update tasks also install
-new builds. The macOS formula supplies `Nodwyn.app`; fleet enrollment links it
-from `~/Applications`. Homebrew builds it locally and signs it ad hoc. Source
-compilation needs the current developer tools and can take several minutes.
-
-Failed builds retain the last good package. The central five-minute retry poll
-repairs missed notifications, and unchanged source/recipe pairs are skipped.
-Rapid pushes queue separately; an older queued commit cannot replace a newer
-already-published one. The channel is private and does not change manual
-versioned archives or their books. Manually promoted `nodwyn-stable`, settings,
-credentials, sessions and running daemons remain separate. See infra's
-`homelab/docs/beauties.md` for fleet enrollment and rollback.
+Git keeps the LaTeX sources and `docs/book/source/catalogue.tex`. The generated
+PDFs are ignored. Download `nodwyn.pdf` and `expert.pdf` from a release, or run
+`make book` and `make expert` to build ignored copies in `docs/book/` and
+`docs/expert/`. After you change tracked Go or Scheme files, run
+`python3 docs/book/source/generate.py` and commit the new catalogue; the release
+builder's `--check` refuses a stale file inventory or line count, and
+`make validate` refuses it first, counting new files git doesn't track yet.

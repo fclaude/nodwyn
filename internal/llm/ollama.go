@@ -16,7 +16,7 @@ import (
 
 // Ollama speaks the native /api/chat protocol (ADR 8).
 type Ollama struct {
-	URL    string // base, e.g. http://workshop.example:11434
+	URL    string // base, e.g. http://ollama.example.net:11434
 	Client *http.Client
 }
 

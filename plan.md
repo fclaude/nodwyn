@@ -1,7 +1,7 @@
 # nodwyn — Plan
 
 Where things stand and what is next. What exists is in
-[README.md](README.md) and [docs/manual.md](docs/manual.md); why it is shaped
+[README.md](README.md), [docs/reference.md](docs/reference.md) and [docs/manual.md](docs/manual.md); why it is shaped
 that way is [SPEC.md](SPEC.md) and the [decision records](docs/adr/), whose
 index says for each what is built and what is not. How it was built, from the
 bootstrap through v0 and the tracks after it, is the book's part "How it was
@@ -25,7 +25,7 @@ stood until 2026-10-02 is `git show 2f4394f^:plan.md`.
   rebase and push, a review of a worktree task's changes, and the same in
   the TUI (ADR 34); validating before calling work done (ADR 37); tasks
   named, archived and deleted (ADR 39); a conversation's model, and
-  providers and efforts, chosen in the console (ADR 40, 41); Gitea releases,
+  providers and efforts, chosen in the console (ADR 40, 41); GitHub releases,
   by a manual workflow run (ADR 42); the desktop window (ADR 44);
   user-owned project trust (ADR 45); the judge as a provider's, chosen per
   task (ADR 46, 47); an experimental terminal for the model (ADR 48);

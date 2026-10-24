@@ -4,7 +4,7 @@
 
 \section{Download a checked build}
 
-The repository's Gitea Releases page distributes Linux and macOS portable
+The repository's GitHub Releases page distributes Linux and macOS portable
 builds for amd64 and arm64, and both books (\adr{42}). Each
 versioned release, beginning with \code{v0.1.0}, names its full source commit and includes
 \file{SHA256SUMS} and \file{SOURCE.json}. Compare your archive's SHA-256
@@ -15,7 +15,7 @@ other targets are cross-compiled. macOS builds are unsigned and not notarised.
 
 Portable builds omit the native webview, so \code{nodwyn app} opens a
 browser. Publication requires a manual workflow run on \code{main} with an
-explicit version; pushes dispatch the separate workstation packages below. Acceptance checks precede publication; both PDFs are
+explicit version. Acceptance checks precede publication; both PDFs are
 rebuilt from that same commit. A release remains a draft until its downloads
 verify, and a published release is never overwritten by a rerun. See
 \file{docs/releases.md}. This distribution is separate from local promotion.
@@ -33,15 +33,6 @@ ordinary RPC bridge. \code{make app} also creates
 desktop release builds are not supplied by this shell migration.
 
 \section{Build locally}
-
-The private workstation fleet also receives native packages from Beauties.
-Each Gitea main push dispatches its exact commit for acceptance, browser checks
-and a fake-model selfcheck, then signed Fedora 44 x86-64 RPM and Apple Silicon
-Homebrew publication. Routine software updates install the checked build;
-\code{nodwyn version} names its source commit. The package includes the native
-window and a Linux egress helper. macOS supplies an ad-hoc-signed
-\file{Nodwyn.app}. See \file{docs/releases.md}; manual versioned archives,
-books and local stable promotion remain separate.
 
 \begin{sh}
 make build                       # bin/nodwyn and bin/nodwyn-egress

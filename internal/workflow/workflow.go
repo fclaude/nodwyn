@@ -399,7 +399,7 @@ func (s Store) Append(id, kind string, payload any) (State, error) {
 }
 
 // Sentence says the workflow in words, as every client shows it: "When a
-// pull request on fc/nodwyn (git.example.com) is opened or gets new commits,
+// pull request on fc/nodwyn (forge.example) is opened or gets new commits,
 // if author is not "me", checked every 2 minutes; each in a task of its own".
 func (d Definition) Sentence() string {
 	var b strings.Builder

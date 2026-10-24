@@ -93,7 +93,7 @@ are faster.
   include test files even though the listings omit Go tests. It lists the
   files git tracks, so `git add -N` a new file first: `validate` counts it
   whether or not you did. Commit the sources and catalogue. Generated PDFs
-  are ignored and published as Gitea release attachments (ADR 42); do not
+  are ignored and published as GitHub release attachments (ADR 42); do not
   add them to Git.
 
 A plan's `Docs:` steps name every file this list asks for the change.

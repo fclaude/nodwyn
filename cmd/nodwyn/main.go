@@ -74,7 +74,7 @@ commands:
   trust        review, grant or revoke repository startup trust
   paths                print the config and data locations
   version              print version
-  licenses             print the browser console's dependency notices
+  licenses             print the licences of what the binary carries
 
 flags:
 `

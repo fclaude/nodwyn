@@ -1,6 +1,7 @@
 # ADR 42: Gitea distributes binaries and books
 
-Date: 2026-10-05. Status: accepted.
+Date: 2026-10-05. Status: accepted; amended 2026-10-23 (releases moved from Gitea
+to GitHub, ADR 58). Read the last amendment first.
 
 ## Context
 
@@ -100,30 +101,22 @@ authority. This amendment does not give pull requests a release token.
 
 ## Amendment 2026-10-17: Main pushes also produce private workstation packages
 
-The user requested package-manager updates for every push to main. Keep the
-manual versioned archives and books above. Add a separate private Beauties
-channel for Fedora 44 x86_64 and Apple Silicon macOS, including the native
-window and the matching Linux egress helper. These package builds use a fixed
-`0.0.0` package version and an increasing RPM release/Homebrew revision; the
-application's `version` command embeds the full source commit.
+Pushes to the development server also queued workstation packages, built by a
+private packaging repository outside this one. Nothing in this repository
+builds or publishes them, and the channel is not part of the public project
+(ADR 58 removed its workflow).
 
-A main-only source workflow dispatches that exact commit to `beauties/packages`.
-Its dedicated non-admin account has write permission only for the packaging
-repository's Actions unit: no code, package, tap or source access. The dispatch
-token is an Actions secret, with recovery stored as SOPS ciphertext in infra.
-Signing and publishing credentials remain only in the package repository. Its
-publisher has read-only Nodwyn access and rejects commits outside main's
-ancestry. Repository committers control both recipes and source, so trusted
-main is the authority boundary; pull requests receive no publishing secret.
+## Amendment 2026-10-23: Releases move to GitHub
 
-The isolated Fedora package runner executes acceptance, native builds, the
-fake-model selfcheck and the browser checks before signing an RPM or updating
-the checksum-pinned Homebrew recipe. Browser checks run sequentially to respect
-the runner's memory and process limits. macOS builds the same source natively
-through Homebrew and ad-hoc signs its app bundle; it is not notarised. A later
-push queued before an older one cannot make an older source replace an already
-packaged newer commit. Failed builds retain the previous package. A five-minute
-central retry poll repairs missed dispatches and transient failures; push
-notifications are the primary trigger. Normal workstation DNF/Homebrew update
-tasks install the packages. Existing manually promoted `nodwyn-stable` binaries,
-user settings, credentials, sessions and running daemons are not replaced.
+The repository became public on GitHub (ADR 58), so Gitea no longer
+distributes anything. The release workflow is `.github/workflows/release.yml`,
+run by hand on `main` with a version, on a hosted runner. It calls the same
+`ci.yml` checks, builds with `scripts/release.py build`, uploads the eight
+files to a draft with the `gh` CLI, downloads them again and runs
+`scripts/release.py verify` (every file and no other, each matching
+`SHA256SUMS`, built from this commit under this version) before it publishes.
+A version that already has a release or a tag is refused, so a version stays bound to one
+commit and a published release is never replaced. The Python publisher and its
+Gitea client are gone, and with them the repair of an interrupted draft: a
+run that fails deletes the draft it made, and the next run starts again. Decisions 3, 4 and 6 stand;
+decisions 1, 2 and 5 now read as this amendment says.

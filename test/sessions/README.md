@@ -1,6 +1,6 @@
 # Real session fixtures
 
-`p7-selfcheck.jsonl` is the unmodified candidate selfcheck session
+`p7-selfcheck.jsonl` is the candidate selfcheck session
 `20260922T162647Z-bb4c5d03`, recorded on 2026-09-22 against the live local Ollama
 control plane with isolated temporary XDG config/data directories. It loaded
 the dev tools, read README length, ran the log package tests via `go-test`,
@@ -13,7 +13,7 @@ P7's seeded-canary coverage lives in `internal/core/redaction_test.go` and uses
 the fake Ollama server; it is intentionally separate from this live evidence.
 
 
-`p10-window-v1-selfcheck.jsonl` is the unmodified v0.27-window-replay promotion
+`p10-window-v1-selfcheck.jsonl` is the v0.27-window-replay promotion
 selfcheck, session `20260923T015153Z-56545323`, against the live local control
 plane. Its recipe and request digest were independently verified by the installed
 binary. It provides real `window-v1` compatibility evidence as summary-aware
@@ -22,3 +22,9 @@ not evidence of nodwyn-authored development; no credentials were supplied.
 
 The recordings predate the rename to nodwyn (ADR 31) and keep the name
 nibb where it appears: they are replayed byte for byte.
+
+Both are as recorded, except that the control plane's address (a machine on the
+author's private network) is now `http://ollama.example.net:11434`. The address is
+in the session's first event and not in any request, so the digests the replay
+tests check still hold. The repository path stays as recorded because the
+request digest covers it.

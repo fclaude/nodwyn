@@ -1,31 +1,63 @@
-# Optional GitHub mirror. The primary Gitea workflow is .gitea/workflows/ci.yml.
-# GitHub is manual-only while builds and releases run on Gitea (ADR 42).
 name: ci
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
-    runs-on: [self-hosted, linux, x64, nodwyn]
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # The newest patch of go.mod's base release (ADR 33); go-version-file
           # would install go.mod's 1.26.0 itself.
           go-version: '1.26.x'
-          # The runner keeps its Go module cache between jobs, and its
-          # unprivileged user cannot restore an archive over read-only modules.
-          cache: false
-      - name: govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - name: lint
-        run: make lint
-      - name: test
-        run: make test
-      - name: exfil
-        run: make exfil
-      - name: govulncheck
-        run: govulncheck ./...
+      - name: Acceptance checks
+        run: make accept GO_TEST_FLAGS=-count=1
+      - name: Release builder checks
+        run: python3 -B -m unittest discover -s test/release -v
+      - name: Known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Cross-compile release targets
+        run: |
+          mkdir -p "$RUNNER_TEMP/nodwyn-builds"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os=${target%/*}
+            arch=${target#*/}
+            echo "Building $os/$arch without cgo"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -o "$RUNNER_TEMP/nodwyn-builds/nodwyn-$os-$arch" ./cmd/nodwyn
+          done
+          "$RUNNER_TEMP/nodwyn-builds/nodwyn-linux-amd64" version
+          test "$("$RUNNER_TEMP/nodwyn-builds/nodwyn-linux-amd64" eval -e '(+ 1 2)')" = 3
+      - name: Check source stayed clean
+        run: test -z "$(git status --porcelain)"
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+      - name: Install Chromium for the browser checks
+        run: cd test/browser && npm ci && npx playwright install --with-deps chromium
+      - name: Browser checks
+        run: make browser

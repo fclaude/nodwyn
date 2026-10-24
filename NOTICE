@@ -1,0 +1,14 @@
+nodwyn
+Copyright 2026 Francisco Claude-Faust
+
+This product includes software developed by the people who wrote the Go
+libraries it links, the Scheme interpreter Brote (github.com/fclaude/brote,
+MIT) and the typefaces its console ships. `nodwyn licenses` prints every one of
+their licences, and internal/frontend/web/licenses has the same texts.
+
+internal/catalogue/models.json is a snapshot of the model data published by
+models.dev (https://models.dev, MIT, Copyright (c) 2025 models.dev).
+
+The console's monospace typeface, Nodwyn Console Mono, is a subset of IBM Plex
+Mono (SIL Open Font License 1.1, Copyright 2017 IBM Corp.), renamed because the
+licence reserves the name Plex for the unmodified font.

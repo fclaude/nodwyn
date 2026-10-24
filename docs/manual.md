@@ -5,15 +5,6 @@ binary. For *why* things are shaped this way read [SPEC.md](../SPEC.md);
 for *what comes next* read [plan.md](../plan.md); for individual decisions
 read [docs/adr/](adr/).
 
-## Managed workstation installation
-
-On the enrolled fleet, `nodwyn` is installed from the private Beauties signed
-Fedora RPM repository or Homebrew tap. Each Gitea main push queues a checked
-package; routine software updates install new builds. `nodwyn version` reports
-the exact source commit, and `nodwyn app` opens the native desktop window.
-See [workstation packages](releases.md#workstation-packages-from-main) for
-commands, the macOS bundle and the separate manual stable promotion path.
-
 ---
 
 ## Part 1 — Reading the code
@@ -90,7 +81,7 @@ This is the spine. Read these in order and you have read the system.
 | `dev/`, `.nodwyn/` | this repository's own tools and standing approvals | `dev/go.scm` |
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
 | `test/browser` | the console's checks in headless Chromium (`make browser`; `BROWSER=webkit` runs some in WebKit) | `README.md` |
-| `test/release`, `test/sessions` | the release publisher's tests against a fake Gitea, and recorded session logs the replay tests read | `test_release.py`; `README.md` |
+| `test/release`, `test/sessions` | the release builder's tests, and recorded session logs the replay tests read | `test_release.py`; `README.md` |
 | `scripts/validate` | what `validate` runs and checks for a change ([ADR 37](adr/0037-validate-before-done.md)) | `main.go` |
 | `test/fakes/ollama` | scriptable fake of the model server; `serve` runs it for the selfcheck | `ollama.go` |
 | `test/fakes/jev`, `mcp`, `oauth`, `drive`, `forge`, `gmail` | fakes of the judge, an MCP server (HTTP or stdio), an OAuth2 provider, Drive's upload endpoint, Gitea's and GitHub's pull-request listing and review endpoints, and Gmail's messages and drafts: no test reaches a real service | each package's comment |
@@ -3209,9 +3200,9 @@ reaches every host through the server is not built yet.
 
 ## Downloadable builds and books
 
-Download portable binaries and both books from the repository's Gitea
+Download portable binaries and both books from the repository's GitHub
 Releases page. Releases begin at `v0.1.0`, identify their exact source and
-include SHA-256 checksums. Publication requires a manual Gitea workflow run
+include SHA-256 checksums. Publication requires a manual workflow run
 on `main` with the version supplied; pushes only run checks. Linux and macOS archives cover amd64 and arm64;
 each includes the Linux egress proxy used by MCP containers. Portable builds
 open the browser for `nodwyn app`; macOS builds are unsigned and not notarised.
@@ -3293,7 +3284,7 @@ The console, model setup, keychain and tasks behave as in the browser; folder
 selection uses Wails' native dialog. Closing the window stops tasks only when
 this app owns their daemon. Wails v3 is pinned to a beta release; see
 [the desktop build guide](app.md) for dependencies and its native test.
-Portable Gitea archives continue to open a browser. A Windows host port and
+Portable archives continue to open a browser. A Windows host port and
 native desktop release runners are still needed before publishing those apps.
 
 ### Project paths and existing data

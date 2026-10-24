@@ -980,7 +980,7 @@ own prompt validity, policy, cursor ranges, limits and session ownership.
 Regenerate with `go generate ./internal/frontend/rpc` (or
 `go run ./cmd/nodwyn-schema -out docs/protocol.schema.json`). The normal Go test
 suite checks generated-file drift, method coverage and schema references, so
-Gitea's per-commit acceptance job enforces the contract.
+CI's per-commit acceptance job enforces the contract.
 
 ## Ownership
 

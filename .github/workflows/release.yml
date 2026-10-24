@@ -1,0 +1,78 @@
+name: release
+
+# A release is a manual run on main with a version such as v0.1.0. Pushes never
+# publish (ADR 42).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: nodwyn-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+      - name: Install the TeX packages both books use
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends latexmk texlive-latex-extra \
+            texlive-fonts-recommended texlive-fonts-extra
+      - name: Build binaries and books from the source commit
+        run: |
+          release_dir=$(mktemp -d "$RUNNER_TEMP/nodwyn-release.XXXXXX")
+          python3 scripts/release.py build "$release_dir" --version "$RELEASE_VERSION"
+          printf 'RELEASE_DIRECTORY=%s\n' "$release_dir" >> "$GITHUB_ENV"
+      - name: Upload to a draft, check it as downloaded, then publish
+        run: |
+          # A version is bound to one commit: refuse a release or a tag that exists.
+          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo "release $RELEASE_VERSION already exists (a draft left by a failed run counts)" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo "tag $RELEASE_VERSION already exists" >&2
+            exit 1
+          fi
+          # From here a failure may leave a draft of this run's making.
+          echo "RELEASE_CREATED=1" >> "$GITHUB_ENV"
+          gh release create "$RELEASE_VERSION" "$RELEASE_DIRECTORY"/* \
+            --draft --target "$GITHUB_SHA" --title "nodwyn $RELEASE_VERSION" \
+            --notes "Source commit: \`$GITHUB_SHA\`
+
+          Portable Linux and macOS binaries for amd64 and arm64, both books rebuilt from this source, and SHA-256 checksums. Acceptance checks and the Linux amd64 fake-model selfcheck passed. Other targets are cross-compiled, not executed. Builds omit the native webview: \`nodwyn app\` opens a browser. macOS builds are unsigned and not notarised. Each archive includes a Linux nodwyn-egress for its architecture, for MCP containers."
+          downloaded=$(mktemp -d "$RUNNER_TEMP/nodwyn-downloaded.XXXXXX")
+          gh release download "$RELEASE_VERSION" --dir "$downloaded"
+          python3 scripts/release.py verify "$downloaded" --version "$RELEASE_VERSION" --commit "$GITHUB_SHA"
+          gh release edit "$RELEASE_VERSION" --draft=false
+      - name: Remove the draft this run left behind
+        if: failure() && env.RELEASE_CREATED == '1'
+        run: |
+          # Only a draft made by this run: a published release is never touched.
+          if [ "$(gh release view "$RELEASE_VERSION" --json isDraft --jq .isDraft)" = true ]; then
+            gh release delete "$RELEASE_VERSION" --yes
+          fi

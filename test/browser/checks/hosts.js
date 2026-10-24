@@ -24,29 +24,29 @@ check(async () => {
   };
   const workshop = await world("workshop");
   // A second model on workshop's server, for a link to choose as its default.
-  const tarroConfigFile = `${workshop.root}/config/nodwyn/config.toml`;
-  fs.appendFileSync(tarroConfigFile, `\n[models.second]\nurl = "${/url = "([^"]+)"/.exec(fs.readFileSync(tarroConfigFile, "utf8"))[1]}"\nmodel = "second"\n`);
+  const remoteConfigFile = `${workshop.root}/config/nodwyn/config.toml`;
+  fs.appendFileSync(remoteConfigFile, `\n[models.second]\nurl = "${/url = "([^"]+)"/.exec(fs.readFileSync(remoteConfigFile, "utf8"))[1]}"\nmodel = "second"\n`);
   // And a provider, as a link may put models only on one already there.
-  fs.appendFileSync(tarroConfigFile, `\n[servers.shelf]\nprovider = "openai"\nurl = "${/url = "([^"]+)"/.exec(fs.readFileSync(tarroConfigFile, "utf8"))[1]}"\n`);
+  fs.appendFileSync(remoteConfigFile, `\n[servers.shelf]\nprovider = "openai"\nurl = "${/url = "([^"]+)"/.exec(fs.readFileSync(remoteConfigFile, "utf8"))[1]}"\n`);
   const laptop = await world("laptop");
 
   // workshop: a daemon and a console other machines reach, at its address and
   // at a localhost name, where a browser makes passkeys.
-  const tarroDaemon = start(process.env.NODWYN, ["daemon", "--no-keychain"], { env: workshop.env });
-  await line(tarroDaemon, /(listening)/, "stderr");
-  let port, tarroUI;
-  const tarroConsole = (...more) => start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--name", `localhost:${port}`, "--no-open", ...more], { env: workshop.env });
-  for (let attempt = 1; !tarroUI; attempt++) {
+  const remoteDaemon = start(process.env.NODWYN, ["daemon", "--no-keychain"], { env: workshop.env });
+  await line(remoteDaemon, /(listening)/, "stderr");
+  let port, remoteUI;
+  const remoteConsole = (...more) => start(process.env.NODWYN, ["ui", "--listen", `127.0.0.1:${port}`, "--name", `localhost:${port}`, "--no-open", ...more], { env: workshop.env });
+  for (let attempt = 1; !remoteUI; attempt++) {
     port = await freePort();
-    const started = tarroConsole();
+    const started = remoteConsole();
     try {
       await line(started, /(Browser view)/, "stderr");
-      tarroUI = started;
+      remoteUI = started;
     } catch (e) {
       if (attempt === 3 || !/address already in use/.test(started.stderrText)) throw e;
     }
   }
-  const tarroAddress = `http://127.0.0.1:${port}`;
+  const remoteAddress = `http://127.0.0.1:${port}`;
 
   // The laptop: a keychain that opens by itself, a daemon, and this
   // computer's console.
@@ -108,17 +108,17 @@ check(async () => {
   await page.waitForSelector("#hosts .host-card");
   await page.click("#add-host");
   const invite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
-  await page.fill("#host-address", tarroAddress);
+  await page.fill("#host-address", remoteAddress);
   await page.fill("#host-as", "laptop");
   await page.fill("#host-name", "workshop");
   await page.fill("#host-invite", invite);
   await page.screenshot({ path: `${out}/add-host.png` });
   await page.click("#add-host-form button[type=submit]");
   await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('ready')", { timeout: 20000 });
-  assert.deepStrictEqual(of(sent.local, "host.link"), [{ name: "workshop", address: tarroAddress, as: "laptop", invite }], "Link sent");
-  await shows(page, "#hosts .host-card[data-host='workshop']", "workshop", tarroAddress, "Linked as laptop", "Answers");
-  const tarroDevices = fs.readFileSync(`${workshop.root}/config/nodwyn/devices.toml`, "utf8");
-  assert.match(tarroDevices, /name = "laptop"[^[]*host = true/, "workshop's devices.toml has the laptop as another nodwyn");
+  assert.deepStrictEqual(of(sent.local, "host.link"), [{ name: "workshop", address: remoteAddress, as: "laptop", invite }], "Link sent");
+  await shows(page, "#hosts .host-card[data-host='workshop']", "workshop", remoteAddress, "Linked as laptop", "Answers");
+  const remoteDevices = fs.readFileSync(`${workshop.root}/config/nodwyn/devices.toml`, "utf8");
+  assert.match(remoteDevices, /name = "laptop"[^[]*host = true/, "workshop's devices.toml has the laptop as another nodwyn");
   const hostsFile = () => (fs.existsSync(`${laptop.root}/config/nodwyn/hosts.toml`) ? fs.readFileSync(`${laptop.root}/config/nodwyn/hosts.toml`, "utf8") : "");
   assert.match(hostsFile(), /name = "workshop"/, "hosts.toml names workshop");
   assert.doesNotMatch(hostsFile(), /nodwyn_device/, "hosts.toml holds the token");
@@ -168,7 +168,7 @@ check(async () => {
   await page.evaluate(() => (window.hiddenForCheck = true));
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => /^#\/host\/workshop\/task\//.test(location.hash), null, { timeout: 20000 });
-  const tarroTask = decodeURIComponent((await page.evaluate(() => location.hash)).replace(/^#\/host\/workshop\/task\//, ""));
+  const remoteTask = decodeURIComponent((await page.evaluate(() => location.hash)).replace(/^#\/host\/workshop\/task\//, ""));
   assert.deepStrictEqual(of(sent.workshop, "session.open"), [{ repo: `${workshop.root}/work` }], "the task opened on workshop, in its folder");
   assert.strictEqual(of(sent.local, "session.open").length, 0, "the task opened on the laptop");
   assert.ok(uploads.some((q) => /[?&]host=workshop(&|$)/.test(q)), `the file went to workshop: ${uploads}`);
@@ -186,7 +186,7 @@ check(async () => {
   const [notice] = await until("a notice of workshop's task", () => page.evaluate(() => window.shownForCheck.length && window.shownForCheck));
   assert.deepStrictEqual(
     { title: notice.title, tag: notice.tag, data: notice.data },
-    { title: "nodwyn needs your answer", tag: `nodwyn-workshop-${tarroTask}`, data: { id: tarroTask, host: "workshop" } },
+    { title: "nodwyn needs your answer", tag: `nodwyn-workshop-${remoteTask}`, data: { id: remoteTask, host: "workshop" } },
   );
   await page.evaluate(() => (window.hiddenForCheck = false));
   step("workshop's task asking while the page is hidden shows the fixed notice, naming its host as data");
@@ -220,16 +220,16 @@ check(async () => {
   await page.click(".home-needs article.card:has(.host-chip:has-text('workshop')) button:has-text('Allow once')");
   await until("workshop's answer sent", () => of(sent.workshop, "session.answer").length === 1);
   assert.strictEqual(of(sent.local, "session.answer").length, answeredBefore, "workshop's answer went to the laptop");
-  const tarroLogs = () => fs.readdirSync(`${workshop.root}/data/nodwyn/sessions`).filter((f) => f.endsWith(".jsonl")).map((f) => fs.readFileSync(`${workshop.root}/data/nodwyn/sessions/${f}`, "utf8")).join("");
-  await until("workshop records the laptop's answer", () => /"actor":"unix:uid=\d+,gid=\d+,pid=\d+ via web:laptop"/.test(tarroLogs()));
+  const remoteLogs = () => fs.readdirSync(`${workshop.root}/data/nodwyn/sessions`).filter((f) => f.endsWith(".jsonl")).map((f) => fs.readFileSync(`${workshop.root}/data/nodwyn/sessions/${f}`, "utf8")).join("");
+  await until("workshop records the laptop's answer", () => /"actor":"unix:uid=\d+,gid=\d+,pid=\d+ via web:laptop"/.test(remoteLogs()));
   await until("workshop's question gone from Home", async () => (await page.locator(".home-needs article.card").count()) === 1);
   await until("workshop's notice closed once answered", () => page.evaluate(() => window.shownForCheck[0].closed));
   step("Needs you holds both hosts' questions, and workshop's answer goes to workshop, recorded as the laptop's");
 
   // The worker opening workshop's task brings the console to it, on workshop.
   const [worker] = context.serviceWorkers();
-  await worker.evaluate((task) => openTask(task, "workshop").catch(() => {}), tarroTask);
-  await until("the console on workshop's task", () => page.evaluate((task) => location.hash === `#/host/workshop/task/${task}`, tarroTask));
+  await worker.evaluate((task) => openTask(task, "workshop").catch(() => {}), remoteTask);
+  await until("the console on workshop's task", () => page.evaluate((task) => location.hash === `#/host/workshop/task/${task}`, remoteTask));
   await page.waitForSelector(".task-meta .host-chip:has-text('workshop')");
   assert.strictEqual(context.pages().length, 1, "the worker opened a second window beside the console");
   await page.click("a.new-task");
@@ -238,27 +238,27 @@ check(async () => {
   // A host starts folded, its folders away and its state in view; its
   // heading opens it, and this browser remembers it across a reload. This
   // computer's is separate.
-  const tarroFolders = ".nav-host[data-host='workshop'] .folder-head";
-  const tarroHead = ".nav-host[data-host='workshop'] button.host-head";
+  const workshopFolders = ".nav-host[data-host='workshop'] .folder-head";
+  const workshopHead = ".nav-host[data-host='workshop'] button.host-head";
   const localFolders = ".nav-host[data-host=''] .folder-head";
   const localHead = ".nav-host[data-host=''] button.host-head";
-  assert.strictEqual(await page.getAttribute(tarroHead, "aria-expanded"), "false", "workshop starts open");
+  assert.strictEqual(await page.getAttribute(workshopHead, "aria-expanded"), "false", "workshop starts open");
   assert.strictEqual(await page.getAttribute(localHead, "aria-expanded"), "false", "this computer starts open");
-  assert.strictEqual(await page.locator(tarroFolders).count(), 0, "a folded host shows its folders");
+  assert.strictEqual(await page.locator(workshopFolders).count(), 0, "a folded host shows its folders");
   assert.strictEqual(await page.locator(localFolders).count(), 0, "a folded this computer shows its folders");
   await shows(page, ".nav-host[data-host='workshop'] .host-head", "workshop");
-  await page.click(tarroHead);
-  await until("workshop opened", async () => (await page.locator(tarroFolders).count()) > 0);
-  assert.strictEqual(await page.getAttribute(tarroHead, "aria-expanded"), "true", "an opened host says it is folded");
+  await page.click(workshopHead);
+  await until("workshop opened", async () => (await page.locator(workshopFolders).count()) > 0);
+  assert.strictEqual(await page.getAttribute(workshopHead, "aria-expanded"), "true", "an opened host says it is folded");
   assert.strictEqual(await page.locator(localFolders).count(), 0, "opening workshop opened this computer");
   await page.reload();
   await ready(page);
-  await page.waitForSelector(tarroHead);
-  assert.ok((await page.locator(tarroFolders).count()) > 0, "workshop folded again on reload");
+  await page.waitForSelector(workshopHead);
+  assert.ok((await page.locator(workshopFolders).count()) > 0, "workshop folded again on reload");
   assert.strictEqual(await page.locator(localFolders).count(), 0, "this computer opened on reload");
-  await page.click(tarroHead);
-  await until("workshop folded", async () => (await page.locator(tarroFolders).count()) === 0);
-  assert.strictEqual(await page.getAttribute(tarroHead, "aria-expanded"), "false", "a folded host says it is open");
+  await page.click(workshopHead);
+  await until("workshop folded", async () => (await page.locator(workshopFolders).count()) === 0);
+  assert.strictEqual(await page.getAttribute(workshopHead, "aria-expanded"), "false", "a folded host says it is open");
   step("a host starts folded, its heading opens it, and the choice is remembered");
 
   // At a phone's width the hosts and Runs on fit, and the drawer holds the
@@ -290,7 +290,7 @@ check(async () => {
   await shows(page, "main.settings-page h1", "workshop's settings");
   // The link was made at an IP address over plain http, where no browser
   // uses a passkey, so the page says that is what to change.
-  await shows(page, "#host-settings-refused", "From here you can start tasks on workshop and answer their questions", `This computer reaches workshop at ${tarroAddress}`, "Settings › Keys & devices", "add it again at its https address", "Open workshop's console");
+  await shows(page, "#host-settings-refused", "From here you can start tasks on workshop and answer their questions", `This computer reaches workshop at ${remoteAddress}`, "Settings › Keys & devices", "add it again at its https address", "Open workshop's console");
   await shows(page, "#settings-hosts", "This computer", "workshop");
   assert.strictEqual(await page.locator("main.settings-page [role=tablist], main.settings-page .settings-panel input, main.settings-page .settings-panel button").count(), 0, "workshop's Settings show controls to a link that answers");
   assert.ok(of(sent.workshop, "settings.read").length > 0, "workshop's settings were not read over workshop's socket");
@@ -413,14 +413,14 @@ check(async () => {
   const current = await page.inputValue("#default-model-model");
   const other = (await page.$$eval("#default-model-model option", (os) => os.map((o) => o.value))).find((v) => v && v !== current);
   assert.ok(other, "workshop offers no other model to choose as its default");
-  const tarroBefore = configOf(workshop);
+  const remoteBefore = configOf(workshop);
   await page.selectOption("#default-model-model", other);
   await shows(page, ".save-bar", "1 unsaved change");
   await page.click(".save-bar .btn.accent");
   await until("workshop's default model to be saved", () => of(sent.workshop, "settings.control.write").length === 1);
   assert.strictEqual(of(sent.workshop, "settings.control.write")[0].name, other, "workshop's default went to another model");
   assert.strictEqual(of(sent.local, "settings.control.write").length, 0, "workshop's default model went to the laptop");
-  await until("workshop's config.toml to change its [control]", () => configOf(workshop) !== tarroBefore);
+  await until("workshop's config.toml to change its [control]", () => configOf(workshop) !== remoteBefore);
   assert.strictEqual(configOf(laptop), laptopConfig, "workshop's default model changed the laptop's config.toml");
   step("a link vouched for by the person's passkey changes workshop's settings and default model from this window, and not the laptop's, and cannot choose its approvals");
 
@@ -473,10 +473,10 @@ check(async () => {
 
   // workshop's console started with --no-link-settings refuses it: its
   // Settings say so once the link is back, and show no control.
-  tarroUI.kill("SIGTERM");
-  await tarroUI.exited;
-  tarroUI = tarroConsole("--no-link-settings");
-  await line(tarroUI, /(Browser view)/, "stderr");
+  remoteUI.kill("SIGTERM");
+  await remoteUI.exited;
+  remoteUI = remoteConsole("--no-link-settings");
+  await line(remoteUI, /(Browser view)/, "stderr");
   await page.waitForSelector("#host-settings-refused:has-text('workshop does not let other nodwyns change its settings')", { timeout: 30000 });
   assert.strictEqual(await page.locator("main.settings-page [role=tablist], main.settings-page .settings-panel input, main.settings-page .settings-panel button").count(), 0, "workshop's Settings show controls it refuses");
   assert.strictEqual(of(sent.workshop, "settings.write").length, 1, "a refused link sent workshop a setting");

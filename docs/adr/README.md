@@ -7,7 +7,7 @@ bootstrap safety envelope; `§3.4`, the control plane's reference; `§4, B3`,
 the bootstrap's dev tools), which `plan.md` no longer has: read it with
 `git show 2f4394f^:plan.md`.
 
-- [0042](./0042-gitea-releases.md) — Gitea distributes binaries and books; GitHub CI is manual-only
+- [0042](./0042-gitea-releases.md) — Releases distribute binaries and books (amended: from Gitea to GitHub)
 - [0044](./0044-wails-desktop.md) — Wails owns the native window while console RPC keeps its origin and authentication
 
 - [0001](./0001-value-representation.md) — Value representation
@@ -66,3 +66,4 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0055](./0055-sandbox-mode.md) — Sandbox mode: `nodwyn run --sandbox container` declares the machine a disposable sandbox, as a benchmark's task container is; its tools reach any path but nodwyn's own directories and credential files, what its commands start in the background keeps running, it needs no git repository, and it is unattended and auto-approved; a turn that ends on the model's word is asked once to check its result, and the same call four times in a row warns rather than stops (amends 17, 18, 28, 32)
 - [0056](./0056-managed-child-apps.md) — An explicit managed static-app service, with a host capability ceiling, weaker child devices, durable edits and daily local-inference accounting; ordinary Nodwyn remains unchanged
 - [0057](./0057-read-only-calls-run-together.md) — A batch of read-only calls (`fs-read`, `fs-list`, `fs-find`, `index-grep`, `outline`, the git tools) runs concurrently, its budget reserved and its results recorded in the order of the calls; any other batch runs in order (amends 18 and 38)
+- [0058](./0058-apache-licence-and-public-repository.md) — Apache 2.0, and a public repository on GitHub

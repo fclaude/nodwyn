@@ -76,19 +76,19 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 
 	// The host, workshop: a daemon and a console other machines reach, at a
 	// localhost name, where a browser could use passkeys.
-	tarroRoot := tempRoot(t, "nodwyn-workshop-")
-	tarroSocket, tarroPaths := startDaemon(t, ctx, tarroRoot, nil)
+	remoteRoot := tempRoot(t, "nodwyn-workshop-")
+	remoteSocket, remotePaths := startDaemon(t, ctx, remoteRoot, nil)
 	// workshop has a provider with two models, the first its default.
-	must.MkdirAll(t, tarroPaths.ConfigDir, 0o700)
-	must.WriteFile(t, tarroPaths.ConfigFile, []byte("[servers.local]\nprovider = \"ollama\"\nurl = \"http://127.0.0.1:9\"\n\n[control]\nserver = \"local\"\nmodel = \"first\"\n\n[models.local-second]\nserver = \"local\"\nmodel = \"second\"\n"), 0o600)
-	devices := OpenDevices(filepath.Join(tarroRoot, "devices.toml"))
-	workshop := &bridge{ctx: ctx, socket: tarroSocket, code: testCode, session: testSession, devices: devices, recheck: 50 * time.Millisecond}
-	tarroServer := httptest.NewUnstartedServer(workshop)
-	_, port, _ := net.SplitHostPort(tarroServer.Listener.Addr().String())
+	must.MkdirAll(t, remotePaths.ConfigDir, 0o700)
+	must.WriteFile(t, remotePaths.ConfigFile, []byte("[servers.local]\nprovider = \"ollama\"\nurl = \"http://127.0.0.1:9\"\n\n[control]\nserver = \"local\"\nmodel = \"first\"\n\n[models.local-second]\nserver = \"local\"\nmodel = \"second\"\n"), 0o600)
+	devices := OpenDevices(filepath.Join(remoteRoot, "devices.toml"))
+	workshop := &bridge{ctx: ctx, socket: remoteSocket, code: testCode, session: testSession, devices: devices, recheck: 50 * time.Millisecond}
+	remoteServer := httptest.NewUnstartedServer(workshop)
+	_, port, _ := net.SplitHostPort(remoteServer.Listener.Addr().String())
 	workshop.extra = []string{"localhost:" + port}
-	workshop.listensAt(tarroServer.Listener.Addr().String())
-	tarroServer.Start()
-	defer tarroServer.Close()
+	workshop.listensAt(remoteServer.Listener.Addr().String())
+	remoteServer.Start()
+	defer remoteServer.Close()
 	address := "http://localhost:" + port
 
 	// The laptop: a daemon with a keychain, and this computer's console.
@@ -227,7 +227,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	if v := settings.Values["loop.shell_timeout"]; v.Value != "3m" || !v.Set {
 		t.Fatalf("workshop's settings after the link's write: %+v", v)
 	}
-	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || !bytes.Contains(written, []byte(`shell_timeout = "3m"`)) {
+	if written, err := os.ReadFile(remotePaths.ConfigFile); err != nil || !bytes.Contains(written, []byte(`shell_timeout = "3m"`)) {
 		t.Fatalf("workshop's config.toml after the link's write: %s %v", written, err)
 	}
 	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("tool_calls_soft")) {
@@ -238,7 +238,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	if err := call(conn, "settings.control.write", map[string]any{"name": "local-second"}, &settings); err != nil {
 		t.Fatalf("the vouched link's settings.control.write: %v", err)
 	}
-	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || !bytes.Contains(written, []byte("[control]\nserver = \"local\"\nmodel = \"second\"")) {
+	if written, err := os.ReadFile(remotePaths.ConfigFile); err != nil || !bytes.Contains(written, []byte("[control]\nserver = \"local\"\nmodel = \"second\"")) {
 		t.Fatalf("workshop's config.toml after the link chose its default model: %s %v", written, err)
 	}
 	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("second")) {
@@ -251,7 +251,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 			t.Errorf("the vouched link's settings.write of %v: %v", set, err)
 		}
 	}
-	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || bytes.Contains(written, []byte("dont_ask")) || bytes.Contains(written, []byte(`"4m"`)) || bytes.Contains(written, []byte(`writes = "ask"`)) {
+	if written, err := os.ReadFile(remotePaths.ConfigFile); err != nil || bytes.Contains(written, []byte("dont_ask")) || bytes.Contains(written, []byte(`"4m"`)) || bytes.Contains(written, []byte(`writes = "ask"`)) {
 		t.Fatalf("a refused write changed workshop's config.toml: %s %v", written, err)
 	}
 	if err := call(conn, "settings.docs.write", map[string]any{"google_upload": "allow"}, &settings); err == nil || !strings.Contains(err.Error(), "docs.google_upload") {
@@ -269,7 +269,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	}
 
 	// A task on workshop, started and given a file from the laptop's console.
-	repo := filepath.Join(tarroRoot, "work")
+	repo := filepath.Join(remoteRoot, "work")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"loop.shell_timeout": nil}}, &settings); err == nil {
 		t.Fatal("a link from workshop's terminal changed workshop's settings")
 	}
-	if written, _ := os.ReadFile(tarroPaths.ConfigFile); !bytes.Contains(written, []byte(`shell_timeout = "3m"`)) {
+	if written, _ := os.ReadFile(remotePaths.ConfigFile); !bytes.Contains(written, []byte(`shell_timeout = "3m"`)) {
 		t.Fatalf("a refused write changed workshop's config.toml: %s", written)
 	}
 	conn.Close(websocket.StatusNormalClosure, "")

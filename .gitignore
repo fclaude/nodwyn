@@ -5,7 +5,7 @@
 *.test
 coverage.out
 
-# The books are built from source and distributed as Gitea release assets.
+# The books are built from source and distributed as release assets.
 /docs/book/nibb.pdf
 /docs/book/nodwyn.pdf
 /docs/expert/expert.pdf
@@ -34,5 +34,4 @@ coverage.out
 # browser checks
 /test/browser/node_modules
 /test/browser/out/
-/test/browser/package-lock.json
 /demo

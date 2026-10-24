@@ -12,7 +12,12 @@ var licenseFiles embed.FS
 var notices = []struct{ name, file string }{
 	{"Console typeface: Newsreader (SIL Open Font License 1.1)", "font-newsreader.txt"},
 	{"Console typeface: Instrument Sans (SIL Open Font License 1.1)", "font-instrument-sans.txt"},
-	{"Console typeface: IBM Plex Mono (SIL Open Font License 1.1)", "font-ibm-plex-mono.txt"},
+	// The two monospace files are a subset of IBM Plex Mono, so they are a modified
+	// version and carry another name, as the licence's reserved font name asks.
+	{"Console typeface: Nodwyn Console Mono, a subset of IBM Plex Mono (SIL Open Font License 1.1)", "font-ibm-plex-mono.txt"},
+	// The model catalogue is a snapshot of models.dev's data, which asks for its
+	// notice to travel with copies.
+	{"Model catalogue: models.dev (MIT)", "models-dev.txt"},
 	// Every Go library linked into the binary, written by scripts/licenses.py
 	// from go list, so a dependency added to go.mod brings its notice.
 	{"Go libraries", "go-modules.txt"},

@@ -247,7 +247,9 @@ func TestControlWriteWaitsForTheConfigLock(t *testing.T) {
 	}()
 	<-held
 	answered := make(chan json.RawMessage, 1)
-	go func() { answered <- c.ok("settings.control.write", map[string]any{"server": "workshop", "model": "qwen"}) }()
+	go func() {
+		answered <- c.ok("settings.control.write", map[string]any{"server": "workshop", "model": "qwen"})
+	}()
 	select {
 	case <-answered:
 		t.Fatal("settings.control.write wrote config.toml while another writer held its lock")
@@ -310,7 +312,7 @@ func TestSettingsControlOnAServer(t *testing.T) {
 	}
 	// A server added to config.toml by hand since the daemon started is
 	// found by its address, and one of the same name is never written over.
-	os.WriteFile(o.Paths.ConfigFile, append(raw, "\n[servers.workshop]\nurl = \"http://workshop:11434\"\n\n[servers.localhost]\nprovider = \"openai\"\nurl = \"http://localhost:8000/v1\"\n"...), 0o600)
+	must.WriteFile(t, o.Paths.ConfigFile, append(raw, "\n[servers.workshop]\nurl = \"http://workshop:11434\"\n\n[servers.localhost]\nprovider = \"openai\"\nurl = \"http://localhost:8000/v1\"\n"...), 0o600)
 	json.Unmarshal(c.ok("settings.control.write", map[string]any{"server": "workshop", "model": "qwen"}), &settings)
 	if settings.Control.Server != "workshop" || len(settings.Servers) != 3 {
 		t.Fatalf("hand-written server: %+v %+v", settings.Control, settings.Servers)
@@ -335,8 +337,8 @@ func TestSettingsControlOnAServer(t *testing.T) {
 // model names keeps that server, and a provider's address is no way to choose.
 func TestControlModelKeepsNamedServer(t *testing.T) {
 	o := options(t)
-	os.MkdirAll(o.Paths.ConfigDir, 0o700)
-	os.WriteFile(o.Paths.ConfigFile, []byte("[servers.alpha]\nurl = \"http://workshop:11434\"\n\n[servers.beta]\nurl = \"http://workshop:11434\"\n\n[control]\nserver = \"beta\"\nmodel = \"qwen\"\n"), 0o600)
+	must.MkdirAll(t, o.Paths.ConfigDir, 0o700)
+	must.WriteFile(t, o.Paths.ConfigFile, []byte("[servers.alpha]\nurl = \"http://workshop:11434\"\n\n[servers.beta]\nurl = \"http://workshop:11434\"\n\n[control]\nserver = \"beta\"\nmodel = \"qwen\"\n"), 0o600)
 	cfg, err := config.Load(o.Paths.ConfigFile)
 	if err != nil {
 		t.Fatal(err)

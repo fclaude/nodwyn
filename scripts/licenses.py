@@ -17,23 +17,35 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "internal", "frontend", "web", "licenses", "go-modules.txt")
-NAMES = ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING", "COPYING.txt", "NOTICE", "NOTICE.md", "NOTICE.txt")
+NAMES = ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING", "COPYING.txt", "NOTICE", "NOTICE.md", "NOTICE.txt", "PATENTS")
 
 
 def linked():
-    """The (path, version, dir) of every module linked on some platform."""
+    """The (path, version, dir) of every module linked on some platform, and of
+    every directory below a module's root that has a licence of its own: Wails
+    carries code under other licences in its internal packages."""
     found = {}
     for goos in ("linux", "darwin", "windows"):
         for tags in ("", "webview"):
             env = dict(os.environ, GOOS=goos, CGO_ENABLED="1" if goos == "linux" else "0")
-            fmt = "{{if .Module}}{{if not .Module.Main}}{{.Module.Path}} {{.Module.Version}} {{.Module.Dir}}{{end}}{{end}}"
+            fmt = "{{if .Module}}{{if not .Module.Main}}{{.Module.Path}} {{.Module.Version}} {{.Module.Dir}} {{.Dir}}{{end}}{{end}}"
             run = subprocess.run(["go", "list", "-deps", "-tags", tags, "-f", fmt, "./cmd/nodwyn"], cwd=ROOT, env=env, capture_output=True, text=True)
             if run.returncode != 0:
                 sys.exit(f"go list ({goos}, tags {tags!r}) failed:\n{run.stderr}")
             for line in run.stdout.splitlines():
-                parts = line.split(" ", 2)
-                if len(parts) == 3:
-                    found[parts[0]] = (parts[1], parts[2])
+                parts = line.split(" ", 3)
+                if len(parts) != 4:
+                    continue
+                path, version, root, package = parts
+                found[path] = (version, root)
+                # Walk up from the package to the module root: a licence on the way is
+                # the licence of the code in it.
+                here = package
+                while root and here.startswith(root + os.sep):
+                    if any(os.path.isfile(os.path.join(here, n)) for n in NAMES):
+                        found[path + "/" + os.path.relpath(here, root)] = (version, here)
+                        break
+                    here = os.path.dirname(here)
     return sorted((path, v, d) for path, (v, d) in found.items())
 
 
