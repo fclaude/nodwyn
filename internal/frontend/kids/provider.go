@@ -134,7 +134,9 @@ func (p *BoundedProvider) Chat(ctx context.Context, r llm.Request, onDelta func(
 			cancel()
 			return
 		}
-		onDelta(d)
+		if onDelta != nil {
+			onDelta(d)
+		}
 	})
 	if err != nil {
 		return nil, err

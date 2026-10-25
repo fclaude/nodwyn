@@ -15,6 +15,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	fakehome "github.com/fclaude/nodwyn/test/fakes/home"
 	"github.com/fclaude/nodwyn/test/fakes/must"
+	fakeollama "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestMain(m *testing.M) { clean := fakehome.Isolate(); code := m.Run(); clean(); os.Exit(code) }
@@ -267,5 +268,25 @@ func TestChildAndProjectFileQuotasAllowEditsButRefuseMoreFiles(t *testing.T) {
 		if validFile(path) {
 			t.Fatal("downstream-incompatible path accepted:", path)
 		}
+	}
+}
+
+func TestBoundedProviderAcceptsBufferedOllamaCallsWithoutStreamingCallback(t *testing.T) {
+	upstream := fakeollama.NewT(t, fakeollama.Turn{Thinking: "Working", Content: "Hello"}, fakeollama.Turn{Content: "Again"})
+	defer upstream.Close()
+	ledger, err := OpenLedger(t.TempDir(), 2000000, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := NewProvider(llm.NewOllama(upstream.URL), "local-model", ledger)
+	request := llm.Request{Model: "local-model", NumCtx: 32768, MaxTokens: 4096, Messages: []llm.Message{{Role: "user", Content: "hello"}}}
+	response, err := provider.Chat(context.Background(), request, nil)
+	if err != nil || response.Message.Content != "Hello" {
+		t.Fatalf("buffered Ollama call: %+v %v", response, err)
+	}
+	received := ""
+	response, err = provider.Chat(context.Background(), request, func(d llm.Delta) { received += d.Text })
+	if err != nil || response.Message.Content != "Again" || received != "Again" {
+		t.Fatalf("streaming call: %+v %q %v", response, received, err)
 	}
 }

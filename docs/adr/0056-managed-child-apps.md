@@ -72,7 +72,9 @@ The public path stays VPS to the web host. This replaces the draft's unreviewed
 privileged VPS image controller with read-only static generations and no
 Docker API, registry or VPS credentials. Private previews are a separate origin
 served from committed exports with the existing static CSP. Public activation
-requires the real, private family privacy policy and fails closed without it.
+requires an explicit operator publication policy and fails closed without it.
+The operator may explicitly select no family phrase filtering; structural,
+external-resource and browser restrictions remain independent.
 
 The draft's optional inbound parent host links, per-stage UI variations,
 conversation-driven project lifecycle and interactive budget adjustment are
@@ -86,3 +88,13 @@ and link paths, restart accounting, interrupted-write recovery, raw child HTTP
 requests, revocation, cross-origin refusal and actual browser project/chat/
 rename/delete actions. A production claim additionally requires isolated
 container, model-proxy, laptop UID, HTTPS and public publication checks.
+
+## Amendment 2026-10-24: Buffered local inference
+
+The first live Ollama request exposed an optional-callback bug: the core buffers
+model output for redaction and passes a nil delta callback. The bounded wrapper
+must still count streamed bytes, but call the outer callback only when supplied.
+The HTTP-protocol regression exercises thinking/text with nil and non-nil
+callbacks and fails against the preceding implementation. No daily reservation
+is refunded after a failed request. The family operator also explicitly chose
+no family-specific phrase filter in the separate publication policy.

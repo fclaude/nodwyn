@@ -3265,7 +3265,7 @@ on each child hostname; this does not replace another host's registration.
 Parent controls require a fresh passkey touch and can invite/revoke child
 browsers. Provider, policy and lower budget configuration remain operator-owned.
 At the daily allowance, building resumes on the next Los Angeles civil day.
-Public publication waits for the private privacy tripwire and never runs app
+Public publication waits for the explicit operator policy (with family phrase filtering when selected) and never runs app
 code. Neither a tripwire nor CSP can identify every kind of personal content;
 the parent should review what children publish.
 
