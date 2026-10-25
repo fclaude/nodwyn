@@ -35,3 +35,9 @@ coverage.out
 /test/browser/node_modules
 /test/browser/out/
 /demo
+
+# the website, built by site/build.py
+/site/_out/
+
+# The website is built by pages.yml; a local build writes here.
+site/_out/

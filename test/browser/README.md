@@ -88,3 +88,7 @@ runtime, the demo run again: Pull, review and approve it, then ask a task in
 fake Drive: ask a task in `console` to "Upload the status to Google Docs" to
 see the question that sets how uploads are handled, then its effect in
 Settings.
+
+`shots.js` is not a check and `run.sh` doesn't run it: it takes the screenshots
+of the demo's synthetic world that the README and the website show.
+`scripts/screenshots.sh` runs it and writes `docs/images` (ADR 59).

@@ -60,6 +60,10 @@ A change should come with everything that belongs to it:
   `internal/core` tests. The loop has a lean and a full profile (AGENTS.md
   explains them), and a rule you add says in a comment which failure it comes
   from.
+- The website is built from `site/` and the docs by `python3 site/build.py` (it
+  needs `pip install -r site/requirements.txt`), which fails on a broken link.
+  If you changed how the console looks, `scripts/screenshots.sh` takes the
+  screenshots again.
 - Behaviour a person sees goes in `docs/manual.md`, and what each client can do in
   `docs/clients.md`.
 - A decision goes in `docs/adr`, as a new record listed in `docs/adr/README.md`

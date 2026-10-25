@@ -66,6 +66,11 @@ are faster.
   when Playwright's WebKit is installed (`npx playwright install webkit`); it
   says so and runs nothing when it is not.
   To look by hand: `go run ./test/browser/demo -seed` prints a launch URL.
+- **The website** (`site/`, or a page the site converts: `docs/*.md`, `SPEC.md`,
+  `plan.md`, the ADRs): `pip install -r site/requirements.txt && python3
+  site/build.py`, which fails on a broken link. A change to how the console
+  looks wants `scripts/screenshots.sh` run and `docs/images` committed, and a
+  behaviour the guide in `site/content` describes wants the guide changed (ADR 59).
 - **What a client can do** (the console, the TUI, line mode, a CLI
   command): its row in `docs/clients.md` changes in the same commit.
 - **RPC types** (`internal/frontend/rpc`): `go generate ./internal/frontend/rpc`

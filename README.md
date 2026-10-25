@@ -4,6 +4,13 @@ nodwyn is a coding agent that I built around one worry: an agent that can run
 commands and read files can also leak your keys. So the part that decides what
 leaves your machine is small, written in Go, and doesn't trust the model.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/task-dark.webp">
+  <img src="docs/images/task-light.webp" alt="The nodwyn console: a task waiting for an answer, with its plan beside it">
+</picture>
+
+The screenshot is the console running on synthetic data. A task has stopped to ask whether it may run a command, and the plan sits beside it with two of its four steps done.
+
 The agent itself is a Scheme program running on a Go host. The loop, the
 prompts, how it plans and when it asks you are all Scheme you can read and
 change (a project can redefine them in `.nodwyn/init.scm`). Every way out of
@@ -85,6 +92,7 @@ servers, workflows and the rest.
 
 | Page | What it covers |
 |---|---|
+| [The website](https://fclaude.github.io/nodwyn/) | A guide to the console, running it standalone and running it on a server, with screenshots; the reference below is on it too |
 | [docs/manual.md](docs/manual.md) | How to use nodwyn, and how to read the code |
 | [docs/reference.md](docs/reference.md) | Build and run commands, budgets, approvals and the clients in one page |
 | [SPEC.md](SPEC.md) | The architecture and the invariants it keeps |

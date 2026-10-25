@@ -1,0 +1,52 @@
+# Approvals
+
+The point of an agent is that it can run things. The point of this page is what you see when it wants to do something nothing has approved yet.
+
+## What asks, and what doesn't
+
+By default a write inside the task's folder goes ahead. The diff is logged and shown in the conversation, and the file's old contents are kept first, so Restore or `nodwyn undo` puts it back. A command nothing approved goes to a judge first, if you've set one up, and to you when the judge refuses or there isn't one.
+
+Some things always ask you, whatever the settings say: a write to a protected path (git hooks, CI configuration, the Makefile, `scripts/`, `.nodwyn/`), content that looks like a credential, a command built out of what a tool returned, a request that carries a credential, and an upload. Nothing outside the task's folder gets written at all.
+
+![Settings, General: what a task may do without asking](shot:settings-general)
+
+Settings › General › Approvals sets the first two. **Writing files** is *Without asking* or *Ask me*, and **Running commands** is *The judge, then me*, *Ask me* or *Without asking*.
+
+## The approval card
+
+An approval shows up in the conversation, on Home under **Needs you**, and on your phone as a notice if you've allowed notices. It says which tool wants to run, why it's asking, and the exact call. For a write it shows the diff.
+
+![An approval waiting on a phone](shot:phone-task)
+
+The buttons are the answers you can give.
+
+**Allow once** lets this one call through. **Deny** refuses it, and the model is told that you didn't confirm, so it can try something else. **Always under** `ls` (the label names the command) approves that program and subcommand for the rest of the task. A command the model runs through `bash -c` is offered as the command inside it when there's exactly one, and a line with several commands, or a program that runs whatever it's handed (a shell, python, node, ssh), offers no Always and asks each time. For writes there's also an answer that approves every further write until the turn ends.
+
+Read the reason lines under the heading. "Command line names a path outside the repository" and "uses the network tool curl" are the guard telling you what a yes would do.
+
+Every answer is logged with who gave it: the terminal, this browser, or a named device.
+
+## Approving ahead of time
+
+Command prefixes you trust can go in `.nodwyn/allow.toml` in the project, so `go test` and `git diff` never ask. A project's own file is only read after you've reviewed it with `nodwyn trust`, because anyone who can commit to a repository can write that file.
+
+```toml
+commands = ["go test", "go build", "git status", "git diff"]
+writes = ["internal/", "docs/"]
+```
+
+A standing approval still checks arguments: flags that pick a program, an output file or another working directory, and absolute or escaping paths, can't inherit it, and the question comes back.
+
+## Don't ask
+
+Settings › General › Approvals › **Don't ask in tasks** can offer a switch under each task's reply box. With it on, that task's ordinary writes and commands go through without a question until you turn it off or the task closes. Protected paths and credential-shaped content still ask, and nothing the guard refuses becomes allowed. It's never saved, so a resumed task asks again. The setting is off until you choose to offer it, and it shows a red warning while it's on. Use it only in a task you're watching.
+
+## The judge
+
+A judge is a second model that gets one question about a call: should it go ahead? When it's confident enough, the call runs without bothering you. When it isn't, or when the call is one of the always-ask kinds, the question comes to you with what the judge answered. It sees redacted content and never a secret.
+
+![Settings, Judge](shot:settings-judge)
+
+Settings › Judge sets one up. It's optional, and without one every question that isn't pre-approved comes to you.
+
+[Your keys](keys.html) explains the other half of the safety story, the part about credentials.
