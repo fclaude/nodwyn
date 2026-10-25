@@ -49,6 +49,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	automatic, _, err := devices.Invite(web.Terminal, false)
+	if err != nil {
+		return err
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
@@ -58,7 +62,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err = json.NewEncoder(os.Stdout).Encode(map[string]string{"url": "http://" + listener.Addr().String(), "invite": invite, "workspace": p.Workspace}); err != nil {
+	if err = json.NewEncoder(os.Stdout).Encode(map[string]string{"url": "http://" + listener.Addr().String(), "invite": invite, "automatic": automatic, "workspace": p.Workspace}); err != nil {
 		return err
 	}
 	return web.Serve(context.Background(), listener, web.Options{PairingCode: code, Devices: devices, Managed: s})

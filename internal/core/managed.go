@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/fclaude/brote/scheme"
 )
+
+var managedName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$`)
 
 // ManagedProfile is authority supplied by a trusted Go embedder, never by a
 // writable project. Ordinary sessions leave it nil. The embedder owns the
@@ -71,7 +74,7 @@ func (m *ManagedProfile) Before(root string, p *scheme.Prim, args []scheme.Value
 		return nil
 	}
 	for _, part := range strings.Split(clean, string(filepath.Separator)) {
-		if strings.HasPrefix(part, ".") || strings.EqualFold(part, "AGENTS.md") {
+		if !managedName.MatchString(part) || strings.HasPrefix(part, ".") || strings.EqualFold(part, "AGENTS.md") {
 			return errors.New("managed: metadata is unavailable")
 		}
 	}

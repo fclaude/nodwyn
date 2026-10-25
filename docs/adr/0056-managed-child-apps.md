@@ -20,7 +20,8 @@ Ordinary Nodwyn and Raven keep their existing defaults and pairing state.
 `Options.Managed` is trusted Go embedder authority. Its immutable invocation
 check runs before guard approvals, including nested calls. Only fs-read,
 fs-list, fs-write and fs-edit may touch the host, inside a fixed project root.
-Metadata, absolute/escaping paths, symlinks, special files and executable file
+Filename, depth, project and child-wide storage limits match the downstream
+preview/publication contract before acknowledgement. Metadata, absolute/escaping paths, symlinks, special files and executable file
 types are refused. Scratch, mounts, processes, terminals, credentials, MCP,
 judges, delegates and model/limit selection cannot broaden that envelope.
 The approved provider wraps every model request, including helpers, and checks

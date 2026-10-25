@@ -17,6 +17,7 @@ import (
 
 func main() {
 	profile := flag.String("profile", "/etc/nodwyn-kids/profile.json", "operator-owned profile")
+	revoke := flag.String("revoke", "", "revoke a named device during operator recovery")
 	invite := flag.String("invite", "", "issue a one-use invitation: parent or child")
 	flag.Parse()
 	b, err := os.ReadFile(*profile)
@@ -24,7 +25,12 @@ func main() {
 	if err == nil {
 		err = json.Unmarshal(b, &p)
 	}
-	if err == nil && *invite != "" {
+	if err == nil && *invite != "" && *revoke != "" {
+		err = fmt.Errorf("choose invite or revoke")
+	}
+	if err == nil && *revoke != "" {
+		err = web.OpenDevices(filepath.Join(p.State, "devices.toml")).Revoke(*revoke)
+	} else if err == nil && *invite != "" {
 		if *invite != "parent" && *invite != "child" {
 			err = fmt.Errorf("invite is parent or child")
 		} else {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,6 +235,37 @@ func TestManagedTurnWritesThroughJournalAndOffersOnlyStaticTools(t *testing.T) {
 			default:
 				t.Fatal("unsafe tool", tool.Name)
 			}
+		}
+	}
+}
+
+func TestChildAndProjectFileQuotasAllowEditsButRefuseMoreFiles(t *testing.T) {
+	s := storeFor(t)
+	first, err := s.Create("one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.Create("two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []Project{first, second} {
+		for i := range 255 {
+			must.WriteFile(t, filepath.Join(s.Workspace, p.ID, fmt.Sprintf("file-%03d.txt", i)), []byte("x"), 0600)
+		}
+	}
+	if err = s.Write(first.ID, "turn", filepath.Join(s.Workspace, first.ID, "index.html"), []byte("edited at the quota"), 0600); err != nil {
+		t.Fatal("an edit at the quota was refused:", err)
+	}
+	if err = s.Write(first.ID, "turn", filepath.Join(s.Workspace, first.ID, "another.txt"), []byte("x"), 0600); err == nil {
+		t.Fatal("project file quota was bypassed")
+	}
+	if _, err = s.Create("three"); err == nil {
+		t.Fatal("child file quota was bypassed by a new project")
+	}
+	for _, path := range []string{"a space.html", "é.html", "folder/file?.js"} {
+		if validFile(path) {
+			t.Fatal("downstream-incompatible path accepted:", path)
 		}
 	}
 }

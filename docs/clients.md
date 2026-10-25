@@ -281,3 +281,9 @@ ordinary RPC, tools/thinking/logs, settings, approvals nor linked hosts.
 Parent passkey devices can invite/revoke plain browsers after a fresh touch.
 Operator bootstrap is `nodwyn-kids --profile PATH --invite parent`; keep that
 invitation private. Laptop browsers receive only plain child invitations.
+
+The managed console accepts a one-use child invitation in a URL fragment for
+operator bootstrap of a private profile. It clears the fragment immediately
+and leaves any existing pairing intact; this never registers a passkey.
+
+Operator recovery can revoke one named managed device with `nodwyn-kids --profile PATH --revoke NAME`; ordinary browser administration still requires the parent passkey touch.

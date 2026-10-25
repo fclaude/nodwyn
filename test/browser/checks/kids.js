@@ -29,6 +29,17 @@ const assert=require('assert/strict');
   await page.screenshot({path:path.join(process.argv[2],'projects.png'),fullPage:true});
   page.once('dialog',d=>d.accept());await page.locator('#delete').click();await page.locator('#project').waitFor({state:'hidden'});
   assert.equal(fs.readdirSync(fixture.workspace).length,0);
+  await page.goto(fixture.url+'/#child-invite='+encodeURIComponent(fixture.automatic)+'&device=should-not-replace');
+  await page.waitForFunction(()=>location.hash==='');
+  await page.locator('#workspace').waitFor({state:'visible'});
+  assert.equal(new URL(page.url()).hash,'');
+  const automatic=await browser.newPage();
+  await automatic.goto(fixture.url+'/#child-invite='+encodeURIComponent(fixture.automatic)+'&device=laptop2-child');
+  await automatic.locator('#workspace').waitFor({state:'visible'});
+  assert.equal(new URL(automatic.url()).hash,'');
+  assert.equal(await automatic.locator('#parent').isVisible(),false);
+  assert.equal((await automatic.evaluate(async()=>(await (await fetch('/paired')).json()).paired)),true);
+  await automatic.close();
   assert.deepEqual(errors,[]);
   console.log('Child pairing, create, chat/file mutation, preview links, rename, cancel/delete and parent/RPC refusal passed.');
  }finally{if(browser)await browser.close();demo.kill('SIGTERM');}

@@ -37,5 +37,18 @@ $('touch').onclick=action(async()=>{await assert();$('parent-result').textConten
 $('invite-child').onclick=action(async()=>{$('parent-result').textContent=JSON.stringify(await call('/kids/admin/invite',{}),null,2);});
 $('devices').onclick=action(async()=>{$('parent-result').textContent=JSON.stringify(await call('/kids/admin/devices',{}),null,2);});
 $('revoke').onclick=action(async()=>{await call('/kids/admin/revoke',{name:$('revoke-name').value});$('parent-result').textContent='Device revoked';});
-await action(refresh)();
+// An operator may open a one-use child invitation in its own private profile.
+// Strip the fragment before any request; never replace an existing pairing.
+async function bootstrapChild() {
+  const bootstrap = new URLSearchParams(location.hash.slice(1));
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  const response = await fetch('/paired', {credentials:'same-origin'});
+  const paired = response.ok && (await response.json()).paired;
+  if (!paired && bootstrap.has('child-invite') && bootstrap.has('device')) {
+    await call('/pair', {invite:bootstrap.get('child-invite'),device:bootstrap.get('device')});
+  }
+  await refresh();
+}
+window.addEventListener('hashchange', action(bootstrapChild));
+await action(bootstrapChild)();
 setInterval(()=>refresh().catch(()=>{}),1500);

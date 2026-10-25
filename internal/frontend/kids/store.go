@@ -22,6 +22,7 @@ const maxFile = 1 << 20
 const maxProject = 16 << 20
 const maxFiles = 256
 
+var filePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$`)
 var slugPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 var idPattern = regexp.MustCompile(`^[a-f0-9]{24}$`)
 
@@ -202,11 +203,11 @@ func (s *Store) validate(m Mutation) error {
 }
 
 func validFile(path string) bool {
-	if path == "" || filepath.IsAbs(path) || filepath.Clean(path) != path {
+	if path == "" || filepath.IsAbs(path) || filepath.Clean(path) != path || len(path) > 200 || len(strings.Split(path, "/")) > 7 {
 		return false
 	}
 	for _, p := range strings.Split(path, "/") {
-		if strings.HasPrefix(p, ".") || strings.EqualFold(p, "AGENTS.md") {
+		if !filePattern.MatchString(p) || strings.HasPrefix(p, ".") || strings.EqualFold(p, "AGENTS.md") {
 			return false
 		}
 	}
@@ -343,7 +344,11 @@ func (s *Store) Create(slug string) (Project, error) {
 	p := Project{ID: hex.EncodeToString(raw[:]), Slug: slug, Version: 1}
 	projects := append(append([]Project{}, s.projects...), p)
 	m := Mutation{Project: p.ID, Slug: slug, Op: "create", Path: "index.html", Projects: projects}
-	err := s.transact(m, []byte("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>My app</title><style>body{font:1.2rem system-ui;max-width:50rem;margin:3rem auto;padding:1rem}</style><h1>My new app</h1><p>Tell your helper what you would like to make.</p></html>\n"))
+	starter := []byte("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>My app</title><style>body{font:1.2rem system-ui;max-width:50rem;margin:3rem auto;padding:1rem}</style><h1>My new app</h1><p>Tell your helper what you would like to make.</p></html>\n")
+	if err := s.checkQuota(filepath.Join(s.Workspace, p.ID, "index.html"), len(starter)); err != nil {
+		return Project{}, err
+	}
+	err := s.transact(m, starter)
 	return p, err
 }
 func (s *Store) Change(id, op, slug, task string, version uint64) error {
@@ -391,35 +396,8 @@ func (s *Store) Write(id, turn, path string, b []byte, _ os.FileMode) error {
 	if err != nil || !validFile(relative) {
 		return errors.New("invalid project file")
 	}
-	files, total := 0, int64(0)
-	err = filepath.WalkDir(filepath.Join(s.Workspace, id), func(path string, d os.DirEntry, e error) error {
-		if e != nil {
-			return e
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return errors.New("links are unavailable")
-		}
-		if d.IsDir() {
-			return nil
-		}
-		files++
-		st, e := d.Info()
-		if e != nil {
-			return e
-		}
-		if !st.Mode().IsRegular() {
-			return errors.New("special file")
-		}
-		if path != filepath.Join(s.Workspace, id, relative) {
-			total += st.Size()
-		}
-		return nil
-	})
-	if err != nil {
+	if err = s.checkQuota(path, len(b)); err != nil {
 		return err
-	}
-	if files >= maxFiles || total+int64(len(b)) > maxProject {
-		return errors.New("project storage is full")
 	}
 	projects := append([]Project{}, s.projects...)
 	projects[i].Version++
@@ -463,6 +441,66 @@ func (s *Store) RecoverTurns() error {
 		if err := s.EndTurn(id, turn, "interrupted-recovery"); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkQuota matches the downstream preview/publication limits before an edit
+// can be acknowledged. Two project writers share this store mutex, so neither
+// can spend the other's remaining child-wide file/storage allowance.
+func (s *Store) checkQuota(target string, size int) error {
+	relative, err := filepath.Rel(s.Workspace, target)
+	if err != nil {
+		return err
+	}
+	id := strings.Split(relative, string(filepath.Separator))[0]
+	files, bytes, projectFiles, projectBytes := 0, int64(0), 0, int64(0)
+	found := false
+	err = filepath.WalkDir(s.Workspace, func(path string, d os.DirEntry, e error) error {
+		if e != nil {
+			return e
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return errors.New("links are unavailable")
+		}
+		if d.IsDir() {
+			return nil
+		}
+		st, e := d.Info()
+		if e != nil {
+			return e
+		}
+		if !st.Mode().IsRegular() {
+			return errors.New("special file")
+		}
+		n := st.Size()
+		if path == target {
+			n = int64(size)
+			found = true
+		}
+		files++
+		bytes += n
+		rel, e := filepath.Rel(s.Workspace, path)
+		if e != nil {
+			return e
+		}
+		if strings.Split(rel, string(filepath.Separator))[0] == id {
+			projectFiles++
+			projectBytes += n
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !found {
+		files++
+		bytes += int64(size)
+		projectFiles++
+		projectBytes += int64(size)
+	}
+	if files > 512 || bytes > 32<<20 || projectFiles > maxFiles || projectBytes > maxProject {
+		return errors.New("project storage is full; ask a parent")
 	}
 	return nil
 }

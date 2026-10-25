@@ -3268,3 +3268,10 @@ At the daily allowance, building resumes on the next Los Angeles civil day.
 Public publication waits for the private privacy tripwire and never runs app
 code. Neither a tripwire nor CSP can identify every kind of personal content;
 the parent should review what children publish.
+
+An operator may open a one-use plain child invitation in that child's own
+profile with `/#child-invite=CODE&device=NAME`. The managed page removes the
+fragment before sending requests, consumes it only for an unpaired browser,
+and never replaces an existing pairing. Use no parent invitation for this.
+
+For operator recovery, `nodwyn-kids --profile PATH --revoke NAME` removes one named device. Use parent passkey controls for routine administration.
