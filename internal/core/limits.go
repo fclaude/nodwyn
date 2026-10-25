@@ -30,6 +30,9 @@ func (s *Session) LimitsOn() (bool, string) {
 // deadline is already its context's. The choice is recorded before it
 // applies, and resuming the task keeps it.
 func (s *Session) SetLimits(on bool, actor string) error {
+	if s.opts.Managed != nil {
+		return errors.New("managed: turn limits are operator-owned")
+	}
 	s.limitsMu.Lock()
 	defer s.limitsMu.Unlock()
 	s.mu.Lock()

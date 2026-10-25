@@ -74,6 +74,11 @@ type turnGate struct {
 }
 
 func (g turnGate) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value) error {
+	if m := g.s.opts.Managed; m != nil {
+		if err := m.Before(g.s.opts.Repo, p, args); err != nil {
+			return err
+		}
+	}
 	if err := g.s.unplanned(p); err != nil {
 		return err
 	}

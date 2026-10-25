@@ -232,7 +232,7 @@ func fsWrite(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err := o.Versions.Keep(abs); err != nil {
 				return scheme.Value{}, fmt.Errorf("keeping the previous version failed, so nothing was written: %w", err)
 			}
-			if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			if err := o.writeFile(abs, []byte(content), 0o644); err != nil {
 				return scheme.Value{}, err
 			}
 			if !o.Lean {
@@ -792,7 +792,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err := o.Versions.Keep(abs); err != nil {
 				return scheme.Value{}, fmt.Errorf("keeping the previous version failed, so nothing was written: %w", err)
 			}
-			if err := os.WriteFile(abs, []byte(next), mode); err != nil {
+			if err := o.writeFile(abs, []byte(next), mode); err != nil {
 				return scheme.Value{}, err
 			}
 			// The lines as the model reads them: a credential in them is its

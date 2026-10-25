@@ -91,6 +91,9 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	// A worktree close removed, or a person deleted, is made again: the
 	// conversation goes on where its files are (ADR 34).
 	restored := false
+	if o.Managed != nil && info.Worktree != nil {
+		return nil, errors.New("managed: cannot resume a worktree")
+	}
 	if info.Worktree != nil {
 		var base string
 		if restored, base, err = restoreWorktree(*info.Worktree); err != nil {
@@ -142,6 +145,10 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	}
 	if rec, found := lastLimits(choices); found {
 		s.limitsOff, s.limitsActor = !rec.On, rec.Actor
+	}
+	if o.Managed != nil {
+		s.limitsOff, s.limitsActor = false, "managed"
+		s.judge, s.delegates = "", nil
 	}
 	if err = s.restoreHistory(history); err != nil {
 		return nil, err

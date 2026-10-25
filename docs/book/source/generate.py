@@ -81,7 +81,7 @@ SCHEME_ORDER = [
     *[f"internal/loop/{name}.scm" for name in (
         "strategy", "prompts", "compact", "agents", "optimize", "plan",
         "shell", "hygiene", "readdef", "envhint", "checkloop")],
-    ".nodwyn/init.scm", "dev/go.scm", "dev/git.scm", "dev/repo.scm",
+    "internal/frontend/kids/init.scm", ".nodwyn/init.scm", "dev/go.scm", "dev/git.scm", "dev/repo.scm",
 ]
 
 

@@ -153,6 +153,9 @@ func (s *Session) Judge() JudgeState {
 // resumed task keeps it. It waits for no turn: a judge chosen while the
 // task is answering would judge half of a turn, so it is refused then.
 func (s *Session) SetJudge(server, actor string) (JudgeState, error) {
+	if s.opts.Managed != nil {
+		return JudgeState{}, errors.New("managed: judge selection is unavailable")
+	}
 	if err := CheckJudge(s.opts.Config, s.keychain, server); err != nil {
 		return JudgeState{}, err
 	}

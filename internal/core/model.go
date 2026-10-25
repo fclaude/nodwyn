@@ -226,6 +226,9 @@ func serverNames(cfg config.Config) []string {
 // room its reply cap needs: the person is told in the state (Notice) and the
 // log (a note), and the conversation keeps the model it had.
 func (s *Session) SetModel(c ModelChoice) (ModelState, error) {
+	if s.opts.Managed != nil {
+		return ModelState{}, errors.New("managed: model selection is operator-owned")
+	}
 	if c.Name == "" && c.Server == "" && c.Model == "" {
 		// The zero choice is the [control] model, as it is at open.
 		c.Name = loop.ControlModel

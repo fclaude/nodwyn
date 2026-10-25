@@ -218,3 +218,9 @@ server, valid for a minute), and walks a first-time user through choosing a
 model and creating a keychain. Each person's tasks, keys and settings stay
 in their own account. \file{docs/app.md} has the steps for sending it to
 someone.
+
+\section{The managed child distribution}
+\texttt{nodwyn-kids} serves only its restricted HTTP application, over a
+private Unix HTTP socket behind its own HTTPS hostname. It exposes no ordinary
+RPC, shell, credentials, policy changes or host links. ADR~56 specifies its
+capability check, durable mutation export, device roles and daily accounting.

@@ -22,6 +22,10 @@ import (
 
 // Options configure the host primitives.
 type Options struct {
+	// WriteFile is an operator-owned durable mutation sink. nil uses the
+	// ordinary filesystem write after keeping the previous version.
+	WriteFile func(string, []byte, os.FileMode) error
+
 	Root      string // repository root; every path is pinned under it
 	Scratch   string // the session's scratch directory, outside Root; "" for none
 	NotesFile string // this repository\'s notes kept across sessions, outside Root; "" for none
@@ -525,4 +529,13 @@ func nameTask(o Options) *scheme.Prim {
 			return scheme.Str(answer), nil
 		},
 	}
+}
+
+// writeFile leaves ordinary sessions unchanged and lets a managed embedder
+// durably export each successful mutation before the tool acknowledges it.
+func (o Options) writeFile(path string, content []byte, mode os.FileMode) error {
+	if o.WriteFile != nil {
+		return o.WriteFile(path, content, mode)
+	}
+	return os.WriteFile(path, content, mode)
 }

@@ -42,6 +42,9 @@ func PairingCode() (string, error) {
 
 // Options configure the browser console.
 type Options struct {
+	// Managed selects the restricted child HTTP surface instead of generic RPC.
+	Managed ManagedHTTP
+
 	Socket      string // the daemon the browser's requests are relayed to
 	PairingCode string // printed in the terminal; a browser presents it once
 	ReadOnly    bool   // allow only listing, watching and reading logs
@@ -68,6 +71,8 @@ type Options struct {
 }
 
 type bridge struct {
+	managed ManagedHTTP
+
 	readOnly       bool
 	noLinkSettings bool // Options.NoLinkSettings
 	ctx            context.Context
@@ -102,7 +107,7 @@ type Server struct {
 // New prepares a console for options.
 func New(options Options) *Server {
 	session, _ := PairingCode() // crypto/rand does not fail
-	return &Server{b: &bridge{socket: options.Socket, code: options.PairingCode, session: session, readOnly: options.ReadOnly, noLinkSettings: options.NoLinkSettings,
+	return &Server{b: &bridge{managed: options.Managed, socket: options.Socket, code: options.PairingCode, session: session, readOnly: options.ReadOnly, noLinkSettings: options.NoLinkSettings,
 		devices: options.Devices, extra: options.Hosts, tls: options.TLS, audit: options.Audit, tickets: map[string]time.Time{}}}
 }
 
@@ -157,10 +162,11 @@ func Serve(ctx context.Context, listener net.Listener, options Options) error {
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	b := s.b
 	addr, ok := listener.Addr().(*net.TCPAddr)
-	if !ok || len(b.code) < 32 {
+	_, unix := listener.Addr().(*net.UnixAddr)
+	if (!ok && !(unix && b.managed != nil && b.devices != nil && len(b.extra) > 0)) || len(b.code) < 32 {
 		return fmt.Errorf("web: requires a TCP listener and a strong pairing code")
 	}
-	if (!addr.IP.IsLoopback() || len(b.extra) > 0) && b.devices == nil {
+	if (unix || !addr.IP.IsLoopback() || len(b.extra) > 0) && b.devices == nil {
 		return fmt.Errorf("web: a console reachable from other machines needs device pairing")
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -168,6 +174,10 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	b.ctx = ctx
 	b.listensAt(listener.Addr().String())
 	server := &http.Server{Handler: b, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10}
+	if b.managed != nil {
+		server.ReadTimeout = 15 * time.Second
+		server.WriteTimeout = 30 * time.Second
+	}
 	done := make(chan struct{})
 	go func() {
 		select {
@@ -253,6 +263,9 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
 		http.Error(w, "Cross-origin request refused", http.StatusForbidden)
+		return
+	}
+	if b.managed != nil && b.serveManaged(w, r, origin) {
 		return
 	}
 	switch r.URL.Path {
@@ -452,6 +465,10 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&p); err != nil {
 		http.Error(w, "Invalid pairing request", http.StatusForbidden)
+		return
+	}
+	if b.managed != nil && p.Host {
+		http.Error(w, "Managed consoles do not link hosts", http.StatusForbidden)
 		return
 	}
 	remote := b.remote(r)

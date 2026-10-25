@@ -60,6 +60,9 @@ type mcpConnection struct {
 // the interpreter is not written to from two goroutines, and the tool list
 // does not depend on which server answered first.
 func (s *Session) connectMCP() {
+	if s.opts.Managed != nil {
+		return
+	}
 	servers, err := config.LoadMCP(config.MCPFile(s.opts.Paths))
 	if err != nil {
 		s.mcp = []MCPServer{{Name: "mcp.toml", State: "error", Detail: err.Error()}}

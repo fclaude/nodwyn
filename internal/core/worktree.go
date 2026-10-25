@@ -393,6 +393,9 @@ func (s *Session) Project() string { return s.project() }
 // not work left in it: they keep no worktree from going on close, and they
 // outlast it (ADR 34).
 func (s *Session) versionsDir() string {
+	if s.opts.Managed != nil {
+		return filepath.Join(s.opts.Paths.DataDir, "versions")
+	}
 	return prim.VersionsDir(s.project())
 }
 

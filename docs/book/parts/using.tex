@@ -1095,3 +1095,10 @@ human conversation. The daemon must be running: \texttt{nodwyn startup on}
 user unit or a launchd agent, and the daemon's desktop notices, off until
 turned on, say when a task needs an answer and no nodwyn window is open, and
 when a locked keychain stops a scheduled run, which Home also says.
+
+\section{A separately managed child service}
+The \texttt{nodwyn-kids} distribution embeds the core with an immutable
+static-app capability ceiling, a separate browser surface and daily local-model
+accounting (ADR~56). A child creates a project, asks for a change and opens its
+private preview. The operator owns policy and publishing; the ordinary desktop
+application is not a child sandbox. See the manual's managed-service section.

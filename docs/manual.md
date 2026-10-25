@@ -3249,3 +3249,22 @@ once for each folder, a `.aliases-checked` marker in its notes directory saying 
 leaving a `notes.md.before-path-migration` backup. Conflicting note contents or
 duplicate registered aliases require manual reconciliation; nodwyn does not merge
 permissions or discard one copy. See [ADR 45](adr/0045-project-trust-and-security-boundaries.md).
+
+## Managed children's app service
+
+The separate `nodwyn-kids --profile /etc/nodwyn-kids/profile.json` deployment
+serves the restricted My projects interface described in ADR 56. It is not an
+option that makes an ordinary desktop daemon a child sandbox. Open its private
+HTTPS hostname, connect each browser with its own one-use child invitation,
+create a project and describe the app or change. See app opens its separate
+private preview origin; Your website opens the last checked public publication.
+Saved means the edit is durable; it does not mean publication has succeeded.
+
+Only the operator bootstraps a parent invitation. Register a passkey separately
+on each child hostname; this does not replace another host's registration.
+Parent controls require a fresh passkey touch and can invite/revoke child
+browsers. Provider, policy and lower budget configuration remain operator-owned.
+At the daily allowance, building resumes on the next Los Angeles civil day.
+Public publication waits for the private privacy tripwire and never runs app
+code. Neither a tripwire nor CSP can identify every kind of personal content;
+the parent should review what children publish.

@@ -271,3 +271,13 @@ task it opened there before any model is asked.
 - The console reads whole-task totals from the daemon's log index; its
   current-turn gauges still read the loaded conversation. The TUI computes
   its own in `gauge.go` and `plan_budget.go`.
+
+## Managed child console (ADR 56)
+
+`nodwyn-kids` is a separate deployment embedding the core. Its browser has
+projects, a conversation, Stop, See app and website links. Create, rename and
+confirmed deletion are validated host operations. It exposes neither the TUI,
+ordinary RPC, tools/thinking/logs, settings, approvals nor linked hosts.
+Parent passkey devices can invite/revoke plain browsers after a fresh touch.
+Operator bootstrap is `nodwyn-kids --profile PATH --invite parent`; keep that
+invitation private. Laptop browsers receive only plain child invitations.

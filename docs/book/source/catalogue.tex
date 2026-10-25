@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 288 of 647 tracked Go files: every non-test Go file, 73,864 of 145,045 Go source lines (50.9\% by lines). It also includes all 36 tracked Scheme files (6,520 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 295 of 657 tracked Go files: every non-test Go file, 75,307 of 146,894 Go source lines (51.3\% by lines). It also includes all 37 tracked Scheme files (6,526 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -33,6 +33,8 @@ The prelude comes first, then the loop in installation order, then this reposito
 \sourcefile{internal/loop/envhint.scm}{Scheme}
 
 \sourcefile{internal/loop/checkloop.scm}{Scheme}
+
+\sourcefile{internal/frontend/kids/init.scm}{Scheme}
 
 \sourcefile{.nodwyn/init.scm}{Scheme}
 
@@ -95,6 +97,8 @@ This is the checked-in policy discussed in Chapter~\ref{chap:repo-customisation}
 Begin with \src{cmd/nodwyn/main.go} and its command dispatch. The mode files assemble options and hand interaction to a frontend. The schema command emits the RPC contract; the egress command starts the proxy used by contained servers. Platform-specific app files have build constraints: read those before assuming all implementations run in one binary.
 
 \sourcefile{cmd/nodwyn-egress/main.go}{Go}
+
+\sourcefile{cmd/nodwyn-kids/main.go}{Go}
 
 \sourcefile{cmd/nodwyn-schema/main.go}{Go}
 
@@ -225,6 +229,8 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 \sourcefile{internal/core/log_index.go}{Go}
 
 \sourcefile{internal/core/log_read.go}{Go}
+
+\sourcefile{internal/core/managed.go}{Go}
 
 \sourcefile{internal/core/mcp.go}{Go}
 
@@ -554,6 +560,12 @@ This package defines frontend events and prompt data. Compare events derived fro
 
 The subdirectories are independent entry routes to core. Plain implements line-oriented interaction; TUI maintains a terminal view; run supervises longer work; RPC owns daemon peers and methods; web bridges allowed methods to browser clients. Within RPC start with types, protocol, server and peer before feature handlers. Within TUI start with model, backend and events before individual widgets. Browser assets are outside this Go catalogue and require their own browser checks.
 
+\sourcefile{internal/frontend/kids/provider.go}{Go}
+
+\sourcefile{internal/frontend/kids/server.go}{Go}
+
+\sourcefile{internal/frontend/kids/store.go}{Go}
+
 \sourcefile{internal/frontend/plain/chat.go}{Go}
 
 \sourcefile{internal/frontend/plain/confirm.go}{Go}
@@ -680,6 +692,8 @@ The subdirectories are independent entry routes to core. Plain implements line-o
 
 \sourcefile{internal/frontend/web/licenses.go}{Go}
 
+\sourcefile{internal/frontend/web/managed.go}{Go}
+
 \sourcefile{internal/frontend/web/passkey.go}{Go}
 
 \sourcefile{internal/frontend/web/server.go}{Go}
@@ -767,6 +781,8 @@ Read main, changes, checks, base and runner in that order. This is the program b
 These are support implementations, not the Go test cases themselves. The fake model serves scripted replies; fake OAuth, Drive, MCP, judge and container services let integration tests exercise real boundaries without paid models or real credentials. The browser demo constructs a controllable application for UI checks. Read each helper with a test that calls it to understand who owns startup and cleanup.
 
 \sourcefile{test/browser/demo/main.go}{Go}
+
+\sourcefile{test/browser/kids-demo/main.go}{Go}
 
 \sourcefile{test/fakes/chat/chat.go}{Go}
 
