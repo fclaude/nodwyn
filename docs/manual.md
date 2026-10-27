@@ -306,6 +306,21 @@ the TUI, the console and a paired phone):
 | `/compact [what to keep]` | compact the conversation now, whatever its size: the model writes a handover note for your latest request, and your next message goes on from the note instead of the whole conversation. Words after it are what the note must keep (`/compact the failing test names`). The log keeps everything |
 | `/optimize [n \| ids] [focus]` | learn from this repository's past sessions and improve `.nodwyn/init.scm` ("Changing the loop" below) |
 
+**Sending while a turn runs.** A message sent while a turn runs is refused,
+and the TUI and the console keep your draft; line mode reads no line then.
+The console and the TUI have two ways to send it anyway. *Queue* (the
+console's **Queue** button, Ctrl+O in the TUI) holds the message and runs it
+as the next turn when the running one ends, after any queued before it; the
+conversation shows it as queued until it starts. *Steer* (**Steer**, Ctrl+S)
+stops the running turn, as Stop does, and sends the message next, ahead of
+the queued ones; a stopped turn keeps its plan, so the message can be a
+correction. Stop (**Stop**, Ctrl+C) discards the queue along with the turn. A
+model chosen while the turn ran is applied before a queued message runs, so
+the model you chose answers it. Nothing is queued while a file is being
+attached, a model switch is under way or a run drives the task, and an
+`:eval` is never queued. On the wire it is `session.send` with `mode` `queue`
+or `steer` ([protocol](protocol.md)).
+
 Flags go before the command (`nodwyn --show-thinking replay ID`); a command
 refuses the ones it does not read, and a command with flags of its own, such
 as `tui` or `run`, takes them after its name. `--plain` is an old flag that

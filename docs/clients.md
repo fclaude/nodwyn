@@ -69,6 +69,7 @@ it can see the thing but not change it.
 | Jump from a search match to bounded, read-only turn history (`log.context`) | yes; load earlier/later within that turn, or open the live task | deliberate gap: replays whole history | replays whole | `memory recall` reads an event and the turn’s card |
 | Open at the latest run; page back through collapsed earlier runs (ADR 49) | yes; earlier contents load on expansion | deliberate gap: replays the conversation whole | replays whole | `replay` reads whole |
 | Send a message, abort a turn | yes | yes; Ctrl+C aborts, and clears an unsent draft before it quits | yes | — |
+| Queue a message behind a running turn, or steer with it (stop the turn and send it next) | yes; Queue and Steer beside Send while a turn runs, the message shown as queued until it starts | yes; Ctrl+O queues the draft, Ctrl+S steers with it, shown as `queued>` until it starts | — (line mode reads no line while a turn runs) | — |
 | A turn another client or the schedule started | live | live | shown when line mode next reads a line, with its message | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |
 | Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` (recorded as `eval.req` and `eval.result`, as in the TUI) | `nodwyn eval`, `nodwyn repl` |
@@ -115,6 +116,7 @@ function, `Session.busyWith`, in `internal/core/session.go`):
 | Change | While a turn runs |
 |---|---|
 | Move to another model | queued, applied when the turn ends (ADR 40) |
+| Send a message | refused, as a plain send always is while a turn runs; a message sent as *queue* waits and runs when the turn ends, and one sent as *steer* stops the turn and runs next |
 | Move to another judge, or none | refused: "choose its judge when this turn ends" |
 | Attach a file | refused until the turn ends |
 | A task's limits set | applies from the next turn |
@@ -124,6 +126,13 @@ The model queues and the judge refuses on purpose, for now: the queue and
 its "will apply when the turn ends" state were built for the model (ADR 40)
 and no client shows one for the judge. Making the judge queue is a change in
 every client's picker, not in the core's guard.
+
+Queued messages are held by the session, first in first out; a steering
+message goes ahead of them. Stop discards them with the turn. A model chosen
+while the turn ran is applied first, so a queued message runs on it. An
+attachment or a model switch under way, no model chosen, and a task a run
+drives refuse a queued or steering message as they refuse a plain one, and
+an evaluation is never queued.
 
 ## The judge (ADR 46, ADR 47)
 

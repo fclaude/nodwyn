@@ -10325,6 +10325,9 @@
         "id": {
           "type": "string"
         },
+        "mode": {
+          "type": "string"
+        },
         "text": {
           "type": "string"
         }

@@ -48,6 +48,10 @@ type Session struct {
 	mu         sync.Mutex
 	busy       bool
 	turnCancel context.CancelFunc
+	// sends are the messages queued behind the running turn (Queue, Steer),
+	// the next one first. endTurn starts the first when the turn ends and
+	// Abort discards them.
+	sends []string
 	// attaching: an attachment is being added, perhaps waiting for an
 	// image's confirm (attach.go); no turn starts meanwhile.
 	attaching    bool
@@ -244,7 +248,56 @@ func (s *Session) send(text string, required bool) error {
 	if err := s.modelAvailable(); err != nil {
 		return err
 	}
-	return s.startTurn(func(ctx context.Context) error { return s.turn(ctx, text, required, !required) })
+	return s.startTurn(s.sendWork(text, required))
+}
+
+// sendWork is the work of a turn on a person's text, which send starts and
+// a queued message starts when the turn before it ends.
+func (s *Session) sendWork(text string, required bool) func(context.Context) error {
+	return func(ctx context.Context) error { return s.turn(ctx, text, required, !required) }
+}
+
+// Queue sends text once the running turn has ended, after any message
+// queued before it, and returns at once; on an idle session it is Send. It
+// is refused where Send is: with no model chosen, while an attachment or a
+// model switch holds the session, and once it is closed. A plain Send while a
+// turn runs is still refused, so queueing is a choice made per message.
+func (s *Session) Queue(text string) error { return s.sendWhenBusy(text, false) }
+
+// Steer stops the running turn, as Abort does, and sends text as the next
+// one, ahead of what is queued, which stays queued; on an idle session it is
+// Send. A turn that is stopped keeps its plan (ADR 35), so the text may be a
+// correction of it. A second steer before the first has run goes ahead of it.
+func (s *Session) Steer(text string) error { return s.sendWhenBusy(text, true) }
+
+// sendWhenBusy is Queue and Steer: the decision whether a turn is running is
+// taken under s.mu, with the one endTurn takes before it ends the session's
+// busy, so a message is never queued behind a turn that has already looked
+// for it.
+func (s *Session) sendWhenBusy(text string, steer bool) error {
+	if err := s.modelAvailable(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	if s.busyWith() == holdTurn {
+		if steer {
+			s.sends = append([]string{text}, s.sends...)
+		} else {
+			s.sends = append(s.sends, text)
+		}
+		cancel := s.turnCancel
+		s.mu.Unlock()
+		if steer {
+			cancel()
+		}
+		return nil
+	}
+	if err := s.admitLocked(); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.launchLocked(s.sendWork(text, false), nil)
+	return nil
 }
 
 // turn runs a model turn on text and, when it succeeded, prepares the
@@ -309,20 +362,35 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 
 func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.ScheduleRun) error {
 	s.mu.Lock()
+	if err := s.admitLocked(); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.launchLocked(work, run)
+	return nil
+}
+
+// admitLocked says why a turn cannot start now, in the words a person is
+// told, or nil when it can. s.mu is held.
+func (s *Session) admitLocked() error {
 	switch s.busyWith() {
 	case holdClosed:
-		s.mu.Unlock()
 		return errors.New("core: session is closed")
 	case holdTurn:
-		s.mu.Unlock()
 		return errors.New("core: a turn is already running")
 	case holdAttachment:
-		s.mu.Unlock()
 		return errors.New("core: an attachment is in progress; send when it is done")
 	case holdSwitch:
-		s.mu.Unlock()
 		return errors.New("core: the model is being switched; send when it is done")
 	}
+	return nil
+}
+
+// launchLocked starts work as the session's turn: it takes the budget and
+// marks the session busy, then runs the work in the background. s.mu is held
+// on entry and released before it returns. endTurn calls it with the session
+// still busy to run a queued message without a gap.
+func (s *Session) launchLocked(work func(context.Context) error, run *log.ScheduleRun) {
 	limits := s.limits()
 	if run != nil {
 		limits.Cost = scheduledCost(run.Cost)
@@ -359,8 +427,11 @@ func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.
 			_, _ = s.Record(log.KindTurnEnd, end)
 			s.flushOutput()
 			cancel()
-			s.endTurn()
-			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
+			// A queued message starts the next turn with the session still
+			// busy: it is idle only when nothing follows.
+			if !s.endTurn() {
+				s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
+			}
 		}()
 		if run != nil {
 			run.SpendBefore = s.lifetimeSpend()
@@ -379,7 +450,6 @@ func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.
 			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})
 		}
 	}()
-	return nil
 }
 
 // endTurn ends the turn: a model chosen while it ran is applied first, while
@@ -388,22 +458,36 @@ func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.
 // only while busy, and holds modelMu). The choice stays queued, as the state
 // reports it, until it has been applied or has failed to be: applyQueued
 // clears it together with the change it makes.
-func (s *Session) endTurn() {
+//
+// A message queued behind the turn (Queue, Steer) runs next, on the model
+// just applied, and busy is never cleared between the two, so no other send
+// slips in and no client sees the session idle. endTurn reports whether it
+// started such a turn; the caller then does not announce idle, since the next
+// turn's end will.
+func (s *Session) endTurn() (continued bool) {
 	s.modelMu.Lock()
 	defer s.modelMu.Unlock()
 	for {
 		s.mu.Lock()
 		queued := s.queued
-		if queued == nil {
+		if queued != nil {
+			s.mu.Unlock()
+			s.applyQueued(*queued)
+			continue
+		}
+		// What the turn was trusted with ends with it, the next one too.
+		s.turnTrust = false
+		s.turnActor = ""
+		if len(s.sends) == 0 {
 			s.busy = false
 			s.turnCancel = nil
-			s.turnTrust = false
-			s.turnActor = ""
 			s.mu.Unlock()
-			return
+			return false
 		}
-		s.mu.Unlock()
-		s.applyQueued(*queued)
+		text := s.sends[0]
+		s.sends = s.sends[1:]
+		s.launchLocked(s.sendWork(text, false), nil)
+		return true
 	}
 }
 
@@ -460,9 +544,11 @@ func (s *Session) Busy() bool {
 
 // Abort cancels the running turn, if any: the model request is dropped, a
 // running tool is killed, a pending confirm is answered "no". An attachment
-// waiting for its confirm is not attached.
+// waiting for its confirm is not attached. Messages queued behind the turn
+// are discarded: Stop stops everything the person had waiting.
 func (s *Session) Abort() {
 	s.mu.Lock()
+	s.sends = nil
 	cancel, attach := s.turnCancel, s.attachCancel
 	s.mu.Unlock()
 	if cancel != nil {

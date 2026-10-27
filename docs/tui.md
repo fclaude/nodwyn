@@ -138,10 +138,12 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 | Typing, Backspace, Esc | In the chooser: filter the stored sessions, edit and clear the filter |
 | Enter | Send the whole draft or submit the displayed prompt answer |
 | Alt+Enter / Ctrl+J | Insert a newline in the message composer |
+| Ctrl+O | While a turn runs: send the draft to run when the turn ends, after any message queued before it; the message shows as `queued>` under the conversation until it starts. With no turn running it sends, as Enter does |
+| Ctrl+S | While a turn runs: stop the turn, as Ctrl+C does, and send the draft as the next message, ahead of those queued. With no turn running it sends, as Enter does |
 | Up / Down | Move within the draft; the editor scrolls to follow the cursor |
 | PgUp / PgDn | Scroll conversation or the current approval diff |
 | Ctrl+End | Jump to the bottom |
-| Ctrl+C | Abort busy work or an attachment; with an unsent draft, clear it; otherwise quit (also after a disconnect) |
+| Ctrl+C | Abort busy work or an attachment, and drop the messages queued behind the turn; with an unsent draft, clear it; otherwise quit (also after a disconnect) |
 | Ctrl+Q | Quit immediately: detach, or end the tasks when this process serves the daemon |
 | Ctrl+R | Reconnect to the daemon and refresh history/prompts |
 | `:eval EXPR` | Evaluate user-origin Scheme through the usual guard |
@@ -180,7 +182,11 @@ Scheme comments on their own lines. CRLF/CR line endings in bracketed paste
 become LF; the editor expands tabs to four spaces and removes control characters.
 The underlying editor supports up to 10,000 logical lines.
 
-A busy session retains an attempted submission as a draft. Prompts use their
+A busy session retains an attempted submission as a draft: Enter while a turn
+runs sends nothing, and the footer names Ctrl+O and Ctrl+S, which queue the
+draft or steer with it. A message the daemon will not hold (a model switch is
+under way, say) comes back to the composer with the reason in the status line.
+A `:eval` is never queued. Prompts use their
 own single-line editor; closing a prompt returns to the same draft and cursor.
 Unsent drafts also survive daemon reconnects, but are not saved across exits;
 a first Ctrl+C clears one rather than quitting. The footer says what stops a
@@ -399,6 +405,7 @@ amended 2026-10-17). Line mode remains the default.
 | Reconnect restores history and pending prompts without resending | `TestRemoteReconnectRecoversPendingPromptAndHistory` |
 | Worktree row, `--worktree`, branch in the title and list | `TestChooserOpensAWorktreeThroughTheDaemon`, `TestChooserStillOpensInTheFolder`, `TestWorktreeFlagSkipsTheChooser` |
 | `:model`, a switch the next turn asks, a choice queued behind a turn | `TestModelChoiceThroughTheDaemon`, `TestModelChoiceWhileBusyIsQueued` |
+| Ctrl+O queues the draft and Ctrl+S steers with it while a turn runs; Enter keeps it; a refused message comes back | `TestQueueAndSteerKeysWhileBusy`, `TestRefusedQueueGivesTheDraftBack` |
 | `:attach` of text and of an image whose confirm is answered while it waits; Ctrl+C cancels | `TestAttachThroughTheDaemon`, `TestCtrlCCancelsAnAttachment`, `TestAttachPathAndRefusals` |
 | `:judge`, a switch, none, and a judge not configured | `TestJudgeChoiceThroughTheDaemon` |
 

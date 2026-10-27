@@ -44,6 +44,7 @@ export class TaskView {
     this.olderLoading = false;
     this.prompts = new Map(); // live prompt events by ID, in arrival order
     this.resolved = new Set();
+    this.held = []; // messages sent to wait behind the running response, shown until their user.msg
     this.info = null;
     this.totalSnapshot = null;
     this.infoVersion = 0; // only the newest session.info read may redraw this task
@@ -144,6 +145,8 @@ export class TaskView {
     this.olderLoading = false;
     this.prompts = new Map();
     this.resolved = new Set();
+    this.held = [];
+    this.queuing = false;
     this.info = null;
     this.totalSnapshot = null;
     this.infoVersion++;
@@ -483,6 +486,8 @@ export class TaskView {
       this.subscribed = false;
       this.busy = false;
       this.prompts.clear();
+      this.held = [];
+      this.drawHeld();
       this.scheduleTotals();
       this.refreshAll();
       if (this.root.isConnected) toast("This task was closed. Its conversation is kept.");
@@ -574,6 +579,9 @@ export class TaskView {
         const state = p.State ?? p.state;
         if (state === "idle") {
           this.busy = false;
+          // A Stop discards what was still waiting behind the response.
+          this.held = [];
+          this.drawHeld();
           this.transcript.end();
           for (const id of this.prompts.keys()) this.resolved.add(id);
           this.prompts.clear();
@@ -590,6 +598,7 @@ export class TaskView {
       case "user.msg":
       case "eval.req":
         if (!this.loading) this.busy = true;
+        if (event.kind === "user.msg") this.releaseHeld(p.text);
         this.transcript.render(event);
         break;
       case "policy.result":
@@ -692,6 +701,13 @@ export class TaskView {
       },
     });
     const send = h("button", { type: "submit", class: "send-round", "aria-label": "Send" }, icon("up", 16, 2));
+    // While a response runs Send is off; these two send the reply anyway, to
+    // wait for the response's end or to stop it and go next.
+    const queue = h("button", { type: "button", id: "reply-queue", class: "btn small", title: "Send this when the response ends", onclick: () => this.sendLater("queue") }, "Queue");
+    const steer = h("button", { type: "button", id: "reply-steer", class: "btn small", title: "Stop the response and send this next", onclick: () => this.sendLater("steer") }, "Steer");
+    const later = h("div", { class: "reply-later", hidden: true }, queue, steer);
+    // What was queued or steered and has not started yet.
+    const held = h("div", { class: "queued-list", id: "queued-list", hidden: true, "aria-label": "Queued messages" });
     // Files chosen but not yet sent survive a reload of the same task.
     const kept = this.files?.task === this.item?.id ? this.files.files : [];
     this.files = new Attachments(() => this.controls());
@@ -721,16 +737,17 @@ export class TaskView {
       h("label", { class: "sr-only", for: "reply" }, "Reply to nodwyn"),
       h("div", { class: "reply-body" }, this.files.list, reply, opts),
       this.files.button(),
+      later,
       send,
     );
-    const main = h("div", { class: "task-main" }, transcript, form);
+    const main = h("div", { class: "task-main" }, transcript, held, form);
     const inspector = h("div", { class: "inspector-view", id: "task-inspector", hidden: true });
     main.append(inspector);
     const side = h("aside", { class: "task-aside", "aria-label": "Task details" });
     const head = h("header", { class: "task-head" });
     this.root.replaceChildren(head, h("div", { class: "task-body" }, main, side));
     this.picker = picker;
-    this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk, helpers };
+    this.el = { head, transcript, reply, send, queue, steer, later, held, form, side, inspector, main, dontAsk, helpers };
     this.transcript = new Transcript(transcript);
   }
   controls() {
@@ -766,9 +783,15 @@ export class TaskView {
       : prompt
         ? "Answer the request above first."
         : this.busy
-          ? "Working… stop it to steer."
+          ? "Working… queue a message for after it, or steer to stop it and send this next."
           : "Steer it, or answer in words…";
     this.el.send.disabled = !canSend || this.busy || prompt || !this.el.reply.value.trim();
+    // Queue and Steer are for a response that runs, and only where a plain
+    // send would be refused for that reason alone: a run's turns are not
+    // interleaved with the person's.
+    const later = this.busy && this.item?.run?.status !== "running";
+    this.el.later.hidden = !later;
+    for (const b of [this.el.queue, this.el.steer]) b.disabled = !later || !canSend || this.queuing || prompt || !this.el.reply.value.trim();
     for (const b of this.el.form.querySelectorAll("[aria-label='Attach a file']")) b.disabled = !canSend || !open || this.busy || prompt;
     for (const control of this.el.transcript.querySelectorAll(".ask-card button, .ask-card input")) control.disabled = this.acting || !this.conn.live;
     // A run that answers its own confirms has no questions to stop asking,
@@ -997,6 +1020,49 @@ export class TaskView {
         if (!this.limitEdit) this.el?.side.querySelector("[data-limit-focus=add]")?.focus({ preventScroll: true });
       }
     }
+  }
+  // sendLater sends the reply to a task that is working: "queue" runs it when
+  // the response ends, "steer" stops the response and runs it next. The task
+  // is busy already, so unlike send() it leaves acting and busy alone, and Stop
+  // stays usable. The message is listed before the call, since a steer's
+  // user.msg can arrive before the call returns; a failure unlists it and
+  // keeps the draft.
+  async sendLater(mode) {
+    if (this.el[mode].disabled) return;
+    const item = this.item,
+      text = this.el.reply.value,
+      version = this.version;
+    this.queuing = true;
+    this.held.push(text);
+    this.drawHeld();
+    this.controls();
+    try {
+      await this.conn.call("session.send", { id: item.id, text, mode });
+      if (drafts.get(item.id) === text) drafts.delete(item.id);
+      if (version === this.version && this.el.reply.value === text) {
+        this.el.reply.value = "";
+        this.el.reply.style.height = "auto";
+      }
+    } catch (error) {
+      if (version === this.version) this.releaseHeld(text);
+      toastError(error.message);
+    } finally {
+      if (version === this.version) {
+        this.queuing = false;
+        this.controls();
+      }
+    }
+  }
+  // releaseHeld drops one listed message: it has started, or was refused.
+  releaseHeld(text) {
+    const at = this.held.indexOf(text);
+    if (at >= 0) this.held.splice(at, 1);
+    this.drawHeld();
+  }
+  drawHeld() {
+    if (!this.el) return;
+    this.el.held.replaceChildren(...this.held.map((text) => h("div", { class: "queued-item" }, h("span", { class: "who" }, "Queued"), h("span", { class: "you-text" }, text))));
+    this.el.held.hidden = !this.held.length;
   }
   async send() {
     if (this.el.send.disabled) return;

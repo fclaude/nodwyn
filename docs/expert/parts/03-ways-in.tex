@@ -84,7 +84,9 @@ it from its next turn; \code{:attach PATH} adds a file. In a git
 repository's top folder the chooser offers a new session in a worktree of its
 own first, and \code{-{}-worktree} opens one directly. \key{Ctrl+C} aborts busy
 work or an attachment, \key{Ctrl+Q} detaches, \key{Ctrl+R} reconnects, and
-\code{:close} closes the task. The TUI is a client of the daemon, as the
+\code{:close} closes the task. While a turn runs, \key{Enter} keeps your draft;
+\key{Ctrl+O} queues it to run when the turn ends and \key{Ctrl+S} stops the
+turn and sends it next. The TUI is a client of the daemon, as the
 console is: it uses the one running, or starts one in its own process (then
 quitting ends its tasks), and asks for a locked keychain's passphrase before
 its full screen opens. A task open in it stays open to the console and runs

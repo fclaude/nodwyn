@@ -206,3 +206,28 @@ paths and links to that root, applies its denylist, checks file/hash membership
 and object integrity, and bounds comparison inputs. Worktree versions are read
 from their parent repository's store. Comparison is available to paired readers
 and does not change policy, files or session state.
+
+## Amendment 2026-10-27: a message can wait behind a turn, or steer it
+
+"Stop it to steer" was the only way to correct a turn that was running: stop
+it, wait for it to end, type again. A message can now be sent while a turn runs
+in two ways, per message. *Queue* holds it, and the session runs it as the next
+turn when the running one ends, after any queued before it. *Steer* stops the
+running turn, as Stop does, and sends it next, ahead of what is queued; the
+turn it stops keeps its plan, as the amendment above says, so the message can
+be a correction. A plain send while a turn runs is still refused, so the
+choice is the person's each time, never a default that changes what Enter
+does. The wire has one optional `mode` on `session.send`, `queue` or `steer`;
+the console has Queue and Steer beside Send, and the TUI has Ctrl+O and
+Ctrl+S. Line mode reads no line while a turn runs and is unchanged.
+
+The queue follows ADR 40's queued model choice: the session holds it, a
+model chosen while the turn ran is applied first, so a queued message runs on
+the model that was chosen, and the session stays busy from one turn to the
+next, so no other send slips in and no client sees it idle between them. Stop
+discards the queue with the turn, so it stops everything the person had
+waiting; a steer cancels the turn without emptying it. A queue is refused where
+a send is: no model chosen, an attachment or a model switch under way, a run
+driving the task; and an evaluation is never queued. A client shows what it
+queued itself until the message's `user.msg` arrives: there is no event for
+the queue. The queue is in memory, so a daemon that stops loses what waited.

@@ -166,8 +166,8 @@ of it is refused to a paired device, whose `session.open` without a model
 opens on `[control]`: where a conversation's content goes stays with this
 computer (ADR 30). Resuming a session restores the model and effort its log
 last named; when config.toml no longer offers the model, or the effort, the
-session opens with `unavailable` and `session.send` is refused until a model
-is chosen with `session.model.set`.
+session opens with `unavailable` and `session.send` is refused, in every mode,
+until a model is chosen with `session.model.set`.
 
 A task's judge is a choice as its model is (ADR 47). Details contain
 `judge`: `server` (the `[servers.NAME]` it is on, empty for none),
@@ -310,8 +310,8 @@ the daemon or other clients.
 
 | Method | Named parameters | Result |
 |---|---|---|
-| `session.send` | `{"id":"SESSION_ID","text":"your message"}` | `{}` when the turn is accepted |
-| `session.abort` | `{"id":"SESSION_ID"}` | `{}` when cancellation is requested |
+| `session.send` | `{"id":"SESSION_ID","text":"your message"}`, and optionally `"mode":"queue"` or `"mode":"steer"` | `{}` when the turn is accepted. Without `mode` a send while a turn runs is refused (`-32000`). `queue` holds the text and runs it as its own turn when the running turn has ended, after any queued before it; `steer` stops the running turn, as `session.abort` does, and runs the text next, ahead of those queued. On an idle session both are a plain send. Any other `mode` is `-32602`. Both are refused where a plain send is: no model chosen, an attachment waiting, a model switch under way, a run active |
+| `session.abort` | `{"id":"SESSION_ID"}` | `{}` when cancellation is requested. Messages queued behind the turn are discarded |
 | `session.subscribe` | `{"id":"SESSION_ID","after":0,"limit":100}` | First catch-up page, `busy`, and `pending` |
 | `session.unsubscribe` | `{"id":"SESSION_ID"}` | `{}` after stopping new delivery |
 | `log.runs` | `{"id":"SESSION_ID","before":0,"through":0,"limit":10}` | Run previews, newest first, over a fixed durable prefix |
@@ -915,7 +915,7 @@ that answers confirms itself (a run's `auto_approve` or `judge`) or that
 nobody answers (`unattended`) declines it, and so
 does `session.abort`, or ten minutes without an answer; `session.attach`
 then fails and the log has a `note`. While it waits, `session.send` is
-refused. The receipt of an image is its `attach` record: `type` `image`,
+refused, as is one with `mode`. The receipt of an image is its `attach` record: `type` `image`,
 `media_type`, `bytes`, `sha256`, `width`, `height`, `tokens` (the window's
 estimate), `destination` (the only host its requests go to) and
 `approved_by`; never the pixels. A request that did not carry an image
@@ -1144,7 +1144,8 @@ its prompts and stops it (`session.abort`). A run whose requests nobody
 answers by hand
 (`auto_approve`, `judge` or `unattended`) cannot be started or resumed by an
 actor relayed `via` a paired device. While a
-run is active, session `busy` includes the between-turn wait. `session.send`,
+run is active, session `busy` includes the between-turn wait. `session.send`
+(with any `mode`),
 `session.eval`, `session.friction`, `session.policy.read`/`write`,
 `session.notes.write`, `session.restore` and `session.attach` are rejected
 until it stops. New `run.state`,

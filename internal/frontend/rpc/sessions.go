@@ -834,17 +834,27 @@ func (s *server) eval(req request, client *peer) (any, *rpcError) {
 
 func (s *server) send(req request, _ *peer) (any, *rpcError) {
 	var p sendParams
-	if err := params(req.Params, &p, "id", "text"); err != nil {
+	if err := params(req.Params, &p, "id", "text", "mode"); err != nil {
 		return nil, err
 	}
 	if p.ID == "" || p.Text == "" {
 		return nil, failure(-32602, "id and nonempty text are required")
 	}
+	if p.Mode != "" && p.Mode != "queue" && p.Mode != "steer" {
+		return nil, failure(-32602, "mode must be \"queue\" or \"steer\" when it is given")
+	}
 	owned, rerr := s.idle(p.ID, "sending a message")
 	if rerr != nil {
 		return nil, rerr
 	}
-	if err := owned.session.Send(p.Text); err != nil {
+	send := owned.session.Send
+	switch p.Mode {
+	case "queue":
+		send = owned.session.Queue
+	case "steer":
+		send = owned.session.Steer
+	}
+	if err := send(p.Text); err != nil {
 		return nil, failure(-32000, err.Error())
 	}
 	return struct{}{}, nil

@@ -127,11 +127,18 @@ func TestRunDetachCheckpointAndResume(t *testing.T) {
 	}
 	// Between-turn supervision must still reserve ownership of the session.
 	for method, params := range map[string]any{
-		"session.send": sendParams{started.ID, "intrude"}, "session.eval": evalParams{started.ID, "(+ 1 2)"},
+		"session.send": sendParams{ID: started.ID, Text: "intrude"}, "session.eval": evalParams{started.ID, "(+ 1 2)"},
 		"session.friction": idParams{started.ID}, "session.policy.read": policyReadParams{started.ID, "bindings"},
 	} {
 		if r := c.call(method, params); r.Error == nil {
 			t.Fatalf("%s entered active run", method)
+		}
+	}
+	// Queueing and steering are refused while a run drives the session, as a
+	// plain send is: the run's turns are not the person's to interleave.
+	for _, mode := range []string{"queue", "steer"} {
+		if r := c.call("session.send", sendParams{ID: started.ID, Text: "intrude", Mode: mode}); r.Error == nil {
+			t.Fatalf("session.send with mode %s entered active run", mode)
 		}
 	}
 	c.ok("session.abort", idParams{started.ID})

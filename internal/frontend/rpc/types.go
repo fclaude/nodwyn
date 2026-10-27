@@ -83,9 +83,14 @@ type archiveParams struct {
 	ID       string `json:"id"`
 	Archived bool   `json:"archived"`
 }
+
+// sendParams: Mode is empty for a plain send, which a running turn refuses,
+// "queue" to send the text when the running turn has ended, or "steer" to
+// stop the running turn and send the text next.
 type sendParams struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
+	Mode string `json:"mode,omitempty"`
 }
 type subscribeParams struct {
 	LatestRun bool   `json:"latest_run,omitempty"`

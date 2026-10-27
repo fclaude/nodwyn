@@ -49,6 +49,10 @@ type backend interface {
 	// An image's confirm arrives as a prompt while it waits.
 	AttachFile(context.Context, string, string) (log.Attach, error)
 	Send(context.Context, string, string, bool) error
+	// SendWhileBusy sends a message to a task whose turn is running: mode
+	// "queue" runs it when the turn ends, "steer" stops the turn and runs it
+	// next. A plain Send is refused while a turn runs.
+	SendWhileBusy(context.Context, string, string, string) error
 	Answer(context.Context, string, string, string) error
 	Grant(context.Context, string, string, string) error
 	Bind(context.Context, string, string) error

@@ -183,6 +183,112 @@ func TestReconnectCombinesFixedLogPrefixAndLiveEvents(t *testing.T) {
 		t.Fatal("closed log missing final record", closed)
 	}
 }
+
+// logged is what the session's log says of its turns: the text of each
+// user.msg and how each turn ended, in order.
+func logged(t *testing.T, c *client, id string) (texts, outcomes []string) {
+	t.Helper()
+	for _, ev := range page(t, c, id, 0, 0, 1000).Events {
+		switch ev.Kind {
+		case log.KindUserMsg:
+			var m log.UserMsg
+			if err := ev.Decode(&m); err != nil {
+				t.Fatal(err)
+			}
+			texts = append(texts, m.Text)
+		case log.KindTurnEnd:
+			var end log.TurnEnd
+			if err := ev.Decode(&end); err != nil {
+				t.Fatal(err)
+			}
+			outcomes = append(outcomes, end.Outcome)
+		}
+	}
+	return texts, outcomes
+}
+
+// waitLogged waits until the log holds as many turn ends as want.
+func waitLogged(t *testing.T, c *client, id string, want int) (texts, outcomes []string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if texts, outcomes = logged(t, c, id); len(outcomes) >= want {
+			return texts, outcomes
+		}
+	}
+	t.Fatalf("the log held %d turn ends after 5s, want %d", len(outcomes), want)
+	return nil, nil
+}
+
+// session.send takes a mode: "queue" runs the text when the running turn has
+// ended, "steer" stops the turn and runs it next, and a plain send while a
+// turn runs is still refused.
+func TestSendQueueAndSteer(t *testing.T) {
+	t.Run("queue", func(t *testing.T) {
+		o := options(t)
+		model := &heldProvider{started: make(chan struct{}), release: make(chan struct{})}
+		o.Provider = model
+		path, _ := start(t, o)
+		c := connect(t, path)
+		c.hello()
+		id := opened(t, c, t.TempDir())
+		c.ok("session.send", map[string]any{"id": id, "text": "a"})
+		waitStarted(t, model)
+		if got := c.ok("session.send", map[string]any{"id": id, "text": "b", "mode": "queue"}); string(got) != "{}" {
+			t.Fatalf("queue replied %s", got)
+		}
+		c.ok("session.send", map[string]any{"id": id, "text": "c", "mode": "queue"})
+		if texts, _ := logged(t, c, id); len(texts) != 1 {
+			t.Fatalf("a queued message ran while the turn did: %v", texts)
+		}
+		for name, p := range map[string]map[string]any{
+			"a plain send":      {"id": id, "text": "plain"},
+			"an unknown mode":   {"id": id, "text": "x", "mode": "later"},
+			"an empty text":     {"id": id, "text": "", "mode": "queue"},
+			"an unknown id":     {"id": "nope", "text": "x", "mode": "queue"},
+			"a null mode":       {"id": id, "text": "x", "mode": nil},
+			"a number for mode": {"id": id, "text": "x", "mode": 1},
+		} {
+			if r := c.call("session.send", p); r.Error == nil {
+				t.Fatalf("%s was accepted", name)
+			}
+		}
+		if r := c.call("session.send", map[string]any{"id": id, "text": "plain"}); r.Error.Code != -32000 {
+			t.Fatalf("a plain send while busy: %+v", r.Error)
+		}
+		if r := c.call("session.send", map[string]any{"id": id, "text": "x", "mode": "later"}); r.Error.Code != -32602 {
+			t.Fatalf("an unknown mode: %+v", r.Error)
+		}
+		close(model.release)
+		texts, outcomes := waitLogged(t, c, id, 3)
+		if strings.Join(texts, ",") != "a,b,c" || strings.Join(outcomes, ",") != "completed,completed,completed" {
+			t.Fatalf("user messages %v, outcomes %v", texts, outcomes)
+		}
+	})
+	t.Run("steer", func(t *testing.T) {
+		o := options(t)
+		model := &heldProvider{started: make(chan struct{}), release: make(chan struct{})}
+		o.Provider = model
+		path, _ := start(t, o)
+		c := connect(t, path)
+		c.hello()
+		id := opened(t, c, t.TempDir())
+		c.ok("session.send", map[string]any{"id": id, "text": "first"})
+		waitStarted(t, model)
+		c.ok("session.send", map[string]any{"id": id, "text": "later", "mode": "queue"})
+		c.ok("session.send", map[string]any{"id": id, "text": "now", "mode": "steer"})
+		// The first turn is stopped while its reply is still held.
+		_, outcomes := waitLogged(t, c, id, 1)
+		if outcomes[0] != "canceled" {
+			t.Fatalf("the first turn ended %q, want canceled", outcomes[0])
+		}
+		close(model.release)
+		texts, outcomes := waitLogged(t, c, id, 3)
+		if strings.Join(texts, ",") != "first,now,later" || strings.Join(outcomes, ",") != "canceled,completed,completed" {
+			t.Fatalf("user messages %v, outcomes %v", texts, outcomes)
+		}
+	})
+}
+
 func hasKind(events []sessionEvent, kind string) bool {
 	for _, ev := range events {
 		if ev.Kind == kind {

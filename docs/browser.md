@@ -14,6 +14,15 @@ once it is saved, and one **⋯** menu for the rarer ones: **Search**,
 **Schedule…**, **Close** (an open task), **Archive** or **Unarchive** and
 **Delete…** (a saved one).
 
+While a task works, **Send** is off and the reply box offers **Queue** and
+**Steer** beside it (the box says so). **Queue** sends the message to run
+when the response ends, after any queued before it; **Steer** stops the
+response, as **Stop** does, and sends the message next, ahead of the queued
+ones. What was sent shows above the box, dashed, as queued until the
+message starts, and **Stop** discards what still waits. Both are
+`session.send` with `mode` `queue` or `steer`, are off for a task a run drives, and
+need a message in the box; Enter still sends nothing while the task works.
+
 ## The monitoring summary
 
 The summary keeps total task spend, current turn

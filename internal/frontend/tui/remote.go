@@ -68,6 +68,9 @@ func (r *remote) Send(ctx context.Context, id, text string, eval bool) error {
 	}
 	return r.client.Call(ctx, method, map[string]any{"id": id, key: text}, nil)
 }
+func (r *remote) SendWhileBusy(ctx context.Context, id, text, mode string) error {
+	return r.client.Call(ctx, "session.send", map[string]any{"id": id, "text": text, "mode": mode}, nil)
+}
 func (r *remote) Answer(ctx context.Context, id, prompt, reply string) error {
 	return r.client.Call(ctx, "session.answer", map[string]any{"id": id, "prompt_id": prompt, "reply": reply}, nil)
 }

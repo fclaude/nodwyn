@@ -96,6 +96,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 		var p log.UserMsg
 		p, err = decode[log.UserMsg](e.Payload)
 		m.append("\nyou> " + p.Text)
+		m.dequeue(p.Text)
 		m.busy = true
 	case string(log.KindLLMResp):
 		m.endToolInterval()
@@ -328,6 +329,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if p.State == "idle" {
 			m.endToolInterval()
 			m.busy = false
+			m.queued = nil
 			if m.prompt != nil {
 				m.clearPrompt(m.prompt.id)
 			}

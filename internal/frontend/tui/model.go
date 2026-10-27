@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -58,6 +59,11 @@ type model struct {
 	// attaching is while a file is being added: an image waits for its
 	// confirm, so the keyboard stays free to answer it.
 	attaching bool
+	// queued are the messages sent with Ctrl+O or Ctrl+S while a turn runs,
+	// which the daemon holds for after it: shown under the transcript until
+	// their user.msg arrives, and dropped when the task goes idle, since a
+	// Stop discards what it still holds.
+	queued []string
 	// owned is set when this process serves the daemon: quitting ends the
 	// tasks it hosts instead of leaving them running there.
 	owned bool
@@ -82,6 +88,9 @@ type nextResult struct {
 type actionResult struct {
 	prompt, kind string
 	err          error
+	// text is the message a queue or steer action carried, which a failure
+	// gives back to the composer.
+	text string
 	// done is what the status line says when it worked, for an action no
 	// log record reports (a folder's setting, not the session's).
 	done string
@@ -162,6 +171,7 @@ func (m *model) action(kind, prompt string, work func(context.Context) error) te
 }
 func (m *model) restore(s snapshot) {
 	m.id, m.repo, m.branch, m.busy, m.active = s.ID, s.Repo, s.Branch, s.Busy, true
+	m.queued = nil
 	m.project = s.Project
 	m.loading, m.disconnected = false, false
 	m.lastSeq = 0
@@ -323,6 +333,14 @@ func (m *model) actionFinished(msg actionResult) {
 		if msg.kind == "send" || msg.kind == "friction" {
 			m.busy = false
 		}
+		// A message the daemon refused to hold is not queued: it goes back to
+		// the composer unless a new draft has been started meanwhile.
+		if msg.kind == "queue" || msg.kind == "steer" {
+			m.dequeue(msg.text)
+			if m.composer.Value() == "" {
+				m.composer.SetValue(msg.text)
+			}
+		}
 		m.status = "Request failed: " + safe(msg.err.Error()) + ". Inspect state before retrying."
 	} else {
 		m.status = msg.done
@@ -354,6 +372,14 @@ func (m *model) keyPressed(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if key == "enter" {
 		return m.submit()
+	}
+	// Unbound in the composer, and not a newline: they send the draft behind
+	// the running turn, or stop it and send the draft next.
+	if key == "ctrl+o" {
+		return m.submitWith("queue")
+	}
+	if key == "ctrl+s" {
+		return m.submitWith("steer")
 	}
 	return m.updateEditor(msg)
 }
@@ -533,7 +559,12 @@ func (m *model) inspectorKey(key string) tea.Cmd {
 	return nil
 }
 
-func (m *model) submit() tea.Cmd {
+// submit sends the draft, as Enter does.
+func (m *model) submit() tea.Cmd { return m.submitWith("") }
+
+// submitWith sends the draft. mode is "" for Enter, "queue" or "steer" for
+// the keys that send it while a turn runs; when none runs they are Enter.
+func (m *model) submitWith(mode string) tea.Cmd {
 	if m.prompt != nil {
 		return m.reply(m.promptInput.Value())
 	}
@@ -581,8 +612,8 @@ func (m *model) submit() tea.Cmd {
 		m.status = "Unknown command; :help lists this slice's commands."
 		return nil
 	}
-	if m.busy {
-		m.status = "This task is busy. Ctrl+C aborts; your draft is kept."
+	if m.busy && mode == "" {
+		m.status = "This task is busy. Ctrl+C aborts, Ctrl+O queues the draft, Ctrl+S steers with it; your draft is kept."
 		return nil
 	}
 	if m.attaching {
@@ -594,10 +625,34 @@ func (m *model) submit() tea.Cmd {
 	if eval {
 		source = strings.TrimPrefix(text, ":eval ")
 	}
+	b, id := m.backend, m.id
+	if m.busy {
+		// An evaluation shares the turn's slot and is never queued.
+		if eval {
+			m.status = "An evaluation runs when the task is idle; your draft is kept."
+			return nil
+		}
+		m.composer.Reset()
+		m.queued = append(m.queued, source)
+		m.refresh(true)
+		do := m.action(mode, "", func(ctx context.Context) error { return b.SendWhileBusy(ctx, id, source, mode) })
+		return func() tea.Msg {
+			r := do().(actionResult)
+			r.text = source
+			return r
+		}
+	}
 	m.composer.Reset()
 	m.busy = true
-	b, id := m.backend, m.id
 	return m.action("send", "", func(ctx context.Context) error { return b.Send(ctx, id, source, eval) })
+}
+
+// dequeue drops the first queued message with this text: its user.msg has
+// arrived, or the daemon refused it.
+func (m *model) dequeue(text string) {
+	if i := slices.Index(m.queued, text); i >= 0 {
+		m.queued = slices.Delete(m.queued, i, i+1)
+	}
 }
 
 // closeSession closes the task in the daemon and quits, as the console's
@@ -901,7 +956,7 @@ func (m *model) helpLine() string {
 	case m.prompt != nil || m.inspector != nil:
 		return "PgUp/PgDn scroll · Ctrl+C abort/quit · Ctrl+R reconnect · Ctrl+Q " + leave
 	case m.busy:
-		return "Ctrl+C aborts the turn · Enter keeps your draft · Alt+Enter/Ctrl+J newline · Ctrl+Q " + leave
+		return "Ctrl+C aborts the turn · Ctrl+O queues · Ctrl+S steers · Enter keeps the draft · Alt+Enter/Ctrl+J newline · Ctrl+Q " + leave
 	case m.attaching:
 		return "Ctrl+C cancels the attachment · Alt+Enter/Ctrl+J newline · Ctrl+Q " + leave
 	}
@@ -927,6 +982,9 @@ func (m *model) refresh(bottom bool) {
 	}
 	if m.liveText != "" {
 		content += "\nnodwyn> " + safe(m.liveText)
+	}
+	for _, text := range m.queued {
+		content += "\nqueued> " + safe(text)
 	}
 	if m.inspector != nil {
 		content = m.inspector.content

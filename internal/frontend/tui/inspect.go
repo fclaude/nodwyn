@@ -296,6 +296,8 @@ const helpText = `Commands
 Inspectors are fixed snapshots. r refreshes; Esc returns to conversation.
 Pending approvals always take priority over an inspector.
 Enter sends a message. Alt+Enter or Ctrl+J inserts a newline.
+While a turn runs, Enter keeps your draft; Ctrl+O sends it to run when the
+turn ends, and Ctrl+S stops the turn and sends it next.
 Bracketed paste preserves line breaks and never sends.
 PgUp/PgDn scroll; Ctrl+End jumps to the bottom.
 Ctrl+C aborts busy work, or quits when idle.

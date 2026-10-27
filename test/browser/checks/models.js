@@ -670,6 +670,51 @@ check(async () => {
   step("a model told to cache its prompt asks for it on every request, and is read back from the cache");
   step("a choice made while a response ran waited for it: the provider saw the old effort, then the new");
 
+  // ---------- a message queued or steered while a response is held ----------
+  // Send is off while a response runs. Queue sends the reply to wait for the
+  // response's end, and Steer stops the response and sends it next; each is
+  // one session.send with its mode, and the text shows as queued until its
+  // own user.msg arrives.
+  const userTexts = () => page.$$eval(".transcript .turn.user .you-text", (els) => els.map((e) => e.textContent));
+  const queuedTexts = () => page.$$eval("#queued-list .queued-item .you-text", (els) => els.map((e) => e.textContent));
+  const waiting = async () => (await (await fetch(`${chatBase}/_fake/waiting`)).json());
+  assert.strictEqual(await page.isVisible("#reply-queue"), false, "Queue shows while the task is idle");
+  await fetch(`${chatBase}/_fake/hold`, { method: "POST" });
+  await page.fill("#reply", "Hold on");
+  await page.press("#reply", "Enter");
+  await until("the request to be held", async () => (await waiting()) === 1);
+  await page.waitForSelector("#reply-queue", { state: "visible" });
+  assert.strictEqual(await page.isDisabled("#reply-queue"), true, "Queue is on with nothing to send");
+  assert.strictEqual(await page.isDisabled("#reply-steer"), true, "Steer is on with nothing to send");
+  await page.fill("#reply", "next");
+  assert.strictEqual(await page.isDisabled("button[aria-label='Send']"), true, "Send is on while a response runs");
+  assert.strictEqual(await page.isDisabled("#reply-queue"), false, "Queue is off with a message to send");
+  assert.strictEqual(await page.isDisabled("#reply-steer"), false, "Steer is off with a message to send");
+  assert.match(await page.getAttribute("#reply", "placeholder"), /queue/i, "the reply box does not say a message can be queued");
+  const calls = sent.of("session.send").length;
+  await page.click("#reply-queue");
+  await until("the queue call", async () => sent.of("session.send").length === calls + 1);
+  assert.deepStrictEqual(sent.of("session.send").at(-1), { id, text: "next", mode: "queue" });
+  await until("the reply box to empty", async () => (await page.inputValue("#reply")) === "");
+  assert.deepStrictEqual(await queuedTexts(), ["next"], "the queued message is not listed");
+  assert.ok(!(await userTexts()).includes("next"), "a queued message ran while the response did");
+  assert.strictEqual(await page.isDisabled("#reply-steer"), true, "Steer is on after its message was sent");
+  await page.screenshot({ path: `${out}/models-conversation-queued-message.png` });
+  await page.fill("#reply", "then");
+  await page.click("#reply-steer");
+  await until("the steer call", async () => sent.of("session.send").length === calls + 2);
+  assert.deepStrictEqual(sent.of("session.send").at(-1), { id, text: "then", mode: "steer" });
+  // The response held is stopped and the steering message is the next turn,
+  // ahead of the one queued before it.
+  await until("the steering message to start", async () => (await userTexts()).includes("then"));
+  assert.deepStrictEqual(await queuedTexts(), ["next"], "the message that started is still listed, or the one that waits is not");
+  await fetch(`${chatBase}/_fake/release`, { method: "POST" });
+  await until("both messages to have been answered", async () => (await userTexts()).includes("next") && (await page.$eval(".task-head .pill", (p) => p.textContent)) === "Idle");
+  assert.deepStrictEqual((await userTexts()).slice(-3), ["Hold on", "then", "next"], "the messages did not run in the order steer, queue");
+  assert.deepStrictEqual(await queuedTexts(), [], "a message that ran is still listed as queued");
+  assert.strictEqual(await page.isVisible("#reply-queue"), false, "Queue shows while the task is idle");
+  step("a message queued while a response runs waits for it, and a steering one stops it and goes first");
+
   // Reloaded, the conversation shows what it has, from the daemon and its log.
   await page.reload();
   await page.waitForSelector(".task[data-loaded]", { timeout: 20000 });

@@ -665,6 +665,12 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
   font-size: 15px; line-height: 1.5; color: var(--ink); padding: 6px 0; max-height: 240px;
 }
 .reply .send-round { width: 36px; height: 36px; background: var(--invert-bg); color: var(--invert-fg); }
+/* Queue and Steer, beside Send while a response runs; what they sent shows
+   above the reply box, dashed and dimmed, until it starts. */
+.reply-later { display: flex; gap: 6px; align-self: flex-end; margin-bottom: 2px; }
+.queued-list { display: flex; flex-direction: column; gap: 6px; margin: 0 48px 10px; max-height: 30vh; overflow-y: auto; }
+.queued-item { display: flex; flex-direction: column; gap: 4px; opacity: 0.75; }
+.queued-item .you-text { padding: 8px 12px; font-size: 14px; background: transparent; border: 1px dashed var(--line-input); }
 
 .task-aside {
   width: 344px; flex-shrink: 0; padding: 28px 24px; display: flex; flex-direction: column; gap: 16px;
