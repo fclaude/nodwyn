@@ -370,15 +370,15 @@ func (s *Session) primitiveOptions() prim.Options {
 		po.Credentials = s
 	}
 	// The judge (ADR 19/20, ADR 46, ADR 47): its egress primitives are
-	// registered when a judge could be asked at all (a keychain is open,
-	// the judge is not off, and config.toml has a judge provider), since
-	// the primitive table is fixed for the session while the task's judge
-	// may be chosen later. The session is the JudgeClient, and each call
-	// asks it for the judge the task has then. They are the model's tools
-	// only at the "full" content level, since the model chooses what it
-	// sends, and only when the task starts with a judge it can ask: the
-	// tool list cannot gain them later.
-	if s.keychain != nil && judgeContent(o.Config) != config.JudgeContentNone && len(o.Config.JudgeChoices()) > 0 {
+	// registered when a judge could be asked at all (a keychain is open and
+	// the judge is not off), even with no judge set up yet, since the
+	// primitive table is fixed for the session while the task's judge may be
+	// chosen later, from one set up after it opened. The session is the
+	// JudgeClient, and each call asks it for the judge the task has then.
+	// They are the model's tools only at the "full" content level, since the
+	// model chooses what it sends, and only when the task starts with a
+	// judge it can ask: the tool list cannot gain them later.
+	if s.keychain != nil && judgeContent(o.Config) != config.JudgeContentNone {
 		po.Judge = s
 		po.JudgeConfig, _ = s.JudgeOptions()
 		po.JudgeConfig.Tools = judgeContent(o.Config) == config.JudgeContentFull && s.judgeKey() != nil

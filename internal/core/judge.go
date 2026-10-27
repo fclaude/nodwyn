@@ -102,7 +102,7 @@ func (s *Session) judgeCall(ctx context.Context, p guard.Prompt, watched bool) (
 		return false, "the judge did not answer: " + err.Error()
 	}
 	allow := allowProbability(answer)
-	threshold := s.opts.Config.Judge.ApproveThreshold
+	threshold := s.judgeConfig().Judge.ApproveThreshold
 	if threshold == 0 {
 		threshold = config.Default().Judge.ApproveThreshold
 	}
@@ -142,7 +142,7 @@ func (s *Session) approveState(p guard.Prompt) string {
 	case len(p.Argv) > 0:
 		target = ": " + strings.Join(p.Argv, " ")
 	}
-	full := judgeContent(s.opts.Config) == config.JudgeContentFull
+	full := judgeContent(s.judgeConfig()) == config.JudgeContentFull
 	var b strings.Builder
 	for _, r := range before {
 		fmt.Fprintf(&b, "Earlier in this conversation the person wrote:\n%s\n\n", r)

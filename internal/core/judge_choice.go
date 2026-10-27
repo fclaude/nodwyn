@@ -84,15 +84,39 @@ func PlanSignIn(store *keychain.Store, class string) bool {
 	return err == nil && info.Provider == "openai" && info.Kind == keychain.KindOAuth2
 }
 
+// judgeConfig is the config the task's judge is read from: the one it
+// opened with, with the [servers] and [judge] tables of the daemon's when a
+// person last chose a judge for it (UseJudges).
+func (s *Session) judgeConfig() config.Config {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.opts.Config
+	if s.judges != nil {
+		c.Servers, c.Judge = s.judges.Servers, s.judges.Judge
+	}
+	return c
+}
+
+// UseJudges makes the judges of c, the daemon's config now, the ones this
+// task may be given: a judge set up after the task opened is one it can ask
+// when chosen (ADR 47, amended 2026-10-28). Only the servers and the [judge]
+// table are taken, so the task's model and window stay what it opened with.
+func (s *Session) UseJudges(c config.Config) {
+	s.mu.Lock()
+	s.judges = &c
+	s.mu.Unlock()
+}
+
 // judgeSpec is the task's judge now, false when it has none.
 func (s *Session) judgeSpec() (config.JudgeSpec, bool) {
+	cfg := s.judgeConfig()
 	s.mu.Lock()
 	server := s.judge
 	s.mu.Unlock()
-	if server == "" || s.opts.Config.Judge.Content == config.JudgeContentNone {
+	if server == "" || cfg.Judge.Content == config.JudgeContentNone {
 		return config.JudgeSpec{}, false
 	}
-	spec, err := s.opts.Config.JudgeOn(server)
+	spec, err := cfg.JudgeOn(server)
 	return spec, err == nil
 }
 
@@ -119,12 +143,13 @@ func (s *Session) JudgeOptions() (prim.JudgeOptions, bool) {
 	if !ok {
 		return prim.JudgeOptions{}, false
 	}
-	j := s.opts.Config.Judge
+	cfg := s.judgeConfig()
+	j := cfg.Judge
 	timeout, err := time.ParseDuration(j.Timeout)
 	if err != nil {
 		timeout = 10 * time.Second
 	}
-	return prim.JudgeOptions{Provider: spec.Provider, URL: spec.URL, Model: spec.Model, Class: spec.Class, Content: judgeContent(s.opts.Config), Timeout: timeout, PriceInput: spec.PriceInput, PriceOutput: spec.PriceOutput}, true
+	return prim.JudgeOptions{Provider: spec.Provider, URL: spec.URL, Model: spec.Model, Class: spec.Class, Content: judgeContent(cfg), Timeout: timeout, PriceInput: spec.PriceInput, PriceOutput: spec.PriceOutput}, true
 }
 
 // judgeContent is what the judge may be shown (ADR 19), "plan" when unset.
@@ -156,11 +181,12 @@ func (s *Session) SetJudge(server, actor string) (JudgeState, error) {
 	if s.opts.Managed != nil {
 		return JudgeState{}, errors.New("managed: judge selection is unavailable")
 	}
-	if err := CheckJudge(s.opts.Config, s.keychain, server); err != nil {
+	cfg := s.judgeConfig()
+	if err := CheckJudge(cfg, s.keychain, server); err != nil {
 		return JudgeState{}, err
 	}
 	if _, ok := s.interp.Lookup("judge-yes-no"); server != "" && !ok {
-		return JudgeState{}, errors.New("this task opened with no judge it could ask (no judge provider configured, or no keychain open), so it cannot ask one now: close it and resume it")
+		return JudgeState{}, errors.New("this task opened with no judge it could ask (no keychain open, or judge.content is \"none\"), so it cannot ask one now: close it and resume it")
 	}
 	done, err := s.holdIdle()
 	if err != nil {
@@ -169,7 +195,7 @@ func (s *Session) SetJudge(server, actor string) (JudgeState, error) {
 	defer done()
 	// The record goes in before the judge changes, so the questions asked
 	// of the new judge come after it in the log.
-	if _, err := s.Record(log.KindSessionJudge, judgeRecord(s.opts.Config, server, actor)); err != nil {
+	if _, err := s.Record(log.KindSessionJudge, judgeRecord(cfg, server, actor)); err != nil {
 		return JudgeState{}, err
 	}
 	s.mu.Lock()

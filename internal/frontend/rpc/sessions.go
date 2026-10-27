@@ -602,6 +602,8 @@ func (s *server) judge(req request, client *peer) (any, *rpcError) {
 	if rerr != nil {
 		return nil, rerr
 	}
+	// The task may be given a judge set up since it opened.
+	owned.session.UseJudges(s.options.Config)
 	state, err := owned.session.SetJudge(p.Judge, client.actor)
 	if err != nil {
 		return nil, failure(-32000, err.Error())

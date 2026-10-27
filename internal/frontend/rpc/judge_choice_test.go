@@ -96,3 +96,39 @@ func TestTasksChooseTheirJudge(t *testing.T) {
 		t.Fatalf("a device chose a task's judge: %+v", r.Error)
 	}
 }
+
+// A task opened before any judge was set up is given one set up since, from
+// the console's picker, without closing and resuming it (ADR 47, amended
+// 2026-10-28).
+func TestTaskOpenedBeforeAnyJudgeChoosesOneSetUpSince(t *testing.T) {
+	o := options(t)
+	if err := os.MkdirAll(o.Paths.ConfigDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	st, err := keychain.Create(o.Paths.Keychain, keychain.FastKDF, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Keychain = st
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	var task struct {
+		ID    string          `json:"id"`
+		Judge core.JudgeState `json:"judge"`
+	}
+	into(t, c.ok("session.open", map[string]any{"repo": t.TempDir()}), &task)
+	if task.Judge.Server != "" {
+		t.Fatalf("opened with %+v", task.Judge)
+	}
+	c.ok("settings.provider.write", map[string]any{"name": "jev", "provider": "jev", "url": "https://api.typesafe.ai", "api_key": "sk-judge-canary-0001"})
+	var state core.JudgeState
+	into(t, c.ok("session.judge.set", map[string]any{"id": task.ID, "judge": "jev"}), &state)
+	if state.Server != "jev" || state.Model != "jev-latest" || !state.Available {
+		t.Fatalf("chose %+v", state)
+	}
+	into(t, c.ok("session.info", map[string]any{"id": task.ID}), &task)
+	if task.Judge.Server != "jev" {
+		t.Fatalf("session.info says %+v", task.Judge)
+	}
+}

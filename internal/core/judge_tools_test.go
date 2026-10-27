@@ -14,11 +14,12 @@ import (
 )
 
 // The judge's primitives, judge-yes-no, judge-score and judge-choice, are
-// registered when a judge could be asked at all: a keychain is open and
-// config.toml has a judge provider, since a task may choose its judge after
-// it starts (ADR 47). They are offered to the model only at judge.content =
-// "full" and when the task starts with a judge whose key is stored; below
-// that they are Scheme's alone (ADR 46).
+// registered when a judge could be asked at all: a keychain is open and the
+// judge is not off, whether or not config.toml has a judge provider yet,
+// since a task may choose its judge after it starts, one set up since it
+// opened included (ADR 47). They are offered to the model only at
+// judge.content = "full" and when the task starts with a judge whose key is
+// stored; below that they are Scheme's alone (ADR 46).
 func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -33,7 +34,7 @@ func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 		{content: config.JudgeContentPlan, key: true, registered: true},
 		{content: config.JudgeContentFull, registered: true},
 		{content: config.JudgeContentFull, noKeychain: true},
-		{content: config.JudgeContentFull, key: true, noProvider: true},
+		{content: config.JudgeContentFull, key: true, noProvider: true, registered: true},
 		{content: config.JudgeContentNone, key: true},
 	} {
 		srv := fake.NewT(t)

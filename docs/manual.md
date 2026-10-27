@@ -1138,7 +1138,10 @@ New task window and a conversation have a **Judge** select beside the model
 and effort, with **No judge** first, and the TUI has `:judge NAME` and
 `:judge none`. A judge is moved while the task is idle, from its next
 question; the log records each choice as `session.judge`, and a resumed task
-asks the judge it chose. One `config.toml` no longer has leaves it with none,
+asks the judge it chose. A task opened before any judge was set up, or before
+the one you want was, can be given it in the same way: no restart is needed
+(the keychain must have been open when the task opened). One `config.toml` no
+longer has leaves it with none,
 with a note, rather than `[judge]`'s. A judge that cannot be asked (its key
 locked, not allowed, or a plan's) does not stop a task: you answer instead,
 and the picker says why. Only this computer chooses a task's judge, as it

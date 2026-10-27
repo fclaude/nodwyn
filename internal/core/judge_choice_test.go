@@ -126,6 +126,43 @@ func TestTaskSwitchesItsJudgeBetweenTurns(t *testing.T) {
 	}
 }
 
+// A task opened before any judge was set up can still be given one: the
+// judge's primitives are there for a judge chosen later, and the choice is
+// checked against the judges the daemon knows now, not those the task opened
+// with (ADR 47, amended 2026-10-28).
+func TestTaskOpenedWithNoJudgeSetUpChoosesOneLater(t *testing.T) {
+	t.Parallel()
+	first, second := newFakeJudge(t), newFakeJudge(t, noul(0.8))
+	r, o := twoJudges(t, first, second, nil, false)
+	r.s.Close()
+	later := o.Config
+	o.Config.Servers, o.Config.Judge.Server = nil, ""
+	o.LogWriter = &bytes.Buffer{}
+	s, err := newInitSession(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	if got := s.Judge(); got.Server != "" {
+		t.Fatalf("opened with %+v", got)
+	}
+	if _, err := s.SetJudge("second", "tester"); err == nil {
+		t.Fatal("a judge the task has not heard of was chosen")
+	}
+	s.UseJudges(later)
+	state, err := s.SetJudge("second", "tester")
+	if err != nil || state.Server != "second" || !state.Available {
+		t.Fatalf("choosing a judge set up since: %+v %v", state, err)
+	}
+	r = &rig{t: t, s: s, srv: r.srv, repo: r.repo, logb: o.LogWriter.(*bytes.Buffer)}
+	if got := r.eval(`(judge-yes-no "a text" "q")`); got != "0.8" {
+		t.Fatalf("second's answer %q", got)
+	}
+	if len(second.asked()) != 1 {
+		t.Fatalf("second asked %v", second.asked())
+	}
+}
+
 // A resumed task asks the judge it chose, and one config.toml no longer has
 // leaves it with none rather than [judge]'s, which nobody chose for it.
 func TestResumedTaskKeepsItsJudge(t *testing.T) {

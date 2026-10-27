@@ -159,3 +159,17 @@ default judge, so that a person could not tell what a click had saved. Now:
 the person's passkey chooses a task's judge, at open and between turns, as
 this computer does (ADR 30, amended 2026-10-17): the passkey says it is the
 person, which is what the choice was kept to this computer for.
+
+## Amendment 2026-10-28: a task opened with no judge set up can still choose one
+
+§2 registered the judge's primitives only when `config.toml` already named a
+judge provider as the task opened, and a task kept the config it opened with,
+so a person who added Jev or an OpenAI key afterwards saw it in the task's
+Judge select and was told to close and resume the task. Now the primitives
+are registered whenever a keychain is open and `judge.content` is not `none`,
+and `session.judge.set` hands the task the daemon's current `[servers]` and
+`[judge]` tables (`Session.UseJudges`) before the choice is checked. Only
+those tables are taken: the task's model and window stay what it opened with.
+The judge's tools offered to the model still depend on the judge the task
+started with, since the tool list cannot gain them later. A task opened with
+no keychain, or with `judge.content = "none"`, still has to be resumed.
