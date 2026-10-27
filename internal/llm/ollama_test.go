@@ -3,6 +3,9 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -99,5 +102,35 @@ func TestOllamaErrors(t *testing.T) {
 	cancel()
 	if _, err := o.Chat(ctx, Request{Model: "m"}, nil); err == nil {
 		t.Fatal("cancelled ctx should fail")
+	}
+}
+
+// Native cache counts, including zero, must remain distinct from an older
+// server that supplies no count, so estimates never replace reported usage.
+func TestOllamaReadsReportedCacheCounts(t *testing.T) {
+	for _, count := range []string{"600", "0", "null"} {
+		t.Run(count, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"message":{"role":"assistant","content":"ok"},"done":true,"prompt_eval_count":1000,"prompt_eval_cached_count":%s,"eval_count":2}`, count)
+			}))
+			defer srv.Close()
+			resp, err := NewOllama(srv.URL).Chat(context.Background(), Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "hi"}}}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count == "null" {
+				if resp.Usage.CachedTokens != nil {
+					t.Fatalf("unknown cache count: %+v", resp.Usage)
+				}
+			} else {
+				want := 600
+				if count == "0" {
+					want = 0
+				}
+				if resp.Usage.CachedTokens == nil || *resp.Usage.CachedTokens != want {
+					t.Fatalf("cache count %s lost: %+v", count, resp.Usage)
+				}
+			}
+		})
 	}
 }

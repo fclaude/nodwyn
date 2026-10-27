@@ -130,9 +130,9 @@ type Loop struct {
 	visionMu sync.Mutex
 	vision   map[string]bool
 
-	// coldBase holds, per model, the slowest prompt-eval time per token this
-	// session has seen: the most-cold request, the reference a cache read
-	// saves against (estimateCache).
+	// coldBase holds the slowest prompt-eval time per token this session has
+	// seen for each server, host and model: the most-cold request, the
+	// reference a cache read saves against (estimateCache).
 	coldBaseMu sync.Mutex
 	coldBase   map[string]float64
 }

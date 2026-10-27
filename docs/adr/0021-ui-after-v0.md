@@ -709,7 +709,7 @@ socket does not say so in its output.
 
 ## Amendment 2026-10-27: a cache share the provider does not report shows estimated
 
-Ollama's API has no cache count, so a session on it showed no cache hit
+The Ollama adapter omitted native cache counts, so a session on it showed no cache hit
 rate at all: the per-request line no share, and Totals' Token cache rate
 unknown — though the provider's prompt-eval time, which a cached token does
 not take, was in the log. ADR 2's amendment of 2026-10-27 estimates the
@@ -729,3 +729,13 @@ reported `prompt` and `cached`, and the complete log's tally under
 timings, not a report — so it is never mixed into a reported total and is
 always marked. The browser check asserts the estimate-only rate renders
 marked and the tallies keep the two apart.
+
+
+## Amendment 2026-10-27: the conversation shows estimated cache usage
+
+The console's conversation usage line tallies estimated cache reads and
+prompt tokens separately from reported reads, as Totals does. A reported
+share, including zero, wins; otherwise the token-weighted estimate shows
+marked ≈. A new turn starts new tallies. The transcript browser check
+renders reply events and checks estimates, weighting, reported precedence
+and the new turn's unknown share.

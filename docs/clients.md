@@ -75,7 +75,7 @@ it can see the thing but not change it.
 | Tool calls | grouped into one Activity row per stretch between replies | one line per call; `:details` expands them | a card per call | — |
 | Retrieval calls said in words (`index-search` and where it searched, `recall` and its seq, `index-update`; ADR 50) | yes, folded as looks (`searched 3 times · recalled 1 event · updated the index`) | yes | yes | `replay` |
 | An index build or refresh (`index.update`) | a line under the call that made it | a line under the call | a line | `replay` |
-| Usage per reply (tokens, cache share, cost) | yes | yes | yes | — |
+| Usage per reply (tokens, cache share, cost) | yes; reported cache reads win, otherwise timing estimates show ≈ | yes; the same precedence | yes; the same precedence | — |
 | Rendered markdown | yes | — (deliberate: plain text in a terminal) | — | — |
 | Attach a file (ADR 22) | yes, the composer's paperclip (staged upload) | yes, `:attach PATH` | not built | — |
 | An image's confirm | yes, inline | yes, as any prompt | not built | — |

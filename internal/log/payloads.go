@@ -190,7 +190,7 @@ type Usage struct {
 	// EstimatedCachedTokens are the prompt tokens this reply read from the
 	// model's prompt cache, estimated from its prompt-eval time against the
 	// session's slowest of the model's (the most-cold request), when the
-	// provider reports no CachedTokens (Ollama); nil when there is no
+	// provider reports no CachedTokens (older Ollama servers); nil when there is no
 	// estimate. It is an estimate: figures show it marked ≈, as a cost
 	// estimated from configured prices, and a reported share always wins.
 	EstimatedCachedTokens *int `json:"estimated_cached_tokens,omitempty"`

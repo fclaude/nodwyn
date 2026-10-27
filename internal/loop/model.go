@@ -151,7 +151,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 	notes := append(l.tidyCalls(resp), keepDetails(resp)...)
 	l.show(resp)
 	respRec := responseRecord(resp, ep.Rates)
-	respRec.Usage.EstimatedCachedTokens = l.estimateCache(ep.Model, respRec.Usage)
+	respRec.Usage.EstimatedCachedTokens = l.estimateCache(fmt.Sprintf("%q %q %q", ep.Server, ep.Host, ep.Model), respRec.Usage)
 	if err := l.record(log.KindLLMResp, respRec); err != nil {
 		return nil, err
 	}
@@ -279,15 +279,15 @@ func responseRecord(resp *llm.Response, rates llm.Rates) log.LLMResp {
 }
 
 // estimateCache is the prompt tokens this reply read from the model's prompt
-// cache, when the provider reports none (Ollama's API has no cache count):
+// cache, when the provider reports none (older Ollama servers):
 // the prompt-eval time a cached token does not take, against the slowest
-// prompt-eval this session has seen of the model's — the most-cold request,
+// prompt-eval this session has seen of the endpoint's — the most-cold request,
 // whose per-token time the uncached prompt pays. The most-cold reply sets
 // the reference and gets no estimate of its own; so does one with no
 // prompt-eval time, no prompt tokens, or a provider-reported share, which
 // always wins. It is an estimate, so the log marks it and the figures show
 // ≈.
-func (l *Loop) estimateCache(model string, u log.Usage) *int {
+func (l *Loop) estimateCache(endpoint string, u log.Usage) *int {
 	if u.CachedTokens != nil || u.PromptTokens <= 0 || u.PromptEvalMS <= 0 {
 		return nil
 	}
@@ -297,9 +297,9 @@ func (l *Loop) estimateCache(model string, u log.Usage) *int {
 	if l.coldBase == nil {
 		l.coldBase = map[string]float64{}
 	}
-	base := l.coldBase[model]
+	base := l.coldBase[endpoint]
 	if mpt >= base {
-		l.coldBase[model] = mpt
+		l.coldBase[endpoint] = mpt
 		return nil
 	}
 	est := int(math.Round((1 - mpt/base) * float64(u.PromptTokens)))

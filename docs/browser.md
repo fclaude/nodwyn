@@ -23,7 +23,7 @@ Totals' **Token cache rate**: the rounded, token-weighted share of raw prompt
 tokens read from cache across the session, not the percentage of requests
 hitting cache (missing or unreported usage is excluded; no positive prompt
 total shows **unknown**, reported zero cache reads give **0%**; where no reply
-reports cache reads, as Ollama never does, the rate is estimated from each
+reports cache reads, as older Ollama servers do, the rate is estimated from each
 reply's prompt-eval time and shows marked **≈**; with truncated
 history it covers the log that remains). A task whose requests the log cannot
 price shows **unpriced** for spend, not "at least $0.0000". Other unknown

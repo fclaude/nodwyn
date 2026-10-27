@@ -455,7 +455,7 @@ export class Transcript {
         }
         if (p.usage) {
           const u = p.usage;
-          const fresh = { in: 0, out: 0, ms: 0, wall: 0, cachedIn: 0, cached: 0, cost: 0, priced: 0, unpriced: 0, estimated: false, requests: 0, largest: 0, reasoning: 0 };
+          const fresh = { in: 0, out: 0, ms: 0, wall: 0, cachedIn: 0, cached: 0, estCachedIn: 0, estCached: 0, cost: 0, priced: 0, unpriced: 0, estimated: false, requests: 0, largest: 0, reasoning: 0 };
           this.tokens = (this.usage ? this.tokens : fresh) || fresh;
           this.tokens.in += u.prompt_tokens || 0;
           this.tokens.out += u.output_tokens || 0;
@@ -468,11 +468,16 @@ export class Transcript {
           // for a request that reported tokens: the speed below is tokens
           // over the time that produced them.
           if (!u.unreported) this.tokens.wall += u.wall_ms || 0;
-          // A provider that reports its prompt cache and cost (OpenRouter)
-          // says so; absent is unknown, never 0% or free.
-          if (u.cached_tokens !== undefined) {
-            this.tokens.cachedIn += u.prompt_tokens || 0;
-            this.tokens.cached += u.cached_tokens;
+          // Reported cache reads win, including zero. Older servers' timing
+          // estimates stay separate so a reported share never includes them.
+          if (!u.unreported && u.prompt_tokens > 0) {
+            if (u.cached_tokens != null) {
+              this.tokens.cachedIn += u.prompt_tokens;
+              this.tokens.cached += u.cached_tokens;
+            } else if (u.estimated_cached_tokens != null) {
+              this.tokens.estCachedIn += u.prompt_tokens;
+              this.tokens.estCached += u.estimated_cached_tokens;
+            }
           }
           if (u.cost !== undefined) {
             this.tokens.cost += u.cost;
@@ -494,7 +499,7 @@ export class Transcript {
           // host-measured: every provider gets one, unlike total_ms, which
           // only Ollama reports.
           const speed = t.wall > 0 && t.out > 0 ? ` · ${(t.out / (t.wall / 1000)).toFixed(1)} tok/s` : "";
-          const cache = t.cachedIn > 0 ? ` · ${Math.round((100 * t.cached) / t.cachedIn)}% cached` : "";
+          const cache = t.cachedIn > 0 ? ` · ${Math.round((100 * t.cached) / t.cachedIn)}% cached` : t.estCachedIn > 0 ? ` · ≈${Math.round((100 * t.estCached) / t.estCachedIn)}% cached` : "";
           const cost = t.priced > 0 ? ` · ${t.unpriced > 0 ? "at least " : ""}${usd(t.cost, t.estimated)}` : "";
           // Each request sends the whole prompt again, so over several the
           // first number adds the prompt up each time: the largest single

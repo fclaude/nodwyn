@@ -165,7 +165,7 @@ So a due batch now folds when at least one of these holds:
 - the context is past `hygiene-pressure` (half) of the high water, where
   room matters more than the cache.
 
-A provider that reports no cache, such as Ollama, counts as serving the
+A provider that reports no cache, such as an older Ollama server, counts as serving the
 context, since this ADR's window is built for its prefix cache. On a local
 model reads therefore wait until a batch is half of what follows or the
 context passes half the high water. On the 121-task cohort that is a change

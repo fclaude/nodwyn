@@ -1608,7 +1608,7 @@ export class TaskView {
     const estPrompt = cache.estPrompt ?? cache.est_prompt ?? 0;
     const estCached = cache.estCached ?? cache.est_cached ?? 0;
     const cacheRate = cache.prompt > 0 ? `${Math.round((100 * cache.cached) / cache.prompt)}%` : estPrompt > 0 ? `≈${Math.round((100 * estCached) / estPrompt)}%` : "unknown";
-    const cacheHint = "The share of raw prompt tokens read from the provider's cache, added up across the session's model replies that reported cache reads and prompt tokens; missing or unreported usage stays out, and without a positive prompt total the rate is unknown; where the provider reports no cache reads (Ollama), the estimate from each reply's prompt-eval time against the session's most-cold request shows instead, marked ≈; this is not the share of requests hitting cache or the discounted token budget";
+    const cacheHint = "The share of raw prompt tokens read from the provider's cache, added up across the session's model replies that reported cache reads and prompt tokens; missing or unreported usage stays out, and without a positive prompt total the rate is unknown; where the provider reports no cache reads (older Ollama servers), the estimate from each reply's prompt-eval time against the session's most-cold request shows instead, marked ≈; this is not the share of requests hitting cache or the discounted token budget";
     return h(
       "section",
       { class: "panel", dataset: { totals: "1" } },

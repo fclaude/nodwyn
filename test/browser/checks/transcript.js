@@ -1347,6 +1347,35 @@ check(async () => {
   });
   want(!hostile.error && hostile.depth > 0 && hostile.depth <= 9 && hostile.after, `a reply of 6000 ">" draws: ${JSON.stringify(hostile)}`);
   want(hostile.backticksMs < 1000, `a reply of 45 KB of backtick runs draws in under a second: ${Math.round(hostile.backticksMs)} ms`);
+  // Render real reply events through the console's transcript, including
+  // accumulation, a reported zero overriding estimates, and a new turn.
+  const cacheUsage = await page.evaluate(async () => {
+    const { Transcript } = await import("/transcript.js");
+    const root = document.createElement("div");
+    document.body.replaceChildren(root);
+    const t = new Transcript(root);
+    const reply = (usage) => t.render({ kind: "llm.resp", payload: { content: "ok", usage } });
+    const usage = () => [...root.querySelectorAll(".usage")].at(-1)?.textContent || "";
+    t.render({ kind: "user.msg", payload: { text: "Go" } });
+    reply({ prompt_tokens: 1000, output_tokens: 2, estimated_cached_tokens: 600 });
+    const estimated = usage();
+    reply({ prompt_tokens: 3000, output_tokens: 2, estimated_cached_tokens: 1200 });
+    const weighted = usage();
+    reply({ prompt_tokens: 1000, output_tokens: 2, cached_tokens: 0, estimated_cached_tokens: 800 });
+    const zero = usage();
+    reply({ prompt_tokens: 1000, output_tokens: 2, cached_tokens: 800 });
+    const reported = usage();
+    t.render({ kind: "user.msg", payload: { text: "Again" } });
+    reply({ prompt_tokens: 1000, output_tokens: 2 });
+    const unknown = usage();
+    t.end();
+    return { estimated, weighted, zero, reported, unknown };
+  });
+  want(cacheUsage.estimated.includes("≈60% cached"), `estimated usage renders: ${cacheUsage.estimated}`);
+  want(cacheUsage.weighted.includes("≈45% cached"), `estimated usage is token-weighted: ${cacheUsage.weighted}`);
+  want(cacheUsage.zero.includes("0% cached") && !cacheUsage.zero.includes("≈"), `reported zero wins: ${cacheUsage.zero}`);
+  want(cacheUsage.reported.includes("40% cached") && !cacheUsage.reported.includes("≈"), `reported usage wins: ${cacheUsage.reported}`);
+  want(!cacheUsage.unknown.includes("cached"), `a new turn leaves unknown cache usage out: ${cacheUsage.unknown}`);
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
 });

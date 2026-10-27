@@ -1303,7 +1303,7 @@ loaded after the files above in this order. Each wraps `run-calls` (and
   it (`(context-tokens result)`), when the provider's cache is not serving the
   context anyway (it read less than `hygiene-cache-share`, a quarter, of the
   last `hygiene-cache-requests` prompts; a provider that does not say, such
-  as Ollama, counts as serving it), or when the context is past
+  as an older Ollama server, counts as serving it), or when the context is past
   `hygiene-pressure` (three quarters) of the high water. The log note of each
   fold says which. A read `(hygiene-keep? r)` holds, which the plan language
   says of a file its plan will change and the turn has not edited, is left

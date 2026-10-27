@@ -1,8 +1,15 @@
 package loop
 
 import (
+	"bytes"
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 )
@@ -35,8 +42,7 @@ func TestResponseRecordKeepsTheBlocks(t *testing.T) {
 	}
 }
 
-// estimateCache is the cache share a provider that reports none (Ollama)
-// still shows: the prompt-eval time a cached token does not take, against
+// estimateCache is the cache share older Ollama servers still show: the prompt-eval time a cached token does not take, against
 // the session's slowest of the model's — the most-cold request. A reply
 // that sets the reference gets no estimate, and a provider-reported share
 // always wins.
@@ -76,5 +82,61 @@ func TestEstimateCache(t *testing.T) {
 	// A model's reference is its own: another model starts cold again.
 	if got := l.estimateCache("other", log.Usage{PromptTokens: 1000, PromptEvalMS: 4000}); got != nil {
 		t.Fatalf("another model's first reply: got %d, want no estimate", *got)
+	}
+}
+
+type cacheModelHost struct {
+	t      *testing.T
+	buf    bytes.Buffer
+	writer *log.Writer
+}
+
+func (h *cacheModelHost) Record(kind log.Kind, payload any) (log.Event, error) {
+	return h.writer.Append(kind, payload)
+}
+func (h *cacheModelHost) EventsSoFar() []log.Event {
+	h.t.Helper()
+	events, err := log.Read(bytes.NewReader(h.buf.Bytes()))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return events
+}
+func (h *cacheModelHost) Emit(event.Event) {}
+
+// A faster server's cold reply must not become a cache hit against a slow
+// server's baseline, even when both servers use the same model ID.
+func TestCacheEstimatesSeparateEndpoints(t *testing.T) {
+	host := &cacheModelHost{t: t}
+	host.writer = log.New(&host.buf, "cache")
+	if _, err := host.Record(log.KindUserMsg, log.UserMsg{Text: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	server := func(ms int) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintf(w, `{"message":{"role":"assistant","content":"ok"},"done":true,"prompt_eval_count":1000,"prompt_eval_duration":%d,"eval_count":2}`, int64(ms)*1e6)
+		}))
+	}
+	slow, fast := server(10000), server(4000)
+	defer slow.Close()
+	defer fast.Close()
+	l := &Loop{host: host, cfg: Config{RequestTimeout: time.Second, Models: map[string]Endpoint{
+		"slow":        {Model: "m", Host: slow.URL, Server: "slow", Provider: llm.NewOllama(slow.URL)},
+		"fast":        {Model: "m", Host: fast.URL, Server: "fast", Provider: llm.NewOllama(fast.URL)},
+		"same-host":   {Model: "m", Host: slow.URL, Server: "other", Provider: llm.NewOllama(fast.URL)},
+		"same-server": {Model: "m", Host: fast.URL, Server: "slow", Provider: llm.NewOllama(fast.URL)},
+	}}}
+	for _, name := range []string{"slow", "fast", "same-host", "same-server", "slow"} {
+		if _, err := l.ask(context.Background(), name, toolOffer{}, false); err != nil {
+			t.Fatal(err)
+		}
+		events := host.EventsSoFar()
+		var response log.LLMResp
+		if err := events[len(events)-1].Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Usage.EstimatedCachedTokens != nil {
+			t.Fatalf("cold %s reply estimated cached: %+v", name, response.Usage)
+		}
 	}
 }

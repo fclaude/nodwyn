@@ -130,16 +130,17 @@ type wireRequest struct {
 }
 
 type wireChunk struct {
-	Message            wireMessage `json:"message"`
-	Done               bool        `json:"done"`
-	DoneReason         string      `json:"done_reason"`
-	TotalDuration      int64       `json:"total_duration"`
-	LoadDuration       int64       `json:"load_duration"`
-	PromptEvalCount    int         `json:"prompt_eval_count"`
-	PromptEvalDuration int64       `json:"prompt_eval_duration"`
-	EvalCount          int         `json:"eval_count"`
-	EvalDuration       int64       `json:"eval_duration"`
-	Error              string      `json:"error"`
+	Message               wireMessage `json:"message"`
+	Done                  bool        `json:"done"`
+	DoneReason            string      `json:"done_reason"`
+	TotalDuration         int64       `json:"total_duration"`
+	LoadDuration          int64       `json:"load_duration"`
+	PromptEvalCount       int         `json:"prompt_eval_count"`
+	PromptEvalCachedCount *int        `json:"prompt_eval_cached_count"`
+	PromptEvalDuration    int64       `json:"prompt_eval_duration"`
+	EvalCount             int         `json:"eval_count"`
+	EvalDuration          int64       `json:"eval_duration"`
+	Error                 string      `json:"error"`
 }
 
 func toWire(req Request) wireRequest {
@@ -242,6 +243,7 @@ func (o *Ollama) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 			out.DoneReason = ch.DoneReason
 			out.Usage = Usage{
 				PromptTokens: ch.PromptEvalCount,
+				CachedTokens: ch.PromptEvalCachedCount,
 				OutputTokens: ch.EvalCount,
 				PromptEvalMS: ch.PromptEvalDuration / 1e6,
 				EvalMS:       ch.EvalDuration / 1e6,

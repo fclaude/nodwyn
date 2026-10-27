@@ -292,7 +292,7 @@ what the mandatory boundary then sees. The boundary is tested by
 No new kind. `llm.resp` `usage` gains optional
 `estimated_cached_tokens`: the prompt tokens the provider read from its
 cache, estimated by the loop when the provider reports no `cached_tokens`
-(Ollama's API has no cache count) and the reply carries a prompt count and
+(older Ollama servers omit the count) and the reply carries a prompt count and
 a prompt-eval time. A cached token does not take prompt-eval time, so the
 share is `round((1 − m/slowest) × prompt_tokens)`, where `m` is the
 reply's prompt-eval time per prompt token and `slowest` is the largest such
@@ -307,3 +307,12 @@ session reads as before. It is an estimate, so the figures that show it
 mark it ≈, as a cost estimated from configured prices, and
 `session.totals` `cache` counts the estimate in `est_prompt` and
 `est_cached` beside the reported `prompt` and `cached`.
+
+
+## Amendment 2026-10-27: native cache counts and endpoint baselines
+
+Ollama's native `prompt_eval_cached_count` is copied to `cached_tokens`,
+including a reported zero. An omitted or null count remains unknown and
+may use the timing estimate. The estimate's baseline belongs to the server,
+host and model together: the same model ID on a faster server must not
+look cached against a slower server's cold reply. No wire field changes.
