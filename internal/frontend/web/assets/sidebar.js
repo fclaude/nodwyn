@@ -16,7 +16,7 @@ let searching = false;
 const showArchived = new Set();
 // Folders showing all their tasks, this tab only.
 const expanded = new Set();
-// Folders folded away, remembered by this browser.
+// Folders and hosts folded away, remembered by this browser.
 const folded = new Set(readFolded());
 
 // perFolder is how many tasks a folder shows before "Show more".
@@ -131,17 +131,35 @@ export function renderSidebar(nav, { desk, hosts, route, conn, rerender }) {
     );
   };
   // hostSection is a host's heading, with its state, and its folders and
-  // archived tasks while it can be read.
+  // archived tasks while it can be read. The heading folds them away, as a
+  // folder's does, and its state stays in view; a search shows every match.
   const hostSection = (entry) => {
     const [dot, words, detail] = hostState(entry);
     const live = entry.conn.live;
-    const folders = live ? foldersOf(entry.desk) : [];
+    // A host's key starts with a tab, which no folder's key (a host's name,
+    // a newline and a path, or a path) does.
+    const key = `\t${entry.name}`;
+    const open = !!filter || !folded.has(key);
+    const toggle = () => {
+      if (folded.has(key)) folded.delete(key);
+      else folded.add(key);
+      saveFolded();
+      rerender();
+    };
+    const folders = live && open ? foldersOf(entry.desk) : [];
     return h(
       "section",
       { class: "nav-host", "aria-label": entry.label, dataset: { host: entry.name } },
-      h("div", { class: "host-head", title: detail }, icon(entry.name ? "server" : "laptop", 15), h("span", { class: "name" }, entry.label), h("span", { class: "state" }, h("span", { class: `dot ${dot}` }), words)),
+      h(
+        "button",
+        { type: "button", class: "host-head", "aria-expanded": String(open), title: detail, disabled: !!filter, onclick: toggle },
+        icon(open ? "down" : "right", 14),
+        icon(entry.name ? "server" : "laptop", 15),
+        h("span", { class: "name" }, entry.label),
+        h("span", { class: "state" }, h("span", { class: `dot ${dot}` }), words),
+      ),
       live ? (folders.length ? h("div", { class: "folders" }, folders) : null) : h("p", { class: "hint host-hint" }, detail || (entry.conn.state === "down" ? "Its tasks show again when it answers." : "Connecting…")),
-      live ? archiveOf(entry.desk) : null,
+      live && open ? archiveOf(entry.desk) : null,
     );
   };
   const folders = several ? [] : foldersOf(desk);

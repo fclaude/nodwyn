@@ -1223,7 +1223,10 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .host-head {
   display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px;
   background: var(--surface-2); color: var(--ink-2); font-size: 13px; font-weight: 600; min-width: 0;
+  width: 100%; border: none; text-align: left;
 }
+.host-head:hover:not(:disabled) { background: var(--selected); }
+.host-head:disabled { cursor: default; opacity: 1; }
 .host-head .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .host-head .state { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; color: var(--faint); white-space: nowrap; }
 .host-hint { padding: 0 10px; margin: 0; }
