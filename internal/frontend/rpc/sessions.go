@@ -288,6 +288,7 @@ var methodTable = map[string]handler{
 	"workspace.list":               (*server).workspaces,
 	"workspace.forgotten":          (*server).workspaces,
 	"workspace.active":             (*server).workspaces,
+	"newtask.last":                 (*server).newTaskLast,
 	"workspace.save":               (*server).workspaces,
 	"workspace.remove":             (*server).workspaces,
 	"versions.list":                (*server).versions,

@@ -22,9 +22,10 @@
 //   prices, though the provider reports neither.
 // - The New task window offers the models, shows each one's efforts (none for
 //   the model that takes none), starts a task on the choice, and the provider
-//   sees that model with that effort. A choice left unsent survives going to
-//   Settings and back and a reload, and a model removed meanwhile is said to be
-//   gone instead of silently replaced.
+//   sees that model with that effort. A choice survives going to Settings and
+//   back, a reload, the task it was for and an app restart: the next task
+//   starts with it, its judge and helpers too, which the daemon keeps.
+//   A model removed meanwhile is said to be gone instead of silently replaced.
 // - In the conversation the effort is changed between messages; one chosen
 //   while a response is held waits for it, says so, and the provider sees the
 //   old effort on the response under way and the new one on the next. The
@@ -57,6 +58,9 @@ check(async () => {
   const wrongKey = "sk-wrong-key-0000000000";
   fs.mkdirSync(`${root}/config/nodwyn`, { mode: 0o700 });
   const configFile = `${root}/config/nodwyn/config.toml`;
+  // What the daemon keeps for the next task (newtask.last), as a person
+  // editing it by hand would write it.
+  const keepForNext = (model) => fs.writeFileSync(`${root}/config/nodwyn/new-task.toml`, `runs_on = ""\n\n[[host]]\nhost = ""\nmodel = "${model}"\n`);
   fs.writeFileSync(configFile, `[control]\nprovider = "ollama"\nurl = "${ollamaURL}"\nmodel = "demo"\n`);
   // The app reaches nothing beyond this computer: a request to any other host
   // goes to a proxy that is not there (Go never proxies the loopback the fakes
@@ -537,10 +541,12 @@ check(async () => {
   await page.waitForSelector(".task[data-loaded]");
   step("a task whose model's context nobody knows says it works in the default window");
 
-  // The default is back for the next task: a choice is consumed by the task it was for.
+  // The model chosen last is the next task's too (ADR 41, amended
+  // 2026-10-27), and the daemon kept it.
   await go("#/");
   await page.waitForSelector("#new-task-model-model");
-  assert.strictEqual(await page.inputValue("#new-task-model-model"), "control", "a new task did not start on the default");
+  assert.strictEqual(await page.inputValue("#new-task-model-model"), "127-0-0-1-fast", "the next task did not start on the model chosen last");
+  assert.match(fs.readFileSync(`${root}/config/nodwyn/new-task.toml`, "utf8"), /model = "127-0-0-1-fast"/, "the daemon did not keep the choice");
 
   // Close the first task; it is resumed after its model is removed, below.
   await go(`#/task/${fastId}`);
@@ -553,9 +559,10 @@ check(async () => {
   // ---------- a task on the default model, with another effort ----------
   await go("#/");
   await page.waitForSelector("#new-task-model-model");
+  await page.selectOption("#new-task-model-model", "control");
   await page.selectOption("#new-task-model-effort", "low");
   await openOptions(page);
-  assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: none/, "helpers ticked for one task were kept for the next");
+  assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: none/, "helpers unticked for one task were kept for the next");
   await page.click("#new-task-helpers summary");
   await shows("#new-task-helpers [data-model='127-0-0-1-fast']", "review");
   await page.check("#new-task-helpers [data-model='127-0-0-1-fast'] input");
@@ -566,9 +573,18 @@ check(async () => {
   await page.waitForSelector(".task[data-loaded]", { timeout: 20000 });
   assert.deepStrictEqual(sent.of("session.open").at(-1), { repo: `${root}/work`, name: "control", effort: "low", delegates: ["127-0-0-1-fast"] });
   await shows("#task-helpers", "May hand work to: 127-0-0-1-fast");
-  step("a task is started with the helpers ticked for it, shows them, and the next task starts with none");
+  step("a task is started with the helpers ticked for it, and shows them");
   await idle();
   const id = sent.of("session.send").at(-1).id;
+  // The next task starts with them ticked, as they were chosen last.
+  await go("#/");
+  await page.waitForSelector("#new-task-model-model");
+  assert.strictEqual(await page.inputValue("#new-task-model-effort"), "low", "the next task did not start on the effort chosen last");
+  await openOptions(page);
+  assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: 1/, "the helpers ticked last were not kept for the next task");
+  await go(`#/task/${id}`);
+  await page.waitForSelector(".task[data-loaded]");
+  step("the next task starts with the model, effort and helpers chosen last");
   await page.waitForFunction(() => document.querySelector(".transcript").innerText.includes("Answered by reasoner with low effort."));
   assert.strictEqual(await page.inputValue("#task-model-model"), "control");
   assert.strictEqual(await page.inputValue("#task-model-effort"), "low");
@@ -720,7 +736,7 @@ check(async () => {
   // the daemon still lists the name, and the choice it is has become the
   // default.
   await go("#/");
-  await page.evaluate(() => localStorage.setItem("nodwyn-new-task-model", JSON.stringify({ name: "127-0-0-1-fast", effort: "" })));
+  keepForNext("127-0-0-1-fast");
   await page.reload();
   await ready(page);
   assert.ok(!(await page.innerText("#new-task-model")).includes("no longer in your list"), "a choice kept for the next task on the model that became the default is said to be gone: " + (await page.innerText("#new-task-model")));
@@ -728,7 +744,6 @@ check(async () => {
   await page.fill("#task", "Anything");
   assert.strictEqual(await page.isDisabled("button[aria-label='Start the task']"), false, "a task cannot start on the model that became the default");
   await page.fill("#task", "");
-  await page.evaluate(() => localStorage.removeItem("nodwyn-new-task-model"));
   step("a choice kept for the next task on that model is not called gone");
   // The default moves back; the conversation is on its entry again.
   await go("#/settings/models");
@@ -756,7 +771,7 @@ check(async () => {
   // The unsent choice was "fast" once: it is gone, and the page says so.
   await go("#/");
   await page.waitForSelector("#new-task-model-model");
-  await page.evaluate(() => localStorage.setItem("nodwyn-new-task-model", JSON.stringify({ name: "127-0-0-1-fast", effort: "" })));
+  keepForNext("127-0-0-1-fast");
   await page.reload();
   await page.waitForSelector("#new-task-model-model");
   await shows("#new-task-model", "127-0-0-1-fast is no longer in your list of models");
@@ -787,11 +802,20 @@ check(async () => {
   step("a conversation whose model is gone asked nothing until one was chosen for it");
 
   // ---------- the app restarted: the keychain is locked ----------
+  // A choice made for the next task is kept across it, by the daemon: the
+  // window's own storage is one browser's, for one address.
+  await go("#/");
+  await page.waitForSelector("#new-task-model-model");
+  await page.selectOption("#new-task-model-effort", "medium");
+  await until("the daemon to keep the effort", async () => /effort = "medium"/.test(fs.readFileSync(`${root}/config/nodwyn/new-task.toml`, "utf8")));
+  assert.strictEqual(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("nodwyn-new-task")).length), 0, "the choice was kept in this browser");
   app.kill("SIGTERM");
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
   ({ app, url } = await startApp());
   await reopen(url);
   await page.waitForSelector("#new-task-model-model", { timeout: 15000 });
+  await until("the effort chosen before the restart", async () => (await page.inputValue("#new-task-model-effort")) === "medium");
+  assert.strictEqual(await page.inputValue("#new-task-model-model"), "control");
   // The model's key is in the keychain, which is locked: the picker says which
   // models that is true of, and a task cannot start until it is unlocked.
   await page.waitForFunction(() => [...document.querySelectorAll("#new-task-model-model option")].some((o) => o.textContent.includes("keychain locked")), null, { timeout: 15000 });
@@ -811,7 +835,7 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#task-model-model"), "control");
   assert.strictEqual(await page.inputValue("#task-model-effort"), "medium", "a resumed conversation lost its effort");
   await page.waitForFunction(() => ![...document.querySelectorAll("#task-model-model option")].some((o) => o.textContent.includes("keychain locked")));
-  step("after a restart, locked keys are said and the effort comes back with the conversation");
+  step("after a restart, locked keys are said, the choice for the next task is kept, and the effort comes back with the conversation");
 
   // ---------- Anthropic's own API ----------
   // A provider of the Anthropic kind reads its key in x-api-key, takes no
@@ -1130,6 +1154,11 @@ check(async () => {
   ({ app, url } = await startApp());
   await reopen(url);
   await page.waitForSelector("#task", { timeout: 15000 });
+  // No judge, chosen for the task before, is the next task's too, after the
+  // restart as well.
+  await page.waitForSelector("#new-task-model-judge", { timeout: 15000 });
+  assert.strictEqual(await page.inputValue("#new-task-model-judge"), "", "the next task did not start with the judge chosen last");
+  step("the judge chosen last is the next task's, after an app restart too");
   await go("#/settings/judge");
   await page.waitForSelector("#judge-model-warning", { timeout: 10000 });
   await shows("#judge-model-warning", "config.toml asks Jev for the model “Jev”", "Jev answers to jev-latest");

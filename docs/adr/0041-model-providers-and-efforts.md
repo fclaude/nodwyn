@@ -634,3 +634,63 @@ model (it waited in vain for `#provider-127-0-0-1 .provider-models >
 code before), the keychain's form in `#provider-openai` outside the provider
 form, and Add a provider's form below the list and on screen in a 500-pixel
 window.
+
+## Amendment 2026-10-27: a new task starts on the choices made last
+
+The person asked for the New task window to start on what they picked last:
+Runs on, the model and effort, the judge, "all of the settings I pick".
+Until now a choice was kept only until the task it was for started, in this
+browser's storage (Runs on, the model, the judge), or not at all (the
+helpers, ADR 27 amended 2026-10-09; the limits, ticked again for each task,
+ADR 49 §2; In a worktree, kept for one tab), so every task began on
+Settings' defaults and the choices had to be made again.
+
+Decision:
+
+- **What is kept.** Runs on (ADR 54) and, for each host, the model and
+  effort, the judge (none is a choice of its own, apart from Settings'
+  default), the helpers ticked, whether the limits are off, and, per folder,
+  whether the task opens in a worktree. Each is kept as it is made, and is
+  no longer dropped when the task starts: the next task starts on it.
+  Picking Settings' default model or judge again keeps none, so the next task
+  follows the default if it changes; a choice still never changes the
+  default, and the model, effort and judge are still sent only when they
+  differ from it. A kept model removed since is said to be gone, as before.
+- **Where.** This computer's daemon keeps them, as it keeps the folder
+  picked last (ADR 22, amended 2026-10-04): `newtask.last` reads them
+  (`{}`) or replaces them (`{"choices"}`), in `new-task.toml` in the config
+  directory. A browser's storage is one origin's in one browser, so the
+  app's window, another browser or a console on another port would start on
+  the defaults. A linked host's choices are kept here too, under its name:
+  they are this person's, and that host checks them when the task opens. A
+  daemon without the method leaves them to the browser's storage, under
+  `nodwyn-new-task`; the earlier keys (`nodwyn-runs-on`,
+  `nodwyn-new-task-model`, `nodwyn-new-task-judge`) are no longer read.
+- **Who writes the file.** The daemon, on a `newtask.last` from this
+  computer's console or a device signed in with the person's passkey (the
+  bridge's person tier, as `workspace.active`); the daemon refuses a
+  replacement to an actor relayed as a paired device, and the person may
+  edit it by hand. The config directory is private to the guard, so neither
+  a model nor a repository can write it. It names choices, never a policy:
+  `session.open` and `worktree.open` check each again (a model, effort,
+  judge, helper or the limits off is refused to a paired device as before),
+  and it is bounded (64 hosts, 64 helpers and 256 worktree choices a host,
+  512 bytes a name, absolute folders) so a page cannot grow it without end.
+
+Tests: `TestNewTaskChoicesSurviveRestart` (a record with no judge, an
+effort, helpers, the limits off and a worktree choice is read back after a
+daemon restart; an absent judge stays absent; a relative folder, a host
+given twice and an effort without its model are refused; a paired device
+cannot replace it); the bridge grants `newtask.last` to the person's device
+and refuses it to a paired one (`TestRemoteDevicesPairByInvitationAndCannotWidenPolicy`);
+the `models` browser check (the next task starts on the model, effort and
+helpers chosen last, and on the effort and the judge chosen before an app
+restart, none of it in the browser's storage), `tasks` (Limits unticked
+stays unticked for the next task) and `hosts` (Runs on is kept by the
+daemon). On the code before, `models` failed with "the next task did not
+start on the model chosen last", `tasks` with "Home did not keep Limits
+unticked for the next task" and `hosts` with Runs on in the browser's
+storage.
+
+Not built: the TUI and line mode keep no choice for the next task, as they
+offer none at open (docs/clients.md).

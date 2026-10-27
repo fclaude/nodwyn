@@ -20,6 +20,7 @@ export class Desk {
     this.workspaces = []; // workspace.list: folders the person named
     this.forgotten = new Set(); // workspace.forgotten: folders left out of the suggestions, not out of task history
     this.last = ""; // workspace.active: the folder the daemon last saw picked for a new task
+    this.newTask = undefined; // newtask.last: what was chosen last for a new task, once read
     this.outbox = []; // outbox.list: workflow answers waiting for the person to post them (ADR 53)
     this.listeners = new Set();
     this.version = 0;
@@ -148,6 +149,10 @@ export class Desk {
     // last across an app restart; the daemon's can.
     const active = await read("workspace.active");
     if (active !== undefined) this.last = active.path || "";
+    // So is what the composer chose last for a new task (ADR 41, amended
+    // 2026-10-27): its host, model, judge and options.
+    const newTask = await read("newtask.last");
+    if (newTask !== undefined) this.newTask = newTask;
     await this.refreshWorkspaces();
     this.changed("setup");
   }

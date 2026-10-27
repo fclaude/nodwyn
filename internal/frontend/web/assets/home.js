@@ -21,116 +21,143 @@ let draft = "";
 let current = null;
 let files = null; // the files chosen for the next task, kept across redraws
 let starting = false; // a start is in flight: one task per ask
-// A choice made for a folder in this tab, by host and folder; otherwise a
-// known git workspace defaults to a worktree.
-const worktreeChoices = new Map();
+
+// What the composer chose last for a new task, which the next one starts
+// with (ADR 41, amended 2026-10-27): the host it runs on and, for each host,
+// its model and effort, its judge, its helpers, its limits and, for each
+// folder, whether it opens in a worktree. A field left out is that host's
+// default: Settings' model, effort and judge, no helpers, the limits on, and
+// a worktree for a known git workspace. This computer's daemon keeps it
+// (newtask.last), so the app's window, another browser and a console on
+// another address start with it too, where this browser's storage, which is
+// one origin's, has nothing (ADR 30); a daemon without the method leaves it
+// to this browser. A linked host's choices are kept here too, under its
+// name, since they are this person's.
+const KEPT_KEY = "nodwyn-new-task";
+let kept = null; // {runs_on, hosts: [{host, model, effort, judge, helpers, no_limits, worktree}]}, once read
+let keeper = null; // this computer's {conn, desk}, which reads and keeps it
+// loadKept reads the choices once, or is null while the daemon's are not
+// read yet.
+function loadKept() {
+  if (kept) return kept;
+  const { conn, desk } = keeper;
+  let read = null;
+  if (conn.has("newtask.last")) {
+    if (desk.newTask === undefined) return null;
+    read = desk.newTask;
+  } else {
+    try {
+      read = JSON.parse(localStorage.getItem(KEPT_KEY) || "null");
+    } catch {
+      /* a browser that refuses storage starts on the defaults */
+    }
+  }
+  kept = { runs_on: typeof read?.runs_on === "string" ? read.runs_on : "", hosts: Array.isArray(read?.hosts) ? structuredClone(read.hosts) : [] };
+  return kept;
+}
+// choicesFor is what was chosen for host's next task: {} for its defaults.
+function choicesFor(host) {
+  return loadKept()?.hosts.find((e) => e.host === host) || { host };
+}
+// keep changes host's choices (or, for null, the record itself) and keeps
+// them. A choice made before the daemon's were read starts a record anew:
+// it is the newest.
+function keep(host, change) {
+  if (!loadKept()) kept = { runs_on: "", hosts: [] };
+  if (host === null) change(kept);
+  else {
+    let entry = kept.hosts.find((e) => e.host === host);
+    if (!entry) kept.hosts.push((entry = { host }));
+    change(entry);
+  }
+  const { conn } = keeper;
+  if (conn.has("newtask.last")) conn.call("newtask.last", { choices: kept }).catch((error) => toastError(`The choice is not kept for the next task: ${error.message}`));
+  else {
+    try {
+      localStorage.setItem(KEPT_KEY, JSON.stringify(kept));
+    } catch {
+      /* kept for this tab only */
+    }
+  }
+}
+
+// The worktree choices kept for a host, newest last, are at most this many,
+// within the 256 the daemon takes.
+const maxWorktreeChoices = 200;
 
 // The host a new task starts on (ADR 54): "" for this computer, else a
-// linked host's name. Kept in this browser, since it is a choice like the
-// folder.
-const RUNS_ON_KEY = "nodwyn-runs-on";
-let runsOn = null;
-function loadRunsOn() {
-  if (runsOn !== null) return runsOn;
-  try {
-    runsOn = localStorage.getItem(RUNS_ON_KEY) || "";
-  } catch {
-    runsOn = "";
-  }
-  return runsOn;
-}
+// linked host's name.
+const loadRunsOn = () => loadKept()?.runs_on || "";
 function setRunsOn(name) {
-  runsOn = name;
-  try {
-    if (name) localStorage.setItem(RUNS_ON_KEY, name);
-    else localStorage.removeItem(RUNS_ON_KEY);
-  } catch {
-    /* kept for this tab only */
-  }
+  keep(null, (k) => (k.runs_on = name));
 }
 // keyFor is the name a choice is kept under in this browser: this
 // computer's as it always was, a linked host's with the host's name, since
-// its folders and models are its own.
+// its folders are its own.
 const keyFor = (key, host) => (host ? `${key}@${host}` : key);
-// What this tab chose for each host's next task: its folder, and its model
-// and judge when they are not the default.
+// What this tab chose for each host's next task: its folder.
 const perHost = new Map();
 function stateOf(host = "") {
   let st = perHost.get(host);
-  if (!st) perHost.set(host, (st = { chosen: "", picked: null, pickedLoaded: false, pickedJudge: null, pickedJudgeLoaded: false }));
+  if (!st) perHost.set(host, (st = { chosen: "" }));
   return st;
 }
 
-// The model and effort chosen for the next task, if they are not the default
-// (ADR 41): kept while the window is left and come back to, and in this
-// browser across a reload, since it is an unsent choice like the message. It
-// is dropped when the task starts, and when the default is picked again, so a
-// new task always begins on the default of Settings unless it is changed
-// there and then. It never changes the default.
-const NEW_KEY = "nodwyn-new-task-model";
-// loadPicked reads the model kept for host's next task, {name, effort}, or
-// null for the default, once.
-function loadPicked(host) {
-  const st = stateOf(host);
-  if (st.pickedLoaded) return;
-  st.pickedLoaded = true;
-  try {
-    const v = JSON.parse(localStorage.getItem(keyFor(NEW_KEY, host)) || "null");
-    if (v && typeof v.name === "string" && typeof v.effort === "string") st.picked = { name: v.name, effort: v.effort };
-  } catch {
-    /* a browser that refuses storage starts on the default */
-  }
+// The model and effort chosen for the next task, or null for the default of
+// Settings (ADR 41). Picking the default again keeps no model, so the next
+// task follows Settings' default if it changes. It never changes the default.
+function pickedOf(host) {
+  const c = choicesFor(host);
+  return typeof c.model === "string" && c.model ? { name: c.model, effort: typeof c.effort === "string" ? c.effort : "" } : null;
 }
-// The judge chosen for the next task, if it is not the default (ADR 47), kept
-// as the model's choice is and dropped as it is. "" is no judge; null is the
+// The judge chosen for the next task (ADR 47): "" is no judge; null is the
 // default of Settings.
-const NEW_JUDGE_KEY = "nodwyn-new-task-judge";
-function loadPickedJudge(host) {
-  const st = stateOf(host);
-  if (st.pickedJudgeLoaded) return;
-  st.pickedJudgeLoaded = true;
-  try {
-    const v = JSON.parse(localStorage.getItem(keyFor(NEW_JUDGE_KEY, host)) || "null");
-    if (typeof v === "string") st.pickedJudge = v;
-  } catch {
-    /* a browser that refuses storage starts on the default */
-  }
+function pickedJudgeOf(host) {
+  const judge = choicesFor(host).judge;
+  return typeof judge === "string" ? judge : null;
 }
 function pickJudge(name, desk) {
-  const st = stateOf(desk.host);
-  st.pickedJudge = name === null || name === defaultJudge(desk) ? null : name;
-  try {
-    if (st.pickedJudge !== null) localStorage.setItem(keyFor(NEW_JUDGE_KEY, desk.host), JSON.stringify(st.pickedJudge));
-    else localStorage.removeItem(keyFor(NEW_JUDGE_KEY, desk.host));
-  } catch {
-    /* kept for this tab only */
-  }
+  keep(desk.host, (e) => {
+    if (name === null || name === defaultJudge(desk)) delete e.judge;
+    else e.judge = name;
+  });
 }
 
 // The models the next task's model may hand work to (ADR 27, amended
-// 2026-10-09). Never kept between tasks, not even in this tab's storage: where
-// a task's work may go is chosen for each, and the default is the task's own
-// model alone. They are the models of the host they were ticked for.
-const pickedHelpers = new Set();
-let helpersHost = "";
+// 2026-10-09 and 2026-10-27): none by default, and those ticked last after.
+// They are the models of the host they were ticked for; the model the task
+// talks to is not offered, since it is the one delegating, nor the default,
+// which is listed as "control", the name a task gives the model it talks to.
+const helpersOffered = (desk, driving) => choicesOf(desk).filter((c) => c.name !== driving && c.name !== "control");
+function helpersOf(desk, driving) {
+  const offered = new Set(helpersOffered(desk, driving).map((c) => c.name));
+  const helpers = choicesFor(desk.host).helpers;
+  return Array.isArray(helpers) ? helpers.filter((name) => offered.has(name)) : [];
+}
 
-// Whether the next task's turns stop at Settings' limits (ADR 49). Ticked by
-// default, and ticked again for each new task: running without them is a
-// choice made for one task, kept only across redraws of this page.
-let limitsOn = true;
+// Whether the next task's turns stop at Settings' limits (ADR 49): ticked
+// unless they were unticked for the task before.
+const limitsOf = (host) => !choicesFor(host).no_limits;
 
-// helpersBox is the control for it: a fold that says how many are chosen, and
-// lists the other models with the labels each carries. The model the task
-// talks to is not offered, since it is the one delegating.
+// helpersBox is the control for them: a fold that says how many are chosen,
+// and lists the other models with the labels each carries.
 function helpersBox(desk, driving, changed) {
-  // The default is listed as "control", which in a task names the model the
-  // task talks to, so it is not offered: its own entry's name is not here.
-  const others = choicesOf(desk).filter((c) => c.name !== driving && c.name !== "control");
-  for (const name of [...pickedHelpers]) if (!others.some((c) => c.name === name)) pickedHelpers.delete(name);
+  const others = helpersOffered(desk, driving);
   if (!others.length) return null;
   const count = h("span", {});
-  const say = () => (count.textContent = pickedHelpers.size ? `Helpers: ${pickedHelpers.size}` : "Helpers: none");
+  const say = () => {
+    const n = helpersOf(desk, driving).length;
+    count.textContent = n ? `Helpers: ${n}` : "Helpers: none";
+  };
   say();
+  const tick = (name, on) =>
+    keep(desk.host, (e) => {
+      const rest = (Array.isArray(e.helpers) ? e.helpers : []).filter((n) => n !== name);
+      if (on) rest.push(name);
+      if (rest.length) e.helpers = rest;
+      else delete e.helpers;
+    });
+  const chosen = new Set(helpersOf(desk, driving));
   return h(
     "details",
     { class: "helpers", id: "new-task-helpers" },
@@ -143,7 +170,7 @@ function helpersBox(desk, driving, changed) {
         h(
           "label",
           { class: "helper", dataset: { model: c.name } },
-          h("input", { type: "checkbox", checked: pickedHelpers.has(c.name), onchange: (event) => { if (event.target.checked) pickedHelpers.add(c.name); else pickedHelpers.delete(c.name); say(); changed(); } }),
+          h("input", { type: "checkbox", checked: chosen.has(c.name), onchange: (event) => { tick(c.name, event.target.checked); say(); changed(); } }),
           h("span", {}, c.model),
           (c.labels || []).map((l) => h("span", { class: "badge plain" }, l)),
         ),
@@ -153,15 +180,17 @@ function helpersBox(desk, driving, changed) {
 }
 
 function pick(selection, desk) {
-  const st = stateOf(desk.host);
   const dflt = defaultSelection(desk);
-  st.picked = selection && !(dflt && selection.name === dflt.name && selection.effort === dflt.effort) ? selection : null;
-  try {
-    if (st.picked) localStorage.setItem(keyFor(NEW_KEY, desk.host), JSON.stringify(st.picked));
-    else localStorage.removeItem(keyFor(NEW_KEY, desk.host));
-  } catch {
-    /* kept for this tab only */
-  }
+  keep(desk.host, (e) => {
+    if (!selection || (dflt && selection.name === dflt.name && selection.effort === dflt.effort)) {
+      delete e.model;
+      delete e.effort;
+    } else {
+      e.model = selection.name;
+      if (selection.effort) e.effort = selection.effort;
+      else delete e.effort;
+    }
+  });
 }
 
 // setFolder picks the folder the next task starts in on desk's host, in
@@ -202,6 +231,7 @@ export function renderHome(root, ctx) {
   // this window make. A host that is gone or not reachable leaves the
   // choice made, and the composer says why it cannot start.
   const entries = hosts ? hosts.all() : [{ name: "", label: "This computer", conn: ctx.conn, desk: ctx.desk }];
+  keeper = entries[0];
   const several = entries.length > 1;
   const target = entries.find((e) => e.name === loadRunsOn()) || entries[0];
   const { conn, desk } = target;
@@ -210,10 +240,6 @@ export function renderHome(root, ctx) {
   const pickFolder = target.name ? null : ctx.pickFolder;
   // What the forms on this page act on: the host a task starts on.
   const tctx = { ...ctx, conn, desk, pickFolder };
-  if (helpersHost !== target.name) {
-    pickedHelpers.clear();
-    helpersHost = target.name;
-  }
   // The lists below are every host's that can be read, each task with its
   // host's desk.
   const live = entries.filter((e) => e.conn.live);
@@ -243,15 +269,13 @@ export function renderHome(root, ctx) {
   const where = !conn.live && target.name ? `${target.name} is not reachable` : control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
   // This computer chooses where a task's content goes (ADR 30, ADR 40): a
   // paired device starts tasks on the default model and says which it is.
-  loadPicked(target.name);
-  loadPickedJudge(target.name);
   const canChoose = conn.has("session.model.set") && choicesOf(desk).length > 0;
-  const selection = () => st.picked || defaultSelection(desk);
+  const selection = () => pickedOf(target.name) || defaultSelection(desk);
   // The judge is chosen beside the model (ADR 47), on this computer only,
   // and only where there is a judge to choose.
   const canDelegate = canChoose && conn.has("session.judge.set");
   const canJudge = canChoose && conn.has("session.judge.set") && judgesOf(desk).length > 0;
-  const judgeChoice = () => (st.pickedJudge !== null ? st.pickedJudge : defaultJudge(desk));
+  const judgeChoice = () => pickedJudgeOf(target.name) ?? defaultJudge(desk);
 
   // Needs you: each waiting task says what it asks.
   const needs = h("section", { class: "home-section home-needs", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
@@ -432,30 +456,45 @@ export function renderHome(root, ctx) {
   // A named workspace says whether it is a git repository; a folder a task
   // merely used does not, so it is left to the daemon, which refuses.
   const notGit = !!desk.workspace(st.chosen) && !desk.workspace(st.chosen).git;
-  const worktreeKey = `${target.name}\n${st.chosen}`;
-  const worktree = () => conn.has("worktree.open") && !notGit && (worktreeChoices.has(worktreeKey) ? worktreeChoices.get(worktreeKey) : worktreeDefault());
+  // A choice made for this folder before is kept for the next task there.
+  const worktreeChoice = () => {
+    const list = choicesFor(target.name).worktree;
+    return Array.isArray(list) ? list.find((w) => w.folder === st.chosen) : undefined;
+  };
+  const worktree = () => conn.has("worktree.open") && !notGit && (worktreeChoice() ? !!worktreeChoice().on : worktreeDefault());
+  const keepWorktree = (on) =>
+    keep(target.name, (e) => {
+      const rest = (Array.isArray(e.worktree) ? e.worktree : []).filter((w) => w.folder !== st.chosen);
+      rest.push({ folder: st.chosen, on });
+      e.worktree = rest.slice(-maxWorktreeChoices);
+    });
   const worktreeBox = conn.has("worktree.open") && st.chosen
     ? h(
         "label",
         { class: "worktree-toggle", title: notGit ? "Only a git repository can have worktrees, and this folder is not one." : "Start this task in a new git worktree of the folder, on a branch of its own: it does not touch the files you or other tasks are working on. Its changes stay on that branch until it is merged." },
-        h("input", { type: "checkbox", disabled: notGit, checked: worktree(), onchange: (event) => { worktreeChoices.set(worktreeKey, event.target.checked); count(); } }),
+        h("input", { type: "checkbox", disabled: notGit, checked: worktree(), onchange: (event) => { keepWorktree(event.target.checked); count(); } }),
         h("span", {}, "In a worktree"),
       )
     : null;
   // Turning a task's limits off is this computer's choice, as Settings'
   // limits are (ADR 49): a console that cannot reach session.limits.set,
   // a paired device's, starts every task with them on and shows no box.
+  const limitsOn = () => !limitsBox || limitsOf(target.name);
   const limitsBox = conn.has("session.limits.set")
     ? h(
         "label",
-        { class: `worktree-toggle limits-toggle${limitsOn ? "" : " on"}`, title: "Stop each turn at the limits in Settings › General: tool calls, tokens, actions and time. Untick to let this task run, and wait for your answers, as long as it needs; its spend limit still applies." },
+        { class: `worktree-toggle limits-toggle${limitsOf(target.name) ? "" : " on"}`, title: "Stop each turn at the limits in Settings › General: tool calls, tokens, actions and time. Untick to let this task run, and wait for your answers, as long as it needs; its spend limit still applies." },
         h("input", {
           type: "checkbox",
           id: "new-task-limits",
-          checked: limitsOn,
+          checked: limitsOf(target.name),
           onchange: (event) => {
-            limitsOn = event.target.checked;
-            event.target.parentElement.classList.toggle("on", !limitsOn);
+            const on = event.target.checked;
+            keep(target.name, (e) => {
+              if (on) delete e.no_limits;
+              else e.no_limits = true;
+            });
+            event.target.parentElement.classList.toggle("on", !on);
             count();
           },
         }),
@@ -473,7 +512,7 @@ export function renderHome(root, ctx) {
     : null;
   const optionsCount = h("span", { class: "count", hidden: true });
   const count = () => {
-    const changed = (worktreeBox && !notGit && worktree() !== worktreeDefault() ? 1 : 0) + (limitsBox && !limitsOn ? 1 : 0) + (pickedHelpers.size ? 1 : 0);
+    const changed = (worktreeBox && !notGit && worktree() !== worktreeDefault() ? 1 : 0) + (limitsOn() ? 0 : 1) + (canDelegate && helpersOf(desk, selection()?.name).length ? 1 : 0);
     optionsCount.textContent = String(changed);
     optionsCount.hidden = !changed;
   };
@@ -565,18 +604,19 @@ export function renderHome(root, ctx) {
           // alone, the picker shows the default and the task starts on it, as
           // a task always did: the daemon pins its effort in the log.
           const params = { repo: st.chosen };
-          const sel = canChoose ? st.picked : null;
+          const sel = canChoose ? pickedOf(target.name) : null;
           if (sel) {
             params.name = sel.name;
             if (sel.effort) params.effort = sel.effort;
           }
           // So is a judge chosen here; left alone, the task asks the
           // default of Settings, as a task always did.
-          if (canJudge && st.pickedJudge !== null) params.judge = st.pickedJudge;
-          // And the helpers ticked for this task, if any.
-          if (canDelegate && pickedHelpers.size) params.delegates = [...pickedHelpers].sort();
+          if (canJudge && pickedJudgeOf(target.name) !== null) params.judge = pickedJudgeOf(target.name);
+          // And the helpers ticked, if any.
+          const helpers = canDelegate ? helpersOf(desk, selection()?.name) : [];
+          if (helpers.length) params.delegates = [...helpers].sort();
           // Limits are on unless unticked: only then is the choice sent.
-          if (limitsBox && !limitsOn) params.limits = false;
+          if (!limitsOn()) params.limits = false;
           const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
           opened = info.id;
           // An image waits for its own confirm, which the task's page shows.
@@ -586,10 +626,8 @@ export function renderHome(root, ctx) {
           if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling });
           else await conn.call("session.send", { id: info.id, text });
           draft = "";
-          pick(null, desk);
-          pickJudge(null, desk);
-          pickedHelpers.clear();
-          limitsOn = true;
+          // What was chosen stays for the next task (ADR 41, amended
+          // 2026-10-27).
           await desk.refresh();
           navigate(desk.href(info.id));
         } catch (error) {

@@ -117,6 +117,7 @@ func contracts() map[string]methodContract {
 		"workspace.list":               {struct{}{}, []workspaceInfo{}},
 		"workspace.forgotten":          {struct{}{}, []string{}},
 		"workspace.active":             {workspaceActiveParams{}, workspaceActiveResult{}},
+		"newtask.last":                 {newTaskLastParams{}, config.NewTaskChoices{}},
 		"workspace.save":               {workspaceSaveParams{}, workspaceInfo{}},
 		"workspace.remove":             {workspacePathParams{}, struct{}{}},
 		"versions.list":                {versionsParams{}, []prim.Version{}},

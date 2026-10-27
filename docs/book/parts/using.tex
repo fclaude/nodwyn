@@ -192,7 +192,9 @@ why not; a test request that says whether the key was accepted; the models to
 choose between, each with its efforts and its own settings (its context
 length, its prices, whether it takes images); and the default model and effort
 new tasks start on. Under the message box of the New task window, a Model and an
-Effort select change what the next message is answered with. In a conversation
+Effort select change what the next message is answered with; the next task
+starts on the model, effort, judge, helpers, limits and Runs on chosen for
+the one before, which nodwyn keeps itself, across an app restart too. In a conversation
 they are tucked behind a compact model-and-effort summary: click it, or focus it
 and press Enter, to expand them. Warnings and change notices remain visible
 when collapsed, and a task that needs a model chosen opens the selects for
@@ -924,7 +926,9 @@ opened it: line mode's old \code{--max-tool-calls} and \code{--budget-*}
 flags are refused, naming the key to set.
 
 In the console a task can do without these four (\adr{49}). Home's
-\textbf{Limits} is ticked for every new task; untick it and that task's turns
+\textbf{Limits} is ticked for a new task unless you unticked it for the task
+before, as every choice of the New task window is kept for the next task;
+untick it and that task's turns
 run, and wait for your answers, as long as they need. Its heading then says
 \textbf{No turn limits}, and the task's own \textbf{Limits} turns them on
 or off again from its next turn. The spend limit below, the timeouts and the

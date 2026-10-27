@@ -319,7 +319,10 @@ a model key is bound for \code{GET} as well as \code{POST}.
 The New task window and a conversation share one picker, a Model select
 grouped by provider, an Effort select of what that model takes, and, where a
 judge is set up, a Judge select (\adr{47}). New task
-shows both fields; a conversation tucks them behind a compact model-and-effort
+shows both fields, and starts on what was chosen for the task before: the
+model, effort and judge, with Runs on, the helpers, the limits and each
+folder's worktree choice, which the daemon keeps in \code{new-task.toml}
+(\code{newtask.last}, \adr{41}, amended 2026-10-27); a conversation tucks them behind a compact model-and-effort
 summary, opened by a click or by focusing it and pressing Enter. Warnings and
 change notices remain visible when collapsed, and an unavailable conversation
 opens the selects automatically so a model can be chosen. In a

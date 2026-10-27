@@ -332,7 +332,8 @@ At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
 In the console a task can do without the turn limits (ADR 49). **Limits**
-beside **In a worktree**, under **Options** on Home, is ticked for every new task; untick it and
+beside **In a worktree**, under **Options** on Home, is ticked for a new task
+unless you unticked it for the task before; untick it and
 that task's turns have no limit on tool calls, tokens, actions or time, so a
 turn may work, or wait for your answer, as long as it needs. Its spend limit,
 the request and command timeouts and the progress guard, which stops a turn
@@ -496,7 +497,7 @@ worktree** beside a git workspace on Home is checked by default, starting a task
 in a git worktree of its own (ADR 34):
 `<repo>/.nodwyn/worktrees/<id>` on a new branch `nodwyn/<id>`, from the
 repository's `HEAD`. Uncheck it to start in the folder itself; this choice
-is kept per git workspace in this tab. In the TUI, the chooser's first row in
+is kept per git workspace for its next task, by nodwyn, in every window. In the TUI, the chooser's first row in
 a repository's top folder is "New task in a new worktree of" it, and
 `nodwyn tui --worktree` opens one directly; the title shows the branch
 ([the TUI](tui.md)). The task's tools, commands and
@@ -2164,14 +2165,17 @@ for one that takes none. A model that is not ready is shown as it is: the
 New task window says why and does not start a task on it (a provider that does
 not answer is a warning, since it may be back).
 
-- *New task.* It starts on the default model and effort of Settings. A choice
-  made there is kept while you go to another page and back, and in this
-  browser across a reload, until the task starts or you pick the default
-  again; it never changes the default. A choice left alone is not sent: the
-  task starts on the default, as it always did. After an app restart the
-  window's console is on a new address and remembers nothing, so it starts on
-  the default. A model removed from the list since is said to be gone, and
-  another is not picked for you.
+- *New task.* It starts on what was chosen for the task before it: the
+  model and effort, the judge, the helpers, whether the limits are on, Runs
+  on and, for each folder, In a worktree. Before any choice, that is the
+  default of Settings (the model, its effort and the judge), no helpers, the
+  limits on and a worktree for a git workspace. nodwyn keeps the choices
+  itself (`new-task.toml` in its configuration folder), so they are there
+  after an app restart and in any browser that opens the console. Picking
+  the default model or judge again makes the next task follow Settings'
+  default, if you change it later; a choice here never changes the default.
+  A model removed from the list since is said to be gone, and another is not
+  picked for you.
 - *In a conversation.* A compact model-and-effort summary sits below the
   message box; click it (or focus it and press Enter) to reveal the selects.
   They show the model and effort the next message is answered with. Warnings
@@ -3124,7 +3128,7 @@ run it (ADR 54). The laptop links to the server once:
 
 The sidebar then groups the tasks under each host, with its state, and
 Home's **Runs on** chooses the host a new task starts on, with that host's
-folders and model. A task on the server says so in its heading; you answer
+folders and model; the next task starts on the host chosen last. A task on the server says so in its heading; you answer
 it, message it and give it files from the laptop, and the server records the
 answers as the laptop's. A notice of the server's task opens it there.
 

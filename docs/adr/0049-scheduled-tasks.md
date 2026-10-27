@@ -571,3 +571,13 @@ time (§6).
 changes schedules and turns a task's limits off, as this computer does (ADR
 30, amended 2026-10-17); a device paired by a plain invitation still only
 pauses and runs now. The regression is `TestALockedKeychainHoldsAScheduledTime`.
+
+## Amendment 2026-10-27: Home keeps Limits as it was left
+
+§2's Home **Limits** is ticked for the first task and no longer ticked again
+for each one: unticked for a task, it stays unticked for the next on that
+host, kept by the daemon with the other choices of the New task window (ADR
+41, amended 2026-10-27), because the person asked for every choice they make
+there to be the next task's default. Unticked shows in Options' count and in
+the label's amber, and is still this computer's choice: a paired device's
+tasks start with their limits on.

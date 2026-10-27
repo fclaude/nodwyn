@@ -376,14 +376,19 @@ cannot be asked. A judge that cannot be asked does not stop a task, since you
 answer instead; the lines under the picker say why. A conversation's summary
 says which judge it asks ("judged by Jev", or "no judge").
 
-- *New task.* It starts on the default of Settings. A choice is kept while
-  another page is shown and in this browser across a reload (an unsent choice,
-  like the message), dropped when the task starts or the default is picked
-  again, and never changes the default. A choice left alone is not sent. A
-  model that cannot be used is said so and a task is not started on it; one
-  removed from the list is said to be gone, and the page does not pick another.
-  A judge chosen here is kept and dropped the same way, and sent as
-  `session.open`'s `judge` only when it is not the default.
+- *New task.* It starts on what was chosen for the task before it (ADR 41,
+  amended 2026-10-27), and before any choice on the default of Settings. The
+  choices (Runs on; per host the model and effort, the judge, the helpers,
+  the limits and, per folder, In a worktree) are kept by this computer's
+  daemon (`newtask.last`, `new-task.toml`), saved as each is made and not
+  dropped when a task starts, so a reload, an app restart or another browser
+  starts with them; a daemon without the method leaves them to this
+  browser's storage. Picking the default model or judge again keeps none,
+  so the next task follows Settings' default; a choice never changes the
+  default. The model, effort and judge are sent only when they differ from
+  the default. A model that cannot be used is said so and a task is not
+  started on it; one removed from the list is said to be gone, and the page
+  does not pick another.
 - *A conversation.* The selects show what the next message is answered with
   and change it (`session.model.set`). After a choice, the lines under them
   say that the change takes effect from the next message; an unchanged running
@@ -406,10 +411,10 @@ says which judge it asks ("judged by Jev", or "no judge").
   a **Helpers: none** fold listing the other models with the labels each
   carries; ticked models are sent as `delegates` in `session.open` /
   `worktree.open`, so the task's model may hand work to them with its
-  `delegate` tool. None is the default, nothing is remembered for the next
-  task (not even in this tab's storage), the model chosen and the default
-  model are not offered, and the fold is on this computer only, like the
-  Judge select. A task's page says "May hand work to: ..." beside its
+  `delegate` tool. None is the default; the models ticked are kept for the
+  next task as the model is (ADR 27, amended 2026-10-27), the model chosen
+  and the default model are not offered, and the fold is on this computer
+  only, like the Judge select. A task's page says "May hand work to: ..." beside its
   picker. Settings › Models edits a model's labels (*What it is for*, with
   hint buttons); the change reaches open tasks.
 - A paired device sees the selects, disabled, and a line saying the model is
@@ -474,7 +479,8 @@ under the call that made it, and the build's own reads of files never mark
 that call.
 
 **In a worktree.** Under Home's **Options**, **In a worktree** is checked
-by default for a git workspace, is disabled with the reason for a named
+by default for a git workspace, and as it was left for the folder's task
+before once it was changed there, is disabled with the reason for a named
 folder that is not a git repository (a folder no workspace names is left to
 the daemon, which refuses), and starts the task in a git worktree of its own
 ([ADR 34](adr/0034-sessions-in-git-worktrees.md)): a checkout of the
@@ -525,8 +531,8 @@ attachment is one), no commit its base lacks. Otherwise both stay, and
 resuming the task works in them again; a worktree that was removed is made
 again on resume.
 
-**Limits.** Under **Options**, beside **In a worktree**, **Limits** is ticked for every new
-task: its turns stop at the limits in Settings › General (tool calls, tokens,
+**Limits.** Under **Options**, beside **In a worktree**, **Limits** is ticked for a new
+task unless it was unticked for the task before (ADR 41, amended 2026-10-27): its turns stop at the limits in Settings › General (tool calls, tokens,
 actions and time). Untick it and that task's turns have none of the four, so
 a turn may work, or wait for your answer, as long as it needs
 ([ADR 49](adr/0049-scheduled-tasks.md)); the label turns amber while it is
@@ -1071,7 +1077,8 @@ there by hand.
 
 With a linked host, the sidebar groups tasks under each host's name and
 state, below one **Needs you** for every host, each task there naming its
-host. Home's **Runs on** chooses the host a new task starts on: the folders,
+host. Home's **Runs on** chooses the host a new task starts on, and the next
+task starts on the one chosen last (`newtask.last`): the folders,
 the model (from that host's list, when it lets this computer choose) and the
 options follow it, and Enter starts it there. The lists below Home's
 composer are every host's, each card naming its host. A linked host's task

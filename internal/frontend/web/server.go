@@ -897,8 +897,9 @@ func (b *bridge) tierOf(method string) tier {
 	// task's turn limits and setting its schedule decide what runs with
 	// nobody watching (ADR 49). A key the model asks for (session.secret)
 	// and the keychain's passphrase are secrets the person types, and the
-	// passphrase is its own proof. The folder last picked only remembers.
-	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "startup.read", "trust.read":
+	// passphrase is its own proof. The folder last picked, and the choices
+	// a new task starts with, only remember.
+	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "newtask.last", "startup.read", "trust.read":
 		return tierPerson
 	// A workflow decides what runs with nobody watching, as a schedule does,
 	// and its source is asked with this computer's keys (ADR 53 §9).

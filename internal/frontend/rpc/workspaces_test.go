@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -314,6 +315,63 @@ func TestWorkspaceActiveSurvivesRestart(t *testing.T) {
 	json.Unmarshal(c.ok("workspace.active", map[string]any{}), &got)
 	if got.Path != config.CanonicalPath(folder) {
 		t.Fatalf("after a restart: %q, not %q", got.Path, folder)
+	}
+}
+
+// The choices a new task starts with are the daemon's to keep, so they
+// outlive the app's window, whose console is on a new port every launch:
+// what is written is read back after a restart, "no judge" stays a choice
+// apart from the default, and a paired device can read but not change them.
+func TestNewTaskChoicesSurviveRestart(t *testing.T) {
+	o := options(t)
+	path, stop := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	var got config.NewTaskChoices
+	into(t, c.ok("newtask.last", map[string]any{}), &got)
+	if got.RunsOn != "" || got.Hosts == nil || len(got.Hosts) != 0 {
+		t.Fatalf("chosen before anything was: %+v", got)
+	}
+	folder := t.TempDir()
+	choices := map[string]any{
+		"runs_on": "workshop",
+		"hosts": []any{
+			map[string]any{"host": "", "model": "fast", "effort": "low", "judge": "", "helpers": []any{"review"}, "no_limits": true, "worktree": []any{map[string]any{"folder": folder, "on": false}}},
+			map[string]any{"host": "workshop", "model": "control"},
+		},
+	}
+	c.ok("newtask.last", map[string]any{"choices": choices})
+	noJudge := ""
+	want := config.NewTaskChoices{RunsOn: "workshop", Hosts: []config.NewTaskForHost{
+		{Host: "", Model: "fast", Effort: "low", Judge: &noJudge, Helpers: []string{"review"}, NoLimits: true, Worktree: []config.WorktreeChoice{{Folder: config.CanonicalPath(folder), On: false}}},
+		{Host: "workshop", Model: "control"},
+	}}
+	for _, bad := range []map[string]any{
+		{"hosts": []any{map[string]any{"host": "", "worktree": []any{map[string]any{"folder": "notes", "on": true}}}}},
+		{"hosts": []any{map[string]any{"host": ""}, map[string]any{"host": ""}}},
+		{"hosts": []any{map[string]any{"host": "", "effort": "low"}}},
+	} {
+		if r := c.call("newtask.last", map[string]any{"choices": bad}); r.Error == nil {
+			t.Fatalf("kept %v", bad)
+		}
+	}
+	device := connect(t, path)
+	device.ok("hello", map[string]any{"protocol": 1, "via": "web:phone"})
+	if r := device.call("newtask.last", map[string]any{"choices": map[string]any{"runs_on": "", "hosts": []any{}}}); r.Error == nil {
+		t.Fatal("a paired device changed the choices a new task starts with")
+	}
+	// A restart is a new daemon on the same config directory.
+	stop()
+	path, _ = start(t, o)
+	c = connect(t, path)
+	c.hello()
+	got = config.NewTaskChoices{}
+	into(t, c.ok("newtask.last", map[string]any{}), &got)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("after a restart:\n got %+v\nwant %+v", got, want)
+	}
+	if got.Hosts[1].Judge != nil {
+		t.Fatal("a host whose judge was left to Settings came back with one")
 	}
 }
 

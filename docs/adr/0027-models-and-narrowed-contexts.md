@@ -224,3 +224,12 @@ change, so choosing by name does not last.
   the default as `control`, which in a task names the task's own model), the
   TUI, line mode and `nodwyn run` choosing delegates, and descriptions beyond
   labels.
+
+## Amendment 2026-10-27: the helpers ticked last are the next task's
+
+The console's New task window no longer starts every task with no helpers:
+the helpers ticked for a task are kept by the daemon and ticked for the
+next one on that host, with the model and judge chosen there (ADR 41,
+amended 2026-10-27), because the person asked for every choice they make
+there to be the next task's default. A task with none still works with its
+own model alone, and `delegates` is still refused to a paired device.

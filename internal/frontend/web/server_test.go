@@ -641,7 +641,7 @@ func TestRemoteDevicesPairByInvitationAndCannotWidenPolicy(t *testing.T) {
 	device, person, touched := caller{}, caller{person: true}, caller{person: true, touched: true}
 	setup := []string{"session.binding.create", "session.policy.write", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "passkeys.remove", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
 		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "session.delete", "workspace.save", "index.forget"}
-	choices := []string{"session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "devices.list", "passkeys.list"}
+	choices := []string{"session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "newtask.last", "devices.list", "passkeys.list"}
 	for _, method := range append(append([]string{"session.eval"}, setup...), choices...) {
 		if s.b.access(method, device) != refused {
 			t.Fatalf("a device that only answers may call %s", method)

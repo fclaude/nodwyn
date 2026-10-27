@@ -427,6 +427,75 @@
       ],
       "type": "object"
     },
+    "config.NewTaskChoices": {
+      "properties": {
+        "hosts": {
+          "items": {
+            "$ref": "#/$defs/config.NewTaskForHost"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "runs_on": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runs_on",
+        "hosts"
+      ],
+      "type": "object"
+    },
+    "config.NewTaskForHost": {
+      "properties": {
+        "effort": {
+          "type": "string"
+        },
+        "helpers": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "host": {
+          "type": "string"
+        },
+        "judge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "no_limits": {
+          "type": "boolean"
+        },
+        "worktree": {
+          "items": {
+            "$ref": "#/$defs/config.WorktreeChoice"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "host"
+      ],
+      "type": "object"
+    },
     "config.Workspace": {
       "properties": {
         "earlier_tasks": {
@@ -445,6 +514,21 @@
       "required": [
         "mounts",
         "earlier_tasks"
+      ],
+      "type": "object"
+    },
+    "config.WorktreeChoice": {
+      "properties": {
+        "folder": {
+          "type": "string"
+        },
+        "on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "folder",
+        "on"
       ],
       "type": "object"
     },
@@ -3759,6 +3843,9 @@
           "$ref": "#/$defs/request.models.test"
         },
         {
+          "$ref": "#/$defs/request.newtask.last"
+        },
+        {
           "$ref": "#/$defs/request.notes.read"
         },
         {
@@ -5081,6 +5168,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.testParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.newtask.last": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "newtask.last"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.newTaskLastParams"
             }
           ],
           "unevaluatedProperties": false
@@ -7465,6 +7583,9 @@
     "result.models.test": {
       "$ref": "#/$defs/rpc.testResult"
     },
+    "result.newtask.last": {
+      "$ref": "#/$defs/config.NewTaskChoices"
+    },
     "result.notes.read": {
       "$ref": "#/$defs/rpc.notesResult"
     },
@@ -9420,6 +9541,22 @@
       "required": [
         "name"
       ],
+      "type": "object"
+    },
+    "rpc.newTaskLastParams": {
+      "properties": {
+        "choices": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/config.NewTaskChoices"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
       "type": "object"
     },
     "rpc.notesParams": {

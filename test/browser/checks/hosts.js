@@ -143,7 +143,9 @@ check(async () => {
     value: el.value,
   }));
   assert.deepStrictEqual(look, { tag: "SELECT", appearance: "none", chevron: '""', value: "workshop" }, "Runs on looks like the model picker");
-  assert.strictEqual(await page.evaluate(() => localStorage.getItem("nodwyn-runs-on")), "workshop", "Runs on stores the host");
+  assert.strictEqual(await page.evaluate(() => localStorage.getItem("nodwyn-runs-on")), null, "Runs on was kept in this browser alone, not by the daemon");
+  const newTaskFile = `${laptop.root}/config/nodwyn/new-task.toml`;
+  await until("the daemon to keep Runs on", () => fs.existsSync(newTaskFile) && /runs_on = "workshop"/.test(fs.readFileSync(newTaskFile, "utf8")));
   await page.waitForSelector(".work-in-host:has-text('Folders on workshop')");
   await shows(page, ".ask-bar .where", workshop.modelHost);
   // A device that answers on workshop chooses no model there, as a paired phone does not.
@@ -189,8 +191,11 @@ check(async () => {
   await page.evaluate(() => (window.hiddenForCheck = false));
   step("workshop's task asking while the page is hidden shows the fixed notice, naming its host as data");
 
-  // And one here, on this computer.
+  // And one here, on this computer. The next task starts on workshop, the host
+  // chosen last.
   await page.click("a.new-task");
+  await page.waitForSelector("#runs-on");
+  assert.strictEqual(await page.inputValue("#runs-on"), "workshop", "the next task does not start on the host chosen last");
   await page.selectOption("#runs-on", "");
   await page.waitForSelector(".work-in-host:has-text('Folders on this computer')");
   await page.click("text=Add a folder");

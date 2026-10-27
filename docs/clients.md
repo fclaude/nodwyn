@@ -98,12 +98,12 @@ it can see the thing but not change it.
 |---|---|---|---|---|
 | See the model and its efforts | yes, the picker | yes, `:model` | the banner names the model | — |
 | Move the conversation to a configured model | yes | yes, `:model NAME [EFFORT]` | not built | — |
-| Choose a model as a task opens | yes, New task's picker | not built: it opens on `[control]`; use `:model` before the first message | `--model NAME`: a `[models.NAME]`, or a model on `[control]`'s server (with `--resume`, moves the task to it); `--url` is refused | `nodwyn run`: not built |
+| Choose a model as a task opens | yes, New task's picker; the next task starts on the model, effort and judge chosen last, kept by the daemon (`newtask.last`, ADR 41, amended 2026-10-27) | not built: it opens on `[control]`; use `:model` before the first message | `--model NAME`: a `[models.NAME]`, or a model on `[control]`'s server (with `--resume`, moves the task to it); `--url` is refused | `nodwyn run`: not built |
 | A model on a server with no `[models.NAME]` entry (`server` + `model`) | not offered: the picker lists names | not offered | — | — |
 | A choice while a turn runs is queued | yes | yes, and the conversation says so | — | — |
 | Choosing from a paired device | yes, signed in with a passkey; refused to one paired by a plain invitation (ADR 30, amended 2026-10-17) | — | — | — |
 | Edit a model's labels (ADR 27, amended 2026-10-09) | yes, Settings › Models (on a linked host too: its models are added, changed and removed there, ADR 54); reaches open tasks | not built | — | edit `config.toml` |
-| Let a task's model hand work to other models (`delegates`) | yes, New task's Helpers fold, on this computer or a device signed in with a passkey | not built: a task opens with none | none | `nodwyn run`: none |
+| Let a task's model hand work to other models (`delegates`) | yes, New task's Helpers fold, on this computer or a device signed in with a passkey; the helpers ticked last are the next task's | not built: a task opens with none | none | `nodwyn run`: none |
 
 ## Changing a task while a turn runs
 

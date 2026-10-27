@@ -255,7 +255,7 @@ check(async () => {
   await until("the choices in the conversation", async () => (await limitsLines()) === "Limits: off,Limits: on,Limits: off", limitsLines);
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#new-task-options");
-  assert.strictEqual(await page.isChecked("#new-task-limits"), true, "Home kept Limits unticked for the next task");
+  assert.strictEqual(await page.isChecked("#new-task-limits"), false, "Home did not keep Limits unticked for the next task");
   step("a task's limits off from Home, then on and off again in the task");
 
   // Only the task list scrolls: Settings and the model's state stay in view

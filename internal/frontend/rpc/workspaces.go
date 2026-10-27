@@ -50,6 +50,9 @@ type workspaceActiveParams struct {
 type workspaceActiveResult struct {
 	Path string `json:"path"`
 }
+type newTaskLastParams struct {
+	Choices *config.NewTaskChoices `json:"choices,omitempty"` // absent reads them
+}
 type versionsParams struct {
 	Repo string `json:"repo"`
 	Path string `json:"path"`
@@ -201,6 +204,50 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 		return nil, failure(-32602, err.Error())
 	}
 	return describeWorkspace(saved), nil
+}
+
+// newTaskLast reads, or replaces, what the console chose last for a new task
+// (ADR 41, amended 2026-10-27): the next task starts with it. Like the folder
+// picked last, it is the daemon's to keep, so every console starts with it,
+// whatever browser and address it is in. It only preselects:
+// session.open checks each choice again, and refuses to a paired device the
+// ones that are this computer's, so a device does not keep them either.
+func (s *server) newTaskLast(req request, client *peer) (any, *rpcError) {
+	var p newTaskLastParams
+	if err := params(req.Params, &p, "choices"); err != nil {
+		return nil, err
+	}
+	file := config.NewTaskFile(s.options.Paths)
+	if p.Choices == nil {
+		choices, err := config.LoadNewTask(file)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		return choices, nil
+	}
+	if why := client.refuseDevice("The choices a new task starts with are made on the computer nodwyn runs on, not from a paired device"); why != nil {
+		return nil, why
+	}
+	if err := config.CheckNewTask(*p.Choices); err != nil {
+		return nil, failure(-32602, err.Error())
+	}
+	for i := range p.Choices.Hosts {
+		for j := range p.Choices.Hosts[i].Worktree {
+			w := &p.Choices.Hosts[i].Worktree[j]
+			// A linked host's folders are its own: this computer cannot
+			// resolve them, so only its own are made canonical.
+			if p.Choices.Hosts[i].Host == "" {
+				w.Folder = config.CanonicalPath(w.Folder)
+			}
+		}
+	}
+	if p.Choices.Hosts == nil {
+		p.Choices.Hosts = []config.NewTaskForHost{}
+	}
+	if err := config.SaveNewTask(file, *p.Choices); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return *p.Choices, nil
 }
 
 func (s *server) versions(req request, client *peer) (any, *rpcError) {
