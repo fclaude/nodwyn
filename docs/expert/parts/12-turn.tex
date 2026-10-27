@@ -45,7 +45,7 @@ read.
 \begin{tabularx}{\linewidth}{lX}
 \toprule
 \code{(model-turn [name [options]])} & ask a model once; returns its reply \\
-\code{(run-tools calls)} & run calls in order, each through the guard; one result per call \\
+\code{(run-tools calls)} & run calls, each through the guard, in order, but a batch of two or more different read-only calls (\code{fs-read}, \code{fs-list}, \code{fs-find}, \code{index-grep}, \code{outline}, the git tools) runs together, up to eight at once (\adr{57}); one result per call, in the order of the calls \\
 \code{(skip-tools calls reason [refused])} & answer calls without running them: the model reads \code{Not executed: reason}; with \code{\#t} the calls count as failed ones, to the call budget and the progress guard \\
 \code{(answer-call call text)} & answer one call with your own text, as a success \\
 \code{(add-message text)} & say something to the model, as a user message \\
@@ -109,6 +109,14 @@ cost, the model's prices are configured (Chapter~\ref{ch:keys}).
 \code{run-tools} returns one association list per call:
 \code{id}, \code{name}, \code{ok}, \code{value} (the text the model reads,
 carrying the tool's provenance), \code{error} and \code{denied}.
+
+A batch of read-only calls runs together, so its answers can finish in any
+order, but they come back, and are recorded, in the order of the calls. A
+call that ran is never answered as not executed: when the progress guard
+stops the turn at one call of such a batch, the calls after it have already
+run and keep their results. Any other batch, and a batch of one, runs in order,
+which is also what a strategy gets that hands \code{run-tools} one call at a
+time.
 
 \section{What the core promises, whatever you write}
 

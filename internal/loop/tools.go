@@ -26,17 +26,34 @@ import (
 // the tool's text, without the guard's note, still carrying the provenance
 // of what the tool produced (L2).
 func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (log.ToolResult, scheme.Value, toolOutcome, error) {
-	var outcome toolOutcome
-	res := log.ToolResult{ID: tc.ID, Name: tc.Name}
-	if err := l.record(log.KindToolCall, log.ToolCallEvent{
-		ToolCall: log.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args}, Origin: string(scheme.OriginModel),
-	}); err != nil {
-		return res, scheme.Void, outcome, err
+	if err := l.recordToolCall(tc); err != nil {
+		return log.ToolResult{ID: tc.ID, Name: tc.Name}, scheme.Void, toolOutcome{}, err
 	}
-	l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "running " + tc.Name}})
+	l.emitBusy(tc.Name)
 	start := time.Now()
 	produced, err := l.apply(ctx, tc)
-	res.Millis = time.Since(start).Milliseconds()
+	return l.finishTool(ctx, tc, time.Since(start), produced, err)
+}
+
+// recordToolCall records that the model's call is about to run.
+func (l *Loop) recordToolCall(tc llm.ToolCall) error {
+	return l.record(log.KindToolCall, log.ToolCallEvent{
+		ToolCall: log.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args}, Origin: string(scheme.OriginModel),
+	})
+}
+
+// emitBusy tells the front-end what is running: a tool's name, or the names
+// of the tools of a concurrent batch.
+func (l *Loop) emitBusy(names string) {
+	l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "running " + names}})
+}
+
+// finishTool turns what apply returned, after took, into the call's result,
+// as runTool describes. It is split from runTool so that a concurrent batch
+// can record its calls first, apply them together, and settle them in order.
+func (l *Loop) finishTool(ctx context.Context, tc llm.ToolCall, took time.Duration, produced scheme.Value, err error) (log.ToolResult, scheme.Value, toolOutcome, error) {
+	var outcome toolOutcome
+	res := log.ToolResult{ID: tc.ID, Name: tc.Name, Millis: took.Milliseconds()}
 	if err != nil {
 		if ctx.Err() != nil {
 			cause := context.Cause(ctx)

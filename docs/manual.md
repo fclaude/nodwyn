@@ -1403,6 +1403,18 @@ error instead of running calls that assumed success:
         (loop (model-turn))))))
 ```
 
+`run-tools` runs a batch in order, except one of two or more different calls
+that are all read-only tools (`fs-read`, `fs-list`, `fs-find`, `index-grep`,
+`outline`, `git-status`, `git-diff`, `git-head`): those run together, up to eight
+at once, and the answers come back in the order of the calls. A command, a
+write, an MCP tool or a tool the project defines in the batch makes the whole
+batch run in order, and so does a strategy like the one above that hands
+`run-tools` one call at a time. The tool-call budget is counted for each call
+before the batch starts, so a limit in its middle runs the calls before it and
+answers the rest "not executed". The log holds the batch's calls, then its
+results; the console and the terminal show each result on its call. A read
+that needs your answer (a path outside the folder) asks while the others run.
+
 A strategy decides which calls run, what the model is told about the ones
 that don't, when to ask the model again, and — with `add-message` — what to
 say when the model stops with work left. It can reach a keyed judge or model

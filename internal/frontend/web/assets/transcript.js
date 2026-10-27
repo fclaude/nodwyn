@@ -202,6 +202,7 @@ export class Transcript {
     this.writeGroup = null;
     this.marks = null;
     this.call = null;
+    this.open = new Map(); // the calls of a concurrent batch still waiting for their results, by id
     this.streamText = null;
     this.streamThinking = null;
     this.thought = null;
@@ -218,6 +219,7 @@ export class Transcript {
     this.writeGroup = null;
     this.marks = null;
     this.call = null;
+    this.open.clear();
     this.streamText = null;
     this.streamThinking = null;
     this.thought = null;
@@ -511,10 +513,14 @@ export class Transcript {
           this.usage.textContent = t.unreported === t.requests ? `tokens not reported${cost}${time}` : `${t.in.toLocaleString()} → ${t.out.toLocaleString()} tokens${reasoning}${over}${silent}${cache}${cost}${speed}${time}`;
         }
         this.call = null;
+        this.open.clear();
         break;
       }
       case "tool.call":
         this.toolCall(p);
+        // A batch of reads runs together (ADR 57): its calls are recorded
+        // before its results, which then come in the order of the calls.
+        if (this.call) this.open.set(p.id, this.call);
         break;
       case "guard.decision":
         this.decision(p);
@@ -855,7 +861,12 @@ export class Transcript {
     c.result.textContent = on ? "waiting for your answer" : "running…";
   }
   decision(p) {
-    const c = this.call;
+    // The reads of a concurrent batch are judged while they run, in no order
+    // of the calls: a decision goes to the first call of the tool it names
+    // that has no result yet and has had none.
+    const batch = this.open.size > 1 ? [...this.open.values()].find((o) => o.name === p.prim && !o.judged) : null;
+    if (batch) batch.judged = true;
+    const c = batch ?? this.call;
     let text = "";
     if (p.decision === "deny") text = "denied";
     else if (p.checker === "standing") text = (p.reason || "").includes("approval.writes") ? "went ahead: a write in the folder" : "standing approval";
@@ -904,7 +915,7 @@ export class Transcript {
     else this.audit(indexLine(p), p);
   }
   toolResult(p) {
-    let c = this.call;
+    let c = this.open.get(p.id) ?? this.call;
     if (!c || c.id !== p.id || c.name !== p.name) {
       // A plan-step or plan-write the strategy answered is shown by its
       // plan.step or gate.plan line.
@@ -974,8 +985,10 @@ export class Transcript {
       }
     }
     // A bad note between the call and its result starts a new fold: the
-    // count belongs on the call's.
-    this.call = null;
+    // count belongs on the call's. Of a batch of calls in flight, the last is
+    // the one the transcript is waiting on.
+    this.open.delete(p.id);
+    if (this.call === c) this.call = null;
     this.paintActivity(c.fold);
   }
 }

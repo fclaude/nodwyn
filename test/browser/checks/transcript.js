@@ -85,6 +85,34 @@ check(async () => {
       };
     }
     {
+      // A batch of reads runs together (ADR 57): the log holds its calls, then
+      // its results in the order of the calls. Each result belongs on its own
+      // call's row, and a guard decision on the call of the tool it names.
+      const { root, t } = fresh();
+      const a = call(t, "fs-read", { path: "/etc/hosts" });
+      const b = call(t, "fs-list", { path: "." });
+      const c = call(t, "fs-read", { path: "a.go" });
+      t.render({ kind: "guard.decision", payload: { origin: "model", prim: "fs-read", decision: "confirm", answer: "yes", scope: "once" } });
+      t.render({ kind: "guard.decision", payload: { origin: "model", prim: "fs-read", decision: "allow" } });
+      const rows = () => [...root.querySelectorAll(".call")];
+      const before = rows().map((r) => r.querySelector(".stat").textContent);
+      done(t, a, "fs-read", "127.0.0.1", 3);
+      done(t, b, "fs-list", "a.go\nb.go", 4);
+      const middle = rows().map((r) => r.querySelector(".stat").textContent);
+      done(t, c, "fs-read", "no such file", 5, false);
+      out.concurrentReads = {
+        rows: rows().length,
+        before,
+        middle,
+        after: rows().map((r) => r.querySelector(".stat").textContent),
+        decisions: rows().map((r) => r.querySelector(".stat").dataset.decision || ""),
+        results: rows().map((r) => r.querySelector(".call-body").textContent),
+        alone: root.querySelectorAll(".audit").length,
+        what: root.querySelector(".activity .what").textContent,
+      };
+      t.end();
+    }
+    {
       const { root, t } = fresh();
       const id = call(t, "git-log", { n: 3 });
       const decision = { origin: "model", prim: "shell-exec", decision: "allow", args: '("git" ("log" "--oneline" "-3"))' };
@@ -1197,6 +1225,10 @@ check(async () => {
   want(replay.empty.loaded && !replay.empty.failed && replay.empty.empty === "Nothing has run yet." && Object.keys(replay.empty.rows).length === 0, `newerSessionReplayLoadsHistoryAndStatistics: genuinely empty history stays empty: ${JSON.stringify(replay.empty)}`);
   const build = results.indexBuild;
   want(build.args === "“binding check” in the repository" && build.decision === "" && build.line === "Index updated: read 2 files · left out by the guard: key.txt, vault.txt · holds 2 files · 1.2 s" && build.what === "searched once", `an index build's reads do not mark the search, and its line is under it: ${JSON.stringify(build)}`);
+  const batch = results.concurrentReads;
+  want(batch.rows === 3 && batch.before.every((x) => x === "…") && batch.middle[0].includes("3 ms") && batch.middle[1].includes("4 ms") && batch.middle[2] === "…" && batch.after[2].startsWith("failed") && batch.after.every((x) => x !== "…"), `a batch of reads: each result fills its own call's row, in the order of the calls: ${JSON.stringify(batch)}`);
+  want(batch.alone === 0 && batch.results[0].includes("127.0.0.1") && batch.results[1].includes("b.go") && batch.results[2].includes("no such file"), `a batch of reads: no result stands alone, and each is in its call: ${JSON.stringify(batch)}`);
+  want(batch.decisions[0] === "you allowed once" && batch.decisions[1] === "" && batch.decisions[2] === "", `a batch of reads: a decision goes to the call of the tool it names: ${JSON.stringify(batch.decisions)}`);
   const repeated = results.readWrapperRepeatedDecisions;
   want(!results.readWrapperDecisionError && repeated.nodes === 1 && repeated.command === 'shell-exec ("git" ("log" "--oneline" "-5"))' && repeated.active.includes(repeated.command) && repeated.finished, `read wrapper repeated decisions update one node and clear activity after result: ${JSON.stringify(repeated)}`);
   const delivered = results.newerSessionLiveAndReopenedStatisticsAgree;

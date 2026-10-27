@@ -530,3 +530,13 @@ one number with no soft limit asking before it ([ADR 49, amended
 2026-10-27](0049-scheduled-tasks.md)). A run's `--budget-wall` and
 `--max-turns` are optional too, and its task takes a task's limits. The
 progress guard (§3) and the timeouts are unchanged.
+
+## Amendment 2026-10-27: a read-only batch reserves its budget first (ADR 57)
+
+When `run-tools` runs a batch of read-only calls together, the tool-call
+budget is reserved for each call in order before any of them starts, where a
+batch run in order reserves each call after the one before has finished. A
+limit that falls in the middle runs the calls that fit and answers the rest as
+not executed, as before; the stop cancels the turn's context only once those
+calls have run (`budget.Turn.Hold`). The turn's budget takes a lock, since the
+gate of each call of such a batch charges it from its own goroutine.

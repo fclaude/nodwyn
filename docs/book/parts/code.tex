@@ -479,7 +479,12 @@ if args, ok := lookup(item, "args"); ok && (args.Kind != scheme.KString || args.
 \end{go}
 
 Back in \file{prims.go}, \code{runTools} charges each call to the budget
-before running it, and stops the turn when the progress guard
+before running it. A batch of two or more different read-only calls
+(\file{batch.go}: \code{fs-read}, \code{fs-list}, \code{fs-find},
+\code{index-grep}, \code{outline}, the git tools) is the exception: it
+charges every call in order first, runs them together, up to eight at once,
+and then settles them in order, so the answers keep the order of the calls
+(\adr{57}). Either way \code{runTools} stops the turn when the progress guard
 (\file{progress.go}) sees it going in circles: the same call four times in a
 row, a denied call retried three times, ten failures in a row, or one tool
 failing on one file in six of the last sixteen responses, or a background

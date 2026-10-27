@@ -42,7 +42,8 @@ type model struct {
 	composer                                     textarea.Model
 	viewport                                     viewport.Model
 	transcript                                   []entry
-	activeTool                                   *toolCallView
+	activeTool                                   *toolCallView   // the latest call still waiting for its result
+	openTools                                    []*toolCallView // every such call: a batch of reads runs together
 	liveText, liveThinking                       string
 	thinking                                     bool
 	details                                      bool // tool arguments and results inline
@@ -177,7 +178,7 @@ func (m *model) restore(s snapshot) {
 	m.lastSeq = 0
 	m.gauge = contextGauge{}
 	m.transcript = nil
-	m.activeTool = nil
+	m.activeTool, m.openTools = nil, nil
 	m.liveText = ""
 	m.liveThinking = ""
 	m.prompt = nil

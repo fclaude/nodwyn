@@ -55,6 +55,37 @@ func TestToolCardsKeepReusedIDsAndSkippedCallsSeparate(t *testing.T) {
 	}
 }
 
+// A batch of reads runs together (ADR 38): the log holds its calls, then its
+// guard decisions, then its results in the order of the calls. Each result
+// belongs on its own call's card.
+func TestToolCardsOfAConcurrentBatch(t *testing.T) {
+	m := testModel()
+	m.consume(wire(string(log.KindToolCall), callRecord("a", "fs-read"), 1))
+	m.consume(wire(string(log.KindToolCall), callRecord("b", "fs-list"), 2))
+	m.consume(wire(string(log.KindToolCall), callRecord("c", "fs-read"), 3))
+	m.consume(wire(string(log.KindGuardDecision), log.GuardDecision{Prim: "fs-read", Origin: "model", Decision: "confirm", Answer: "yes"}, 4))
+	m.consume(wire(string(log.KindGuardDecision), log.GuardDecision{Prim: "fs-list", Origin: "model", Decision: "allow"}, 5))
+	m.consume(wire(string(log.KindGuardDecision), log.GuardDecision{Prim: "fs-read", Origin: "model", Decision: "allow"}, 6))
+	m.consume(wire(string(log.KindToolResult), log.ToolResult{ID: "a", Name: "fs-read", OK: true, Value: "first"}, 7))
+	m.consume(wire(string(log.KindToolResult), log.ToolResult{ID: "b", Name: "fs-list", OK: true, Value: "second"}, 8))
+	if m.activeTool == nil || m.activeTool.call.ID != "c" {
+		t.Fatal("the last call of the batch is still the one waited for")
+	}
+	m.consume(wire(string(log.KindToolResult), log.ToolResult{ID: "c", Name: "fs-read", Error: "third failed"}, 9))
+	cards := toolCards(m)
+	if len(cards) != 3 || m.activeTool != nil || len(m.openTools) != 0 {
+		t.Fatalf("%d cards, %d open: a result stood alone or a call stayed open", len(cards), len(m.openTools))
+	}
+	for i, want := range []string{"first", "second", "third failed"} {
+		if cards[i].call == nil || !strings.Contains(cards[i].render(true), want) || !cards[i].ended {
+			t.Fatalf("card %d does not show %q beside its call: %s", i, want, cards[i].render(true))
+		}
+	}
+	if len(cards[0].decisions) != 1 || cards[0].decisions[0].Answer != "yes" || len(cards[1].decisions) != 1 || len(cards[2].decisions) != 1 || cards[2].decisions[0].Decision != "allow" {
+		t.Fatalf("decisions went to the wrong calls: %v %v %v", cards[0].decisions, cards[1].decisions, cards[2].decisions)
+	}
+}
+
 func TestToolCardIntervalsDoNotGuessMissingResults(t *testing.T) {
 	m := testModel()
 	m.consume(wire(string(log.KindToolCall), callRecord("one", "read"), 1))

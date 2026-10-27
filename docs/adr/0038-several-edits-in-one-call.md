@@ -166,3 +166,11 @@ call.
   ADR 32 amendment naming this measurement, and measured the same way. A
   family that does clearly better with its native patch format is the case
   for a per-model choice, above.
+
+## Amendment 2026-10-27: reads in a reply run together (ADR 57)
+
+The measurement above says the loop "runs a reply's calls in order". It does
+so still for every batch but one made only of read-only calls (`fs-read`,
+`fs-list`, `fs-find`, `index-grep`, `outline`, the git tools), which runs
+concurrently (ADR 57). Batching `fs-edit` calls, or any write, is unchanged:
+they run in order.

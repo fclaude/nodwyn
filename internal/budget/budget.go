@@ -19,6 +19,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -160,14 +161,58 @@ type Confirm func(context.Context, Checkpoint) (Choice, error)
 
 // Turn accounts for one turn. It travels in the turn's context (From), so
 // the loop and the guard's gate charge the same budget.
+//
+// A batch of read-only calls runs concurrently (ADR 57), so the gate of each
+// charges the budget from its own goroutine: mu serialises the exported
+// methods, and the unexported ones assume it is held. It stays held while a
+// checkpoint waits for the person, so a second call that crosses the same
+// soft limit waits for the answer instead of asking again.
 type Turn struct {
+	mu      sync.Mutex
 	limits  Limits
 	state   State
 	start   time.Time
 	confirm Confirm
 	cancel  context.CancelCauseFunc
+	// holding is set by Hold: a stop is returned as usual, but the turn's
+	// context is cancelled with it only at the release, held until then.
+	holding bool
+	held    error
 }
 type contextKey struct{}
+
+// Hold keeps a stop from cancelling the turn's context until the returned
+// function is called, which cancels it with the first stop held, if any. The
+// loop reserves the tool calls of a concurrent batch before any runs: a limit
+// that falls in the middle of the batch must stop the turn after the calls
+// before it, which fit, have run, as it does when they run one by one, and not
+// cancel them before they begin.
+func (t *Turn) Hold() (release func()) {
+	t.mu.Lock()
+	t.holding, t.held = true, nil
+	t.mu.Unlock()
+	return func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		t.holding = false
+		if t.held != nil {
+			t.cancel(t.held)
+			t.held = nil
+		}
+	}
+}
+
+// fire cancels the turn's context with err as the cause, or holds it back
+// (Hold).
+func (t *Turn) fire(err error) {
+	if t.holding {
+		if t.held == nil {
+			t.held = err
+		}
+		return
+	}
+	t.cancel(err)
+}
 
 // Start binds the budget to the turn context. A hard wall deadline also cancels
 // blocked model calls, tools and confirmations; without one, a turn may wait
@@ -206,7 +251,7 @@ func (t *Turn) snapshot() State {
 // stop ends the turn: it cancels the turn's context with the Stop as cause.
 func (t *Turn) stop(reason string, hard bool) error {
 	err := &Stop{Hard: hard, Reason: reason}
-	t.cancel(err)
+	t.fire(err)
 	return err
 }
 
@@ -218,7 +263,7 @@ func (t *Turn) hard(ctx context.Context, dimension string, used int64, limit Lim
 	if limit.Hard > 0 && used >= limit.Hard {
 		if dimension == "cost" {
 			err := &Stop{Hard: true, Spend: true, Reason: "hard stop: spend limit reached (" + Amount("cost", used) + " of " + Amount("cost", limit.Hard) + " known)"}
-			t.cancel(err)
+			t.fire(err)
 			return err
 		}
 		return t.stop("hard stop: "+dimension+" budget reached", true)
@@ -235,6 +280,8 @@ func (t *Turn) spent() int64 {
 // AddJudge records one judge request: its tokens, and its cost (nil: not
 // priced). Like AddSpend it stops nothing itself.
 func (t *Turn) AddJudge(tokens int, cost *float64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.state.JudgeCalls++
 	if tokens > 0 {
 		t.state.JudgeTokens += int64(tokens)
@@ -247,16 +294,26 @@ func (t *Turn) AddJudge(tokens int, cost *float64) {
 }
 
 // Snapshot is what the turn has used so far.
-func (t *Turn) Snapshot() State { return t.snapshot() }
+func (t *Turn) Snapshot() State {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.snapshot()
+}
 
 // SetEarlierCost tells the turn what the task's earlier turns cost, for the
 // spend limit. Call it before the turn's work.
-func (t *Turn) SetEarlierCost(usd float64) { t.state.EarlierCost = usd }
+func (t *Turn) SetEarlierCost(usd float64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.EarlierCost = usd
+}
 
 // Spend is what the turn's model requests cost, as far as known, how many
 // were unpriced, and the spend limit as the turn leaves it (a checkpoint may
 // have raised its soft limit). Call it once the turn's work is over.
 func (t *Turn) Spend() (cost float64, unpriced int64, limit Limit) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.state.Cost, t.state.Unpriced, t.limits.Cost
 }
 
@@ -276,7 +333,7 @@ func (t *Turn) check(ctx context.Context, dimension string, used int64, limit *L
 	p := Checkpoint{Dimension: dimension, Used: used, Limit: *limit, State: t.snapshot()}
 	choice, err := t.confirm(ctx, p)
 	if err != nil {
-		t.cancel(err)
+		t.fire(err)
 		return err
 	}
 	if ctx.Err() != nil {
@@ -294,7 +351,13 @@ func (t *Turn) check(ctx context.Context, dimension string, used int64, limit *L
 
 // Check runs at operation boundaries; the hard wall deadline runs continuously.
 func (t *Turn) Check(ctx context.Context) error {
-	if err := t.Finish(ctx); err != nil {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.checkAll(ctx)
+}
+
+func (t *Turn) checkAll(ctx context.Context) error {
+	if err := t.finish(ctx); err != nil {
 		return err
 	}
 	if err := t.check(ctx, "wall", int64(time.Since(t.start)), &t.limits.Wall); err != nil {
@@ -311,10 +374,12 @@ func (t *Turn) Check(ctx context.Context) error {
 
 // ToolCall charges one tool call, checking every limit first.
 func (t *Turn) ToolCall(ctx context.Context) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if err := t.hard(ctx, "tool_calls", t.state.ToolCalls, t.limits.ToolCalls); err != nil {
 		return err
 	}
-	if err := t.Check(ctx); err != nil {
+	if err := t.checkAll(ctx); err != nil {
 		return err
 	}
 	if err := t.check(ctx, "tool_calls", t.state.ToolCalls, &t.limits.ToolCalls); err != nil {
@@ -327,10 +392,12 @@ func (t *Turn) ToolCall(ctx context.Context) error {
 // Action charges one irreversible action — a write to path or a run of
 // command — checking every limit first.
 func (t *Turn) Action(ctx context.Context, path, command string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if err := t.hard(ctx, "actions", t.state.Actions, t.limits.Actions); err != nil {
 		return err
 	}
-	if err := t.Check(ctx); err != nil {
+	if err := t.checkAll(ctx); err != nil {
 		return err
 	}
 	if err := t.check(ctx, "actions", t.state.Actions, &t.limits.Actions); err != nil {
@@ -377,6 +444,8 @@ func CountedPrompt(prompt int, cached *int) int {
 // Check before further work; Finish checks hard ceilings without asking to
 // continue an already completed answer.
 func (t *Turn) AddTokens(prompt, output int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	for _, n := range []int{prompt, output} {
 		if n > 0 {
 			if int64(n) > math.MaxInt64-t.state.Tokens {
@@ -393,6 +462,8 @@ func (t *Turn) AddTokens(prompt, output int) {
 // itself: the next Check or Finish applies the spend limit. A cost not known
 // is not counted, so a spend limit sees only priced requests.
 func (t *Turn) AddSpend(cost *float64, cached *int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if cost != nil && *cost >= 0 {
 		t.state.Cost += *cost
 		t.state.Priced++
@@ -407,6 +478,12 @@ func (t *Turn) AddSpend(cost *float64, cached *int) {
 // Finish enforces observed hard ceilings even when the model has finished, but
 // does not request additional soft allowance when there is no remaining work.
 func (t *Turn) Finish(ctx context.Context) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.finish(ctx)
+}
+
+func (t *Turn) finish(ctx context.Context) error {
 	if err := t.hard(ctx, "wall", int64(time.Since(t.start)), t.limits.Wall); err != nil {
 		return err
 	}

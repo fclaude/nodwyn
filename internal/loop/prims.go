@@ -362,7 +362,9 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 
 // runTools is (run-tools calls): run each call in order, stopping the turn
 // if a limit is reached or the turn stops making progress. The calls after
-// a stop are answered as not executed.
+// a stop are answered as not executed. A batch of read-only calls (see
+// readOnlyTools) runs concurrently instead (runConcurrently), with the same
+// results, in the order of the calls.
 func (l *Loop) runTools(c *scheme.Call) (scheme.Value, error) {
 	t, err := l.active(c)
 	if err != nil {
@@ -375,6 +377,9 @@ func (l *Loop) runTools(c *scheme.Call) (scheme.Value, error) {
 	calls, err := t.claim(items)
 	if err != nil {
 		return scheme.Void, err
+	}
+	if concurrentBatch(calls) {
+		return l.runConcurrently(c.Ctx, t, calls)
 	}
 	results := make([]scheme.Value, 0, len(calls))
 	for i, tc := range calls {

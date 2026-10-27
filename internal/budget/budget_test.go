@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -33,6 +34,63 @@ func TestToolCheckpointsAndHardCeiling(t *testing.T) {
 	}
 	if ctx.Err() == nil || turn.state.ToolCalls != 5 {
 		t.Fatal("hard stop did not cancel or exceeded allowance")
+	}
+}
+
+// A batch of read-only calls charges the budget from one goroutine per call.
+// A soft limit crossed by several at once asks once for each allowance, not
+// once per caller, and nothing is lost: run under -race.
+func TestConcurrentChargesAreCountedAndAskedOnce(t *testing.T) {
+	var used []int64
+	ctx, turn, done := Start(context.Background(), Limits{ToolCalls: Limit{3, 100}}, func(_ context.Context, p Checkpoint) (Choice, error) {
+		used = append(used, p.Used)
+		return ParseChoice("y", p)
+	})
+	defer done()
+	const calls = 24
+	var wg sync.WaitGroup
+	for range calls {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := turn.ToolCall(ctx); err != nil {
+				t.Error(err)
+			}
+			turn.AddTokens(1, 1)
+			turn.Snapshot()
+		}()
+	}
+	wg.Wait()
+	if got := turn.Snapshot(); got.ToolCalls != calls || got.Tokens != 2*calls {
+		t.Fatalf("counted %d calls and %d tokens, want %d and %d", got.ToolCalls, got.Tokens, calls, 2*calls)
+	}
+	for i := 1; i < len(used); i++ {
+		if used[i] <= used[i-1] {
+			t.Fatalf("the same allowance was asked for twice: %v", used)
+		}
+	}
+}
+
+// A stop held back (Hold) is returned at once and cancels the turn only at the
+// release: the calls of a concurrent batch that fit the limit run first.
+func TestHoldDelaysTheCancellationOfAStop(t *testing.T) {
+	ctx, turn, done := Start(context.Background(), Limits{ToolCalls: Limit{1, 1}}, nil)
+	defer done()
+	release := turn.Hold()
+	if err := turn.ToolCall(ctx); err != nil {
+		t.Fatal(err)
+	}
+	err := turn.ToolCall(ctx)
+	var stop *Stop
+	if !errors.As(err, &stop) || !stop.Hard {
+		t.Fatalf("want the hard stop, got %v", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("the turn was cancelled while the stop was held")
+	}
+	release()
+	if !errors.Is(context.Cause(ctx), stop) {
+		t.Fatalf("cancelled with %v, want the held stop", context.Cause(ctx))
 	}
 }
 

@@ -11,9 +11,13 @@ import (
 	"github.com/fclaude/nodwyn/internal/log"
 )
 
-// Tool calls execute serially. Keep one open interval, not a map keyed by
-// provider IDs: IDs can be reused, and skipped calls have results without a
-// tool.call event. These records are display state, never authorization state.
+// Tool calls are paired with their results by an interval, not by a map keyed
+// by provider IDs: IDs can be reused, and skipped calls have results without a
+// tool.call event. Calls run one after another, but a batch of reads runs
+// together (ADR 57): its calls are recorded first and its results after, in
+// the order of the calls, so more than one call may be open. A result takes
+// the latest open call with its ID and name. These records are display
+// state, never authorization state.
 type toolCallView struct {
 	call      *log.ToolCallEvent
 	result    *log.ToolResult
@@ -22,15 +26,22 @@ type toolCallView struct {
 }
 
 func (m *model) startToolCall(call log.ToolCallEvent) {
-	m.endToolInterval()
 	card := &toolCallView{call: &call}
 	m.transcript = append(m.transcript, entry{tool: card})
+	m.openTools = append(m.openTools, card)
 	m.activeTool = card
 }
 
 func (m *model) recordToolResult(result log.ToolResult) {
-	card := m.activeTool
-	if card == nil || card.call.ID != result.ID || card.call.Name != result.Name {
+	var card *toolCallView
+	for i := len(m.openTools) - 1; i >= 0; i-- {
+		if open := m.openTools[i]; open.call.ID == result.ID && open.call.Name == result.Name {
+			card = open
+			m.openTools = append(m.openTools[:i], m.openTools[i+1:]...)
+			break
+		}
+	}
+	if card == nil {
 		// Never attach an unmatched result to a guessed call. In particular,
 		// budget/progress stops record results for calls that did not start.
 		m.endToolInterval()
@@ -40,20 +51,32 @@ func (m *model) recordToolResult(result log.ToolResult) {
 	card.result = &result
 	card.ended = true
 	m.activeTool = nil
+	if n := len(m.openTools); n > 0 {
+		m.activeTool = m.openTools[n-1]
+	}
 }
 
 func (m *model) endToolInterval() {
-	if m.activeTool != nil {
-		m.activeTool.ended = true
-		m.activeTool = nil
+	for _, card := range m.openTools {
+		card.ended = true
 	}
+	m.openTools, m.activeTool = nil, nil
 }
 
 func (m *model) recordToolDecision(decision log.GuardDecision) bool {
-	if m.activeTool == nil || m.activeTool.call.Origin != "model" || decision.Origin != "model" {
+	card := m.activeTool
+	if card == nil || card.call.Origin != "model" || decision.Origin != "model" {
 		return false
 	}
-	m.activeTool.decisions = append(m.activeTool.decisions, decision)
+	// The calls of a batch are judged while they run, in no order: a decision
+	// goes to the first open call of the tool it names that has had none.
+	for _, open := range m.openTools {
+		if len(m.openTools) > 1 && open.call.Name == decision.Prim && len(open.decisions) == 0 {
+			card = open
+			break
+		}
+	}
+	card.decisions = append(card.decisions, decision)
 	return true
 }
 
