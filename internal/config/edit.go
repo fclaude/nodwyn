@@ -185,6 +185,12 @@ func edit(lines []string, c Change) ([]string, error) {
 	if !tableName.MatchString(c.Table) || !keyName.MatchString(c.Key) {
 		return nil, fmt.Errorf("config: no setting %s.%s", c.Table, c.Key)
 	}
+	// A retired limit loads, so a file that has one still works, but
+	// nothing reads it: writing one would be a setting that does nothing.
+	// Removing one tidies the file.
+	if c.Value != nil && retiredLimits[c.Table+"."+c.Key] {
+		return nil, fmt.Errorf("config: no setting %s.%s: a task's limits are its own, set on the task (ADR 49, amended 2026-10-27)", c.Table, c.Key)
+	}
 	var line string
 	if c.Value != nil {
 		value, err := literal(c.Value)
@@ -256,7 +262,7 @@ func literal(v any) (string, error) {
 }
 
 // Keys reports which settings config.toml's contents set, by dotted name
-// such as "budget.tokens_hard".
+// such as "loop.shell_timeout".
 func Keys(raw []byte) (map[string]bool, error) {
 	var c Config
 	md, err := toml.Decode(string(raw), &c)

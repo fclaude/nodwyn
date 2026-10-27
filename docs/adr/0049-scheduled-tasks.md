@@ -4,7 +4,8 @@
   index (§10), console history and totals (§11), and scheduler (§1, §4–§9, §12)
   implemented 2026-10-15; §4's five repeats replaced by rules, said in the
   daemon's words, with each schedule's recent runs, 2026-10-17 (amended);
-  login startup built 2026-10-17 as ADR 53's slice 0
+  login startup built 2026-10-17 as ADR 53's slice 0; §2 replaced
+  2026-10-27: a task's limits are its own, none unless set (amended)
 - Date: 2026-10-15
 - Amends: 18 (a task's turn limits can be off), 34 (a worktree made again
   records its new base), 9 (windows are built from a suffix of the log)
@@ -581,3 +582,67 @@ host, kept by the daemon with the other choices of the New task window (ADR
 there to be the next task's default. Unticked shows in Options' count and in
 the label's amber, and is still this computer's choice: a paired device's
 tasks start with their limits on.
+
+## Amendment 2026-10-27: a task's limits are its own, none unless set
+
+The person asked for limits to be optional, unlimited by default and
+configurable per task, each kind on its own, with no central configuration:
+set on the task's right panel or on the command line, for the few tasks
+that want them. §2 is replaced, and with it the amendment above: Home has
+no **Limits** box to keep, and the New task window's kept choices
+(`new-task.toml`) no longer hold `no_limits` (one an older file holds loads
+and is ignored).
+
+- **No central limits.** `config.toml`'s `[budget]` and
+  `loop.max_tool_calls` no longer set anything; a file that still has them
+  loads, and Settings no longer offers them (`budget.*` is gone from
+  `settings.write`, and writing one is refused). Settings keeps the request
+  and command timeouts, under **Waiting**.
+- **A task's limits are five numbers, each none unless set**: tool calls,
+  tokens, writes and commands, and time, each a turn's, and spend, the
+  whole task's (`budget.Task`). Each is one number: a turn stops at it,
+  with no checkpoint before it (soft limits are gone; the person agreed).
+  A scheduled run's spend limit per run still replaces the task's while the
+  run goes (§9).
+- **Where they are set.** The console's task panel, under the monitor:
+  **Limits** **None** in one line, **Add a limit** offering the kinds not
+  set, each limit a chip to change or remove. Line mode's `--max-tool-calls`,
+  `--budget-tokens`, `--budget-actions`, `--budget-wall` and `--budget-cost`,
+  refused since ADR 30's amendment of 2026-10-17, set the new task's, or
+  replace those they name on a resumed one (0 removes one). `nodwyn run`
+  takes the same, `--turn-wall` for a turn's time since its `--budget-wall`
+  is the run's deadline, and its `--budget-wall` and `--max-turns` are now
+  optional too. Home's **Limits** box and the workflow's `no_limits` are
+  gone: a task starts with none.
+- **The record.** `session.limits` holds `actor` and the limits set; the
+  latest counts and resuming keeps it. A record from before held `on`, against
+  limits that no longer exist, and reads as none (the person's own tasks, the
+  only ones, may change behaviour). `session.open {limits}`,
+  `session.limits.set {id, limits}` (which replaces them all, and is still
+  refused during a run) and `run.start {limits}` take the object, and
+  `session.info`'s `limits` is it.
+- **Paired devices.** A device may open a task with limits, add one or
+  lower one: each only stops a turn sooner. Raising or removing one is
+  refused to it, so the bridge now relays `session.limits.set` to a device
+  that only answers, and the daemon holds it to `Task.Within`. §12's "turns
+  a task's limits off" now reads "raises or removes a task's limits".
+- **Managed sessions** (ADR 56) take their limits from the embedder's
+  `Options.Limits`, validated against the profile's envelope as `[budget]`
+  was, and never change them.
+
+What this gives up: a turn nobody watches is no longer bounded by default;
+the spend limit, the timeouts and the progress guard are what remain unless
+the task was given limits. The budget package's checkpoint (a soft limit
+below its hard one) can no longer be reached from configuration; its
+plumbing in the frontends (the checkpoint prompt, `turn.checkpoint`) stays,
+for older logs, and is not removed here.
+
+Built in `internal/budget` (`task.go`), `internal/config` (`retired.go`),
+`internal/core` (`limits.go`), `internal/frontend/rpc`, `cmd/nodwyn`
+(`limits.go`), the console (`limits.js`, `task.js`) and the TUI's `:budget`.
+Tested by `TestTaskLimits`, `TestRetiredLimitsLoad`,
+`TestATaskHasNoLimitsUnlessSet`, `TestTaskLimitsOutliveResume`,
+`TestAnOldLimitsRecordReadsAsNone`, `TestTasksSetTheirOwnLimits`,
+`TestARunStartsWithoutLimitsOfItsOwn`, `TestARunWithoutLimits`,
+`TestLineModeSetsTheTasksLimits`, `TestCLITurnStopsAtItsLimit`, and the
+`tasks` and `remote` browser checks.

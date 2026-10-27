@@ -214,49 +214,86 @@ check(async () => {
   s = await settled("deleted after reload", (s) => folder(s, "receipts") && !folder(s, "receipts").tasks.includes("Receipt question 1") && folder(s, "receipts").tasks.includes("Receipts overview"));
   step("deleted");
 
-  // Limits (ADR 49): ticked on Home for every new task, and a task started
-  // with them ticked sends no choice. Unticked, the task opens with no turn
-  // limits, which the daemon then reports (the heading's badge comes from
-  // session.info), and the task's own tick turns them on again, and off,
-  // between turns; a reload reads them from the daemon again.
-  assert.ok(sent.of("session.open").length >= 6 && sent.of("session.open").every((p) => !("limits" in p)), `a task started with Limits ticked sent a choice: ${JSON.stringify(sent.of("session.open"))}`);
+  // Limits (ADR 49, amended 2026-10-27): a task has none unless one is set
+  // on its panel. Home offers none and sends none; the task's panel says
+  // None in one line, adds a limit from a menu of the kinds not set, changes
+  // one from its chip and removes it, each change replacing the task's
+  // limits in one request; what cannot be a limit is said and not sent; a
+  // reload reads them from the daemon again, and the conversation records
+  // each change.
+  assert.ok(sent.of("session.open").length >= 6 && sent.of("session.open").every((p) => !("limits" in p)), `a task started from Home sent limits: ${JSON.stringify(sent.of("session.open"))}`);
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#new-task-options");
-  assert.strictEqual(await page.isChecked("#new-task-limits"), true, "Limits starts unticked on Home");
+  await openOptions(page);
+  assert.strictEqual(await page.$("#new-task-limits"), null, "Home offers Limits");
+  assert.ok(!(await page.textContent("#new-task-options")).includes("limits"), "Home's options speak of limits");
+  await page.click("#new-task-options > summary");
   await page.click(`button.chip[title="${repos.receipts}"]`);
   await page.fill("#task", "Run as long as it needs");
-  await openOptions(page);
-  await page.uncheck("#new-task-limits");
-  assert.ok(await page.$eval(".limits-toggle", (el) => el.classList.contains("on")), "unticked Limits does not read as a warning on Home");
-  await page.screenshot({ path: `${out}/tasks-limits-home.png` });
   await page.press("#task", "Control+Enter");
   await page.waitForFunction(() => location.hash.startsWith("#/task/"));
   await idle();
-  const unlimited = sent.of("session.open").at(-1);
-  if (unlimited.repo !== repos.receipts || unlimited.limits !== false) await fail(`the task did not open with its limits off: ${JSON.stringify(unlimited)}`);
-  await page.waitForSelector("#no-limits");
-  const limitsTick = () => page.$eval(".limits-toggle:not(.worktree-toggle)", (el) => ({ shown: !el.hidden, checked: el.querySelector("input").checked, enabled: !el.querySelector("input").disabled }));
-  await until("the task's tick shows its limits off", async () => JSON.stringify(await limitsTick()) === JSON.stringify({ shown: true, checked: false, enabled: true }));
-  await page.screenshot({ path: `${out}/tasks-limits-off.png` });
-  await page.click(".limits-toggle:not(.worktree-toggle) input");
-  await until("the limits turned on", async () => !(await page.$("#no-limits")) && (await limitsTick()).checked && (await limitsTick()).enabled);
-  assert.deepStrictEqual(sent.of("session.limits.set"), [{ id: sent.of("session.send").at(-1).id, on: true }], "one choice, for this task");
+  const limited = sent.of("session.send").at(-1).id;
+  if ("limits" in sent.of("session.open").at(-1)) await fail(`the task opened with limits: ${JSON.stringify(sent.of("session.open").at(-1))}`);
+  await page.waitForSelector(".task-limits .limits-none");
+  assert.strictEqual(await page.$(".reply-opts .limits-toggle"), null, "the reply box has a Limits tick");
+  await page.screenshot({ path: `${out}/tasks-limits-none.png` });
+  const chips = () => page.$$eval(".task-limits .limit-chip", (els) => els.map((el) => el.textContent.trim()));
+  const limitsSent = () => sent.of("session.limits.set").map((p) => ({ ...p }));
+  const addLimit = async (kind, text) => {
+    await page.click(".task-limits .limit-add");
+    await page.click(`.limit-menu button:has-text("${kind}")`);
+    await page.waitForFunction(() => document.activeElement?.id === "limit-edit-input");
+    await page.fill("#limit-edit-input", text);
+    await page.press("#limit-edit-input", "Enter");
+  };
+  await addLimit("Tool calls", "40");
+  await until("the tool-call limit set", async () => JSON.stringify(await chips()) === JSON.stringify(["Tool calls 40 a turn"]), chips);
+  assert.deepStrictEqual(limitsSent(), [{ id: limited, limits: { tool_calls: 40 } }], "the first limit sent");
+  assert.strictEqual(await page.$(".task-limits .limits-none"), null, "None stayed beside a limit");
+  await addLimit("Time", "1h30m");
+  await until("the time limit set", async () => (await chips()).join() === "Tool calls 40 a turn,Time 1h 30m a turn", chips);
+  assert.deepStrictEqual(limitsSent().at(-1), { id: limited, limits: { tool_calls: 40, wall_ns: 5_400_000_000_000 } }, "the second limit sent with the first");
+  // The menu offers only the kinds not set.
+  await page.click(".task-limits .limit-add");
+  const offered = await page.$$eval(".limit-menu button", (els) => els.map((el) => el.textContent));
+  assert.ok(offered.length === 3 && !offered.some((t) => t.startsWith("Tool calls") || t.startsWith("Time")), `the menu offered ${offered}`);
+  await page.click(".task-limits .limit-add");
+  await page.screenshot({ path: `${out}/tasks-limits-set.png` });
+  // The panel fits the column beside the conversation, chips and all.
+  const fits = () => page.$eval(".task-limits", (el) => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= el.closest(".task-aside").getBoundingClientRect().right);
+  assert.ok(await fits(), "the limits panel is wider than its column");
+  // A change from its chip: what is not a number is said and not sent, and
+  // Escape leaves the limit as it was.
+  await page.click('.limit-chip[data-limit="tool_calls"] .limit-value');
+  assert.strictEqual(await page.inputValue("#limit-edit-input"), "40", "the editor did not start from the limit");
+  assert.ok(await fits(), "the limit's editor is wider than its column");
+  await page.fill("#limit-edit-input", "lots");
+  await page.press("#limit-edit-input", "Enter");
+  await page.waitForSelector(".toast:has-text('whole number')");
+  assert.strictEqual(limitsSent().length, 2, "a limit that is not a number was sent");
+  await page.press("#limit-edit-input", "Escape");
+  await until("the editor closed", async () => !(await page.$("#limit-edit-input")) && (await chips()).length === 2, chips);
+  await page.click('.limit-chip[data-limit="tool_calls"] .limit-value');
+  await page.fill("#limit-edit-input", "20");
+  await page.click('.limit-editor button:text-is("Set")');
+  await until("the limit lowered", async () => (await chips()).join() === "Tool calls 20 a turn,Time 1h 30m a turn", chips);
+  assert.deepStrictEqual(limitsSent().at(-1), { id: limited, limits: { tool_calls: 20, wall_ns: 5_400_000_000_000 } }, "the change sent");
+  await page.click('.limit-chip[data-limit="wall_ns"] .limit-remove');
+  await until("the time limit removed", async () => (await chips()).join() === "Tool calls 20 a turn", chips);
+  assert.deepStrictEqual(limitsSent().at(-1), { id: limited, limits: { tool_calls: 20 } }, "the removal sent");
   await page.reload();
   await ready(page);
   await openTask("Run as long as it needs");
-  await until("the limits read from the daemon after a reload", async () => (await limitsTick()).checked && (await limitsTick()).enabled);
-  assert.strictEqual(await page.$("#no-limits"), null, "the badge came back after a reload with the limits on");
-  await page.click(".limits-toggle:not(.worktree-toggle) input");
-  await page.waitForSelector("#no-limits");
-  assert.deepStrictEqual(sent.of("session.limits.set").map((p) => p.on), [true, false], "the choices sent");
-  // Each choice, the one it opened with included, is a line in the
-  // conversation, read back from the log.
-  const limitsLines = () => page.$eval(".transcript", (el) => (el.textContent.match(/Limits: (on|off)/g) || []).join());
-  await until("the choices in the conversation", async () => (await limitsLines()) === "Limits: off,Limits: on,Limits: off", limitsLines);
-  await page.evaluate(() => (location.hash = "#/"));
-  await page.waitForSelector("#new-task-options");
-  assert.strictEqual(await page.isChecked("#new-task-limits"), false, "Home did not keep Limits unticked for the next task");
-  step("a task's limits off from Home, then on and off again in the task");
+  await until("the limits read from the daemon after a reload", async () => (await chips()).join() === "Tool calls 20 a turn", chips);
+  // Each change is a line in the conversation, read back from the log.
+  const limitsLines = () => page.$eval(".transcript", (el) => (el.textContent.match(/Limits: [^\n]*?a turn/g) || []).join(" | "));
+  const want = "Limits: tool calls 40 a turn | Limits: tool calls 40, time 1h 30m a turn | Limits: tool calls 20, time 1h 30m a turn | Limits: tool calls 20 a turn";
+  await until("the changes in the conversation", async () => (await limitsLines()) === want, limitsLines);
+  await page.click('.limit-chip[data-limit="tool_calls"] .limit-remove');
+  await page.waitForSelector(".task-limits .limits-none");
+  assert.deepStrictEqual(limitsSent().at(-1), { id: limited, limits: {} }, "removing the last limit sent none");
+  step("a task's limits added, changed and removed on its panel, none from Home");
 
   // Only the task list scrolls: Settings and the model's state stay in view
   // beside a list longer than the window, and a redraw keeps the list's place.

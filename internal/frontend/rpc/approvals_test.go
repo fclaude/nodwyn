@@ -294,49 +294,6 @@ func TestSecretReplyStaysOutsideSchemeAndHistory(t *testing.T) {
 	}
 }
 
-func TestBudgetReplyIsAttributedWithoutToolAuthority(t *testing.T) {
-	o := options(t)
-	o.Config.Budget.ActionsSoft = 1
-	o.Config.Budget.ActionsHard = 3
-	path, _ := start(t, o)
-	c := connect(t, path)
-	actor := identity(t, c)
-	repo := t.TempDir()
-	os.MkdirAll(filepath.Join(repo, "notes"), 0700)
-	id := opened(t, c, repo)
-	subscribed(t, c, id, 0, 100)
-	eval(c, id, `(begin (fs-write "notes/a" "a") (fs-write "notes/b" "b"))`)
-	p := prompt[event.Confirm](t, c, event.PromptConfirm)
-	c.ok("session.approval.create", map[string]any{"id": id, "prompt_id": p.ID, "scope": "turn"})
-	cp := prompt[event.Checkpoint](t, c, event.PromptCheckpoint)
-	if r := c.call("session.approval.create", map[string]any{"id": id, "prompt_id": cp.ID, "scope": "session"}); r.Error == nil {
-		t.Fatal("checkpoint granted tool authority")
-	}
-	c.ok("session.answer", map[string]any{"id": id, "prompt_id": cp.ID, "reply": "3"})
-	if r := finishEval(t, c); r.Error != "" {
-		t.Fatal(r.Error)
-	}
-	found := false
-	for _, e := range page(t, c, id, 0, 0, 1000).Events {
-		if e.Kind == log.KindTurnCheckpoint {
-			var record log.TurnCheckpoint
-			json.Unmarshal(e.Payload, &record)
-			found = true
-			if record.Actor != actor || record.PromptID != cp.ID || record.Choice.Soft != 3 {
-				t.Fatalf("checkpoint receipt: %+v", record)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("checkpoint was not recorded")
-	}
-	var info sessionDetails
-	json.Unmarshal(c.ok("session.info", map[string]any{"id": id}), &info)
-	if info.TurnWrites || len(info.Writes) > 0 || len(info.Commands) > 0 {
-		t.Fatal("authority survived turn/checkpoint")
-	}
-}
-
 func TestEvalCancellationAndRedaction(t *testing.T) {
 	path, _ := start(t, options(t))
 	c := connect(t, path)

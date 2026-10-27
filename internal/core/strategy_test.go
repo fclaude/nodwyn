@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/brote/scheme"
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
@@ -36,10 +37,9 @@ func strategyRigAs(t *testing.T, model, init string, maxToolCalls int, turns ...
 	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
-	cfg.Loop.MaxToolCalls = maxToolCalls
 	cfg.Control.Model = model
 	logb := &bytes.Buffer{}
-	s, err := newInitSession(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb})
+	s, err := newInitSession(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb, Limits: &LimitsChoice{Limits: budget.Task{ToolCalls: int64(maxToolCalls)}}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -137,13 +137,18 @@ check(async () => {
   // silently when the box is empty.
   await shoot("home-options", { width: 1280, height: 800 }, "light", async (page) => {
     await page.click("#new-task-options > summary");
-    assert.ok(await page.isVisible("#new-task-limits"), "Options did not open");
-    await shows(page, "#new-task-options", "In a worktree", "Limits", "Stop each turn at Settings' limits", "Schedule…");
+    assert.ok(await page.isVisible("#new-task-schedule"), "Options did not open");
+    await shows(page, "#new-task-options", "In a worktree", "Schedule…");
+    // A task's limits are set on the task, none from Home (ADR 49, amended
+    // 2026-10-27).
+    assert.ok(!(await page.textContent("#new-task-options")).includes("Limits"), "Options offer Limits");
     assert.ok(await page.$eval("#new-task-options .count", (el) => el.hidden), "the count shows with everything at its default");
-    await page.uncheck("#new-task-limits");
-    assert.strictEqual(await page.textContent("#new-task-options .count"), "1", "the count does not say Limits is off");
-    await page.check("#new-task-limits");
-    assert.ok(await page.$eval("#new-task-options .count", (el) => el.hidden), "the count stayed after Limits was ticked again");
+    const worktree = "#new-task-options .worktree-toggle input";
+    const before = await page.isChecked(worktree);
+    await page.setChecked(worktree, !before);
+    assert.strictEqual(await page.textContent("#new-task-options .count"), "1", "the count does not say the worktree choice changed");
+    await page.setChecked(worktree, before);
+    assert.ok(await page.$eval("#new-task-options .count", (el) => el.hidden), "the count stayed after the worktree choice went back");
     await page.screenshot({ path: `${out}/home-options-open.png` });
     assert.ok(await page.isEnabled("#new-task-schedule"), "Schedule is off with an empty box");
     await page.click("#new-task-schedule");
@@ -340,11 +345,14 @@ check(async () => {
     await shows(page, "#view", "Settings", "General", "Models", "Judge", "Approvals", "Writing files", "Running commands");
     await until("settings loaded", () => page.evaluate(() => !document.querySelector("#view").innerText.includes("Loading…")));
     assert.strictEqual(await page.getAttribute("#settings-tab-general", "aria-selected"), "true");
-    // What most people never change is folded away, and open on request: the
-    // token budget and the reply cap are named for what they are.
+    // What most people never change is folded away, and open on request: how
+    // long a call may hang and the reply cap are named for what they are. A
+    // task's limits are not here: they are the task's own (ADR 49, amended
+    // 2026-10-27).
     assert.strictEqual(await page.$eval("#advanced", (d) => d.open), false, "Advanced starts open");
     await page.click("#advanced > summary");
-    await shows(page, "#view", "Tokens used", "a prompt token the provider read from its cache counted as a tenth", "Fallback reply cap", "and none its provider publishes");
+    await shows(page, "#view", "Waiting", "A model reply up to", "set a limit on the task itself", "Fallback reply cap", "and none its provider publishes");
+    assert.ok(!(await page.textContent("#view")).includes("Tokens used"), "Settings still sets every task's limits");
     // Context was a tab of its own: its address still opens its section,
     // and the address bar says where it went.
     await go(page, "#/settings/context");
@@ -375,7 +383,7 @@ check(async () => {
     await page.click(".toast.error button:text-is('Retry')");
     await until("the settings read again", async () => readSettings.length === 2);
     await until("the error gone", async () => (await error.count()) === 0);
-    await until("the settings drawn", async () => (await page.textContent("#view")).includes("Tokens used"));
+    await until("the settings drawn", async () => (await page.textContent("#view")).includes("A model reply up to"));
   }, "light", async (page) => {
     await page.routeWebSocket("**/socket", async (ws) => {
       const server = await ws.connectToServer();

@@ -333,6 +333,8 @@ func TestNewTaskChoicesSurviveRestart(t *testing.T) {
 		t.Fatalf("chosen before anything was: %+v", got)
 	}
 	folder := t.TempDir()
+	// no_limits is an older console's: a task starts without limits now (ADR
+	// 49, amended 2026-10-27), and the key is not kept.
 	choices := map[string]any{
 		"runs_on": "workshop",
 		"hosts": []any{
@@ -343,7 +345,7 @@ func TestNewTaskChoicesSurviveRestart(t *testing.T) {
 	c.ok("newtask.last", map[string]any{"choices": choices})
 	noJudge := ""
 	want := config.NewTaskChoices{RunsOn: "workshop", Hosts: []config.NewTaskForHost{
-		{Host: "", Model: "fast", Effort: "low", Judge: &noJudge, Helpers: []string{"review"}, NoLimits: true, Worktree: []config.WorktreeChoice{{Folder: config.CanonicalPath(folder), On: false}}},
+		{Host: "", Model: "fast", Effort: "low", Judge: &noJudge, Helpers: []string{"review"}, Worktree: []config.WorktreeChoice{{Folder: config.CanonicalPath(folder), On: false}}},
 		{Host: "workshop", Model: "control"},
 	}}
 	for _, bad := range []map[string]any{

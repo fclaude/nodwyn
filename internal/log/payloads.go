@@ -493,13 +493,14 @@ type SessionDelegates struct {
 	Models []string `json:"models"`
 }
 
-// SessionLimits records whether a task's turns stop at the turn limits
-// (ADR 49): On false is a task a person let run as long as it needs, with no
-// limit on tool calls, tokens, actions or time; its spend limit still
-// applies. A task without one has its limits on. Resuming restores it.
+// SessionLimits records a task's limits as a person set them (ADR 49,
+// amended 2026-10-27): each one left out is none, and a task without a
+// record has none. The latest record counts, and resuming restores it. A
+// record from before the amendment held only on/off, against limits
+// config.toml no longer has, and reads as none.
 type SessionLimits struct {
 	Actor string `json:"actor,omitempty"`
-	On    bool   `json:"on"`
+	budget.Task
 }
 
 // TurnCheckpoint records a budget decision, including cancellation and the
@@ -613,8 +614,6 @@ type RunState struct {
 	AutoApprove bool `json:"auto_approve,omitempty"`
 	// Judge: the judge answered its ordinary tool confirms.
 	Judge bool `json:"judge,omitempty"`
-	// Cost: the run's spend limit in US dollars, when it set its own.
-	Cost float64 `json:"cost,omitempty"`
 	// Sandbox: the run declared the machine its disposable sandbox
 	// (--sandbox container, ADR 55), which also makes it unattended and
 	// auto-approved. Like those it is said again at each resume.

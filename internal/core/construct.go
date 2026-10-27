@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/container"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
@@ -75,9 +76,9 @@ type Options struct {
 	// 2026-10-09). None, the default, offers no such tool. A session resumed
 	// from a log that chose some takes them back, those config.toml still has.
 	Delegates *DelegateChoice
-	// Limits says whether the task's turns stop at the turn limits (ADR
-	// 49); nil is on. A session resumed from a log that chose takes that
-	// choice back.
+	// Limits are the task's own limits (ADR 49, amended 2026-10-27); nil, or
+	// none set, is none. A session resumed takes back the latest its log
+	// recorded instead.
 	Limits *LimitsChoice
 	// EventBuffer is the events channel capacity (default 256).
 	EventBuffer int
@@ -134,8 +135,8 @@ func New(o Options) (*Session, error) {
 		judge:     initialJudge(o),
 		delegates: initialDelegates(o),
 	}
-	if o.Limits != nil && !o.Limits.On {
-		s.limitsOff, s.limitsActor = true, o.Limits.Actor
+	if o.Limits != nil {
+		s.taskLimits, s.limitsActor = o.Limits.Limits, o.Limits.Actor
 	}
 	// The worktree comes first: it is the root everything else loads from
 	// (init.scm, allow.toml). A session that never starts
@@ -193,10 +194,10 @@ func New(o Options) (*Session, error) {
 		// offers the same ones whatever the picker defaults to later.
 		_, err = s.Record(log.KindSessionDelegates, log.SessionDelegates{Actor: o.Delegates.Actor, Models: o.Delegates.Models})
 	}
-	if err == nil && s.limitsOff {
-		// A task opened with its limits off records it, so resuming it, as
-		// a schedule does for every run, keeps them off (ADR 49).
-		_, err = s.Record(log.KindSessionLimits, log.SessionLimits{Actor: s.limitsActor, On: false})
+	if err == nil && s.taskLimits != (budget.Task{}) {
+		// A task opened with limits records them, so resuming it, as a
+		// schedule does for every run, keeps them (ADR 49).
+		_, err = s.Record(log.KindSessionLimits, log.SessionLimits{Actor: s.limitsActor, Task: s.taskLimits})
 	}
 	if c := s.opts.Model; err == nil && (c.Name != loop.ControlModel || s.effort != "") {
 		// A conversation opened on a chosen model, or asking for an effort,
@@ -231,8 +232,10 @@ func resolveOptions(o Options) (Options, error) {
 		}
 	}
 
-	if _, err := o.Config.Budget.Limits(o.Config.Loop.MaxToolCalls); err != nil {
-		return Options{}, err
+	if o.Limits != nil {
+		if err := o.Limits.Limits.Validate(); err != nil {
+			return Options{}, err
+		}
 	}
 	// The choice is resolved once, here, so a refusal says what is wrong
 	// before a session exists; initialize resolves it into the model the

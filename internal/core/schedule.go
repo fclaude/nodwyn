@@ -177,7 +177,6 @@ func (s *Session) noteSchedule(ev log.Event) {
 		if ev.Decode(&p) == nil {
 			s.scheduledRun.Store(&p)
 			s.mu.Lock()
-			s.costSoft = 0
 			s.spendNoted = false
 			s.judgeSpendNoted = false
 			s.mu.Unlock()

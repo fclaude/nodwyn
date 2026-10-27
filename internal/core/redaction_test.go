@@ -114,6 +114,7 @@ func TestSplitSchemeOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-r.s.Events() // session.start
+	<-r.s.Events() // session.limits: the rig's task stops a turn at three tool calls
 	ev := <-r.s.Events()
 	if ev.Kind != event.Output || ev.Payload.(event.Text).Text != "[REDACTED anthropic-key]" {
 		t.Fatalf("split output bypass: %+v", ev)

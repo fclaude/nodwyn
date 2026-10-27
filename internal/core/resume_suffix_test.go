@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
 	"github.com/fclaude/nodwyn/internal/window"
@@ -48,7 +49,7 @@ func longLog(t *testing.T, o Options, id string, turns, compactAt int, extra fun
 		}
 	}
 	write(log.KindSessionStart, log.SessionStart{Repo: o.Repo})
-	write(log.KindSessionLimits, log.SessionLimits{Actor: "desk", On: false})
+	write(log.KindSessionLimits, log.SessionLimits{Actor: "desk", Task: budget.Task{Wall: int64(time.Hour)}})
 	for i := range turns {
 		if i == compactAt {
 			write(log.KindHarnessMsg, log.HarnessMsg{Text: "write the handover"})
@@ -126,8 +127,8 @@ func TestResumeHoldsTheEndOfALongLog(t *testing.T) {
 	if got := s.knownSpend(); got != spend {
 		t.Fatalf("known spend %v, the whole log's %v", got, spend)
 	}
-	if on, actor := s.LimitsOn(); on || actor != "desk" {
-		t.Fatalf("the limits chosen near the log's start: on %v by %q", on, actor)
+	if limits, actor := s.TaskLimits(); limits.Wall != int64(time.Hour) || actor != "desk" {
+		t.Fatalf("the limits set near the log's start: %+v by %q", limits, actor)
 	}
 	if a, b := earlierRequests(held), earlierRequests(whole); !reflect.DeepEqual(a, b) {
 		t.Fatalf("the judge's earlier requests %q, the whole log's %q", a, b)

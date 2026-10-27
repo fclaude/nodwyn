@@ -221,13 +221,13 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 			Set   bool `json:"set"`
 		} `json:"values"`
 	}
-	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"budget.tool_calls_soft": 40}}, &settings); err != nil {
+	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"loop.shell_timeout": "3m"}}, &settings); err != nil {
 		t.Fatalf("the vouched link's settings.write: %v", err)
 	}
-	if v := settings.Values["budget.tool_calls_soft"]; v.Value != float64(40) || !v.Set {
+	if v := settings.Values["loop.shell_timeout"]; v.Value != "3m" || !v.Set {
 		t.Fatalf("workshop's settings after the link's write: %+v", v)
 	}
-	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || !bytes.Contains(written, []byte(`tool_calls_soft = 40`)) {
+	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || !bytes.Contains(written, []byte(`shell_timeout = "3m"`)) {
 		t.Fatalf("workshop's config.toml after the link's write: %s %v", written, err)
 	}
 	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("tool_calls_soft")) {
@@ -246,12 +246,12 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	}
 	// What would widen what a task may do waits for a touch, which a link
 	// cannot give, even in a call that also holds a setting it may change.
-	for _, set := range []map[string]any{{"approval.dont_ask": true}, {"policy.allow_insecure_http": true}, {"judge.server": nil}, {"budget.tool_calls_hard": 90, "approval.writes": "ask"}} {
+	for _, set := range []map[string]any{{"approval.dont_ask": true}, {"policy.allow_insecure_http": true}, {"judge.server": nil}, {"loop.shell_timeout": "4m", "approval.writes": "ask"}} {
 		if err := call(conn, "settings.write", map[string]any{"set": set}, &settings); err == nil || !strings.Contains(err.Error(), "widens what this host's tasks may do") {
 			t.Errorf("the vouched link's settings.write of %v: %v", set, err)
 		}
 	}
-	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || bytes.Contains(written, []byte("dont_ask")) || bytes.Contains(written, []byte("tool_calls_hard")) || bytes.Contains(written, []byte(`writes = "ask"`)) {
+	if written, err := os.ReadFile(tarroPaths.ConfigFile); err != nil || bytes.Contains(written, []byte("dont_ask")) || bytes.Contains(written, []byte(`"4m"`)) || bytes.Contains(written, []byte(`writes = "ask"`)) {
 		t.Fatalf("a refused write changed workshop's config.toml: %s %v", written, err)
 	}
 	if err := call(conn, "settings.docs.write", map[string]any{"google_upload": "allow"}, &settings); err == nil || !strings.Contains(err.Error(), "docs.google_upload") {
@@ -374,10 +374,10 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 			t.Errorf("a link from workshop's terminal is offered %s: %v, want %v", method, !want, want)
 		}
 	}
-	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"budget.tool_calls_soft": nil}}, &settings); err == nil {
+	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"loop.shell_timeout": nil}}, &settings); err == nil {
 		t.Fatal("a link from workshop's terminal changed workshop's settings")
 	}
-	if written, _ := os.ReadFile(tarroPaths.ConfigFile); !bytes.Contains(written, []byte(`tool_calls_soft = 40`)) {
+	if written, _ := os.ReadFile(tarroPaths.ConfigFile); !bytes.Contains(written, []byte(`shell_timeout = "3m"`)) {
 		t.Fatalf("a refused write changed workshop's config.toml: %s", written)
 	}
 	conn.Close(websocket.StatusNormalClosure, "")
@@ -508,13 +508,13 @@ func TestLinkWidens(t *testing.T) {
 	for _, tt := range []struct {
 		name, method, params, want string
 	}{
-		{"a budget", "settings.write", `{"set":{"budget.tool_calls_soft":40,"loop.shell_timeout":"2m"}}`, ""},
+		{"a timeout", "settings.write", `{"set":{"loop.request_timeout":"20m","loop.shell_timeout":"2m"}}`, ""},
 		{"a notice", "settings.write", `{"set":{"notify.desktop":true,"mcp.runtime":null}}`, ""},
 		{"a window", "settings.write", `{"set":{"window.high_water":9000}}`, ""},
 		{"an approval", "settings.write", `{"set":{"approval.commands":"ask"}}`, "approval.commands"},
 		{"Don't ask taken away", "settings.write", `{"set":{"approval.dont_ask":null}}`, "approval.dont_ask"},
 		{"the policy", "settings.write", `{"set":{"policy.allow_insecure_http":false}}`, "policy.allow_insecure_http"},
-		{"the judge", "settings.write", `{"set":{"budget.cost_hard":1,"judge.approve_threshold":0.5}}`, "judge.approve_threshold"},
+		{"the judge", "settings.write", `{"set":{"notify.desktop":true,"judge.approve_threshold":0.5}}`, "judge.approve_threshold"},
 		{"unreadable", "settings.write", `[]`, "its settings could not be read"},
 		{"uploads asked", "settings.docs.write", `{"google_upload":"ask"}`, ""},
 		{"uploads refused", "settings.docs.write", `{"google_upload":"deny"}`, ""},

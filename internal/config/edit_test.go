@@ -115,14 +115,15 @@ func TestSetControlWritesSampling(t *testing.T) {
 	}
 }
 
-// Edit makes several changes and validates only the result: a soft limit
-// raised past the old hard one is valid once the hard one is raised too.
+// Edit makes several changes and validates only the result: a low water
+// mark raised past the old high one is valid once the high one is raised
+// too.
 func TestEditTypedValuesTogether(t *testing.T) {
-	raw := []byte("# mine\n[budget]\ntokens_soft = 100 # low\ntokens_hard = 200\n")
+	raw := []byte("# mine\n[window]\nlow_water = 10000 # low\nhigh_water = 20000\n")
 	out, cfg, err := Edit(raw,
-		Change{"budget", "tokens_soft", int64(500)},
-		Change{"budget", "tokens_hard", int64(1000)},
-		Change{"budget", "cost_hard", 2.0},
+		Change{"window", "low_water", int64(50000)},
+		Change{"window", "high_water", int64(100000)},
+		Change{"control", "temperature", 2.0},
 		Change{"control", "vision", true},
 		Change{"control", "url", "https://api.example.com/v1"},
 		Change{"control", "model", "m"},
@@ -132,17 +133,17 @@ func TestEditTypedValuesTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(out)
-	for _, want := range []string{"# mine\n", "tokens_soft = 500\n", "tokens_hard = 1000\ncost_hard = 2.0\n", "vision = true\n", "[approval]\ncommands = \"ask\"\n"} {
+	for _, want := range []string{"# mine\n", "low_water = 50000\n", "high_water = 100000\n", "temperature = 2.0\n", "vision = true\n", "[approval]\ncommands = \"ask\"\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q in:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "# low") || cfg.Budget.TokensSoft != 500 || cfg.Budget.TokensHard != 1000 || cfg.Budget.CostHard != 2 || cfg.Control.Vision == nil || !*cfg.Control.Vision || cfg.Approval.Commands != "ask" {
+	if strings.Contains(text, "# low") || cfg.Window.LowWater != 50000 || cfg.Window.HighWater != 100000 || cfg.Control.Temperature == nil || *cfg.Control.Temperature != 2 || cfg.Control.Vision == nil || !*cfg.Control.Vision || cfg.Approval.Commands != "ask" {
 		t.Fatalf("parsed %+v from:\n%s", cfg, text)
 	}
 	// Each change alone is checked only with the others.
-	if _, _, err := Edit(raw, Change{"budget", "tokens_soft", int64(500)}); err == nil {
-		t.Fatal("accepted soft above hard")
+	if _, _, err := Edit(raw, Change{"window", "low_water", int64(50000)}); err == nil {
+		t.Fatal("accepted low water above high water")
 	}
 }
 
@@ -150,7 +151,7 @@ func TestEditTypedValuesTogether(t *testing.T) {
 // that is not there changes nothing.
 func TestEditRemovesKeys(t *testing.T) {
 	raw := []byte("[window]\nhigh_water = 50000 # fixed\nlow_water = 20000\n\n[control]\nurl = \"http://x\"\nmodel = \"m\"\ntemperature = 0.2\n")
-	out, cfg, err := Edit(raw, Change{"window", "high_water", nil}, Change{"window", "low_water", nil}, Change{"control", "temperature", nil}, Change{"budget", "cost_hard", nil})
+	out, cfg, err := Edit(raw, Change{"window", "high_water", nil}, Change{"window", "low_water", nil}, Change{"control", "temperature", nil}, Change{"judge", "timeout", nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,11 +165,12 @@ func TestEditRemovesKeys(t *testing.T) {
 
 func TestEditRefusesWhatItCannotWrite(t *testing.T) {
 	for _, c := range []Change{
-		{"budget", "cost_hard", math.NaN()},
-		{"budget", "tokens_hard", []string{"x"}},
-		{"budget]\n[control", "url", "http://x"},
-		{"budget", "tokens_hard = 1\nx", int64(1)},
-		{"budget", "nonsense", int64(1)},
+		{"control", "temperature", math.NaN()},
+		{"window", "high_water", []string{"x"}},
+		{"window]\n[control", "url", "http://x"},
+		{"window", "high_water = 1\nx", int64(1)},
+		{"window", "nonsense", int64(1)},
+		{"budget", "cost_hard", 1.0},
 	} {
 		if out, _, err := Edit(nil, c); err == nil {
 			t.Errorf("%+v wrote:\n%s", c, out)
@@ -177,9 +179,9 @@ func TestEditRefusesWhatItCannotWrite(t *testing.T) {
 }
 
 func TestKeysAndValues(t *testing.T) {
-	raw := []byte("[budget]\ncost_hard = 3.5\n[control]\nurl = \"http://x\"\nmodel = \"m\"\nseed = 7\n")
+	raw := []byte("[window]\nhigh_water = 90000\n[control]\nurl = \"http://x\"\nmodel = \"m\"\nseed = 7\n")
 	set, err := Keys(raw)
-	if err != nil || !set["budget.cost_hard"] || !set["control.seed"] || set["budget.tokens_hard"] {
+	if err != nil || !set["window.high_water"] || !set["control.seed"] || set["window.low_water"] {
 		t.Fatalf("%v %v", set, err)
 	}
 	cfg, err := Parse(raw)
@@ -190,7 +192,7 @@ func TestKeysAndValues(t *testing.T) {
 		table, key string
 		want       any
 	}{
-		{"budget", "cost_hard", 3.5}, {"budget", "tokens_hard", int64(10_000_000)}, {"budget", "wall_soft", "4h"},
+		{"window", "high_water", int64(90000)}, {"window", "low_water", int64(30 * 1024)}, {"loop", "shell_timeout", "10m"},
 		{"control", "seed", int64(7)}, {"control", "temperature", nil}, {"control", "vision", nil},
 		{"approval", "writes", "allow"}, {"approval", "commands", "judge"}, {"policy.l1", "enabled", true},
 	} {
@@ -198,7 +200,7 @@ func TestKeysAndValues(t *testing.T) {
 			t.Errorf("%s.%s = %#v %v, want %#v", c.table, c.key, got, ok, c.want)
 		}
 	}
-	for _, missing := range [][2]string{{"budget", "nope"}, {"nope", "x"}, {"policy", "allow_commands"}, {"control", "model.x"}} {
+	for _, missing := range [][2]string{{"budget", "cost_hard"}, {"window", "nope"}, {"nope", "x"}, {"policy", "allow_commands"}, {"control", "model.x"}} {
 		if v, ok := cfg.Value(missing[0], missing[1]); ok {
 			t.Errorf("%v: %v", missing, v)
 		}
@@ -224,23 +226,23 @@ url = "http://old:11434"
 model = "old"
 # old control's trailing note
 
-# --- Budget: keep this low ---
-[budget]
-cost_hard = 5.0
+# --- Window: keep this low ---
+[window]
+high_water = 50000
 `)
 	out, _, err := SetControl(raw, Model{Provider: "ollama", URL: "http://new:11434", Model: "new"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(out)
-	if !strings.Contains(text, "# --- Budget: keep this low ---\n[budget]") {
+	if !strings.Contains(text, "# --- Window: keep this low ---\n[window]") {
 		t.Fatalf("the next table's comment went:\n%s", text)
 	}
 	if strings.Contains(text, "old:11434") {
 		t.Fatalf("the old table stayed:\n%s", text)
 	}
 	out, _, err = SetControl(out, Model{})
-	if err == nil && !strings.Contains(string(out), "# --- Budget: keep this low ---\n[budget]") {
+	if err == nil && !strings.Contains(string(out), "# --- Window: keep this low ---\n[window]") {
 		t.Fatalf("removing the table took the next one's comment:\n%s", out)
 	}
 }

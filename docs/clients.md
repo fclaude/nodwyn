@@ -22,7 +22,8 @@ nodwyn has four ways in, over one core:
   `devices`, `startup`, `run`, `summary`, `eval`, `repl`).
 
 This page records what each one can do as of 2026-10-17 (the judge choice,
-ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49,
+ADR 47, a task's helpers, ADR 27, a task's own limits, ADR 49 amended
+2026-10-27,
 retrieval, ADR 50, the TUI and line mode on the daemon, the console as a phone's
 app, ADR 52, devices that pair by invitation and sign in with a passkey,
 ADR 30 amended 2026-10-17 twice, workflows, ADR 53, and several hosts in one
@@ -87,9 +88,9 @@ it can see the thing but not change it.
 | Answer a confirm once, for this turn, or for the session | yes | yes: `y`, `n`, `t`, `a` | yes | — |
 | Save a binding (`session.binding.create`) | yes, on this computer | yes, `b` | yes | `nodwyn credential` |
 | Masked secret prompts | yes | yes | yes | — |
-| Budget checkpoints | yes | yes | yes | — |
+| Budget checkpoints (an older log's; no limit asks before it stops now) | yes | yes | yes | — |
 | Don't ask (`session.approve_all`) | yes, when Settings offers it; a paired device sees it while on and turns it off | not built | `--yolo` turns it on at start, when Settings offers it | `nodwyn run --yolo` answers a run's confirms itself |
-| A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer or a device signed in with a passkey | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: a task opens with Settings' limits, and `--budget-*` are refused | `nodwyn run`: not built, its run limits are its own |
+| A task's own limits (`limits`, `session.limits.set`, ADR 49 amended 2026-10-27) | yes: the task panel's **Limits**, add, change and remove; a paired device adds or lowers only | read: `:budget` shows them, "no limit" for each not set, and the conversation each change; not built: setting them | yes: `--max-tool-calls`, `--budget-tokens`, `--budget-actions`, `--budget-wall`, `--budget-cost` for the task opened, or in place of the resumed task's | `nodwyn run`: the same flags, `--turn-wall` for each turn's time, besides the run's optional `--budget-wall` and `--max-turns` |
 | Edit `allow.toml` (`session.policy.write`) | yes, the policy editor | deliberate gap: `:bindings` reads only | — | — |
 
 ## Models (ADR 40, ADR 41)
@@ -116,7 +117,7 @@ function, `Session.busyWith`, in `internal/core/session.go`):
 | Move to another model | queued, applied when the turn ends (ADR 40) |
 | Move to another judge, or none | refused: "choose its judge when this turn ends" |
 | Attach a file | refused until the turn ends |
-| Turn limits on or off | applies from the next turn |
+| A task's limits set | applies from the next turn |
 | Don't ask | applies at once |
 
 The model queues and the judge refuses on purpose, for now: the queue and
@@ -249,7 +250,7 @@ saying where the setting is now:
 | `--repo`, `--resume` | `session.open`, `session.resume`; the daemon's task-root refusal now applies. `--repo` beside `--resume` must name the task's folder, checked before it is resumed |
 | `--model NAME` | `session.open`'s `name` for a configured model, else `server` and `model` for a model on `[control]`'s server; with `--resume`, `session.model.set` |
 | `--url` | refused: the daemon reaches only the servers config.toml names |
-| `--budget-*`, `--max-tool-calls` | refused: a task has the `[budget]` limits every task has; `nodwyn run` keeps its own `--budget-wall` and `--budget-cost` |
+| `--budget-*`, `--max-tool-calls` | the task's own limits: `session.open`'s `limits` for a new task; with `--resume`, `session.limits.set` with those named in place of the task's, `0` removing one (ADR 49, amended 2026-10-27) |
 | `--no-confirm` | line mode answers every confirm and checkpoint no without reading a line; a question with set answers (uploads to Google Docs), none of which only declines, stops the turn |
 | `--yolo` | `session.approve_all`, so it needs `[approval] dont_ask`, as the console's switch does; security confirms and checkpoints ask, or with `--no-confirm` are declined. The task is not unattended: `nodwyn run --yolo` is |
 | `--no-keychain`, `--keychain-tty` | the daemon's keychain is left locked, or its passphrase asked on the controlling terminal under a script (`keychain.unlock`, as the TUI does) |

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -139,7 +140,7 @@ func TestLifecycleAcrossConnectionsAndRestart(t *testing.T) {
 	if err := json.Unmarshal(c.ok("session.open", map[string]any{"repo": repo}), &opened); err != nil {
 		t.Fatal(err)
 	}
-	if opened.ID == "" || opened.Repo != config.CanonicalPath(repo) || len(opened.Tools) == 0 || opened.Budgets.ToolCalls.Hard != 500 {
+	if opened.ID == "" || opened.Repo != config.CanonicalPath(repo) || len(opened.Tools) == 0 || opened.Budgets != (budgetInfo{}) || opened.Limits != (budget.Task{}) {
 		t.Fatalf("details: %+v", opened)
 	}
 	c.conn.Close()

@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -42,29 +41,24 @@ type State struct {
 	AutoApprove bool `json:"auto_approve,omitempty"`
 	// Judge: the judge answers the run's ordinary tool confirms.
 	Judge bool `json:"judge,omitempty"`
-	// Cost is the run's spend limit in US dollars, replacing
-	// budget.cost_hard for its session; 0 keeps the configured one. A
-	// resume keeps it, as it keeps the deadline: it only limits.
-	Cost float64 `json:"cost,omitempty"`
 	// Sandbox: the run is in sandbox mode (ADR 55), which makes it
 	// unattended and auto-approved too. Not restored from the log either.
 	Sandbox bool `json:"sandbox,omitempty"`
 }
 
-// Validate reports whether a run can start or resume: a task, turns left and
-// a deadline in the future.
+// Validate reports whether a run can start or resume: a task, turns left
+// and a deadline in the future. Both limits are optional (ADR 49, amended
+// 2026-10-27): MaxTurns 0 is no limit on turns, and a zero Deadline none on
+// time.
 func (s State) Validate() error {
 	if !utf8.ValidString(s.Task) || strings.TrimSpace(s.Task) == "" || len(s.Task) > 64<<10 {
 		return errors.New("run task must be valid UTF-8, nonempty and at most 64 KiB")
 	}
-	if s.MaxTurns < 1 || s.MaxTurns > 10000 || s.Turns < 0 || s.Turns >= s.MaxTurns {
+	if s.MaxTurns < 0 || s.MaxTurns > 10000 || s.Turns < 0 || (s.MaxTurns > 0 && s.Turns >= s.MaxTurns) {
 		return errors.New("run requires remaining turns within a maximum of 10000")
 	}
-	if s.Deadline.IsZero() || !s.Deadline.After(time.Now()) {
-		return errors.New("run deadline has expired or is missing")
-	}
-	if math.IsNaN(s.Cost) || math.IsInf(s.Cost, 0) || s.Cost < 0 {
-		return errors.New("run spend limit must be a number of US dollars, at least 0")
+	if !s.Deadline.IsZero() && !s.Deadline.After(time.Now()) {
+		return errors.New("run deadline has expired")
 	}
 	return nil
 }
@@ -98,7 +92,10 @@ func New(session *core.Session, state State) (*Driver, error) {
 	if err := state.Validate(); err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithDeadline(context.Background(), state.Deadline)
+	ctx, cancel := context.WithCancel(context.Background())
+	if !state.Deadline.IsZero() {
+		ctx, cancel = context.WithDeadline(context.Background(), state.Deadline)
+	}
 	state.Status = "running"
 	state.Reason = ""
 	return &Driver{session: session, state: state, ctx: ctx, cancel: cancel, finished: make(chan completion, 1), done: make(chan struct{})}, nil
@@ -160,7 +157,7 @@ func (d *Driver) execute(actor string) {
 	defer d.cancel()
 	state := d.Info()
 	// The log's redacted state, not the submitted raw task, drives subsequent work.
-	ev, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: "running", Actor: actor, Unattended: state.Unattended, AutoApprove: state.AutoApprove, Judge: state.Judge, Cost: state.Cost, Sandbox: state.Sandbox})
+	ev, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: "running", Actor: actor, Unattended: state.Unattended, AutoApprove: state.AutoApprove, Judge: state.Judge, Sandbox: state.Sandbox})
 	if err != nil {
 		d.finish("error", err.Error())
 		return
@@ -179,7 +176,7 @@ func (d *Driver) execute(actor string) {
 			d.finish("stopped", d.ctx.Err().Error())
 			return
 		}
-		if state.Turns >= state.MaxTurns {
+		if state.MaxTurns > 0 && state.Turns >= state.MaxTurns {
 			d.finish("limited", "maximum turn count reached")
 			return
 		}
@@ -233,7 +230,7 @@ func (d *Driver) execute(actor string) {
 			d.finish("completed", "model reported completion")
 			return
 		}
-		if next >= state.MaxTurns {
+		if state.MaxTurns > 0 && next >= state.MaxTurns {
 			d.finish("limited", "maximum turn count reached")
 			return
 		}
@@ -286,7 +283,7 @@ func Complete(answer string) bool {
 // finish records the run's final state and releases Wait.
 func (d *Driver) finish(status, reason string) {
 	state := d.Info()
-	_, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: status, Reason: reason, Unattended: state.Unattended, AutoApprove: state.AutoApprove, Judge: state.Judge, Cost: state.Cost, Sandbox: state.Sandbox})
+	_, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: status, Reason: reason, Unattended: state.Unattended, AutoApprove: state.AutoApprove, Judge: state.Judge, Sandbox: state.Sandbox})
 	d.mu.Lock()
 	d.state.Status = status
 	d.state.Reason = reason
@@ -316,7 +313,7 @@ func Restore(events []log.Event) (State, error) {
 			if err := ev.Decode(&p); err != nil {
 				return State{}, err
 			}
-			state = State{Task: p.Task, Deadline: p.Deadline, MaxTurns: p.MaxTurns, Turns: p.Turns, Status: p.Status, Reason: p.Reason, Cost: p.Cost}
+			state = State{Task: p.Task, Deadline: p.Deadline, MaxTurns: p.MaxTurns, Turns: p.Turns, Status: p.Status, Reason: p.Reason}
 			found = true
 		case log.KindRunTurn:
 			var p log.RunTurn

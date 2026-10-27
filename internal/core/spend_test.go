@@ -67,15 +67,15 @@ func TestModelSpendReachesTheLog(t *testing.T) {
 func price(f float64) *float64 { return &f }
 
 // spendRig opens a session on disk whose model costs $0.50 a request (its
-// output priced so), with a spend limit of soft..hard dollars.
-func spendRig(t *testing.T, soft, hard float64, priced bool, turns ...fake.Turn) (*Session, Options, *fake.Server) {
+// output priced so), with a spend limit of limit dollars.
+func spendRig(t *testing.T, limit float64, priced bool, turns ...fake.Turn) (*Session, Options, *fake.Server) {
 	t.Helper()
 	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	o := diskOptions(t)
 	o.NoConfirm = false
 	o.Provider = llm.NewOllama(srv.URL)
-	o.Config.Budget.CostSoft, o.Config.Budget.CostHard = soft, hard
+	o.Limits = &LimitsChoice{Limits: budget.Task{Cost: limit}}
 	if priced {
 		// The fake reports 44 output tokens a request.
 		o.Config.Control.PriceInput, o.Config.Control.PriceOutput = price(0), price(0.5e6/44)
@@ -117,24 +117,17 @@ func spendOf(s *Session) (requests, checkpoints int, outcome string, notes []str
 	return
 }
 
-// The spend limit asks at its soft limit, as often as it is raised, and
-// stops at the hard one; the next turn starts past it and stops before it
+// The spend limit stops the turn at it, without asking first (ADR 49,
+// amended 2026-10-27); the next turn starts past it and stops before it
 // asks the model anything.
-func TestSpendLimitAsksThenStopsTheTask(t *testing.T) {
+func TestSpendLimitStopsTheTask(t *testing.T) {
 	t.Parallel()
-	s, _, _ := spendRig(t, 1, 2, true, grep("1", "a"), grep("2", "b"), grep("3", "c"), grep("4", "d"), fake.Turn{Content: "never"})
+	s, _, _ := spendRig(t, 2, true, grep("1", "a"), grep("2", "b"), grep("3", "c"), grep("4", "d"), fake.Turn{Content: "never"})
 	s.Send("look around")
-	var used []int64
-	answers := []string{"1.5", "y"}
-	followBudget(t, s, func(p event.Checkpoint) {
-		used = append(used, p.Checkpoint.Used)
-		if err := s.Answer(p.ID, answers[len(used)-1]); err != nil {
-			t.Fatal(err)
-		}
-	})
+	followBudget(t, s, func(p event.Checkpoint) { t.Fatalf("asked: %+v", p) })
 	requests, checkpoints, outcome, _ := spendOf(s)
-	if requests != 4 || checkpoints != 2 || outcome != "spend_limit" || used[0] != budget.Micros(1) || used[1] != budget.Micros(1.5) {
-		t.Fatalf("requests %d, checkpoints %d %v, outcome %s", requests, checkpoints, used, outcome)
+	if requests != 4 || checkpoints != 0 || outcome != "spend_limit" {
+		t.Fatalf("requests %d, checkpoints %d, outcome %s", requests, checkpoints, outcome)
 	}
 	s.Send("go on")
 	followBudget(t, s, func(p event.Checkpoint) { t.Fatalf("asked again: %+v", p) })
@@ -143,29 +136,10 @@ func TestSpendLimitAsksThenStopsTheTask(t *testing.T) {
 	}
 }
 
-// A soft limit raised at a checkpoint is the task's, and holds for the
-// turns after it.
-func TestSpendSoftLimitRaisedHoldsForLaterTurns(t *testing.T) {
-	t.Parallel()
-	s, _, _ := spendRig(t, 1, 10, true, grep("1", "a"), grep("2", "b"), fake.Turn{Content: "done"}, grep("3", "c"), fake.Turn{Content: "done again"})
-	asked := 0
-	answer := func(p event.Checkpoint) {
-		asked++
-		s.Answer(p.ID, "5")
-	}
-	s.Send("look around")
-	followBudget(t, s, answer)
-	s.Send("and again")
-	followBudget(t, s, answer)
-	if requests, checkpoints, outcome, _ := spendOf(s); requests != 5 || asked != 1 || checkpoints != 1 || outcome != "completed" {
-		t.Fatalf("requests %d, asked %d, outcome %s", requests, asked, outcome)
-	}
-}
-
 // A limit that cannot see a request's cost says so, once.
 func TestSpendLimitSaysWhatItCannotCount(t *testing.T) {
 	t.Parallel()
-	s, _, _ := spendRig(t, 0, 1, false, fake.Turn{Content: "one"}, fake.Turn{Content: "two"})
+	s, _, _ := spendRig(t, 1, false, fake.Turn{Content: "one"}, fake.Turn{Content: "two"})
 	for _, text := range []string{"first", "second"} {
 		s.Send(text)
 		followBudget(t, s, func(p event.Checkpoint) { t.Fatalf("asked: %+v", p) })
@@ -185,17 +159,19 @@ func TestSpendLimitSaysWhatItCannotCount(t *testing.T) {
 // A resumed task counts what it spent before: its log is the record.
 func TestSpendLimitCountsAResumedTasksHistory(t *testing.T) {
 	t.Parallel()
-	s, o, _ := spendRig(t, 0, 5, true, fake.Turn{Content: "one"}, fake.Turn{Content: "never"})
+	s, o, _ := spendRig(t, 5, true, fake.Turn{Content: "one"}, fake.Turn{Content: "never"})
 	s.Send("first")
 	followBudget(t, s, func(p event.Checkpoint) {})
 	id := s.ID()
 	s.Close()
-	o.Config.Budget.CostHard = 0.5
 	resumed, err := Resume(o, id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resumed.Close()
+	if err := resumed.SetLimits(budget.Task{Cost: 0.5}, "test"); err != nil {
+		t.Fatal(err)
+	}
 	resumed.Send("second")
 	followBudget(t, resumed, func(p event.Checkpoint) {})
 	if requests, _, outcome, _ := spendOf(resumed); requests != 1 || outcome != "spend_limit" {

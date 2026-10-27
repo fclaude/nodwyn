@@ -51,22 +51,20 @@ func knownCost(ev log.Event) (float64, bool) {
 	return 0, false
 }
 
-// endSpend keeps what a turn did to the spend limit: the soft limit a
-// checkpoint raised holds for later turns. The first turn with a request
-// whose cost nobody knows says so once: the limit cannot count it.
+// endSpend says, once, when a turn had a request whose cost nobody knows:
+// the spend limit cannot count it.
 func (s *Session) endSpend(turn *budget.Turn) {
-	_, unpriced, limit := turn.Spend()
+	_, unpriced, _ := turn.Spend()
 	judge := turn.Snapshot().JudgeUnpriced
 	s.mu.Lock()
-	s.costSoft = limit.Soft
 	noted, judgeNoted := s.spendNoted, s.judgeSpendNoted
 	s.spendNoted = noted || unpriced > 0
 	s.judgeSpendNoted = judgeNoted || judge > 0
 	s.mu.Unlock()
 	if unpriced > 0 && !noted {
-		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set (budget.cost_hard), but %d model request(s) this turn had no known cost: the provider reported none, and the model has no prices (Settings › Models, or price_* in its entry in config.toml). The limit does not count them.", unpriced)})
+		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set on this task, but %d model request(s) this turn had no known cost: the provider reported none, and the model has no prices (Settings › Models, or price_* in its entry in config.toml). The limit does not count them.", unpriced)})
 	}
 	if judge > 0 && !judgeNoted {
-		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set (budget.cost_hard), but %d judge request(s) this turn had no price: the judge reports what it used, not what it cost, and [judge] has no price_input and price_output in config.toml, nor does its provider publish them. The limit does not count them.", judge)})
+		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set on this task, but %d judge request(s) this turn had no price: the judge reports what it used, not what it cost, and [judge] has no price_input and price_output in config.toml, nor does its provider publish them. The limit does not count them.", judge)})
 	}
 }

@@ -368,7 +368,7 @@ func TestUnreviewedReadingRoundsAreToldToPlan(t *testing.T) {
 		turns = append(turns, look(fmt.Sprint("r", i), "index-grep", map[string]any{"path": ".", "pattern": fmt.Sprint("word", i)}))
 	}
 	turns = append(turns, fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"})
-	r := newRigWith(t, true, func(c *config.Config) { c.Loop.MaxToolCalls = 20 }, turns...)
+	r := newRigCalls(t, true, 20, nil, turns...)
 	if err := r.s.SendPlanned("change main.go"); err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/event"
@@ -31,19 +32,20 @@ func TestCompletionLine(t *testing.T) {
 }
 func drive(t *testing.T, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
 	t.Helper()
-	return driveConfigured(t, config.Default(), wall, max, answer, turns...)
+	return driveConfigured(t, config.Default(), budget.Task{}, wall, max, answer, turns...)
 }
-func driveConfigured(t *testing.T, cfg config.Config, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
+func driveConfigured(t *testing.T, cfg config.Config, limits budget.Task, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
 	t.Helper()
-	return driveIn(t, t.TempDir(), cfg, wall, max, answer, turns...)
+	return driveIn(t, t.TempDir(), cfg, limits, wall, max, answer, turns...)
 }
 
 // driveIn runs a driver over a session in repo, which may hold a
-// .nodwyn/init.scm. answer is how the operator answers prompts: "y", "n",
+// .nodwyn/init.scm, whose task has limits; a wall of 0 is a run without a
+// deadline, and max 0 one without a limit on turns. answer is how the operator answers prompts: "y", "n",
 // "wait" (never), or "expire", where the run's time runs out the moment a
 // prompt appears — the deadline passing while the operator is away, without
 // racing a real clock against the turns before it.
-func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
+func driveIn(t *testing.T, repo string, cfg config.Config, limits budget.Task, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
 	t.Helper()
 	// These tests pin the run's conversation turn by turn; the default loop's
 	// explorer and evidence reminders (docs/scheme.md §9) are off here, ahead
@@ -61,13 +63,15 @@ func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, m
 	}
 	srv := fake.New(turns...)
 	defer srv.Close()
-	cfg.Budget.TokensSoft = 100000
-	cfg.Budget.TokensHard = 100000
-	s, err := core.New(core.Options{Repo: repo, InitFile: init, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL)})
+	s, err := core.New(core.Options{Repo: repo, InitFile: init, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL), Limits: &core.LimitsChoice{Limits: limits}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := New(s, State{Task: "perform test task", Deadline: time.Now().Add(wall), MaxTurns: max})
+	var deadline time.Time
+	if wall > 0 {
+		deadline = time.Now().Add(wall)
+	}
+	d, err := New(s, State{Task: "perform test task", Deadline: deadline, MaxTurns: max})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +107,38 @@ func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, m
 	s.Close()
 	<-drained
 	return d.Info(), s.EventsSoFar()
+}
+
+// A run's limits are optional (ADR 49, amended 2026-10-27): without a
+// deadline or a limit on turns it goes on until the model reports
+// completion, and its turns are not told of a last one.
+func TestARunWithoutLimits(t *testing.T) {
+	state, history := drive(t, 0, 0, "y",
+		fake.Turn{Content: "1. First step.\n2. Second step."},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepDone("a", 1)}}, fake.Turn{Content: "first done"},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepDone("b", 2)}}, fake.Turn{Content: "all done\n" + CompleteLine})
+	if state.Status != "completed" || state.Turns != 2 || state.MaxTurns != 0 || !state.Deadline.IsZero() {
+		t.Fatalf("%+v", state)
+	}
+	said := 0
+	for _, ev := range history {
+		var m log.UserMsg
+		if ev.Kind != log.KindUserMsg || ev.Decode(&m) != nil {
+			continue
+		}
+		if strings.Contains(m.Text, "of at most") {
+			t.Fatalf("a turn was told of a last one: %q", m.Text)
+		}
+		if strings.Contains(m.Text, "This is turn 2.") {
+			said++
+		}
+	}
+	if said != 1 {
+		t.Fatalf("the second turn's message said which turn it is %d times", said)
+	}
+	if restored, err := Restore(history); err != nil || restored.MaxTurns != 0 || !restored.Deadline.IsZero() {
+		t.Fatalf("restore %+v %v", restored, err)
+	}
 }
 
 // The plan is the run's: turn 1 drafts it, turn 2 carries it with the step
@@ -163,7 +199,7 @@ func TestRunTurnsAreReviewedWhenACheckpointFollows(t *testing.T) {
   (log-note (if (reviewed?) "reviewed" "unreviewed"))
   (base-agent-turn request))
 `), 0o644)
-	state, history := driveIn(t, repo, config.Default(), time.Minute, 2, "y",
+	state, history := driveIn(t, repo, config.Default(), budget.Task{}, time.Minute, 2, "y",
 		fake.Turn{Content: "1. One step."}, fake.Turn{Content: "first"}, fake.Turn{Content: "second"})
 	if state.Status != "limited" || state.Turns != 2 {
 		t.Fatalf("%+v", state)
@@ -278,10 +314,7 @@ func TestRunDeadlineCancelsProvider(t *testing.T) {
 }
 
 func TestHardTurnBudgetCanContinueOnlyAfterCheckpoint(t *testing.T) {
-	cfg := config.Default()
-	cfg.Budget.ToolCallsSoft = 1
-	cfg.Budget.ToolCallsHard = 1
-	state, history := driveConfigured(t, cfg, time.Minute, 3, "y",
+	state, history := driveConfigured(t, config.Default(), budget.Task{ToolCalls: 1}, time.Minute, 3, "y",
 		fake.Turn{Content: "1. Inspect files."},
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}},
 		fake.Turn{Content: CompleteLine}) // turn 2 carries the plan
@@ -317,7 +350,7 @@ func TestRunCompletesWhenAFoldedReviewerHasTheLastWord(t *testing.T) {
     (add-message (string-append "Review this answer: " answer))
     (model-turn)
     (fold-context)))`), 0o644)
-	state, _ := driveIn(t, repo, config.Default(), time.Minute, 1, "y",
+	state, _ := driveIn(t, repo, config.Default(), budget.Task{}, time.Minute, 1, "y",
 		fake.Turn{Content: "1. Do the task."},
 		fake.Turn{Content: "task done\n" + CompleteLine},
 		fake.Turn{Content: "VERDICT: done"},
@@ -335,7 +368,7 @@ func TestRunTurnPromptIsScheme(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (define (run-turn-prompt task complete-line turn max-turns)
   (string-append "Turn " (number->string turn) ": " task ". Say " complete-line " when done."))`), 0o644)
-	_, history := driveIn(t, repo, config.Default(), time.Minute, 1, "y",
+	_, history := driveIn(t, repo, config.Default(), budget.Task{}, time.Minute, 1, "y",
 		fake.Turn{Content: "1. Do it."}, fake.Turn{Content: "done\n" + CompleteLine})
 	for _, ev := range history {
 		if ev.Kind == log.KindUserMsg {
@@ -364,8 +397,6 @@ func driveUnattended(t *testing.T, cfg config.Config, max int, yolo bool, turns 
 	}
 	srv := fake.New(turns...)
 	defer srv.Close()
-	cfg.Budget.TokensSoft = 100000
-	cfg.Budget.TokensHard = 100000
 	s, err := core.New(core.Options{Repo: repo, InitFile: init, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL), Unattended: true, AutoApprove: yolo})
 	if err != nil {
 		t.Fatal(err)
@@ -496,38 +527,13 @@ func TestUnattendedRunAnswersConfirmsItself(t *testing.T) {
 	}
 }
 
-// A soft budget checkpoint goes on to the hard limit without asking, and is
-// recorded as answered by the run.
-func TestUnattendedRunPassesSoftBudgetCheckpoints(t *testing.T) {
-	cfg := config.Default()
-	cfg.Budget.ToolCallsSoft = 1
-	cfg.Budget.ToolCallsHard = 10
-	state, history, _ := driveUnattended(t, cfg, 1, false,
-		fake.Turn{Content: "1. look"},
-		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}, stepDone("s", 1)}},
-		fake.Turn{Content: "looked\n" + CompleteLine})
-	if state.Status != "completed" {
-		t.Fatalf("%+v", state)
-	}
-	var cp log.TurnCheckpoint
-	for _, ev := range history {
-		if ev.Kind == log.KindTurnCheckpoint {
-			ev.Decode(&cp)
-		}
-	}
-	if cp.Actor != "unattended" || !cp.Choice.Continue || cp.Choice.Soft != 10 {
-		t.Fatalf("budget checkpoint %+v", cp)
-	}
-}
-
 // A run's spend limit is the whole run's: the turn that reaches it stops,
 // and no turn follows it.
 func TestRunStopsAtTheSpendLimit(t *testing.T) {
 	cfg := config.Default()
 	input, output := 4000.0, 0.0 // about $1.20 a request from the fake
 	cfg.Control.PriceInput, cfg.Control.PriceOutput = &input, &output
-	cfg.Budget.CostHard = 1
-	state, history := driveConfigured(t, cfg, time.Minute, 5, "y", fake.Turn{Content: "1. work"}, fake.Turn{Content: "step"}, fake.Turn{Content: "more"}, fake.Turn{Content: "more"})
+	state, history := driveConfigured(t, cfg, budget.Task{Cost: 1}, time.Minute, 5, "y", fake.Turn{Content: "1. work"}, fake.Turn{Content: "step"}, fake.Turn{Content: "more"}, fake.Turn{Content: "more"})
 	if state.Status != "limited" || state.Turns != 1 || !strings.Contains(state.Reason, "spend limit") {
 		t.Fatalf("%+v", state)
 	}

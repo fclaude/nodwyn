@@ -44,7 +44,10 @@ func followBudget(t *testing.T, s *Session, answer func(event.Checkpoint)) []eve
 	}
 }
 
-func TestBudgetCustomCheckpointAndHardBatchStop(t *testing.T) {
+// A task's tool-call limit stops a batch at it, with no checkpoint before
+// (ADR 49, amended 2026-10-27): the calls past it are answered, not run,
+// and the next turn starts from none used.
+func TestToolCallLimitStopsABatch(t *testing.T) {
 	t.Parallel()
 	var calls []fake.ToolCall
 	for i := 0; i < 4; i++ {
@@ -55,62 +58,37 @@ func TestBudgetCustomCheckpointAndHardBatchStop(t *testing.T) {
 	o := diskOptions(t)
 	o.NoConfirm = false
 	o.Provider = llm.NewOllama(srv.URL)
-	o.Config.Budget.ToolCallsSoft = 1
-	o.Config.Budget.ToolCallsHard = 3
+	o.Limits = &LimitsChoice{Limits: budget.Task{ToolCalls: 3}}
 	s, err := New(o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 	s.Send("run")
-	prompts := 0
-	events := followBudget(t, s, func(p event.Checkpoint) {
-		prompts++
-		if p.Checkpoint.Dimension != "tool_calls" || p.Checkpoint.Used != 1 {
-			t.Fatalf("prompt %+v", p)
-		}
-		if err := s.Answer(p.ID, "t"); err == nil {
-			t.Fatal("tool approval accepted for a budget")
-		}
-		if err := s.Answer(p.ID, "4"); err == nil {
-			t.Fatal("hard ceiling changed")
-		}
-		if err := s.Answer(p.ID, "3"); err != nil {
-			t.Fatal(err)
-		}
-	})
-	executed, results, records := 0, 0, 0
+	events := followBudget(t, s, func(p event.Checkpoint) { t.Fatalf("a checkpoint asked: %+v", p) })
+	executed, results := 0, 0
 	for _, ev := range events {
 		switch ev.Kind {
 		case string(log.KindToolCall):
 			executed++
 		case string(log.KindToolResult):
 			results++
-		case string(log.KindTurnCheckpoint):
-			records++
-			if ev.Payload.(log.TurnCheckpoint).Choice.Soft != 3 {
-				t.Fatal("custom limit not logged")
-			}
 		}
 	}
-	if prompts != 1 || records != 1 || executed != 3 || results != 4 {
-		t.Fatalf("prompts=%d records=%d calls=%d results=%d", prompts, records, executed, results)
-	}
-	if len(s.Allowed()) != 0 || len(s.AllowedWrites()) != 0 || s.turnTrust {
-		t.Fatal("checkpoint widened tool permissions")
+	if executed != 3 || results != 4 {
+		t.Fatalf("calls=%d results=%d", executed, results)
 	}
 	if err := s.Send("new approach"); err != nil {
 		t.Fatal(err)
 	}
-	followBudget(t, s, func(event.Checkpoint) { t.Fatal("prior turn budget survived") })
+	followBudget(t, s, func(event.Checkpoint) { t.Fatal("a checkpoint asked") })
 }
 
 func TestBudgetNestedActionsCannotBeCaughtOrHidden(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)
 	o.NoConfirm = false
-	o.Config.Budget.ActionsSoft = 1
-	o.Config.Budget.ActionsHard = 2
+	o.Limits = &LimitsChoice{Limits: budget.Task{Actions: 2}}
 	os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
 	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
 (register-tool "write-many" (lambda ()
@@ -126,19 +104,7 @@ func TestBudgetNestedActionsCannotBeCaughtOrHidden(t *testing.T) {
 	}
 	defer s.Close()
 	s.Send("write files")
-	prompts := 0
-	events := followBudget(t, s, func(p event.Checkpoint) {
-		prompts++
-		if p.Checkpoint.Dimension != "actions" || p.Checkpoint.State.Actions != 1 || len(p.Checkpoint.State.Files) != 1 || p.Checkpoint.State.Files[0] != "a" {
-			t.Fatalf("action checkpoint: %+v", p)
-		}
-		if err := s.Answer(p.ID, "y"); err != nil {
-			t.Fatal(err)
-		}
-	})
-	if prompts != 1 {
-		t.Fatalf("prompts: %d", prompts)
-	}
+	events := followBudget(t, s, func(p event.Checkpoint) { t.Fatalf("a checkpoint asked: %+v", p) })
 	for _, name := range []string{"a", "b"} {
 		if _, err := os.Stat(filepath.Join(o.Repo, name)); err != nil {
 			t.Fatal(err)
@@ -160,17 +126,15 @@ func TestBudgetNestedActionsCannotBeCaughtOrHidden(t *testing.T) {
 	}
 }
 
-func TestBudgetNoninteractiveAndTokenStop(t *testing.T) {
+func TestToolCallAndTokenLimitsStop(t *testing.T) {
 	t.Parallel()
 	for _, dimension := range []string{"tool_calls", "tokens"} {
 		t.Run(dimension, func(t *testing.T) {
 			o := diskOptions(t)
 			if dimension == "tool_calls" {
-				o.Config.Budget.ToolCallsSoft = 1
-				o.Config.Budget.ToolCallsHard = 3
+				o.Limits = &LimitsChoice{Limits: budget.Task{ToolCalls: 1}}
 			} else {
-				o.Config.Budget.TokensSoft = 100
-				o.Config.Budget.TokensHard = 200
+				o.Limits = &LimitsChoice{Limits: budget.Task{Tokens: 200}}
 			}
 			srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}})
 			defer srv.Close()
@@ -181,7 +145,7 @@ func TestBudgetNoninteractiveAndTokenStop(t *testing.T) {
 			}
 			defer s.Close()
 			s.Send("work")
-			events := followBudget(t, s, func(event.Checkpoint) { t.Fatal("noninteractive run prompted") })
+			events := followBudget(t, s, func(event.Checkpoint) { t.Fatal("a checkpoint asked") })
 			calls, checkpoints := 0, 0
 			for _, ev := range events {
 				if ev.Kind == string(log.KindToolCall) {
@@ -194,7 +158,7 @@ func TestBudgetNoninteractiveAndTokenStop(t *testing.T) {
 			if dimension == "tokens" && calls != 0 {
 				t.Fatal("tools ran past token ceiling")
 			}
-			if dimension == "tool_calls" && (calls != 1 || checkpoints != 1) {
+			if dimension == "tool_calls" && (calls != 1 || checkpoints != 0) {
 				t.Fatalf("calls %d checkpoints %d", calls, checkpoints)
 			}
 		})
@@ -214,8 +178,7 @@ func TestBudgetWallCancelsBlockedModel(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)
 	o.Provider = waitingProvider{}
-	o.Config.Budget.WallSoft = "50ms"
-	o.Config.Budget.WallHard = "100ms"
+	o.Limits = &LimitsChoice{Limits: budget.Task{Wall: int64(100 * time.Millisecond)}}
 	s, err := New(o)
 	if err != nil {
 		t.Fatal(err)
@@ -234,45 +197,10 @@ func TestBudgetWallCancelsBlockedModel(t *testing.T) {
 	}
 }
 
-func TestBudgetAbortCheckpointRemovesPendingReply(t *testing.T) {
-	t.Parallel()
-	o := diskOptions(t)
-	o.NoConfirm = false
-	o.Config.Budget.ToolCallsSoft = 1
-	o.Config.Budget.ToolCallsHard = 3
-	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}})
-	defer srv.Close()
-	o.Provider = llm.NewOllama(srv.URL)
-	s, err := New(o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	s.Send("work")
-	var id string
-	events := followBudget(t, s, func(p event.Checkpoint) { id = p.ID; s.Abort() })
-	if id == "" {
-		t.Fatal("no checkpoint")
-	}
-	if err := s.Answer(id, "y"); err == nil {
-		t.Fatal("stale checkpoint accepted")
-	}
-	found := false
-	for _, ev := range events {
-		if ev.Kind == string(log.KindTurnCheckpoint) && ev.Payload.(log.TurnCheckpoint).Error != "" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("checkpoint cancellation missing from log")
-	}
-}
-
 func TestDeniedCallsDoNotConsumeActionBudget(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)
-	o.Config.Budget.ActionsSoft = 1
-	o.Config.Budget.ActionsHard = 1
+	o.Limits = &LimitsChoice{Limits: budget.Task{Actions: 1}}
 	o.Config.Policy.AllowWrites = []string{"b"}
 	os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
 	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`

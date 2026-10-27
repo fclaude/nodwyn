@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 297 of 662 tracked Go files: every non-test Go file, 75,794 of 148,035 Go source lines (51.2\% by lines). It also includes all 37 tracked Scheme files (6,555 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 299 of 665 tracked Go files: every non-test Go file, 75,868 of 148,138 Go source lines (51.2\% by lines). It also includes all 37 tracked Scheme files (6,562 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -121,6 +121,8 @@ Begin with \src{cmd/nodwyn/main.go} and its command dispatch. The mode files ass
 \sourcefile{cmd/nodwyn/daemon.go}{Go}
 
 \sourcefile{cmd/nodwyn/keychain.go}{Go}
+
+\sourcefile{cmd/nodwyn/limits.go}{Go}
 
 \sourcefile{cmd/nodwyn/main.go}{Go}
 
@@ -520,8 +522,6 @@ Begin at the interfaces in \src{internal/llm/llm.go}. Compare one complete adapt
 
 Read config and its model types, then budget, MCP and workspace configuration. Edit and legacy handling explain what is preserved or migrated when a person changes setup. This is the on-disk configuration layer; a running session's pending model choice and frozen tool catalogue belong elsewhere.
 
-\sourcefile{internal/config/budget.go}{Go}
-
 \sourcefile{internal/config/config.go}{Go}
 
 \sourcefile{internal/config/edit.go}{Go}
@@ -533,6 +533,8 @@ Read config and its model types, then budget, MCP and workspace configuration. E
 \sourcefile{internal/config/newtask.go}{Go}
 
 \sourcefile{internal/config/path.go}{Go}
+
+\sourcefile{internal/config/retired.go}{Go}
 
 \sourcefile{internal/config/trust.go}{Go}
 
@@ -553,6 +555,8 @@ Read the catalogue lookup API before the models.dev conversion. The generator un
 Read the limits and accounting together. Follow the loop's calls into this package to distinguish a soft checkpoint from a hard stop. Scheme may choose a strategy, but cannot make the host forget consumed resources. The package tests exercise thresholds without a real model.
 
 \sourcefile{internal/budget/budget.go}{Go}
+
+\sourcefile{internal/budget/task.go}{Go}
 
 \chapter{What frontends observe}
 

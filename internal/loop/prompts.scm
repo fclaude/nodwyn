@@ -833,9 +833,16 @@
       (string-append
        "Run task:\n" task
        "\n\nIf the entire task is complete, put " complete-line
-       " alone on the final line. Do not claim completion while work remains. This is turn "
-       (number->string turn) " of at most " (number->string max-turns) ".")
+       " alone on the final line. Do not claim completion while work remains. "
+       (run-turn-count turn max-turns))
       (run-turn-prompt-planned task complete-line turn max-turns)))
+
+;; Which turn of a run this is, and of how many when the run has a limit on
+;; turns: max-turns 0 is none (ADR 49, amended 2026-10-27).
+(define (run-turn-count turn max-turns)
+  (if (= max-turns 0)
+      (string-append "This is turn " (number->string turn) ".")
+      (string-append "This is turn " (number->string turn) " of at most " (number->string max-turns) ".")))
 
 ;; A run's turn under a plan the model is shown.
 (define (run-turn-prompt-planned task complete-line turn max-turns)
@@ -843,8 +850,8 @@
    "Run task:\n" task
    "\n\nWork on the plan's next unmarked step; the harness marks a step done when it sees its evidence, so mark one with plan-step only to skip it, saying why. Then report progress for review. The plan carries over to the run's next turn, with your marks; if it no longer fits, mark the steps that do not apply skipped, saying why, and once every step is marked the next turn plans again. If the entire task is complete, put "
    complete-line
-   " alone on the final line. Do not claim completion while work remains. This is turn "
-   (number->string turn) " of at most " (number->string max-turns) "."))
+   " alone on the final line. Do not claim completion while work remains. "
+   (run-turn-count turn max-turns)))
 
 ;; The planner's request in a run whose plan has every step marked: the
 ;; request, with the last plan and how it went, so the new plan covers

@@ -138,16 +138,16 @@ func Resume(o Options, id string) (_ *Session, err error) {
 		delegates = keepConfigured(o.Config, rec.Models)
 	}
 	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree, modelLost: gone, judge: judge, delegates: delegates, spendBefore: spendBefore}
-	// A task keeps its limits as it was left (ADR 49): a scheduled task is
-	// resumed for every run, and one let run as long as it needs stays so.
+	// A task keeps its limits as they were left (ADR 49): a scheduled task
+	// is resumed for every run.
 	for _, ev := range choices {
 		s.noteSchedule(ev)
 	}
 	if rec, found := lastLimits(choices); found {
-		s.limitsOff, s.limitsActor = !rec.On, rec.Actor
+		s.taskLimits, s.limitsActor = rec.Task, rec.Actor
 	}
 	if o.Managed != nil {
-		s.limitsOff, s.limitsActor = false, "managed"
+		s.taskLimits, s.limitsActor = o.Limits.Limits, "managed"
 		s.judge, s.delegates = "", nil
 	}
 	if err = s.restoreHistory(history); err != nil {

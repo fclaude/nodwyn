@@ -409,10 +409,8 @@ Where you see it:
     client, \code{12,400$\to$800 tok · 78\% cached · \$0.012}, with
     $\approx$ before an estimate (Chapter~\ref{ch:first}); the console
     sums a turn's requests on one such line;
-  \item at a budget checkpoint, what the turn has cost so far, ``at least''
-    when some requests had no known cost; and, if you set
-    \code{cost\_hard} in \code{[budget]}, a checkpoint and a stop on what
-    the whole task has cost (Chapter~\ref{ch:first});
+  \item if you set a spend limit on the task, a stop on what the whole
+    task has cost (Chapter~\ref{ch:first});
   \item the console's side panel, ``Totals'' in its Statistics tab, reads the
     daemon's derived log index, including for closed tasks. It shows turn and
     CLI driver and scheduled run counts, their latest start times in tooltips, and refreshes
@@ -466,8 +464,8 @@ Where you see it:
 \end{itemize}
 
 Unknown is never shown as free. A cost stops a task only at a spend limit
-you set, and a cached prompt token counts a tenth of one against the token
-budget. A low cached share on a long task is worth a look: it means the
+you set, and a cached prompt token counts a tenth of one against a token
+limit. A low cached share on a long task is worth a look: it means the
 start of the prompt keeps changing (trims, folds, compaction; see the tip
 in Chapter~\ref{ch:contexts}).
 

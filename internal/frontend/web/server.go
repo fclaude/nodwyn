@@ -889,17 +889,19 @@ func (b *bridge) tierOf(method string) tier {
 		return tierAnswer
 	// "Don't ask" can be turned off from a device, the safe direction; the
 	// daemon refuses to turn it on for one (ADR 30), so a device can stop a
-	// task that is skipping its questions without aborting it.
-	case "session.approve_all":
+	// task that is skipping its questions without aborting it. A task's
+	// limits likewise: a device may add one or lower one, and the daemon
+	// refuses it anything else (ADR 49, amended 2026-10-27).
+	case "session.approve_all", "session.limits.set":
 		return tierAnswer
 	// Choosing a conversation's model, or the judge its plans and commands
-	// go to, decides where its content goes next (ADR 40, ADR 47); lifting a
-	// task's turn limits and setting its schedule decide what runs with
-	// nobody watching (ADR 49). A key the model asks for (session.secret)
-	// and the keychain's passphrase are secrets the person types, and the
-	// passphrase is its own proof. The folder last picked, and the choices
-	// a new task starts with, only remember.
-	case "session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "newtask.last", "startup.read", "trust.read":
+	// go to, decides where its content goes next (ADR 40, ADR 47); setting
+	// a task's schedule decides what runs with nobody watching (ADR 49). A
+	// key the model asks for (session.secret) and the keychain's passphrase
+	// are secrets the person types, and the passphrase is its own proof.
+	// The folder last picked, and the choices a new task starts with, only
+	// remember.
+	case "session.model.set", "session.judge.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "newtask.last", "startup.read", "trust.read":
 		return tierPerson
 	// A workflow decides what runs with nobody watching, as a schedule does,
 	// and its source is asked with this computer's keys (ADR 53 §9).

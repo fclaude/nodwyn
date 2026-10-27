@@ -386,15 +386,16 @@ func TestSettingsWriteKeepsTuningOfTheSameModel(t *testing.T) {
 	}
 }
 
-// Settings changes what tasks opened afterwards get, keeping config.toml's
-// other lines; a task already open keeps the limits it started with.
+// Settings writes config.toml, keeping its other lines. A task's limits are
+// not among them: they are the task's own (ADR 49, amended 2026-10-27), and
+// a [budget] a file still has loads and is not offered.
 func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 	model := fake.New()
 	defer model.Close()
 	o := options(t)
 	o.Provider = llm.NewOllama(model.URL)
-	os.MkdirAll(o.Paths.ConfigDir, 0o700)
-	os.WriteFile(o.Paths.ConfigFile, []byte("# mine\n[budget]\ntokens_soft = 100\ntokens_hard = 200 # tight\n"), 0o644)
+	must.MkdirAll(t, o.Paths.ConfigDir, 0o700)
+	must.WriteFile(t, o.Paths.ConfigFile, []byte("# mine\n[budget]\ntokens_hard = 200 # retired\n[window]\nlow_water = 20000\nhigh_water = 40000 # tight\n"), 0o644)
 	cfg, err := config.Load(o.Paths.ConfigFile)
 	if err != nil {
 		t.Fatal(err)
@@ -403,32 +404,32 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 	path, _ := start(t, o)
 	c := connect(t, path)
 	c.hello()
-	var before sessionDetails
-	json.Unmarshal(c.ok("session.open", map[string]any{"repo": t.TempDir()}), &before)
-
 	var settings settingsResult
 	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
-	if v := settings.Values["budget.tokens_hard"]; v.Value != float64(200) || v.Default != float64(10_000_000) || !v.Set {
-		t.Fatalf("tokens_hard read: %+v", v)
+	if v := settings.Values["window.high_water"]; v.Value != float64(40000) || v.Default != float64(60*1024) || !v.Set {
+		t.Fatalf("high_water read: %+v", v)
 	}
 	for name := range settings.Values {
 		if strings.HasPrefix(name, "control.") {
 			t.Fatalf("%s is a setting of every model at once; a model's settings are its own (settings.model.write)", name)
 		}
+		if strings.HasPrefix(name, "budget.") {
+			t.Fatalf("%s is offered; a task's limits are its own", name)
+		}
 	}
 	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{
-		"budget.tokens_soft": 500, "budget.tokens_hard": 1000, "budget.cost_hard": 2.5,
+		"window.low_water": 50000, "window.high_water": 100000, "judge.timeout": "20s",
 		"approval.commands": "ask", "approval.writes": "ask", "loop.shell_timeout": "5m",
 		"judge.price_input": 0.5, "judge.price_output": 2,
 	}}), &settings)
-	if v := settings.Values["budget.tokens_hard"]; v.Value != float64(1000) || !v.Set {
-		t.Fatalf("tokens_hard written: %+v", v)
+	if v := settings.Values["window.high_water"]; v.Value != float64(100000) || !v.Set {
+		t.Fatalf("high_water written: %+v", v)
 	}
 	if v := settings.Values["approval.commands"]; v.Value != "ask" || v.Default != "judge" {
 		t.Fatalf("approval written: %+v", v)
 	}
 	raw, _ := os.ReadFile(o.Paths.ConfigFile)
-	for _, want := range []string{"# mine\n", "tokens_hard = 1000\n", "cost_hard = 2.5\n", "[approval]\n", "commands = \"ask\"\nwrites = \"ask\"\n", "[loop]\nshell_timeout = \"5m\"\n", "price_input = 0.5\n", "price_output = 2"} {
+	for _, want := range []string{"# mine\n", "tokens_hard = 200 # retired\n", "low_water = 50000\n", "high_water = 100000\n", "timeout = \"20s\"\n", "[approval]\n", "commands = \"ask\"\nwrites = \"ask\"\n", "[loop]\nshell_timeout = \"5m\"\n", "price_input = 0.5\n", "price_output = 2"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("config.toml lacks %q:\n%s", want, raw)
 		}
@@ -437,21 +438,17 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 		t.Fatal(info.Mode())
 	}
 
-	var info, after sessionDetails
-	json.Unmarshal(c.ok("session.info", map[string]any{"id": before.ID}), &info)
-	if info.Budgets.Tokens.Hard != 200 || info.Budgets.Cost.Hard != 0 {
-		t.Fatalf("an open task took the new limits: %+v", info.Budgets)
-	}
-	json.Unmarshal(c.ok("session.open", map[string]any{"repo": t.TempDir()}), &after)
-	if after.Budgets.Tokens.Hard != 1000 || after.Budgets.Cost.Hard != 2_500_000 {
-		t.Fatalf("a new task kept the old limits: %+v", after.Budgets)
+	var opened sessionDetails
+	json.Unmarshal(c.ok("session.open", map[string]any{"repo": t.TempDir()}), &opened)
+	if opened.Budgets != (budgetInfo{}) {
+		t.Fatalf("a task took limits from config.toml's [budget]: %+v", opened.Budgets)
 	}
 
 	// null removes a setting, so its default applies again.
-	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{"budget.cost_hard": nil, "approval.writes": nil}}), &settings)
+	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{"judge.timeout": nil, "approval.writes": nil}}), &settings)
 	raw, _ = os.ReadFile(o.Paths.ConfigFile)
-	if strings.Contains(string(raw), "cost_hard") || strings.Contains(string(raw), "writes") || settings.Values["budget.cost_hard"].Value != float64(0) || settings.Values["approval.writes"].Set || settings.Values["approval.writes"].Value != "allow" {
-		t.Fatalf("not removed:\n%s\n%+v", raw, settings.Values["budget.cost_hard"])
+	if strings.Contains(string(raw), "20s") || strings.Contains(string(raw), "writes") || settings.Values["judge.timeout"].Value != "10s" || settings.Values["approval.writes"].Set || settings.Values["approval.writes"].Value != "allow" {
+		t.Fatalf("not removed:\n%s\n%+v", raw, settings.Values["judge.timeout"])
 	}
 
 	// What Settings may not change, or values nodwyn would not load, leave
@@ -461,9 +458,10 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 		{"control.url": "http://elsewhere:11434"},
 		{"policy.unbound": "confirm"},
 		{"servers.jev.url": "https://judge.example"},
-		{"budget.tokens_hard": "lots"},
-		{"budget.tokens_hard": 1.5},
-		{"budget.tokens_hard": 50}, // below the soft limit
+		{"window.high_water": "lots"},
+		{"window.high_water": 1.5},
+		{"window.high_water": 40000}, // below the low water mark
+		{"budget.tokens_hard": 1000}, // a task's limits are its own
 		{"approval.commands": "sometimes"},
 		{"approval.writes": ""},
 		{"tasks.mode": "chat"},

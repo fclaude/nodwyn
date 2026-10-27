@@ -130,8 +130,12 @@ func TestRunSandboxFlagIsChecked(t *testing.T) {
 		}
 	}
 }
-func TestRunRejectsImplicitLimits(t *testing.T) {
-	for _, args := range [][]string{{}, {"start"}, {"--task", "missing", "--max-turns", "2"}, {"start", "--task", "missing", "--max-turns", "2"}, {"resume", "--budget-wall", "2h", "id"}} {
+
+// A run's limits are optional (ADR 49, amended 2026-10-27), but one given
+// must be one a run could have, and a resume never resets them: each such
+// mistake is refused before a daemon is reached.
+func TestRunRejectsInvalidLimits(t *testing.T) {
+	for _, args := range [][]string{{}, {"start"}, {"--task", "t", "--max-turns", "-2"}, {"--task", "t", "--budget-wall", "soon"}, {"--task", "t", "--turn-wall", "-1m"}, {"--task", "t", "--budget-cost", "-1"}, {"resume", "--budget-wall", "2h", "id"}, {"resume", "--max-tool-calls", "2", "id"}} {
 		if err := runTask(args); err == nil || strings.Contains(err.Error(), "daemon") {
 			t.Fatalf("did not reject invalid request before connecting: %v", err)
 		}

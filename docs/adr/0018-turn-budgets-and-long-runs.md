@@ -1,6 +1,6 @@
 # ADR 0018: Turn budgets and long-running turns
 
-- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01; the run's plan carried across its turns 2026-10-02); amended by ADR 35 (soft limits off by default; the console starts only chats) and ADR 49 (a task's turn limits can be off)
+- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01; the run's plan carried across its turns 2026-10-02); amended by ADR 35 (soft limits off by default; the console starts only chats) and ADR 49 (a task's turn limits can be off; since 2026-10-27 a task's limits are its own, none unless set)
 - Date: 2026-09-21
 
 ## Context
@@ -521,3 +521,12 @@ training job with one command line was stopped before the job finished,
 and such a run is bounded by its wall-clock and tool-call budgets. The
 guard's other stops, and this one in every other session, are unchanged
 (ADR 55, amended 2026-10-19).
+
+## Amendment 2026-10-27: limits are a task's own, none unless set (ADR 49)
+
+§1's configured limits are gone: a task has no limit on tool calls, tokens,
+actions, time or spend unless a person sets one for that task, and each is
+one number with no soft limit asking before it ([ADR 49, amended
+2026-10-27](0049-scheduled-tasks.md)). A run's `--budget-wall` and
+`--max-turns` are optional too, and its task takes a task's limits. The
+progress guard (§3) and the timeouts are unchanged.

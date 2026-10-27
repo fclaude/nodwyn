@@ -263,7 +263,7 @@ const helpText = `Commands
 :log [n] [kind prefix]  Last matching durable records (default 20, max 1000).
                        Example: :log 50 guard.
 :plan                  Latest user message’s recorded planning outcome.
-:budget                Configured limits and latest turn’s recorded checkpoints.
+:budget                The task’s limits and latest turn’s recorded checkpoints.
 :tools [name]          Tools offered to the model; exact name shows input schema.
 :bindings, :allow      Loaded bindings and current approvals.
 :model                 The model this conversation talks to, and the choices.

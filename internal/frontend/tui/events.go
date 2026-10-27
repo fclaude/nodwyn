@@ -53,12 +53,10 @@ func worktreeLine(kind log.Kind, p log.WorktreeChange) string {
 	return line
 }
 
-// limitsLine is a session.limits record in the conversation (ADR 49).
+// limitsLine is a session.limits record in the conversation: the task's
+// limits as set then (ADR 49, amended 2026-10-27).
 func limitsLine(p log.SessionLimits) string {
-	line := "limits → off: turns run as long as they need"
-	if p.On {
-		line = "limits → on: turns stop at the configured limits"
-	}
+	line := "limits → " + p.Task.String()
 	if p.Actor != "" {
 		line += " · by " + p.Actor
 	}

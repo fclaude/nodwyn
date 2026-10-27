@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/plain"
@@ -21,14 +22,10 @@ import (
 
 // unhosted are the flags line mode took while it ran its session in its own
 // process, which a task in the daemon has no form for (ADR 30, amended
-// 2026-10-17): each is refused, saying where its setting is now.
+// 2026-10-17): each is refused, saying where its setting is now. Its limit
+// flags are the task's own limits again (ADR 49, amended 2026-10-27).
 var unhosted = []struct{ flag, instead string }{
 	{"url", "the daemon reaches only the servers config.toml names: set this one as [control]'s url, or add a [models.NAME] on it and pass --model NAME"},
-	{"budget-tokens", "a task in the daemon stops at the limits config.toml sets for every task: set [budget] tokens_hard (Settings › General, under Advanced)"},
-	{"budget-actions", "a task in the daemon stops at the limits config.toml sets for every task: set [budget] actions_hard (Settings › General, under Advanced)"},
-	{"budget-wall", "a task in the daemon stops at the limits config.toml sets for every task: set [budget] wall_hard (Settings › General, under Advanced); nodwyn run --budget-wall is a run's own deadline"},
-	{"budget-cost", "a task in the daemon stops at the limits config.toml sets for every task: set [budget] cost_hard (Settings › General, under Advanced); nodwyn run --budget-cost is a run's own"},
-	{"max-tool-calls", "a task in the daemon stops at the limits config.toml sets for every task: set [budget] tool_calls_hard (Settings › General, under Advanced)"},
 }
 
 // chat is the default command: one task in the line-mode front-end, over
@@ -45,6 +42,10 @@ func (c *cli) chat() error {
 		if c.set(u.flag) {
 			return fmt.Errorf("chat: --%s is no longer taken: %s", u.flag, u.instead)
 		}
+	}
+	// A limit the daemon would refuse is said before a daemon starts.
+	if _, err := c.limits.over(budget.Task{}); err != nil {
+		return fmt.Errorf("chat: %w", err)
 	}
 	cfg, err := config.Load(c.paths.ConfigFile)
 	if err != nil {
@@ -196,6 +197,13 @@ func (c *cli) open(ctx context.Context, client *rpc.Client, choice core.ModelCho
 			return info, false, err
 		}
 		params := map[string]any{"repo": root}
+		if len(c.limits.given()) > 0 {
+			limits, err := c.limits.over(budget.Task{})
+			if err != nil {
+				return info, false, err
+			}
+			params["limits"] = limits
+		}
 		if choice.Name != "" {
 			params["name"] = choice.Name
 		} else if choice.Server != "" {
@@ -237,8 +245,21 @@ func (c *cli) checkFolder(ctx context.Context, client *rpc.Client) error {
 }
 
 // prepare makes the opened task what this command line asks: on the model
-// --model names when it was resumed, and with Don't ask on for --yolo.
+// --model names when it was resumed, with the limits it names in place of
+// the task's own, and with Don't ask on for --yolo.
 func (c *cli) prepare(ctx context.Context, client *rpc.Client, info rpc.SessionDetails, choice core.ModelChoice) error {
+	if c.resume != "" && len(c.limits.given()) > 0 {
+		limits, err := c.limits.over(info.Limits)
+		if err != nil {
+			return err
+		}
+		if err := client.Call(ctx, "session.limits.set", map[string]any{"id": info.ID, "limits": limits}, nil); err != nil {
+			return fmt.Errorf("chat: limits: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "limits: %s\n", limits)
+	} else if len(c.limits.given()) > 0 {
+		fmt.Fprintf(os.Stderr, "limits: %s\n", info.Limits)
+	}
 	if c.resume != "" && choice != (core.ModelChoice{}) {
 		params := map[string]any{"id": info.ID, "name": choice.Name}
 		if choice.Server != "" {

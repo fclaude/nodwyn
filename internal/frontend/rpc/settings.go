@@ -39,11 +39,6 @@ var settable = map[string]settingKind{
 	"policy.allow_insecure_http": boolean,
 	"approval.writes":            text, "approval.commands": text, "approval.dont_ask": boolean,
 
-	"budget.tool_calls_soft": whole, "budget.tool_calls_hard": whole,
-	"budget.tokens_soft": whole, "budget.tokens_hard": whole,
-	"budget.actions_soft": whole, "budget.actions_hard": whole,
-	"budget.wall_soft": text, "budget.wall_hard": text,
-	"budget.cost_soft": number, "budget.cost_hard": number,
 	"loop.request_timeout": text, "loop.shell_timeout": text,
 
 	"window.high_water": whole, "window.low_water": whole,
@@ -203,8 +198,6 @@ func withTables(held, parsed config.Config, tables map[string]bool) config.Confi
 			held.Policy = parsed.Policy
 		case "approval":
 			held.Approval = parsed.Approval
-		case "budget":
-			held.Budget = parsed.Budget
 		case "loop":
 			held.Loop = parsed.Loop
 		case "window":

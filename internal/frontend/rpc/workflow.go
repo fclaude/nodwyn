@@ -238,9 +238,6 @@ func (s *server) fire(id string, def workflow.Definition, state workflow.State, 
 	var session *core.Session
 	if task == "" {
 		options.Repo, options.Model, options.Worktree = def.Repo, choice, def.Worktree
-		if def.NoLimits {
-			options.Limits = &core.LimitsChoice{On: false, Actor: "workflow"}
-		}
 		var openErr error
 		s.slow("", func() { session, openErr = core.New(options) })
 		if openErr != nil {

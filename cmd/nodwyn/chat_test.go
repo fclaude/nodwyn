@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 	"github.com/fclaude/nodwyn/test/fakes/must"
@@ -69,7 +70,8 @@ func startDaemon(t *testing.T, env []string, paths config.Paths) *rpc.Client {
 
 // The flags line mode took while it hosted its own session, which a task in
 // the daemon has no form for, are refused with where the setting is now,
-// before anything is opened; so is a --model nothing configures.
+// before anything is opened; so are a --model nothing configures and a
+// limit no task could have.
 func TestChatRefusesWhatTheDaemonHasNoFormFor(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, dir, controlOn("http://127.0.0.1:1", "test-model"))
@@ -79,11 +81,9 @@ func TestChatRefusesWhatTheDaemonHasNoFormFor(t *testing.T) {
 		want string
 	}{
 		{[]string{"--url", "http://127.0.0.1:2"}, "--url is no longer taken: the daemon reaches only the servers config.toml names"},
-		{[]string{"--budget-tokens", "10"}, "--budget-tokens is no longer taken: a task in the daemon stops at the limits config.toml sets for every task: set [budget] tokens_hard"},
-		{[]string{"--budget-actions", "10"}, "[budget] actions_hard"},
-		{[]string{"--budget-wall", "2h"}, "[budget] wall_hard"},
-		{[]string{"--budget-cost", "1"}, "[budget] cost_hard"},
-		{[]string{"--max-tool-calls", "3"}, "[budget] tool_calls_hard"},
+		{[]string{"--budget-tokens", "-10"}, "chat: limits: limits are positive, or 0 for none"},
+		{[]string{"--budget-wall", "soon"}, "chat: --budget-wall is a duration, such as 30m, or 0 for none"},
+		{[]string{"--budget-cost", "-1"}, "chat: limits: the spend limit is US dollars"},
 		{[]string{"--model", "other"}, "--model other: no [models.other] is configured, and [control] names no [servers.NAME] for it to be on"},
 	} {
 		out, err := chatIn(t, env, dir, ":q\n", append(c.args, "--no-keychain", "--repo", t.TempDir())...)
@@ -147,6 +147,40 @@ func TestYoloTurnsOnDontAsk(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, "a.txt")); err != nil || !strings.Contains(out, "[don't ask: on") || strings.Contains(out, "allow?") {
 		t.Fatalf("the write was asked, or not made: %v\n%s", err, out)
+	}
+}
+
+// Line mode's limit flags are the task's own limits (ADR 49, amended
+// 2026-10-27): a new task opens with them, and a resumed one goes on with
+// each one named in place of its own, 0 removing it, and the others kept.
+func TestLineModeSetsTheTasksLimits(t *testing.T) {
+	model := fake.New()
+	defer model.Close()
+	dir, repo := t.TempDir(), t.TempDir()
+	writeConfig(t, dir, controlOn(model.URL, "test-model"))
+	env := lineEnv(t, dir)
+	console := startDaemon(t, env, pathsIn(dir))
+	ctx := context.Background()
+
+	out, err := chatIn(t, env, dir, ":q\n", "--max-tool-calls", "7", "--budget-wall", "30m", "--no-keychain", "--repo", repo)
+	if err != nil || !strings.Contains(out, "limits: tool calls 7, time 30m0s a turn\n") {
+		t.Fatalf("a new task's limits: %v\n%s", err, out)
+	}
+
+	var opened rpc.SessionDetails
+	if err := console.Call(ctx, "session.open", map[string]any{"repo": repo, "limits": budget.Task{Tokens: 100, Cost: 2}}, &opened); err != nil {
+		t.Fatal(err)
+	}
+	out, err = chatIn(t, env, dir, ":q\n", "--max-tool-calls", "7", "--budget-cost", "0", "--no-keychain", "--resume", opened.ID)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	var info rpc.SessionDetails
+	if err := console.Call(ctx, "session.info", map[string]any{"id": opened.ID}, &info); err != nil {
+		t.Fatal(err)
+	}
+	if want := (budget.Task{ToolCalls: 7, Tokens: 100}); info.Limits != want || !strings.Contains(out, "limits: tool calls 7, tokens 100 a turn\n") {
+		t.Fatalf("a resumed task's limits %+v, want %+v\n%s", info.Limits, want, out)
 	}
 }
 

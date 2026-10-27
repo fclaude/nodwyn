@@ -9,10 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/frontend/run"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -51,6 +53,47 @@ func waitRun(t *testing.T, c *client, id, status string) run.State {
 	}
 	t.Fatalf("run did not reach %s: %+v", status, runInfo(t, c, id))
 	return run.State{}
+}
+
+// A run's own limits are optional and its task's are the task's (ADR 49,
+// amended 2026-10-27): run.start without a deadline or a limit on turns
+// starts one with neither, its limits are the task's, which no change
+// reaches while the run goes on, and it ends when the model says so.
+func TestARunStartsWithoutLimitsOfItsOwn(t *testing.T) {
+	srv := fake.New(fake.Turn{Content: "1. first step"}, fake.Turn{Content: "done\n" + run.CompleteLine})
+	defer srv.Close()
+	o := options(t)
+	o.Provider = llm.NewOllama(srv.URL)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	repo := t.TempDir()
+	must.MkdirAll(t, filepath.Join(repo, ".nodwyn"), 0o755)
+	must.WriteFile(t, filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
+	trustRunFixture(t, o.Paths, repo)
+	if r := c.call("run.start", map[string]any{"repo": repo, "task": "t", "wall": "soon", "auto_approve": false}); r.Error == nil {
+		t.Fatal("a wall that is not a duration started a run")
+	}
+	var started runResult
+	if err := json.Unmarshal(c.ok("run.start", map[string]any{"repo": repo, "task": "test task", "auto_approve": false, "limits": map[string]any{"cost": 1, "tool_calls": 9}}), &started); err != nil {
+		t.Fatal(err)
+	}
+	if started.State.MaxTurns != 0 || !started.State.Deadline.IsZero() {
+		t.Fatalf("a run started without limits of its own: %+v", started.State)
+	}
+	var info struct {
+		Limits budget.Task `json:"limits"`
+	}
+	into(t, c.ok("session.info", idParams{started.ID}), &info)
+	if info.Limits != (budget.Task{Cost: 1, ToolCalls: 9}) {
+		t.Fatalf("the run's task's limits: %+v", info.Limits)
+	}
+	if r := c.call("session.limits.set", map[string]any{"id": started.ID, "limits": map[string]any{}}); r.Error == nil || !strings.Contains(r.Error.Message, "active run") {
+		t.Fatalf("a run's limits changed while it went on: %+v", r.Error)
+	}
+	if done := waitRun(t, c, started.ID, "completed"); done.Turns != 1 {
+		t.Fatalf("%+v", done)
+	}
 }
 func TestRunDetachCheckpointAndResume(t *testing.T) {
 	// The resumed turn carries the run's plan: the planner is not asked again.

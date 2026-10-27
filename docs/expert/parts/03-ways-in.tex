@@ -59,7 +59,7 @@ it back or resume it, or deleted for good, conversation and log
 credential bindings a task loaded, the named workspaces and the models;
 \textbf{Workspaces} edits your named folders; and \textbf{Settings} holds
 what a task does without asking you (Approvals: writing files and running
-commands), each turn's limits and the spend limit, the models and their
+commands), how long a call may hang, the models and their
 settings, the judge, the context window, the keychain and the paired
 devices. A change applies to tasks started afterwards; open ones keep what
 they started with.
@@ -184,14 +184,14 @@ page keeps one origin and never holds the token. The sidebar groups tasks
 by host, Needs you holds every host's questions, Home's Runs on chooses
 where a new task starts, with that host's folders and model, and a notice
 of the server's task opens it there. A link made with an invitation from the
-person's passkey device also changes the server's limits and models from the
+person's passkey device also changes the server's settings and models from the
 laptop's Settings, unless the server's console was started with
 \code{-{}-no-link-settings}; the rest of its setup stays in its own console.
 
 The server decides what the link may do, as it does for any device: it
 answers and starts tasks, and when your device signed in there with your
 passkey made its invitation, it makes your choices for the server's tasks
-too, until that passkey is removed, and changes its limits and models. It never
+too, until that passkey is removed, and changes its settings and models. It never
 changes the rest of the server's setup, since that waits for a touch of a
 passkey, which it cannot give: Open its console, on Hosts, is for that.
 Revoking it on the server ends the link; Unlink on the laptop forgets it

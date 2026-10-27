@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -221,7 +222,7 @@ func TestASandboxRunIsAskedOnceToCheckItsResult(t *testing.T) {
 	}
 
 	useProfile(t, "")
-	limited := profileRigIn(t, emptyFolder(t, t.TempDir(), "limited"), func(o *Options) { o.Sandbox, o.Config.Loop.MaxToolCalls = true, 1 }, "",
+	limited := profileRigIn(t, emptyFolder(t, t.TempDir(), "limited"), func(o *Options) { o.Sandbox, o.Limits = true, &LimitsChoice{Limits: budget.Task{ToolCalls: 1}} }, "",
 		write("w1"), write("w2"))
 	if e := limited.turn("save the regex in regex.txt"); e == "" {
 		t.Fatal("the turn was not stopped at its tool-call limit")

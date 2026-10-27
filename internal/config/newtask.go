@@ -12,7 +12,9 @@ import (
 
 // NewTaskChoices is what the console chose last for a new task, which the
 // next one starts with: the host it runs on, and for each host the model,
-// effort, judge, helpers, limits and worktree picked there. A browser keeps
+// effort, judge, helpers and worktree picked there. A task's limits are not
+// among them: a task starts with none (ADR 49, amended 2026-10-27), and a
+// file that still has no_limits loads without it. A browser keeps
 // what it stores for one origin, so the app's window, another browser or a
 // console on another port would start with none; every console reaches the
 // daemon's config directory (ADR 41, amended 2026-10-27).
@@ -24,7 +26,7 @@ type NewTaskChoices struct {
 
 // NewTaskForHost is what was chosen for a new task on one host. An empty
 // field is that host's default: Settings' model and effort, its judge, no
-// helpers, the limits on, and a worktree for a git workspace.
+// helpers, and a worktree for a git workspace.
 type NewTaskForHost struct {
 	Host   string `toml:"host" json:"host"`
 	Model  string `toml:"model,omitempty" json:"model,omitempty"`
@@ -33,7 +35,6 @@ type NewTaskForHost struct {
 	// a choice of its own.
 	Judge    *string          `toml:"judge,omitempty" json:"judge,omitempty"`
 	Helpers  []string         `toml:"helpers,omitempty" json:"helpers,omitempty"`
-	NoLimits bool             `toml:"no_limits,omitempty" json:"no_limits,omitempty"`
 	Worktree []WorktreeChoice `toml:"worktree,omitempty" json:"worktree,omitempty"`
 }
 

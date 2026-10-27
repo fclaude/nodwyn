@@ -17,10 +17,6 @@ import (
 
 func withTerminal(c *config.Config) { c.Experimental.Terminal = true }
 
-// withManyCalls lets a turn make the handful of calls driving a terminal
-// takes; the rig's default stops it after three.
-func withManyCalls(c *config.Config) { withTerminal(c); c.Loop.MaxToolCalls = 20 }
-
 // The terminal is experimental (ADR 48): a session offers it only when
 // config.toml says so.
 func TestTerminalToolsAreOffUnlessEnabled(t *testing.T) {
@@ -51,7 +47,7 @@ func TestTerminalToolsAreOffUnlessEnabled(t *testing.T) {
 // hangs up on a terminal the model left open.
 func TestTerminalAsksOnceAndEndsWithTheSession(t *testing.T) {
 	t.Parallel()
-	r := newRigWith(t, false, withManyCalls,
+	r := newRigCalls(t, false, 20, withTerminal,
 		toolTurn("1", "term-open", map[string]any{"cmd": "sh", "args": []any{"-c", "echo $$ > term.pid; exec cat"}, "cols": 60, "rows": 12}),
 		toolTurn("2", "term-type", map[string]any{"id": "t1", "text": "basil\n"}),
 		toolTurn("3", "term-keys", map[string]any{"id": "t1", "keys": []any{"x", "Enter"}}),

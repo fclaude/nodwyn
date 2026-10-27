@@ -5,10 +5,11 @@
 // A turn is measured in four dimensions: tool calls, model tokens,
 // irreversible actions and wall time. Each has a soft limit, which raises a
 // checkpoint asking whether to continue, and a hard limit, which stops the
-// turn and cancels its context. A fifth, spend, is the person's choice: off
-// unless set, it counts the known cost of the whole task, not one turn. A
-// dimension whose hard limit is 0 has no limit: spend until it is set, and
-// the other four in a task whose limits a person turned off (ADR 49).
+// turn and cancels its context. A fifth, spend, counts the known cost of the
+// whole task, not one turn. A dimension whose hard limit is 0 has no limit.
+// A task's own limits (Task) are none unless a person set them, and set
+// each soft limit at its hard one, so they stop without asking (ADR 49,
+// amended 2026-10-27).
 package budget
 
 import (

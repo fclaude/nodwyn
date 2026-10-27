@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/event"
@@ -59,7 +60,7 @@ func contracts() map[string]methodContract {
 		"session.resume":               {idParams{}, sessionDetails{}},
 		"session.model.set":            {modelSetParams{}, core.ModelState{}},
 		"session.judge.set":            {judgeSetParams{}, core.JudgeState{}},
-		"session.limits.set":           {limitsSetParams{}, limitsState{}},
+		"session.limits.set":           {limitsSetParams{}, budget.Task{}},
 		"session.info":                 {idParams{}, sessionDetails{}},
 		"session.totals":               {idParams{}, core.SessionTotals{}},
 		"session.close":                {idParams{}, struct{}{}},

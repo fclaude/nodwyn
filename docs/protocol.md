@@ -91,7 +91,7 @@ and `outbox.decide` name an act that is not a read or a write, as
 | Method | Named parameters | Result |
 |---|---|---|
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
-| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"`, and `"delegates":["MODEL",…]`, and `"limits":false` | Open-session details |
+| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"`, and `"delegates":["MODEL",…]`, and `"limits":{"tool_calls":200,…}` | Open-session details |
 | `worktree.open` | as `session.open` | Open-session details of a session in a new git worktree of `repo` |
 | `worktree.diff` | `{"id"}` | `{base,changes:[{path,status,diff}],omitted}`: what the open session changed in its worktree since its base commit |
 | `worktree.review` | `{"id","comments":[{"path","line"?,"text"}],"note"?}` | `{}`: sends the comments to the session as one message |
@@ -100,7 +100,7 @@ and `outbox.decide` name an act that is not a read or a write, as
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
 | `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"`, and `"effort"` | The model and effort the conversation talks to now, and the choice queued behind a running turn |
 | `session.judge.set` | `{"id":"SESSION_ID","judge":"jev"}`, or `"judge":""` for none | The judge the task asks now |
-| `session.limits.set` | `{"id":"SESSION_ID","on":false}` | `{"on":false}`: whether the task's turns stop at the turn limits, from its next turn |
+| `session.limits.set` | `{"id":"SESSION_ID","limits":{"tool_calls":200,"cost":5}}` | the task's limits, `{"tool_calls":200,"cost":5}`, which replace its own from its next turn |
 | `session.close` | `{"id":"SESSION_ID"}` | `{}` after releasing the session writer |
 | `session.rename` | `{"id":"SESSION_ID","title":"…"}` | `{}` after recording the name; `""` takes it back |
 | `session.archive` | `{"id":"SESSION_ID","archived":true}` | `{}` after archiving a closed session, or bringing it back |
@@ -117,13 +117,12 @@ Open-session details contain `id`, `repo`, `busy`, `tools` (the existing model
 tool schemas) and `budgets`. Budgets contain `tool_calls`, `tokens`, `actions`,
 `wall_ns` and `cost`, each with numeric `soft` and `hard` fields. `cost` is
 the task's spend limit in millionths of a US dollar, counted over the whole
-task rather than a turn; a `hard` of 0 is none. These are the
-configured limits, including the legacy tool-call override; this
-protocol does not expose live turn counters. A `hard` of 0 is none in the
-other four too: a task whose turn limits are off reports `tool_calls`,
-`tokens`, `actions` and `wall_ns` as `{"soft":0,"hard":0}`, and its spend
-limit as configured. Details also include `limits`, false for such a task
-(ADR 49), and
+task rather than a turn. These are the limits the task's next turn starts
+from, its own (below), with a scheduled run's spend limit in place of the
+task's; this protocol does not expose live turn counters. A `hard` of 0 is
+none, and each `soft` is its `hard`: a turn stops at a limit without asking
+first. Details also include `limits`, the task's own limits as set (below),
+and
 `allowed_commands`, `allowed_writes`, `turn_writes`, optional `turn_actor`,
 `approve_all` ("don't ask" is on), optional `approve_actor` (who turned it
 on) and `approve_all_offered` (Settings offers the switch,
@@ -196,17 +195,21 @@ list is, and recorded as a `session.delegates` event (`models`, `actor`), which
 resuming restores for the models `config.toml` still has. A paired device may
 not choose them (`-32602`). Session details report them as `delegates`, and
 each model in `settings.read`'s `choices` carries its `labels`.
-`limits: false` in `session.open` and `worktree.open` opens a task whose turns
-have no limit on tool calls, tokens, actions or time (ADR 49); left out, or
-`true`, they stop at the configured limits. The spend limit, the timeouts and
-the progress guard apply either way. `session.limits.set` turns an open task's
-turn limits on or off from its next turn: a turn running keeps the limits it
-started with. `on` is required. It is refused during a run (`-32000`). The
-choice, at open when it is off and at every change, is a `session.limits`
-event (`on`, `actor`), and resuming keeps the last one's. A paired device may
-not turn a task's limits off as it opens, nor change them: `limits: false`
-and `session.limits.set` are refused to it (`-32602`), and its tasks start
-with their limits on.
+A task's limits are its own (ADR 49, amended 2026-10-27): `limits` is an
+object of `tool_calls`, `tokens`, `actions` and `wall_ns` (nanoseconds),
+each a turn's, and `cost`, US dollars over the whole task; one left out, or
+0, is none, and a task has none unless they are set. `limits` in
+`session.open` and `worktree.open` opens a task with them; left out, it has
+none. The timeouts and the progress guard apply either way.
+`session.limits.set` replaces an open task's limits from its next turn: a
+turn running keeps the ones it started with. `limits` is required, `{}`
+removing them all; a negative value, or a spend that is not dollars, is
+refused (`-32602`), and so is a change during a run (`-32000`). The limits,
+at open when the task has some and at every change, are a `session.limits`
+event (`actor` and the limits set), and resuming keeps the last one's; an
+event from before then (`on`, `actor`) reads as none. A paired device may
+open a task with limits and add a limit to one or lower one, which only
+stops a turn sooner; raising or removing one is refused to it (`-32602`).
 Session details also contain `bindings`, a copied array of loaded metadata rows
 with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
 `Scopes` (OAuth2 scopes the row allows, ADR 24) fields. No credential values are
@@ -641,7 +644,7 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?,"labels"?,"settings"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts, starting effort, labels and settings; `labels` (lower-case words) left out keeps the entry's, `[]` clears them, and tasks already open see the new ones at once |
 | `settings.model.remove` | `{"name"}` | Settings after removing a model from the list; the default model is not removed |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
-| `settings.write` | `{"set": {"budget.tokens_hard": 20000000, "budget.cost_hard": null, …}}` | Settings after changing those settings in `config.toml` together |
+| `settings.write` | `{"set": {"loop.shell_timeout": "20m", "judge.timeout": null, …}}` | Settings after changing those settings in `config.toml` together |
 
 `settings.provider.write.credential` is a stored OpenAI OAuth2 credential id,
 mutually exclusive with `api_key`. It selects the credential's unshadowed
@@ -761,7 +764,7 @@ provider_model, price_input?, price_output?, state, detail?, default?}`,
 values; `null` removes a key so its default applies. It accepts only
 `approval.writes` and `approval.commands` (what a task does without asking,
 ADR 35), `approval.dont_ask` (`true` or `false`: whether tasks offer "don't
-ask"; saving `false` also turns it off in every open session, ADR 17), the `budget.*` limits, `loop.request_timeout`
+ask"; saving `false` also turns it off in every open session, ADR 17), `loop.request_timeout`
 and `loop.shell_timeout`, the `window.*` marks, `judge.server` (one of the
 configured providers, a `jev` server or an `openai` one with a key, never a
 ChatGPT plan's sign-in),
@@ -773,11 +776,10 @@ current provider setup, tests and model lists. It does not relax bindings, redir
 refusals, certificate checks or separate endpoint validators. No other `[policy]`
 entry, address, credential or egress proxy is accepted by `settings.write`. The
 changes are made together and only their result is validated, as the
-loader would (so a soft limit can be raised past the old hard one with
-it); every other line of the file is kept, the lock sessions take is held,
-and the file is written 0600. They apply to tasks opened afterwards: an
-open task keeps its own, and `session.info` reports the budgets it runs
-with.
+loader would (so a low water mark can be raised past the old high one
+with it); every other line of the file is kept, the lock sessions take is held,
+and the file is written 0600. They apply to tasks opened afterwards. A
+task's limits are not settings: each task's are its own (above).
 
 ### Credentials (ADR 5, ADR 24)
 
@@ -869,11 +871,13 @@ its approved manifest; any other change needs approval again.
 `settings.control.write`, `settings.provider.write`, `settings.provider.remove`,
 `settings.model.write`, `settings.model.remove`, `models.test`,
 `settings.docs.write`, `settings.write`, `keychain.create`,
-`keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `session.model.set`, `session.judge.set`, `session.limits.set`, `workspace.save`,
+`keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `session.model.set`, `session.judge.set`, `workspace.save`,
 `workspace.active`, `newtask.last`, `workspace.remove`, `index.forget`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
 `mcp.remove` and `mcp.pull` methods, and every `credentials.*` method but
 `credentials.list` are refused to a paired remote device in
-the web console (browser.md); `mcp.runtime` and `credentials.list` only read. The console never
+the web console (browser.md); `mcp.runtime` and `credentials.list` only read. A paired
+device's `session.limits.set` reaches the daemon, which holds it to adding
+or lowering a task's limits. The console never
 offers `session.eval`, and its bridge relays no run method (ADR 35). The
 daemon also refuses `run.start` and `run.resume` with `auto_approve`,
 `judge` or `unattended` to an actor that carries `via` without `passkey`, as
@@ -1098,17 +1102,19 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
 
 ## Supervised and unattended run methods
 
-- `run.start {repo, task, wall, max_turns, auto_approve, unattended?, judge?, cost?, sandbox?}` creates a new daemon-owned session
-  and returns `{id, state}`. `wall` is a positive duration; `max_turns` is 1–10000;
+- `run.start {repo, task, wall?, max_turns?, auto_approve, unattended?, judge?, limits?, sandbox?}` creates a new daemon-owned session
+  and returns `{id, state}`. `wall` is a positive duration, the whole run's
+  deadline, and `max_turns` 1–10000; left out, each is none (ADR 49, amended
+  2026-10-27), and `state` has a zero `deadline` or a `max_turns` of 0;
   `auto_approve` (required, true or false) answers the run's ordinary tool
   confirms, as `--yolo` does. `unattended` (optional) makes a run nobody
-  answers: tool confirms are declined unless `auto_approve`, soft budget
-  checkpoints go on to the hard limit, and the run goes on after a turn only
+  answers: tool confirms are declined unless `auto_approve`, and the run goes on after a turn only
   when that turn marked a plan step done ([runs](runs.md)). `judge` (optional,
   excludes `auto_approve`) has the judge answer ordinary tool confirms; it
-  needs a configured judge. `cost` (optional, US dollars) is the run's spend
-  limit, replacing `budget.cost_hard`; it is kept on resume, and the turn that
-  reaches it ends with outcome `spend_limit` and the run `limited`.
+  needs a configured judge. `limits` (optional) are the run's task's own
+  limits, as `session.open` takes them: its `cost` is the whole run's spend
+  limit, kept on resume, and the turn that reaches it ends with outcome
+  `spend_limit` and the run `limited`.
   `sandbox` (optional; `"container"` is the only value) is sandbox mode (ADR
   55): the person declares the machine the run's disposable sandbox, so its
   tools may reach any path but nodwyn's own directories and credential
@@ -1146,11 +1152,12 @@ fields are described by the generated schema. A `turn.end` that is not
 had got to: the plan's marks and next step, the files the file tools wrote,
 the last `shell-exec` and how it ended (read from the log; nothing is run). An unattended run's
 `run.checkpoint` has actor `unattended` and a `reason`, and `run.state`
-records `unattended`, `auto_approve`, `judge`, `sandbox` and a run's own `cost`.
+records `unattended`, `auto_approve`, `judge` and `sandbox`; the task's limits
+are its `session.limits` event.
 `turn.end.outcome` is `completed`, `stopped`, `hard_budget`, `spend_limit`
 (the task's spend limit; no turn follows it), `canceled` or `error`. A
-budget checkpoint on spend has dimension `cost`, its amounts in millionths
-of a dollar; a reply's absolute soft limit is in dollars (`2.50`). See [runs](runs.md) for limits,
+budget checkpoint in an older log on spend has dimension `cost`, its amounts
+in millionths of a dollar. See [runs](runs.md) for limits,
 completion-marker semantics and recovery constraints.
 
 ### OpenAI plan OAuth2 profile
@@ -1368,7 +1375,9 @@ id and version at the last check), `workflow.fire` (an event that started a
 run: item, version, kind, subject, task, summary) and `workflow.skip`.
 
 - A definition is `{name, source, every, filters, message, routing, repo,
-  worktree, model, no_limits, cost, day_cost, concurrency, existing, paused}`.
+  worktree, model, cost, day_cost, concurrency, existing, paused}`; the tasks
+  it opens have no limits until a person adds some to one, and an older
+  definition's `no_limits` is ignored.
   `source` is `{kind, server, repo, credential, query, command, dir, on}`:
   `kind` is `gitea-pulls`, `github-pulls` (`server` optional, GitHub's API by
   default), `gmail` (`credential` an OAuth2 credential for Google, `query`

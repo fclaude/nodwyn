@@ -109,25 +109,17 @@ func formatSteps(gate log.GatePlan, marks map[int]log.PlanStep) string {
 
 func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 	var out strings.Builder
-	out.WriteString("Configured per-turn limits · current session lifetime\nInitial soft limits; checkpoint choices apply only within their turn.\n\n")
+	out.WriteString("The task's limits · a turn stops at one; none unless set on the task\n\n")
 	rows := []struct {
 		name  string
 		limit budget.Limit
-	}{{"tool_calls", limits.ToolCalls}, {"tokens", limits.Tokens}, {"actions", limits.Actions}, {"wall", limits.Wall}}
-	if limits.Cost.Hard > 0 {
-		rows = append(rows, struct {
-			name  string
-			limit budget.Limit
-		}{"cost", limits.Cost})
-	}
+	}{{"tool_calls", limits.ToolCalls}, {"tokens", limits.Tokens}, {"actions", limits.Actions}, {"wall", limits.Wall}, {"cost", limits.Cost}}
 	for _, row := range rows {
 		if row.limit.Hard == 0 {
-			// The task's limits are off (ADR 49): its turns run as long as
-			// they need.
 			fmt.Fprintf(&out, "%s · no limit\n", row.name)
 			continue
 		}
-		fmt.Fprintf(&out, "%s · soft %s · hard %s\n", row.name, budget.Amount(row.name, row.limit.Soft), budget.Amount(row.name, row.limit.Hard))
+		fmt.Fprintf(&out, "%s · %s\n", row.name, budget.Amount(row.name, row.limit.Hard))
 	}
 	var g contextGauge
 	for _, e := range events {

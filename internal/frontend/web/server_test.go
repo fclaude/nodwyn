@@ -222,8 +222,6 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	cfg.Control.Model = "test-model"
 	cfg.Policy.Unbound = "confirm"
 	cfg.Approval.Writes = config.ApproveAsk // a write is the prompt the browser answers
-	cfg.Budget.ToolCallsSoft = 1
-	cfg.Budget.ToolCallsHard = 3
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
 	store, err := keychain.Create(filepath.Join(root, "keychain"), keychain.FastKDF, []byte("test-passphrase"))
 	if err != nil {
@@ -357,18 +355,15 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	model.Script(fake.Turn{ToolCalls: []fake.ToolCall{
 		{ID: "list1", Name: "fs-list", Args: map[string]any{"path": "."}},
 		{ID: "list2", Name: "fs-list", Args: map[string]any{"path": "."}},
-	}}, fake.Turn{Content: "checkpoint complete"})
-	call("session.send", map[string]any{"id": info.ID, "text": "test checkpoint"}, nil, false)
-	var checkpoint event.Checkpoint
-	if err := json.Unmarshal(next("prompt.checkpoint").Payload, &checkpoint); err != nil {
-		t.Fatal(err)
+	}}, fake.Turn{Content: "never asked"})
+	// The console sets a task's limits through the bridge (ADR 49, amended
+	// 2026-10-27), and the turn stops at one without asking.
+	call("session.limits.set", map[string]any{"id": info.ID, "limits": map[string]any{"tool_calls": 1}}, nil, false)
+	if raw := next("session.limits").Payload; !strings.Contains(string(raw), `"tool_calls":1`) || !strings.Contains(string(raw), `unix:uid=`) {
+		t.Fatal(string(raw))
 	}
-	if checkpoint.Checkpoint.Used != 1 {
-		t.Fatal(checkpoint)
-	}
-	call("session.answer", map[string]any{"id": info.ID, "prompt_id": checkpoint.ID, "reply": "4"}, nil, true)
-	call("session.answer", map[string]any{"id": info.ID, "prompt_id": checkpoint.ID, "reply": "3"}, nil, false)
-	if raw := next("turn.checkpoint").Payload; !strings.Contains(string(raw), `"soft":3`) || !strings.Contains(string(raw), `unix:uid=`) {
+	call("session.send", map[string]any{"id": info.ID, "text": "list twice"}, nil, false)
+	if raw := next("turn.end").Payload; !strings.Contains(string(raw), `"hard_budget"`) {
 		t.Fatal(string(raw))
 	}
 	for {
@@ -379,7 +374,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	}
 	call("session.info", p, &info, false)
 	if info.TurnWrites || len(info.Writes) != 1 {
-		t.Fatal("budget answer widened authority")
+		t.Fatal("a limit widened authority")
 	}
 	call("session.abort", p, nil, false)
 	call("session.close", p, nil, false)
@@ -641,10 +636,17 @@ func TestRemoteDevicesPairByInvitationAndCannotWidenPolicy(t *testing.T) {
 	device, person, touched := caller{}, caller{person: true}, caller{person: true, touched: true}
 	setup := []string{"session.binding.create", "session.policy.write", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "passkeys.remove", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
 		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.unbind", "credentials.authorize", "session.delete", "workspace.save", "index.forget"}
-	choices := []string{"session.model.set", "session.judge.set", "session.limits.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "newtask.last", "devices.list", "passkeys.list"}
+	choices := []string{"session.model.set", "session.judge.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "newtask.last", "devices.list", "passkeys.list"}
 	for _, method := range append(append([]string{"session.eval"}, setup...), choices...) {
 		if s.b.access(method, device) != refused {
 			t.Fatalf("a device that only answers may call %s", method)
+		}
+	}
+	// A device may add a limit to a task or lower one, which the daemon
+	// holds it to (ADR 49, amended 2026-10-27), as it may turn Don't ask off.
+	for _, method := range []string{"session.limits.set", "session.approve_all"} {
+		if s.b.access(method, device) != granted {
+			t.Fatalf("a device that answers may not call %s", method)
 		}
 	}
 	// The person's device makes this computer's choices, and its setup

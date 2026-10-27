@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/budget"
-	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/log"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
@@ -107,7 +106,7 @@ func TestRequiredPlanPrecedesExecution(t *testing.T) {
 func TestAStoppedTurnSaysWhereItStopped(t *testing.T) {
 	t.Parallel()
 	const plan = "1. Change: a.go Run — do it.\n2. Test: a_test.go TestRun — runs; fails today: no Run.\n3. Docs: none — nothing a person reads changes.\n4. Check: go test ./..."
-	r := newRigWith(t, false, func(c *config.Config) { c.Loop.MaxToolCalls = 5 },
+	r := newRigCalls(t, false, 5, nil,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "p", Name: "plan-write", Args: map[string]any{"plan": plan}}}},
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "a.go", "content": "package main\n"}}}},
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "m", Name: "plan-step", Args: map[string]any{"step": 1, "state": "done", "note": "a.go has Run"}}}},

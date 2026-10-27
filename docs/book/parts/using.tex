@@ -115,17 +115,8 @@ request_timeout = "30m"
 shell_timeout   = "10m"
 profile         = "auto"    # or "lean" or "full": the default loop (below)
 
-[budget]                    # per turn: "soft" asks, "hard" stops
-tool_calls_soft = 500       # a soft limit left unset is its hard one,
-tool_calls_hard = 500       #   so nothing asks until you set one lower
-tokens_soft     = 10000000
-tokens_hard     = 10000000
-actions_soft    = 200
-actions_hard    = 200
-wall_soft       = "4h"
-wall_hard       = "4h"
-# cost_soft     = 2.0       # US dollars for the whole task; off unless set
-# cost_hard     = 10.0
+# No [budget]: a task's limits are its own, none unless set on the task
+# (Budgets and runs, below).
 
 [judge]
 # server = "jev"            # a [servers.NAME] of provider jev, or openai with
@@ -253,8 +244,8 @@ provider that cannot read one refuses that request, and the turn says so
 \item[\code{nodwyn ui}] The browser console for a running daemon: tasks,
   approvals inline with their diffs, plans, budgets, changes and their
   history, attachments, notes; Connections for MCP servers, Workspaces for
-  folders, Settings for what a task does without asking (Approvals), its
-  limits, the models and their settings, the judge and the keychain. Every task
+  folders, Settings for what a task does without asking (Approvals), how
+  long a call may hang, the models and their settings, the judge and the keychain. Every task
   it starts is a chat, and a long request is a message like any other
   (\adr{35}); it starts no runs, but shows one that \code{nodwyn run}
   started. Its sidebar lists tasks under their folders, the latest active
@@ -315,7 +306,7 @@ provider that cannot read one refuses that request, and the turn says so
   questions, and Home's Runs on starts a task on either, with that host's
   folders and model. The server decides what the link may do: it answers,
   or, invited by your device signed in there with your passkey, makes your
-  choices for the server's tasks and changes its limits and models from the
+  choices for the server's tasks and changes its settings and models from the
   laptop's Settings, unless the server is started with \code{-{}-no-link-settings};
   the rest of its setup stays in its own console.
 \end{description}
@@ -368,12 +359,12 @@ from its cache — or, where it reports none, as older Ollama servers do, an est
 the reply's prompt-eval time against the session's most-cold request, marked
 $\approx$ — and the request's cost, only when known (a cost estimated from
 the model's configured prices is likewise marked); the time only when
-the server reports it. A budget checkpoint says what the turn has cost so
-far, ``at least'' when some requests had no known cost.
+the server reports it.
 
 The console keeps a compact monitoring summary above its content: task
 spend, current turn time and context fullness. The three positions stay
-reserved across tabs. The tool calls are in Statistics' This turn, and the
+reserved across tabs. Under them the task's Limits says None in one line,
+or shows a chip for each limit set (Budgets and runs). The tool calls are in Statistics' This turn, and the
 cache rate is Totals' Token cache rate: rounded and token-weighted over the
 session, not a percentage of requests; no positive prompt total shows
 ``unknown'', while reported zero cache reads give 0\%. Other unknown figures
@@ -439,7 +430,7 @@ The full-screen client takes the same commands and adds inspectors:
 \code{:plan} shows the turn's plan gate, its plan, and each step (each
 starts with its kind: \code{Change:}, \code{Test:}, \code{Docs:} or
 \code{Check:}) as the model marked it, done (\code{[x]}), skipped (\code{[-]}) or not yet
-(\code{[ ]}), with its note; \code{:budget} shows the configured limits,
+(\code{[ ]}), with its note; \code{:budget} shows the task's limits,
 what the latest turn's model requests cost as far as known, and its
 checkpoints; \code{:replay}, \code{:bindings} and \code{:friction} show
 the transcript, the binding table and \file{docs/friction.md}.
@@ -911,38 +902,30 @@ that host is refused before anything is sent, and each upload is logged as
 
 \chapter{Budgets and runs}
 
-A turn has hard limits on tool calls, model tokens (each request's prompt
-and reply, a prompt token read from the provider's cache counted as a
-tenth), irreversible actions and wall time (\code{[budget]}): by default 500 tool calls, ten
-million tokens, 200 actions and four hours. At a hard limit the turn stops.
-Each also has a soft limit, Settings' ``ask at'', which by default is the
-hard one, so no checkpoint interrupts a turn (\adr{35}). A soft limit the
-file leaves unset follows its hard one, so lowering a hard limit moves the
-checkpoint with it. Set a soft limit lower to have the turn stop there at a
-\emph{checkpoint}: \code{y} doubles the soft limit up to the hard one,
-\code{n} stops, a number or a duration sets a new soft limit. A checkpoint
-never approves a tool. These are every task's limits, whichever client
-opened it: line mode's old \code{--max-tool-calls} and \code{--budget-*}
-flags are refused, naming the key to set.
+A task has no limits unless you give it some (\adr{49}, amended
+2026-10-27): its turns work, and wait for your answers, as long as they
+need. There is no limit in \file{config.toml} that every task stops at.
+For the few tasks that want a bound there are five, each set on its own:
+tool calls, writes and commands, model tokens (each request's prompt and
+reply, a prompt token read from the provider's cache counted as a tenth)
+and wall time, each a turn's, and spend, the whole task's in US dollars, as
+far as costs are known. Each is one number, and reaching it stops the turn
+without asking first.
 
-In the console a task can do without these four (\adr{49}). Home's
-\textbf{Limits} is ticked for a new task unless you unticked it for the task
-before, as every choice of the New task window is kept for the next task;
-untick it and that task's turns
-run, and wait for your answers, as long as they need. Its heading then says
-\textbf{No turn limits}, and the task's own \textbf{Limits} turns them on
-or off again from its next turn. The spend limit below, the timeouts and the
-progress guard still apply. The choice is kept when the task is resumed, and
-only the computer nodwyn runs on makes it.
-
-A spend limit is yours to set, and off unless you do: \code{cost\_soft}
-and \code{cost\_hard} in \code{[budget]}, in US dollars, or
-\code{nodwyn run --budget-cost} for one run. It counts what the whole task
-has cost, every turn and a resumed session's history included, not one
-turn. Past the soft limit a checkpoint asks (a new soft limit is in dollars,
-and holds for later turns); at the hard one the task stops, a run ends
-\code{limited}, and nothing reaches the model until you raise it. It counts
-only costs it knows, reported by the provider or priced from the model's
+In the console they are on the task's panel, under its monitor:
+\textbf{Limits} says \textbf{None} in one line beside \textbf{Add a limit},
+which offers the kinds not set; pick one and type its value (a time as
+\code{45m} or \code{1h30m}, a spend as \code{5}). Each limit set is a
+chip: click it to change the value, or its cross to remove it. In line mode,
+\code{--max-tool-calls}, \code{--budget-actions}, \code{--budget-tokens},
+\code{--budget-wall} and \code{--budget-cost} set them for the task it
+opens; with \code{--resume} they replace those they name, and \code{0}
+removes one. A change applies from the next turn, the conversation says it,
+and resuming the task keeps it. A paired phone may add a limit or lower one,
+never raise or remove one. A spend limit counts every turn and a resumed
+session's history; at it the task stops, a run ends \code{limited}, and
+nothing reaches the model until you raise or remove it. It counts only costs
+it knows, reported by the provider or priced from the model's
 \code{price\_*}; the first turn with a request it cannot price says so.
 
 A turn also stops if the model
@@ -972,7 +955,9 @@ nodwyn run resume SESSION
 \end{sh}
 
 For a run, \code{--budget-wall} is the deadline of the whole run, not of
-one turn. Each turn of a run must record a plan before it may do anything
+one turn, and \code{--max-turns} the most turns it takes; both are
+optional, and the run's task takes a task's limits, \code{--turn-wall}
+being each turn's time. Each turn of a run must record a plan before it may do anything
 irreversible, and in a supervised run a person says yes at a checkpoint
 between turns. A run
 ends when the model's reply ends with the line \code{NODWYN\_RUN\_COMPLETE},
@@ -989,8 +974,7 @@ throwaway checkout: the guard makes an unattended run survivable, not safe.
 \code{-{}-unattended} goes further: nobody answers at all. Tool confirms
 are declined unless a standing approval covers them (by default every
 write in the folder is one), answered yes with
-\code{--yolo} or put to the judge with \code{-{}-judge}; a soft budget
-checkpoint goes on to the hard limit; and the run goes on to its next turn
+\code{--yolo} or put to the judge with \code{-{}-judge}; and the run goes on to its next turn
 only after a turn that marked a step of its plan done. A resume restores
 none of these flags: give them to \code{nodwyn run resume} again.
 
@@ -1035,7 +1019,7 @@ an MCP server offers no tools & its tool list changed or was never approved: rev
 a contained MCP server is unavailable & the task's Tools panel says why: no podman or docker, an image not pulled (\code{nodwyn mcp pull NAME}), or no \code{nodwyn-egress} next to \code{nodwyn} \\
 a contained server cannot reach a site & the task shows the connection its proxy refused: add the host to its \code{network} list, or the server ignores \code{HTTPS\_PROXY} \\
 the model loops on a denied call & the progress guard stops it; read the reason and say what to do instead \\
-\code{hard stop: tool\_calls budget reached} & the turn ended; the log has everything; rephrase smaller, or raise \code{budget.tool\_calls\_hard} \\
+\code{hard stop: tool\_calls budget reached} & the turn ended; the log has everything; rephrase smaller, or raise or remove the task's tool-call limit \\
 a tool call errored & the error line printed during the turn, or \code{nodwyn replay ID}, has the exact error the model saw; \code{:log} cuts each event at 120 characters \\
 a file changed without a prompt & by default writes in the folder go ahead (\code{approval.writes}); otherwise \code{:allow}: a standing approval covered it. The \code{guard.decision} line names which; \code{nodwyn undo} or Restore puts the file back \\
 a command ran without a prompt & the judge allowed it (\code{approval.commands = "judge"}, the default), the setting did (\code{"allow"}), or a standing approval covered it; the \code{guard.decision} line says which \\
@@ -1055,8 +1039,8 @@ reconciliation; permissions are never silently merged (\adr{45}).
 
 \paragraph{Scheduled tasks (\adr{49}).}
 Home's \textbf{Options}, beside Attach, hold \textbf{Schedule\ldots}, which turns
-the request into a schedule with the same folder or worktree, model, helpers,
-judge and Limits choice, and asks for the message in its own form. Under
+the request into a schedule with the same folder or worktree, model, helpers
+and judge, and asks for the message in its own form. Under
 \textbf{Repeat}, choose set times of day on chosen weekdays (``Tuesdays and
 Thursdays at 15:00''), an interval of 5 minutes to 24 hours, optionally only
 between two times (``Every 30 minutes from 09:00 to 18:00 on weekdays''),

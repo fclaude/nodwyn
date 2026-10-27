@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 )
@@ -21,8 +22,7 @@ func TestRequiredPlanningTokensStopBeforeExecution(t *testing.T) {
 	o := diskOptions(t)
 	p := &planningProvider{}
 	o.Provider = p
-	o.Config.Budget.TokensSoft = 10
-	o.Config.Budget.TokensHard = 10
+	o.Limits = &LimitsChoice{Limits: budget.Task{Tokens: 10}}
 	s, err := New(o)
 	if err != nil {
 		t.Fatal(err)

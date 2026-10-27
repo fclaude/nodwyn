@@ -48,10 +48,9 @@ func (r *remote) Tools(ctx context.Context, id string) ([]llm.Tool, error) {
 	return info.Tools, nil
 }
 
-// These are the limits for new turns in this session lifetime, not current
-// usage or a soft limit changed by an in-progress checkpoint reply. They are
-// the session's own: a run's spend limit and a task whose limits are off
-// differ from the configuration.
+// These are the limits for the task's next turn, not current usage: the
+// task's own (ADR 49, amended 2026-10-27), with a scheduled run's spend
+// limit in place of the task's.
 func (r *remote) Budgets(ctx context.Context, id string) (budget.Limits, error) {
 	var info rpc.SessionDetails
 	if err := r.client.Call(ctx, "session.info", map[string]any{"id": id}, &info); err != nil {
@@ -64,8 +63,8 @@ func (r *remote) Budgets(ctx context.Context, id string) (budget.Limits, error) 
 	return limits, nil
 }
 
-// checkTurnLimits refuses turn limits a daemon could not have configured.
-// A limit of 0 is none: a task whose limits a person turned off (ADR 49).
+// checkTurnLimits refuses turn limits a daemon could not have set. A limit
+// of 0 is none, as every limit of a task is unless a person set it.
 func checkTurnLimits(limits budget.Limits) error {
 	for _, limit := range []budget.Limit{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost} {
 		if limit == (budget.Limit{}) {

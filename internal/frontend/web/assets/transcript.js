@@ -7,6 +7,7 @@
 import { h, icon, oneLine, sizeOf, toolLabel, isMCP } from "./dom.js";
 import { markdown } from "./markdown.js";
 import { attachmentChip } from "./attach.js";
+import { limitsText } from "./limits.js";
 
 const readName = /(^|[-_/.])(read|list|find|grep|search|get|show|status|outline|log|diff|query|fetch|lookup|view|notes|events|info)([-_.]|$)/;
 const writes = new Set(["fs-write", "fs-edit", "doc-export"]);
@@ -628,9 +629,11 @@ export class Transcript {
         this.audit("Prepared a handover for the next scheduled run", p);
         break;
       case "session.limits":
-        // The task's turn limits turned off or on (ADR 49): amber while its
-        // turns may run, and wait, as long as they need.
-        this.audit(p.on ? "Limits: on, turns stop at the limits in Settings" : "Limits: off, turns run as long as they need", p, p.on ? "" : "warn");
+        // The task's limits as set then (ADR 49, amended 2026-10-27). A
+        // record from before then turned the limits Settings held on or
+        // off, and says so as it did.
+        if (typeof p.on === "boolean") this.audit(p.on ? "Limits: on, turns stop at the limits in Settings" : "Limits: off, turns run as long as they need", p, p.on ? "" : "warn");
+        else this.audit(`Limits: ${limitsText(p)}`, p);
         break;
       case "context.narrow":
         // A lasting narrowing, such as a compaction's, is where later turns

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
@@ -38,6 +39,12 @@ func newAskingRig(t *testing.T, turns ...fake.Turn) *rig {
 
 func newRigWith(t *testing.T, noConfirm bool, adjust func(*config.Config), turns ...fake.Turn) *rig {
 	t.Helper()
+	return newRigCalls(t, noConfirm, 3, adjust, turns...)
+}
+
+// newRigCalls is newRigWith whose task stops a turn at calls tool calls.
+func newRigCalls(t *testing.T, noConfirm bool, calls int64, adjust func(*config.Config), turns ...fake.Turn) *rig {
+	t.Helper()
 	repo := t.TempDir()
 	os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
 	srv := fake.NewT(t, turns...)
@@ -45,12 +52,11 @@ func newRigWith(t *testing.T, noConfirm bool, adjust func(*config.Config), turns
 	cfg := config.Default()
 	cfg.Control.URL = srv.URL
 	cfg.Control.Model = "test-model"
-	cfg.Loop.MaxToolCalls = 3
 	if adjust != nil {
 		adjust(&cfg)
 	}
 	logb := &bytes.Buffer{}
-	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: noConfirm, LogWriter: logb})
+	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: noConfirm, LogWriter: logb, Limits: &LimitsChoice{Limits: budget.Task{ToolCalls: calls}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +115,8 @@ func TestTurnWithToolCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	evs := r.drain("n")
-	want := "session.start user.msg llm.req status stream.thinking llm.resp tool.call status guard.decision tool.result llm.req status stream.text llm.resp turn.end status"
+	// The rig's task has a limit of three tool calls, recorded as it opens.
+	want := "session.start session.limits user.msg llm.req status stream.thinking llm.resp tool.call status guard.decision tool.result llm.req status stream.text llm.resp turn.end status"
 	if got := kinds(evs); got != want {
 		t.Fatalf("events:\n got %s\nwant %s", got, want)
 	}

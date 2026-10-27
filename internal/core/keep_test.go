@@ -24,10 +24,8 @@ func keepRig(t *testing.T, turns ...fake.Turn) *rig {
 	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
-	cfg.Budget.ToolCallsSoft = 4
-	cfg.Budget.ToolCallsHard = 4
 	logb := &bytes.Buffer{}
-	s, err := New(Options{Config: cfg, Repo: repo, Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: logb})
+	s, err := New(Options{Config: cfg, Repo: repo, Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: logb, Limits: &LimitsChoice{Limits: budget.Task{ToolCalls: 4}}})
 	if err != nil {
 		t.Fatal(err)
 	}

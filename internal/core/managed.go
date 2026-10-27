@@ -25,8 +25,13 @@ type ManagedProfile struct {
 
 func (m *ManagedProfile) validate(o Options) error {
 	c := o.Config
-	wall, err := time.ParseDuration(c.Budget.WallHard)
-	if err != nil || wall <= 0 || wall > 8*time.Minute {
+	// The profile's turn limits are the embedder's, every one of them set
+	// and within its envelope; a task's own choice cannot widen them.
+	if o.Limits == nil {
+		return errors.New("managed: the profile's turn limits are required")
+	}
+	l := o.Limits.Limits
+	if l.Wall <= 0 || l.Wall > int64(8*time.Minute) {
 		return errors.New("managed: invalid wall limit")
 	}
 	if m.Endpoint == "" || m.Model == "" || o.Provider == nil || m.WriteFile == nil || !filepath.IsAbs(o.InitFile) {
@@ -35,10 +40,10 @@ func (m *ManagedProfile) validate(o Options) error {
 	if o.Sandbox || o.Worktree || o.Keychain != nil || o.Containers != nil || o.JudgeApprove || len(c.Models) != 0 || len(c.Servers) != 0 || c.Experimental.Terminal || c.Control.Provider != "ollama" || c.Control.URL != m.Endpoint || c.Control.Model != m.Model || c.Control.Credential != "" || c.Control.NumCtx <= 0 || c.Control.NumCtx > 32768 || c.Control.MaxOutput <= 0 || c.Control.MaxOutput > 4096 {
 		return errors.New("managed: configuration exceeds the immutable capability envelope")
 	}
-	if (o.Model.Name != "" && o.Model.Name != "control") || o.Model.Server != "" || o.Model.Model != "" || o.Judge != nil || o.Delegates != nil || (o.Limits != nil && !o.Limits.On) {
+	if (o.Model.Name != "" && o.Model.Name != "control") || o.Model.Server != "" || o.Model.Model != "" || o.Judge != nil || o.Delegates != nil {
 		return errors.New("managed: task authority cannot override the profile")
 	}
-	if c.Budget.ToolCallsHard <= 0 || c.Budget.ToolCallsHard > 40 || c.Budget.ActionsHard <= 0 || c.Budget.ActionsHard > 20 || c.Budget.TokensHard <= 0 || c.Budget.TokensHard > 200000 {
+	if l.ToolCalls <= 0 || l.ToolCalls > 40 || l.Actions <= 0 || l.Actions > 20 || l.Tokens <= 0 || l.Tokens > 200000 {
 		return errors.New("managed: turn limits exceed the profile")
 	}
 	return nil

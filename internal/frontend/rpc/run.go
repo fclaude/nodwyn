@@ -4,16 +4,20 @@ import (
 	"errors"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/run"
 	"github.com/fclaude/nodwyn/internal/log"
 )
 
 type runParams struct {
-	Repo     string `json:"repo"`
-	Task     string `json:"task"`
-	Wall     string `json:"wall"`
-	MaxTurns int    `json:"max_turns"`
+	Repo string `json:"repo"`
+	Task string `json:"task"`
+	// Wall is the whole run's deadline, a duration from now, and MaxTurns
+	// how many turns it may take; left out, none (ADR 49, amended
+	// 2026-10-27).
+	Wall     string `json:"wall,omitempty"`
+	MaxTurns int    `json:"max_turns,omitempty"`
 	// AutoApprove answers this run's ordinary confirms with yes. It is a
 	// property of the run, never of the daemon: a daemon that auto-approved
 	// everything would do so for sessions opened later from a browser too.
@@ -24,9 +28,9 @@ type runParams struct {
 	// Judge has the judge answer the run's ordinary tool confirms
 	// instead of a person; it excludes auto_approve and needs a judge.
 	Judge bool `json:"judge,omitempty"`
-	// Cost is the run's spend limit in US dollars, for the whole run; it
-	// replaces budget.cost_hard. Omitted, the configured one applies.
-	Cost float64 `json:"cost,omitempty"`
+	// Limits are the run's task's own limits, as session.open takes them:
+	// its spend limit counts the whole run. Left out, none.
+	Limits *budget.Task `json:"limits,omitempty"`
 	// Sandbox "container" declares the machine the run's disposable
 	// sandbox (ADR 55): the guard lets its tools reach any path but
 	// nodwyn's own directories and credential files, what its commands
@@ -52,7 +56,7 @@ type runResult struct {
 func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if req.Method == "run.start" {
 		var p runParams
-		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve", "unattended", "judge", "cost", "sandbox"); err != nil {
+		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve", "unattended", "judge", "limits", "sandbox"); err != nil {
 			return nil, err
 		}
 		sandbox, bad := sandboxMode(p.Sandbox, p.Judge)
@@ -78,18 +82,24 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
 			return nil, failure(-32000, why)
 		}
-		wall, err := time.ParseDuration(p.Wall)
-		if err != nil || wall <= 0 {
-			return nil, failure(-32602, "wall must be a positive duration")
+		var deadline time.Time
+		if p.Wall != "" {
+			wall, err := time.ParseDuration(p.Wall)
+			if err != nil || wall <= 0 {
+				return nil, failure(-32602, "wall must be a positive duration, or left out for none")
+			}
+			deadline = time.Now().Add(wall)
 		}
-		state := run.State{Task: p.Task, Deadline: time.Now().Add(wall), MaxTurns: p.MaxTurns, Unattended: p.Unattended, AutoApprove: p.AutoApprove, Judge: p.Judge, Cost: p.Cost, Sandbox: sandbox}
+		state := run.State{Task: p.Task, Deadline: deadline, MaxTurns: p.MaxTurns, Unattended: p.Unattended, AutoApprove: p.AutoApprove, Judge: p.Judge, Sandbox: sandbox}
 		if err := state.Validate(); err != nil {
 			return nil, failure(-32602, err.Error())
 		}
 		options := s.options
-		options.Config.Budget = options.Config.Budget.WithCostHard(p.Cost)
-		if _, err := options.Config.Budget.Limits(options.Config.Loop.MaxToolCalls); err != nil {
-			return nil, failure(-32602, err.Error())
+		if p.Limits != nil {
+			if err := p.Limits.Validate(); err != nil {
+				return nil, failure(-32602, "limits: "+err.Error())
+			}
+			options.Limits = &core.LimitsChoice{Limits: *p.Limits, Actor: client.actor}
 		}
 		options.Repo = p.Repo
 		options.NoConfirm = false
@@ -100,6 +110,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		options.JudgeApprove = p.Judge
 		options.Sandbox = sandbox
 		var session *core.Session
+		var err error
 		s.slow("", func() { session, err = core.New(options) })
 		if err != nil {
 			return nil, failure(-32000, err.Error())
@@ -171,8 +182,8 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if open {
 		delete(s.sessions, p.ID)
 	}
+	// The task's limits are its log's, as for any task resumed.
 	options := s.options
-	options.Config.Budget = options.Config.Budget.WithCostHard(state.Cost)
 	options.Repo = ""
 	options.NoConfirm = false
 	options.AutoApprove, options.Unattended, options.JudgeApprove, options.Sandbox = p.AutoApprove, p.Unattended, p.Judge, sandbox

@@ -204,78 +204,58 @@ Turns also stop when the model repeats an identical tool call four times in a
 row, retries a denied call three times, gets ten consecutive tool errors, or
 fails with one tool on one file in six of its last sixteen responses
 (ADR 18). The reason is shown and logged. Any remaining calls in that response
-are marked not executed; a new user message starts a fresh turn. Budgets and checkpoint prompts are implemented, and so is the bounded run driver (`nodwyn run`, below).
+are marked not executed; a new user message starts a fresh turn. A task's own
+limits stop its turns too, and the bounded run driver (`nodwyn run`, below)
+bounds a run.
 
-Turn limits live under `[budget]` in `config.toml`:
+A task has no limits unless you set some, for that task (ADR 49, amended
+2026-10-27): there is no limit in `config.toml` that every task stops at.
+Set them on the task's panel in the console (**Limits**, under the task's
+monitor: **Add a limit**, then the value; a chip changes or removes it), or
+on the command line for the task line mode opens or resumes:
 
-```toml
-[budget]
-tool_calls_hard = 500
-wall_hard = "4h"
-tokens_hard = 10000000
-actions_hard = 200
-# tool_calls_soft, wall_soft, tokens_soft, actions_soft: unset, each is its
-# hard limit, so no checkpoint asks (ADR 35). Set one lower to be asked there.
+```sh
+nodwyn --max-tool-calls 200 --budget-wall 1h --budget-cost 5   # a new task
+nodwyn --resume ID --budget-cost 0                             # remove its spend limit
 ```
 
-The token limit counts each model request's prompt and reply, a prompt token
-the provider read from its cache as a tenth of one; the console calls it
-*Tokens used*.
+| Limit | Flag | Counts |
+|---|---|---|
+| tool calls | `--max-tool-calls N` | each turn's tool calls |
+| tokens | `--budget-tokens N` | each turn's model tokens: a request's prompt and reply, a prompt token the provider read from its cache as a tenth of one |
+| writes and commands | `--budget-actions N` | each turn's authorized irreversible host attempts, every nested write or command inside a Scheme tool included; denials count nothing |
+| time | `--budget-wall 1h30m` | each turn's wall time, model waits, tools, planning and waiting for your answers included; it cancels blocked work |
+| spend | `--budget-cost USD` | what the whole task's requests cost, every turn's, as far as known |
 
-At a checkpoint, `y` doubles the soft limit up to its hard ceiling, `n` stops,
-and an absolute number (or a duration such as `40m` for wall time) chooses a
-larger soft limit. A completed answer does not ask for more soft allowance. This never approves a tool or raises a hard ceiling.
-`--no-confirm` stops at checkpoints. Each answer, including cancellation, is a
-redacted `turn.checkpoint` log record. A new turn starts with fresh accounting.
+Each is one number: reaching it stops the turn, with nothing asked first. A
+flag given on a resumed task replaces that limit and keeps the others; 0
+removes it. A change applies from the next turn, the task's log records it
+(`session.limits`), and resuming the task keeps it. A paired device may add
+a limit or lower one, never raise or remove one. A `[budget]` table, or
+`loop.max_tool_calls`, that an older `config.toml` still has loads and sets
+nothing.
 
-A task stops at these limits wherever it is opened: line mode, the TUI and the
-console all open tasks in the daemon, so line mode no longer takes limits for
-one invocation (`--max-tool-calls`, `--budget-*` are refused, saying which
-`[budget]` key to set). `nodwyn run` has a run's own `--budget-wall` and
-`--budget-cost`. Explicit legacy
-`loop.max_tool_calls` settings still work; do not also set
-`budget.tool_calls_hard` in that file. Configurations without a legacy override
-get the ADR 18 default of 500 hard tool calls.
-
-Actions count authorized irreversible host attempts, including every nested
-write or command inside a Scheme tool. Denials consume no action allowance.
-The checkpoint lists attempted file paths and commands. Wall time includes
-planning and approval waits; its hard deadline cancels blocked work, while soft
-wall checkpoints occur at operation boundaries. Tokens are the prompt plus
-output usage each model request reports, the control model's and any other
-configured model's: a response can overshoot a token ceiling, but no
-subsequent operation starts after that usage is observed. Judge requests are
-not model requests and are not counted against tokens; their usage is
-recorded and shown, and their cost, priced by `[judge] price_input` and
+Tokens are the usage each model request reports, the control model's and
+any other configured model's: a response can overshoot a token limit, but no
+later operation starts after that usage is observed. Judge requests are not
+model requests and are not counted against tokens; their usage is recorded
+and shown, and their cost, priced by `[judge] price_input` and
 `price_output`, counts against a spend limit.
 
 After each reply the front-ends show its tokens, the share read from the
 provider's prompt cache and its cost, each only when known; a model's
 `price_input`, `price_cached_input` and `price_output` (USD per million
 tokens) estimate the cost when the provider does not report it. The TUI's
-`:budget` shows the latest turn's spend, and a checkpoint what the turn has
-cost so far.
+`:budget` shows the task's limits and the latest turn's spend.
 
-A spend limit is yours to set, and off unless you do:
-
-```toml
-[budget]
-cost_soft = 2.0    # US dollars: past this a checkpoint asks
-cost_hard = 10.0   # the task stops here; cost_soft unset is cost_hard
-```
-
-It counts what the whole task's model requests cost, not one turn's: every
-turn of a session or a run, a resumed session's history included. Past
-`cost_soft` a checkpoint asks (answer in dollars, `2.50`), and a raised soft
-limit holds for later turns. At `cost_hard` the turn stops (`turn.end`
-outcome `spend_limit`), and no later turn starts: a run ends `limited`, and
-a new message stops before it reaches the model. Raise `cost_hard` to go on.
-It counts only known costs, reported by the provider or priced from the
-model's `price_*`. A request with neither is not counted, and the first
-turn that has one says so in a note. `nodwyn run --budget-cost USD` sets the
-hard limit for one run (kept on resume).
-An unattended run's soft checkpoint goes on to the hard limit, as for the
-other budgets.
+A spend limit counts what the whole task's model requests cost, not one
+turn's: every turn of a session or a run, a resumed session's history
+included. At the limit the turn stops (`turn.end` outcome `spend_limit`), and
+no later turn starts: a run ends `limited`, and a new message stops before it
+reaches the model. Raise or remove the limit to go on. It counts only known
+costs, reported by the provider or priced from the model's `price_*`. A
+request with neither is not counted, and the first turn that has one says so
+in a note.
 
 The default loop has two profiles. A session nobody approves (`--yolo`,
 `--judge`, `--unattended`, a run's `auto_approve`) runs the lean one: a short
@@ -370,7 +350,11 @@ nodwyn run resume SESSION
 
 Attach the browser or terminal client to the daemon to answer tool prompts and
 between-turn checkpoints. Disconnecting the client leaves the run owned by the
-daemon. Resume preserves the original deadline and consumed turn count; it never
+daemon. A run's deadline (`--budget-wall`) and turn count (`--max-turns`) are
+optional, as its task's limits are (`--max-tool-calls`, `--budget-tokens`,
+`--budget-actions`, `--turn-wall` for each turn's time, `--budget-cost`):
+without them it goes on until the model reports the task complete, a turn
+stops it, or you do. Resume preserves the original deadline and consumed turn count; it never
 replays an interrupted tool or restores temporary approvals. See [runs](docs/runs.md)
 for completion semantics and recovery.
 
@@ -382,8 +366,7 @@ decision is made in Go, so a project's Scheme can only refuse more. It
 needs a judge (`[judge]` naming a provider whose key is stored; see
 [the judge](docs/manual.md#the-judge)) and excludes `--yolo`.
 `--unattended` means nobody answers anything: confirms are declined unless
-`--yolo` or `--judge` answers them, soft budget checkpoints go on to the
-hard limit, and the run goes on after a turn only if that turn marked a
+`--yolo` or `--judge` answers them, and the run goes on after a turn only if that turn marked a
 plan step done. A resume restores none of these; `nodwyn run resume` takes
 them again.
 

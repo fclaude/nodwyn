@@ -679,6 +679,28 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
 .monitor-label { font-size: 11px; color: var(--faint); }
 .monitor-value { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .monitor-warning { grid-column: 1 / -1; height: 16px; line-height: 16px; font-size: 11px; color: var(--warn-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A task's limits (ADR 49, amended 2026-10-27): most tasks have none, so the
+   panel is one quiet line under the monitor; a limit set is a chip. */
+.task-limits { flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.limits-head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.limits-none { flex: 1; min-width: 0; font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.limit-add {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px;
+  border: none; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer;
+}
+.limit-add:hover, .limit-add[aria-expanded="true"] { background: var(--selected); color: var(--ink); }
+.limit-chips, .limit-menu { display: flex; flex-wrap: wrap; gap: 6px; }
+.limit-chip { height: 28px; padding: 0 4px 0 0; gap: 0; font-size: 12.5px; }
+.limit-chip > span { padding-left: 10px; padding-right: 6px; }
+.limit-value { height: 100%; display: inline-flex; align-items: center; padding: 0 6px 0 10px; border: none; border-radius: 14px 0 0 14px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.limit-value:hover { text-decoration: underline; }
+.limit-chip .limit-remove { width: 22px; height: 22px; border-radius: 11px; }
+.limit-menu .chip { height: 26px; padding: 0 10px; font-size: 12.5px; cursor: pointer; }
+.limit-editor { display: flex; flex-direction: column; gap: 6px; }
+.limit-editor label { font-size: 12.5px; color: var(--ink-2); }
+.limit-editor label .sub { color: var(--faint); }
+.limit-editor-row { display: flex; gap: 6px; align-items: center; }
+.limit-editor-row .input { flex: 1; min-width: 0; height: 30px; }
 /* The tabs sit above what they switch, large enough to read and to touch. */
 .task-aside .aside-tabs { flex-shrink: 0; flex-wrap: nowrap; gap: 0; justify-content: space-between; }
 .task-aside .tabs button { padding: 8px 4px; font-size: 12.5px; white-space: nowrap; }
@@ -869,8 +891,6 @@ select.input { height: 34px; padding: 0 8px; }
 .dont-ask input { margin: 0; }
 .dont-ask.on { color: var(--warn-ink); }
 .dont-ask[hidden] { display: none; }
-/* Limits read as a warning when they are off, as Don't ask does when it is on. */
-.limits-toggle.on { color: var(--warn-ink); }
 .worktree-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
 .worktree-toggle input { margin: 0; }
 .branch { font-size: 12px; color: var(--muted); }
@@ -903,11 +923,6 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .affix { display: inline-flex; align-items: center; gap: 4px; }
 .affix .unit { color: var(--faint); font-size: 13px; }
 .affix .input.setting.narrow { width: 7.5em; }
-.limits { display: grid; grid-template-columns: minmax(0, 1fr) 9em 9em; gap: 8px 10px; align-items: center; max-width: 460px; }
-.limits .input.setting.narrow, .limits .affix { width: 100%; }
-.limits .affix .input.setting.narrow { flex: 1; min-width: 0; width: auto; }
-.limit-head { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
-.limit-name { font-size: 13.5px; color: var(--ink-2); }
 .warn-text { color: var(--warn-ink-2); }
 .save-bar {
   position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between;
@@ -1190,7 +1205,6 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .ws-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); }
   .ws-row .end { grid-column: 2; margin-left: 0; justify-content: flex-start; }
   .ws-row .confirm-text { text-align: left; }
-  .limits { grid-template-columns: minmax(0, 1fr) 7.5em 7.5em; }
   .ask-bar .model-picker { margin-left: 0; flex-basis: 100%; }
   .mp-select { max-width: 100%; }
   .mp-controls { width: 100%; }

@@ -89,10 +89,7 @@ func TestExplorerRoundsFollowTheModelsFamily(t *testing.T) {
 				fake.Turn{Content: "1. Edit main.go."},               // the planner
 				fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
 			)
-			r := newRigWith(t, true, func(c *config.Config) {
-				c.Control.Model = tc.model
-				c.Loop.MaxToolCalls = 100
-			}, turns...)
+			r := newRigCalls(t, true, 100, func(c *config.Config) { c.Control.Model = tc.model }, turns...)
 			if err := r.s.SendPlanned("change main.go"); err != nil {
 				t.Fatal(err)
 			}

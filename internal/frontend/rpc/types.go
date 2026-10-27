@@ -1,5 +1,7 @@
 package rpc
 
+import "github.com/fclaude/nodwyn/internal/budget"
+
 // These structs are the implemented wire contract. The schema generator reads
 // their JSON names; optional request fields use omitempty to express defaults.
 type helloParams struct {
@@ -37,20 +39,15 @@ type openParams struct {
 	// its delegate tool (ADR 27, amended 2026-10-09). Left out, none: the task
 	// talks to its own model alone. Fixed for the task, since the tool list is.
 	Delegates []string `json:"delegates,omitempty"`
-	// Limits false opens a task whose turns have no turn limits (ADR 49).
-	// Left out, or true, its turns stop at Settings' limits.
-	Limits *bool `json:"limits,omitempty"`
+	// Limits are the task's own limits (ADR 49, amended 2026-10-27); left
+	// out, or each one left out, none.
+	Limits *budget.Task `json:"limits,omitempty"`
 }
 
-// limitsSetParams turn a task's turn limits on or off (ADR 49).
+// limitsSetParams replace a task's limits: each one left out is none.
 type limitsSetParams struct {
-	ID string `json:"id"`
-	On bool   `json:"on"`
-}
-
-// limitsState is whether a task's turns stop at the turn limits.
-type limitsState struct {
-	On bool `json:"on"`
+	ID     string      `json:"id"`
+	Limits budget.Task `json:"limits"`
 }
 
 // judgeSetParams choose a task's judge: a [servers.NAME] whose provider

@@ -312,45 +312,53 @@ as `tui` or `run`, takes them after its name. `--plain` is an old flag that
 does nothing. The flags are `--repo DIR`, `--resume ID` (go on with a task;
 it keeps its folder, and a `--repo` beside it must name that folder),
 `--model NAME` (a `[models.NAME]`, or a model on `[control]`'s server),
-`--show-thinking`, `--no-confirm` (every confirm and budget checkpoint is a
+`--show-thinking`, `--no-confirm` (every confirm is a
 no, answered without reading a line, so a script's next line stays its next
 message — for scripts and CI), `--yolo` (turns on the task's Don't ask,
 "Standing approvals" below, which Settings must offer), `--no-keychain`
 (leave the daemon's keychain locked) and `--keychain-tty` (ask for the
 daemon's keychain passphrase on the terminal even when input is a script).
-`--url`, `--max-tool-calls` and the `--budget-*` flags, which set a server
-or limits for one session while line mode ran it itself, are refused, each
-saying where its setting is now: a task in the daemon has config.toml's
-servers and `[budget]` limits, whichever client opened it. The `[budget]` settings and
-checkpoint behavior are described in the README. Defaults stop a turn at 500
-calls, 4h wall time, 10M model tokens (each request's prompt and reply, a
-prompt token read from the provider's cache counted as a tenth) or 200
-irreversible host attempts, and set no spend limit. The soft limits are the hard ones unless
-you set them lower, so by default no checkpoint asks (ADR 35); a soft limit
-left unset follows its hard one. Legacy `loop.max_tool_calls` remains an explicit override.
-At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
-larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
+`--url`, which set a server for one session while line mode ran it itself,
+is refused, saying where its setting is now: a task in the daemon has
+config.toml's servers, whichever client opened it.
 
-In the console a task can do without the turn limits (ADR 49). **Limits**
-beside **In a worktree**, under **Options** on Home, is ticked for a new task
-unless you unticked it for the task before; untick it and
-that task's turns have no limit on tool calls, tokens, actions or time, so a
-turn may work, or wait for your answer, as long as it needs. Its spend limit,
-the request and command timeouts and the progress guard, which stops a turn
-that keeps repeating itself or failing, still apply. The task's heading says
-**No turn limits**, and **Limits** beside its model turns them on or off again
-from the next turn; the conversation says each change. The choice is kept
-when the task is resumed. Only this
-computer makes it: a paired phone's tasks start with their limits on.
+#### A task's limits
 
-The console's Settings page changes these limits, the timeouts
+A task has no limits unless you set some, for that task (ADR 49, amended
+2026-10-27): its turns work, and wait for your answers, as long as they need.
+For the tasks that want a bound, there are five, each set on its own:
+
+| Limit | Line mode | Counts |
+|---|---|---|
+| Tool calls | `--max-tool-calls N` | each turn's tool calls |
+| Writes and commands | `--budget-actions N` | each turn's irreversible host attempts |
+| Tokens | `--budget-tokens N` | each turn's model tokens, each request's prompt and reply, a prompt token read from the provider's cache counted as a tenth |
+| Time | `--budget-wall 1h30m` | each turn's wall time, waits for your answers included |
+| Spend | `--budget-cost USD` | what the whole task's requests cost, as far as known |
+
+Each is one number, and reaching it stops the turn without asking first.
+In the console they are on the task's panel, under its monitor: **Limits**
+says **None** in one line until you choose **Add a limit**, pick a kind and
+type its value (a time as `45m` or `1h30m`, a spend as `5` or `2.50`);
+each limit set is a chip, which you click to change and whose cross removes
+it. In line mode the flags set the limits of the task it opens, or, with
+`--resume`, replace the ones they name on the task it resumes, `0` removing
+one. A change applies from the next turn, the conversation says it, and the
+task keeps its limits when it is resumed. A run keeps the limits it started
+with until it ends. A paired phone may add a limit or lower one, never raise
+or remove one. The request and command timeouts and the progress guard,
+which stops a turn that keeps repeating itself or failing, apply to every
+task. A `[budget]` table, or `loop.max_tool_calls`, that an older
+`config.toml` still has loads and sets nothing.
+
+The console's Settings page changes the timeouts
 (`loop.request_timeout`, `loop.shell_timeout`), the window, the model
 providers and the models and efforts to choose between ("Choosing models"
 below), the default model's tuning, the judges ("The judge" below) and what
 a task does without asking (`[approval]`, "Confirms" below), keeping every
 other line of `config.toml` as written. It is tabs, each at an address of its
 own (`#/settings/models`, `#/settings/judge`): General (its approvals, and
-under Advanced the limits, the context window and the container runtime),
+under Advanced the timeouts, the context window and the container runtime),
 Models, Judge, Keys & devices and This browser. A choice made there waits in
 a bar at the foot of the page and is saved with the others; only keys, the
 passphrase, a provider or a model (each its own form) and This browser act at
@@ -810,8 +818,8 @@ can mix the two, switch by switch ([docs/scheme.md](scheme.md) §9.8).
 `nodwyn run --yolo` answers a run's ordinary confirms with yes, so a
 benchmark harness or a test rig never stops to ask. (Line mode's `--yolo` is
 not this: it turns on the task's Don't ask, "Standing approvals" below, and
-the task stays one a person answers, whose security confirms and
-checkpoints ask and whose prompts are a chat's.) In the full loop, with nobody watching, nodwyn's defaults also
+the task stays one a person answers, whose security confirms
+ask and whose prompts are a chat's.) In the full loop, with nobody watching, nodwyn's defaults also
 change (docs/scheme.md §9): the system prompt is how to work rather than
 what to tell an approver, and a turn ends on evidence — a change, and a test
 run after it that did not fail — with an honest way out when the tests cannot
@@ -867,16 +875,17 @@ overrule its refusals. Still denied, exactly as with a human at the prompt:
   rather than pretending, and so `/optimize`, which edits `.nodwyn/`, needs a
   person at the prompt.
 
-Budgets are what stop a runaway turn when nobody is watching, so set
-`[budget]`'s limits, and the run's `--budget-wall` and `--max-turns`, for the
+Limits are what stop a runaway turn when nobody is watching, and a task has
+none unless you give it some, so give the run's task its limits ("A task's
+limits" above) and the run its `--budget-wall` and `--max-turns`, for the
 job. A turn
 that one of them, or the progress guard, stops is not left one edit past its
 tests: each time a test run passes after the turn changed something, nodwyn
 keeps the changes as they are, and on the stop it puts the files back to that
 state. The files it replaced are saved in the session's scratch directory
 (`kept/discarded`), the stop says what it did, and a credential file, a
-protected path and a link are left alone. A chat, your own Stop and a
-checkpoint you answered put nothing back.
+protected path and a link are left alone. A chat and your own Stop put
+nothing back.
 Every decision is logged with its verdict and `nodwyn replay` shows exactly
 what the run did.
 
@@ -885,8 +894,7 @@ Use it on a throwaway checkout. The guard makes yolo survivable, not safe.
 **Between turns.** A supervised run (`nodwyn run`) still asks a person
 before each next turn. `nodwyn run --unattended` does not ask anything: tool
 confirms are declined unless a standing approval covers them (or answered
-as `--yolo` answers them, if given too), soft budget checkpoints go on to
-the hard limit, and the run goes on after a turn only if that turn marked a
+as `--yolo` answers them, if given too), and the run goes on after a turn only if that turn marked a
 plan step done, stopping otherwise for you to review and
 `nodwyn run resume --unattended SESSION`. With `--judge` instead of
 `--yolo`, the judge answers each ordinary confirm: it is shown the task,
@@ -914,10 +922,12 @@ The daemon holds the keychain and the binding table; every session it opens
 inherits them, so the run has exactly the credentials you bound and no way
 to acquire others. `--yolo` there is a property of **that run**, not of the
 daemon: a daemon left running never auto-approves a session someone opens
-later from the browser. `nodwyn run status|stop` follow the run, and its
-turns are bounded by `--max-turns` and `--budget-wall`, and its spend by
-`--budget-cost USD` if you give one (the whole run's; it ends the run
-`limited`). `--yolo` answers the
+later from the browser. `nodwyn run status|stop` follow the run. Its limits
+are yours to give, none unless you do: `--max-turns` and `--budget-wall` (the
+whole run's deadline) bound the run, and its task takes the limits a task
+takes ("A task's limits" above), each turn's time as `--turn-wall`; a
+`--budget-cost USD` is the whole run's spend, and reaching it ends the run
+`limited`. `--yolo` answers the
 tool confirms inside each turn; going on to the next turn still waits for a
 yes at the run checkpoint, from the browser or the terminal client, unless
 the run is `--unattended`.
@@ -1266,7 +1276,7 @@ Every client shows each judge request as one line
 (`[judge choice: 318→34 tok · ≈$0.0002]` in the terminal; behind
 **Activity** in the console). They also show the judge's
 running total when it has been asked: in the console's side panel ("Judge,
-this task"), at a budget checkpoint, and in the TUI's `:budget` (this turn
+this task"), and in the TUI's `:budget` (this turn
 and this session). Settings › Judge holds all of it: the judges, the default,
 what it sees, when it allows a command, how long it waits, and under a fold
 the default judge's own prices. Judge tokens are not model
@@ -2299,8 +2309,7 @@ types one, a cache write costs the input price and a long prompt no more
 than a short one. A reported cost always wins. Ollama reports neither, and its line reads as before; so does an older
 log. The TUI's `:budget` adds the turn's spend over every model request (the
 planner's, sub-agents' and compaction's included) and the judge's requests
-apart (priced by `[judge] price_*`, else its provider's, "The judge" above), and a budget
-checkpoint says what the turn has cost so far. The
+apart (priced by `[judge] price_*`, else its provider's, "The judge" above). The
 token budget counts a prompt token the provider read from its cache as a
 tenth of one, about what it costs and what it asks of the server; one it
 does not report on counts in full.
@@ -2362,18 +2371,18 @@ cache, and the prompt is that plus what it wrote and the uncached rest, which
 its `input_tokens` alone is; an hour's write costs twice the input price, but
 the estimate prices it at the published (five minute) write price.
 
-A spend limit, `cost_soft` and `cost_hard` in `[budget]` (US dollars), is
-off unless you set it. It counts the known cost of the whole task, every
-turn and a resumed session's history included: a checkpoint asks past
-`cost_soft`, and at `cost_hard` the task stops until you raise it. A request
-whose cost nobody knows is not counted, and a note says so the first time.
-The README has the details; `nodwyn run --budget-cost USD` sets it for one
-run.
+A spend limit is one of a task's own limits ("A task's limits" above), in
+US dollars, and off unless you set it on the task. It counts the known cost
+of the whole task, every turn and a resumed session's history included, and
+at the limit the task stops until you raise or remove it. A request whose
+cost nobody knows is not counted, and a note says so the first time.
 
 The console's right panel keeps a compact summary above its content:
 total task spend, current turn time (including waits for your answer) and
 context fullness. The three positions stay reserved even before a figure is
-known. This turn's tool calls against their configured limit are in
+known. Under them is the task's **Limits**: **None** in one line, or a chip
+for each limit set, with **Add a limit** ("A task's limits" above). This
+turn's tool calls, against the task's limit when it has one, are in
 Statistics' **This turn**, and the cache rate is Statistics' **Token cache
 rate** (Totals): raw prompt tokens read from cache divided by raw prompt tokens
 across replies that report both, not the percentage of requests hitting cache.
@@ -2404,7 +2413,7 @@ and switches. Narrow screens use ordinary stacked sections and page
 scrolling instead of a nested scroll area.
 
 On Home, describe the task and choose its folder, model, and, under
-**Options**, its worktree, helpers and turn limits, as usual. **Options ›
+**Options**, its worktree and helpers, as usual. **Options ›
 Schedule…** opens **Schedule**, whether or not anything is typed yet: the
 message for each run is a required field there, started from what the box
 holds. Under **Repeat**, choose when it runs:
@@ -2579,9 +2588,10 @@ daemon remembers its skip until the writer releases it. If the daemon stops
 before then, that unrecorded interval becomes a late run on restart. A single
 data-directory lock prevents two daemons from dispatching the same timer.
 
-Scheduled messages use normal approvals and discard Don't ask. Settings’
-turn limits still apply unless this computer turns the task’s **Limits** off;
-the spend limit counts each run and its human follow-ups, then resets at the
+Scheduled messages use normal approvals and discard Don't ask. The task’s
+own limits apply to each run, none unless set on the task; a schedule’s
+spend limit per run replaces the task’s spend limit while a run goes, and
+counts each run and its human follow-ups, then resets at the
 next scheduled or manual run. Statistics keeps whole-task totals and shows
 **This run** separately for the loaded scheduled run. Unknown prices remain outside the limit.
 A scheduled task closes after 15 idle minutes with no pending answer, freeing
@@ -2975,8 +2985,8 @@ and nothing is sent after that. The retries are not configurable.
 | `control model … unreachable` | is the `[control]` URL right and the server up? For Ollama, `curl <url>/api/version` |
 | first turn takes 10–60 s | another client holds the model server's slot, or the prefix is cold; later turns are sub-second |
 | every request takes 30–50 s | the prefix cache is missing: check `:log` for `llm.req` — a trim (elided count jumped) or a new user turn re-prefills once; if it is every request, another client is evicting the server's slot between your requests (a single-slot Ollama, for example) |
-| the model loops on a denied call, or keeps failing to edit one file | the progress guard stops repeated denials, and one tool failing on one file in six of the last sixteen responses; inspect the log before continuing. Budgets also bound each turn, and `--max-tool-calls N` sets a hard call ceiling |
-| `hard stop: tool_calls budget reached` | the turn ended; the log has everything; rephrase smaller, or raise `--max-tool-calls` |
+| the model loops on a denied call, or keeps failing to edit one file | the progress guard stops repeated denials, and one tool failing on one file in six of the last sixteen responses; inspect the log before continuing. A task's own limits bound each turn when set: `--max-tool-calls N`, or the task's panel |
+| `hard stop: tool_calls budget reached` | the turn reached the task's tool-call limit; the log has everything; rephrase smaller, or raise or remove the limit on the task's panel |
 | a tool call errored | `:log 20` — the `tool.result` line has the exact error the model saw |
 | a confirm never appeared but a file changed | `:allow` — a standing approval covered it; the `guard.decision` line names which |
 | a task is missing from every list | its log cannot be read (empty after a crash, cut short, written by a newer nodwyn, or copied under another name): the other tasks are listed without it, and `nodwyn sessions` names it on stderr |

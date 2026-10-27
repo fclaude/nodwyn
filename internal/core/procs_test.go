@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/config"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -59,7 +58,7 @@ func TestPollingARunningCommandIsNotAProgressStop(t *testing.T) {
 	poll := func(id string) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 0}}}}
 	}
-	r := newRigWith(t, false, func(c *config.Config) { c.Loop.MaxToolCalls = 20 },
+	r := newRigCalls(t, false, 20, nil,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "shell-start", Args: map[string]any{"cmd": "sh", "args": []any{"-c", "exec sleep 60"}}}}},
 		poll("r1"), poll("r2"), poll("r3"), poll("r4"), poll("r5"), poll("r6"),
 		fake.Turn{Content: "still running; I will check again when it is done"},

@@ -80,7 +80,6 @@ type Config struct {
 	Window  Window `toml:"window"`
 	Policy  Policy `toml:"policy"`
 	Loop    Loop   `toml:"loop"`
-	Budget  Budget `toml:"budget"`
 	Judge   Judge  `toml:"judge"`
 	Docs    Docs   `toml:"docs"`
 	MCP     MCP    `toml:"mcp"`
@@ -506,7 +505,6 @@ func (d Docs) validate() error {
 
 // Loop bounds one turn of the agent loop.
 type Loop struct {
-	MaxToolCalls   int    `toml:"max_tool_calls"`  // legacy hard override; zero when absent, --max-tool-calls overrides
 	RequestTimeout string `toml:"request_timeout"` // per model request, e.g. "30m"
 	ShellTimeout   string `toml:"shell_timeout"`   // per shell-exec, e.g. "10m"
 	// Profile is which of the default loop's two configurations a session
@@ -684,10 +682,7 @@ func Default() Config {
 	return Config{
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 16 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
-		Loop:   Loop{MaxToolCalls: 0, RequestTimeout: "30m", ShellTimeout: "10m", Profile: ProfileAuto},
-		// The soft limits are the hard ones: no checkpoint interrupts a turn
-		// unless the person asks for one (ADR 35).
-		Budget: Budget{ToolCallsSoft: 500, ToolCallsHard: 500, TokensSoft: 10_000_000, TokensHard: 10_000_000, ActionsSoft: 200, ActionsHard: 200, WallSoft: "4h", WallHard: "4h"},
+		Loop:   Loop{RequestTimeout: "30m", ShellTimeout: "10m", Profile: ProfileAuto},
 		// No judge until judge.server names a provider for it (ADR 46); the
 		// plan gate sees the ask and the plan once one does (ADR 19).
 		Judge:    Judge{Timeout: "10s", Content: JudgeContentPlan, ApproveThreshold: 0.8},
@@ -729,19 +724,18 @@ func Parse(raw []byte) (Config, error) {
 	}
 	// [tasks] chose how the console started a task (ADR 18); a chat is the
 	// only way now (ADR 35), and a file that still has the table loads.
-	undec := slices.DeleteFunc(md.Undecoded(), func(k toml.Key) bool { return len(k) > 0 && k[0] == "tasks" })
+	// [budget] and loop.max_tool_calls set limits for every task; a task's
+	// limits are its own now, none unless set (ADR 49, amended 2026-10-27),
+	// and a file that still has them loads without them. A key they never
+	// had is still unknown.
+	undec := slices.DeleteFunc(md.Undecoded(), func(k toml.Key) bool {
+		return len(k) > 0 && k[0] == "tasks" || retiredLimit(k)
+	})
 	if len(undec) > 0 {
 		return Config{}, fmt.Errorf("unknown keys: %v", undec)
 	}
-	c.Budget.softFollowsHard(md)
 	c.Window.Fixed = md.IsDefined("window", "high_water") || md.IsDefined("window", "low_water")
 	c.Window.ResultsFixed = md.IsDefined("window", "max_result_tokens")
-	if md.IsDefined("loop", "max_tool_calls") && c.Loop.MaxToolCalls <= 0 {
-		return Config{}, fmt.Errorf("loop.max_tool_calls must be positive when set")
-	}
-	if md.IsDefined("loop", "max_tool_calls") && md.IsDefined("budget", "tool_calls_hard") {
-		return Config{}, fmt.Errorf("set budget.tool_calls_hard or legacy loop.max_tool_calls, not both")
-	}
 	if err := c.resolveServers(); err != nil {
 		return Config{}, err
 	}
@@ -841,9 +835,6 @@ func (c Config) Validate() error {
 		if !l1.IsClass(cl) {
 			return fmt.Errorf("policy.l1.allow_classes: unknown class %q (known: %v)", cl, l1.ClassNames())
 		}
-	}
-	if _, err := c.Budget.Limits(c.Loop.MaxToolCalls); err != nil {
-		return err
 	}
 	for name, v := range map[string]string{"loop.request_timeout": c.Loop.RequestTimeout, "loop.shell_timeout": c.Loop.ShellTimeout} {
 		if d, err := time.ParseDuration(v); err != nil || d <= 0 {

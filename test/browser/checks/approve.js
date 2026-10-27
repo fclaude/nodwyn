@@ -22,7 +22,7 @@ check(async () => {
   let socket, approveReplyID = null, heldApproveReply = null, failNextApprove = false;
   // A paired device's hello lacks the methods that are this computer's.
   let deviceHello = false;
-  const computerOnly = ["session.model.set", "session.judge.set", "session.limits.set", "session.binding.create", "settings.write", "settings.control.write"];
+  const computerOnly = ["session.model.set", "session.judge.set", "session.binding.create", "settings.write", "settings.control.write"];
   let approvalEventSeen = false, approvalInfoIDs = new Set(), heldApprovalInfo = null;
   await page.routeWebSocket("**/socket", (ws) => {
     const server = ws.connectToServer();

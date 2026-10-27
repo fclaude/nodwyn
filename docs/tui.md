@@ -275,10 +275,10 @@ A new message without a gate outcome does not inherit the previous message's
 plan. No recorded outcome is shown as absence, never as success or an assertion
 that the judge is disabled. Use `:log` for older outcomes and diagnostic notes.
 
-`:budget` shows the session's own initial soft/hard limits for the current
-session lifetime, including the legacy tool-call override and its spend limit
-when it has one (a run's `--budget-cost`), the same locally and over
-`--socket`. For the latest submitted
+`:budget` shows the task's own limits, those its next turn starts from:
+"no limit" for each not set, which is every one unless the task was given
+some (ADR 49, amended 2026-10-27), and its spend limit when it has one, the
+same locally and over `--socket`. For the latest submitted
 user-message or Scheme-evaluation turn it then shows what its model requests
 cost, as far as the provider reported or the model's prices estimate (and the
 share of prompt tokens read from cache), or that the spend is unknown and why,

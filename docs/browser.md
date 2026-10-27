@@ -227,11 +227,9 @@ unsaved changes keeps those made in every tab. The tabs:
   write to a protected file, content that looks like a credential and a
   command built from what a tool returned always ask. The transcript says
   which calls went ahead, which the judge allowed, and why it refused one.
-  - **Advanced** — **Limits**: each turn's tool calls, tokens used, actions
-  and time: where it stops, and, if you set it lower, where it asks first
-  whether to go on (by default it doesn't); the spend limit on a whole
-  task, in dollars, off until you set where it stops; and how long a model
-  reply and a command may take. **Context window**: the water marks between
+  - **Advanced** — **Waiting**: how long a model reply and a command may
+  take. A task's limits are not here: they are the task's own, set on its
+  panel (below). **Context window**: the water marks between
   which a task's context is summarized or trimmed (unset, they follow each
   model's context less its reply cap; set, they shrink only for a model that
   cannot hold them), the largest tool result shown whole, and the fallback
@@ -430,7 +428,7 @@ picked, it starts in the first one on the list. The **Work in** chips are
 the one folder control. The bar holds what every task needs: **Attach**,
 **Options**, the model (its Effort select is left out for a model that takes
 none) and Send. **Options** holds the rare choices, **In a worktree**,
-**Limits**, the helpers and **Schedule…**, and says how many differ from
+the helpers and **Schedule…**, and says how many differ from
 their defaults; Escape closes it. **Enter** starts the task and
 **Shift+Enter** breaks the line, as in a task's reply box (Cmd or Ctrl+Enter
 starts it too), and a line under the box says so. **Schedule…** opens the
@@ -531,19 +529,24 @@ attachment is one), no commit its base lacks. Otherwise both stay, and
 resuming the task works in them again; a worktree that was removed is made
 again on resume.
 
-**Limits.** Under **Options**, beside **In a worktree**, **Limits** is ticked for a new
-task unless it was unticked for the task before (ADR 41, amended 2026-10-27): its turns stop at the limits in Settings › General (tool calls, tokens,
-actions and time). Untick it and that task's turns have none of the four, so
-a turn may work, or wait for your answer, as long as it needs
-([ADR 49](adr/0049-scheduled-tasks.md)); the label turns amber while it is
-unticked. The spend limit, the timeouts and the progress guard still apply.
-Starting the task ticks it again for the next one. The task's heading then says
-**No turn limits**, Statistics' **This turn** says "no turn limits" and shows
-counts without bars, and Details › Budget says "no limit"; the conversation
-says when the limits went off or on, and who chose. **Limits** beside
-the task's model turns them on or off again, from its next turn; it is not
-offered during a run, which keeps the limits it started with. Only this
-computer has either box: a paired device's tasks start with their limits on.
+**Limits.** A task has none unless you set some for it
+([ADR 49](adr/0049-scheduled-tasks.md), amended 2026-10-27): its turns work,
+and wait for your answer, as long as they need. Its panel says so in one
+line under the monitor, **Limits** **None**, beside **Add a limit**, which
+shows the kinds not yet set: tool calls, writes and commands, tokens and
+time, each a turn's, and spend, the whole task's. Picking one opens a field
+for its value (a time as `45m` or `1h30m`, a spend as `5` or `2.50`); Enter
+or **Set** saves it, Escape or **Cancel** leaves it, and a value that cannot
+be a limit is said and not sent. Each limit set is a chip: its text opens
+the same field to change it, its cross removes it. A change is one
+`session.limits.set` with every limit the task then has, applies from the
+next turn, and is a line in the conversation; a turn stops at a limit
+without asking first. Statistics' **This turn** shows a bar against each
+limit set and "no limits" without any, and Details › Budget says "no
+limit" for each not set. During a run the chips are read only: a run keeps
+the limits it started with. A paired device may add a limit or lower one,
+which only stops a turn sooner; it has no cross, and the daemon refuses it a
+raise. Home offers no limits: a task starts without any.
 
 **The task list.** The sidebar puts what needs your answer first, across
 folders. Every other task is under its folder, newest activity first, and
@@ -738,7 +741,8 @@ outlasted the console, was reached wherever the console is, and could trust a
 project's startup code; the person stays the terminal's and the passkey's to
 make, so that no leak of this computer's sign-in makes one (ADR 30, amended
 2026-10-19). The person's device makes the choices this computer makes:
-a task's model, judge and helpers, its turn limits, its schedule, a key the
+a task's model, judge and helpers, raising or removing its limits, its
+schedule, a key the
 model asks for, unlocking the keychain. To change setup (Settings, providers
 and models, credentials and OAuth sign-in, the keychain's creation and
 passphrase, MCP servers, workspaces, the index, the policy files and
@@ -1061,7 +1065,7 @@ directory) is sent no token.
 What the link may do is the other host's to say. One invited by your
 device signed in there with your passkey makes your choices for its tasks
 (a task's model, judge, helpers and limits, schedules, a key the model asks
-for, unlocking its keychain), and changes its limits and models (amended
+for, unlocking its keychain), and changes its settings and models (amended
 2026-10-23); one invited from its terminal answers and starts tasks, as a
 device paired by a plain invitation does. A link changes none of the other
 host's other setup (its folders, MCP servers, credentials, keychain,

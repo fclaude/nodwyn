@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
@@ -25,12 +26,12 @@ func runTask(args []string) error {
 	socket := flags.String("socket", "", "daemon socket")
 	repo := flags.String("repo", ".", "repository directory")
 	task := flags.String("task", "", "UTF-8 task file (at most 64 KiB)")
-	wall := flags.String("budget-wall", "", "required total run deadline, e.g. 2h")
-	turns := flags.Int("max-turns", 0, "required maximum number of turns")
-	cost := flags.Float64("budget-cost", 0, "spend limit for the whole run in US dollars, as far as costs are known (replaces budget.cost_hard)")
+	wall := flags.String("budget-wall", "", "the whole run's deadline, e.g. 2h (none unless given)")
+	turns := flags.Int("max-turns", 0, "the most turns the run may take (none unless given)")
+	limits := addLimitFlags(flags, "turn-wall")
 	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
 	judge := flags.Bool("judge", false, "the judge answers this run's ordinary confirms instead of a person, allowing a call only when it judges it called for and safe; security confirms are declined; needs a [judge] server whose key is stored")
-	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done or skipped")
+	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), and the run goes on from a turn only when it marked a plan step done or skipped")
 	sandbox := flags.String("sandbox", "", `"container" declares this machine the run's disposable sandbox (ADR 55): its tools may read and write any path but nodwyn's own directories and credential files, what its commands start in the background keeps running, and it implies --yolo and --unattended. Only for a machine that is thrown away after the run`)
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -46,12 +47,22 @@ func runTask(args []string) error {
 	}
 	var params any
 	if command == "start" {
-		if flags.NArg() != 0 || *task == "" || *turns < 1 {
-			return errors.New("run requires --task FILE --budget-wall DURATION --max-turns N")
+		if flags.NArg() != 0 || *task == "" {
+			return errors.New("run requires --task FILE")
 		}
-		duration, err := time.ParseDuration(*wall)
-		if err != nil || duration <= 0 {
-			return errors.New("run requires a positive --budget-wall")
+		// A run's own limits are optional, as a task's are (ADR 49, amended
+		// 2026-10-27).
+		if *turns < 0 {
+			return errors.New("--max-turns is a number of turns, or 0 for none")
+		}
+		if *wall != "" {
+			if duration, err := time.ParseDuration(*wall); err != nil || duration <= 0 {
+				return errors.New("--budget-wall is a positive duration, such as 2h")
+			}
+		}
+		taskLimits, err := limits.over(budget.Task{})
+		if err != nil {
+			return err
 		}
 		file, err := os.Open(*task)
 		if err != nil {
@@ -72,12 +83,15 @@ func runTask(args []string) error {
 		if *judge && *yolo {
 			return errors.New("--judge and --yolo exclude each other: the judge answers what --yolo would")
 		}
-		if *cost < 0 {
-			return errors.New("--budget-cost is US dollars, more than 0")
+		params = map[string]any{"repo": root, "task": string(data), "auto_approve": *yolo, "unattended": *unattended, "judge": *judge}
+		if *wall != "" {
+			params.(map[string]any)["wall"] = *wall
 		}
-		params = map[string]any{"repo": root, "task": string(data), "wall": *wall, "max_turns": *turns, "auto_approve": *yolo, "unattended": *unattended, "judge": *judge}
-		if *cost > 0 {
-			params.(map[string]any)["cost"] = *cost
+		if *turns > 0 {
+			params.(map[string]any)["max_turns"] = *turns
+		}
+		if taskLimits != (budget.Task{}) {
+			params.(map[string]any)["limits"] = taskLimits
 		}
 		if *sandbox != "" {
 			params.(map[string]any)["sandbox"] = *sandbox

@@ -24,17 +24,17 @@ let starting = false; // a start is in flight: one task per ask
 
 // What the composer chose last for a new task, which the next one starts
 // with (ADR 41, amended 2026-10-27): the host it runs on and, for each host,
-// its model and effort, its judge, its helpers, its limits and, for each
-// folder, whether it opens in a worktree. A field left out is that host's
-// default: Settings' model, effort and judge, no helpers, the limits on, and
-// a worktree for a known git workspace. This computer's daemon keeps it
+// its model and effort, its judge, its helpers and, for each folder,
+// whether it opens in a worktree. A field left out is that host's default:
+// Settings' model, effort and judge, no helpers, and a worktree for a known
+// git workspace. A task starts without limits (ADR 49, amended 2026-10-27). This computer's daemon keeps it
 // (newtask.last), so the app's window, another browser and a console on
 // another address start with it too, where this browser's storage, which is
 // one origin's, has nothing (ADR 30); a daemon without the method leaves it
 // to this browser. A linked host's choices are kept here too, under its
 // name, since they are this person's.
 const KEPT_KEY = "nodwyn-new-task";
-let kept = null; // {runs_on, hosts: [{host, model, effort, judge, helpers, no_limits, worktree}]}, once read
+let kept = null; // {runs_on, hosts: [{host, model, effort, judge, helpers, worktree}]}, once read
 let keeper = null; // this computer's {conn, desk}, which reads and keeps it
 // loadKept reads the choices once, or is null while the daemon's are not
 // read yet.
@@ -134,10 +134,6 @@ function helpersOf(desk, driving) {
   const helpers = choicesFor(desk.host).helpers;
   return Array.isArray(helpers) ? helpers.filter((name) => offered.has(name)) : [];
 }
-
-// Whether the next task's turns stop at Settings' limits (ADR 49): ticked
-// unless they were unticked for the task before.
-const limitsOf = (host) => !choicesFor(host).no_limits;
 
 // helpersBox is the control for them: a fold that says how many are chosen,
 // and lists the other models with the labels each carries.
@@ -476,31 +472,6 @@ export function renderHome(root, ctx) {
         h("span", {}, "In a worktree"),
       )
     : null;
-  // Turning a task's limits off is this computer's choice, as Settings'
-  // limits are (ADR 49): a console that cannot reach session.limits.set,
-  // a paired device's, starts every task with them on and shows no box.
-  const limitsOn = () => !limitsBox || limitsOf(target.name);
-  const limitsBox = conn.has("session.limits.set")
-    ? h(
-        "label",
-        { class: `worktree-toggle limits-toggle${limitsOf(target.name) ? "" : " on"}`, title: "Stop each turn at the limits in Settings › General: tool calls, tokens, actions and time. Untick to let this task run, and wait for your answers, as long as it needs; its spend limit still applies." },
-        h("input", {
-          type: "checkbox",
-          id: "new-task-limits",
-          checked: limitsOf(target.name),
-          onchange: (event) => {
-            const on = event.target.checked;
-            keep(target.name, (e) => {
-              if (on) delete e.no_limits;
-              else e.no_limits = true;
-            });
-            event.target.parentElement.classList.toggle("on", !on);
-            count();
-          },
-        }),
-        h("span", {}, "Limits"),
-      )
-    : null;
   // The rare choices sit behind one control, which says how many differ from
   // the defaults, so the bar holds what every task needs: the files, the
   // model and Send.
@@ -512,7 +483,7 @@ export function renderHome(root, ctx) {
     : null;
   const optionsCount = h("span", { class: "count", hidden: true });
   const count = () => {
-    const changed = (worktreeBox && !notGit && worktree() !== worktreeDefault() ? 1 : 0) + (limitsOn() ? 0 : 1) + (canDelegate && helpersOf(desk, selection()?.name).length ? 1 : 0);
+    const changed = (worktreeBox && !notGit && worktree() !== worktreeDefault() ? 1 : 0) + (canDelegate && helpersOf(desk, selection()?.name).length ? 1 : 0);
     optionsCount.textContent = String(changed);
     optionsCount.hidden = !changed;
   };
@@ -548,17 +519,16 @@ export function renderHome(root, ctx) {
   const options = h(
     "details",
     { class: "options", id: "new-task-options", onkeydown: (event) => { if (event.key === "Escape") options.open = false; } },
-    h("summary", { class: "btn", title: "Worktree, limits, helpers and scheduling" }, "Options", optionsCount),
+    h("summary", { class: "btn", title: "Worktree, helpers and scheduling" }, "Options", optionsCount),
     h(
       "div",
       { class: "options-pop stack-md" },
       option(worktreeBox, notGit ? "Only a git repository can have worktrees, and this folder is not one." : "Work on a branch of its own, so nothing you or other tasks are editing is touched."),
-      option(limitsBox, "Stop each turn at Settings' limits on tool calls, tokens, actions and time."),
       helpersSlot,
       option(scheduleButton, "Run this task later, or on a repeat, instead of now."),
     ),
   );
-  options.hidden = !worktreeBox && !limitsBox && !scheduleButton && !canDelegate;
+  options.hidden = !worktreeBox && !scheduleButton && !canDelegate;
   count();
   // Runs on chooses the host the task starts on (ADR 54): the folders, the
   // models and the choices above follow it. A host that cannot be read now
@@ -615,8 +585,8 @@ export function renderHome(root, ctx) {
           // And the helpers ticked, if any.
           const helpers = canDelegate ? helpersOf(desk, selection()?.name) : [];
           if (helpers.length) params.delegates = [...helpers].sort();
-          // Limits are on unless unticked: only then is the choice sent.
-          if (!limitsOn()) params.limits = false;
+          // A task starts without limits; they are set on its panel, for
+          // the few tasks that want one (ADR 49, amended 2026-10-27).
           const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
           opened = info.id;
           // An image waits for its own confirm, which the task's page shows.

@@ -169,6 +169,27 @@
       ],
       "type": "object"
     },
+    "budget.Task": {
+      "properties": {
+        "actions": {
+          "type": "integer"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "tokens": {
+          "type": "integer"
+        },
+        "tool_calls": {
+          "type": "integer"
+        },
+        "wall_ns": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
     "config.MCPServer": {
       "properties": {
         "args": {
@@ -477,9 +498,6 @@
         },
         "model": {
           "type": "string"
-        },
-        "no_limits": {
-          "type": "boolean"
         },
         "worktree": {
           "items": {
@@ -2518,9 +2536,6 @@
         "auto_approve": {
           "type": "boolean"
         },
-        "cost": {
-          "type": "number"
-        },
         "deadline": {
           "format": "date-time",
           "type": "string"
@@ -2718,16 +2733,26 @@
     },
     "log.SessionLimits": {
       "properties": {
+        "actions": {
+          "type": "integer"
+        },
         "actor": {
           "type": "string"
         },
-        "on": {
-          "type": "boolean"
+        "cost": {
+          "type": "number"
+        },
+        "tokens": {
+          "type": "integer"
+        },
+        "tool_calls": {
+          "type": "integer"
+        },
+        "wall_ns": {
+          "type": "integer"
         }
       },
-      "required": [
-        "on"
-      ],
+      "required": [],
       "type": "object"
     },
     "log.SessionModel": {
@@ -7690,7 +7715,7 @@
       "$ref": "#/$defs/core.JudgeState"
     },
     "result.session.limits.set": {
-      "$ref": "#/$defs/rpc.limitsState"
+      "$ref": "#/$defs/budget.Task"
     },
     "result.session.list": {
       "items": {
@@ -9044,24 +9069,13 @@
         "id": {
           "type": "string"
         },
-        "on": {
-          "type": "boolean"
+        "limits": {
+          "$ref": "#/$defs/budget.Task"
         }
       },
       "required": [
         "id",
-        "on"
-      ],
-      "type": "object"
-    },
-    "rpc.limitsState": {
-      "properties": {
-        "on": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "on"
+        "limits"
       ],
       "type": "object"
     },
@@ -9634,7 +9648,7 @@
         "limits": {
           "anyOf": [
             {
-              "type": "boolean"
+              "$ref": "#/$defs/budget.Task"
             },
             {
               "type": "null"
@@ -9992,11 +10006,18 @@
         "auto_approve": {
           "type": "boolean"
         },
-        "cost": {
-          "type": "number"
-        },
         "judge": {
           "type": "boolean"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/budget.Task"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "max_turns": {
           "type": "integer"
@@ -10020,8 +10041,6 @@
       "required": [
         "repo",
         "task",
-        "wall",
-        "max_turns",
         "auto_approve"
       ],
       "type": "object"
@@ -10379,7 +10398,7 @@
           "$ref": "#/$defs/core.JudgeState"
         },
         "limits": {
-          "type": "boolean"
+          "$ref": "#/$defs/budget.Task"
         },
         "mcp": {
           "items": {
@@ -11276,9 +11295,6 @@
       "properties": {
         "auto_approve": {
           "type": "boolean"
-        },
-        "cost": {
-          "type": "number"
         },
         "deadline": {
           "format": "date-time",
@@ -13144,9 +13160,6 @@
         "name": {
           "type": "string"
         },
-        "no_limits": {
-          "type": "boolean"
-        },
         "paused": {
           "type": "boolean"
         },
@@ -13216,9 +13229,6 @@
         },
         "name": {
           "type": "string"
-        },
-        "no_limits": {
-          "type": "boolean"
         },
         "paused": {
           "type": "boolean"

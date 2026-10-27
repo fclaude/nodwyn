@@ -101,26 +101,27 @@ func TestCLIResume(t *testing.T) {
 	}
 }
 
-func TestCLIBudgetCheckpoint(t *testing.T) {
+// Line mode's --max-tool-calls is the task's limit (ADR 49, amended
+// 2026-10-27): the turn stops at it without a checkpoint asking first, and
+// says why. A [budget] config.toml still has loads and sets nothing.
+func TestCLITurnStopsAtItsLimit(t *testing.T) {
 	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}}, fake.Turn{Content: "finished"})
 	defer srv.Close()
 	dir := t.TempDir()
 	writeConfig(t, dir, controlOn(srv.URL, "test-model")+"[budget]\ntool_calls_soft=1\ntool_calls_hard=3\n")
-	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--no-keychain", "--repo", t.TempDir())
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--max-tool-calls", "1", "--no-keychain", "--repo", t.TempDir())
 	cmd.Dir = dir
 	cmd.Env = lineEnv(t, dir)
-	cmd.Stdin = strings.NewReader("list twice\n4\n3\n:q\n")
+	cmd.Stdin = strings.NewReader("list twice\n:q\n")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("CLI: %v\n%s", err, out)
 	}
-	for _, want := range []string{"checkpoint: tool_calls", "hard limit", "finished"} {
-		if !strings.Contains(string(out), want) {
-			t.Fatalf("missing %q:\n%s", want, out)
-		}
+	if !strings.Contains(string(out), "tool_calls budget reached") || strings.Contains(string(out), "checkpoint") || strings.Contains(string(out), "finished") {
+		t.Fatalf("the turn did not stop at its limit:\n%s", out)
 	}
-	if len(srv.Requests) != 2 {
-		t.Fatal("checkpoint failed to resume the turn")
+	if len(srv.Requests) != 1 {
+		t.Fatalf("%d requests after the turn stopped", len(srv.Requests))
 	}
 }
 

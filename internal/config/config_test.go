@@ -7,11 +7,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/fclaude/nodwyn/internal/budget"
 
 	"github.com/fclaude/nodwyn/internal/catalogue"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 func TestDefaultIsValid(t *testing.T) {
@@ -125,62 +123,28 @@ func TestPathsUnder(t *testing.T) {
 	}
 }
 
-func TestBudgetConfigurationAndLegacyOverride(t *testing.T) {
-	for _, body := range []string{
-		"[budget]\nwall_hard=\"bad\"\n",
-		"[budget]\ntokens_soft=0\n",
-		"[budget]\nactions_soft=10\nactions_hard=2\n",
-		"[loop]\nmax_tool_calls=0\n",
-		"[loop]\nmax_tool_calls=3\n[budget]\ntool_calls_hard=4\n",
-		"[budget]\ncost_soft=1.0\n",
-		"[budget]\ncost_soft=3.0\ncost_hard=2.0\n",
-		"[budget]\ncost_hard=-1.0\n",
-		"[budget]\ncost_hard=nan\n",
-	} {
-		path := filepath.Join(t.TempDir(), "config.toml")
-		os.WriteFile(path, []byte(body), 0600)
-		if _, err := Load(path); err == nil {
-			t.Fatalf("accepted invalid config %s", body)
-		}
-	}
+// config.toml no longer sets limits for every task (ADR 49, amended
+// 2026-10-27): a file that still has [budget] or loop.max_tool_calls loads
+// with them ignored, whatever their values, and a key [budget] never had is
+// still unknown.
+func TestRetiredLimitsLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	os.WriteFile(path, []byte("[loop]\nmax_tool_calls=3\n"), 0600)
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	limits, err := cfg.Budget.Limits(cfg.Loop.MaxToolCalls)
-	if err != nil || limits.ToolCalls.Hard != 3 || limits.ToolCalls.Soft != 3 {
-		t.Fatalf("legacy limit: %+v %v", limits, err)
-	}
-	defaults := Default()
-	limits, err = defaults.Budget.Limits(defaults.Loop.MaxToolCalls)
-	if err != nil || limits.ToolCalls.Soft != 500 || limits.ToolCalls.Hard != 500 || limits.Cost != (budget.Limit{}) {
-		t.Fatalf("defaults: %+v %v", limits, err)
-	}
-	// A soft limit left unset follows its hard one (ADR 35): lowering a
-	// hard limit is valid on its own, and no checkpoint comes before it.
-	os.WriteFile(path, []byte("[budget]\ntool_calls_hard=100\nwall_hard=\"1h\"\nactions_soft=20\n"), 0600)
-	if cfg, err = Load(path); err != nil {
-		t.Fatal(err)
-	}
-	limits, err = cfg.Budget.Limits(0)
-	if err != nil || limits.ToolCalls != (budget.Limit{Soft: 100, Hard: 100}) || limits.Wall != (budget.Limit{Soft: int64(time.Hour), Hard: int64(time.Hour)}) || limits.Actions != (budget.Limit{Soft: 20, Hard: 200}) {
-		t.Fatalf("soft follows hard: %+v %v", limits, err)
-	}
-	// A spend limit, in dollars; soft unset is the hard limit.
-	for body, want := range map[string]budget.Limit{
-		"[budget]\ncost_soft=0.5\ncost_hard=2\n": {Soft: 500_000, Hard: 2_000_000},
-		"[budget]\ncost_hard=2.25\n":             {Soft: 2_250_000, Hard: 2_250_000},
+	for _, body := range []string{
+		"[budget]\ntool_calls_soft=1\ntool_calls_hard=3\ntokens_hard=10\nactions_soft=2\nactions_hard=2\nwall_soft=\"1m\"\nwall_hard=\"bad\"\ncost_soft=3.0\ncost_hard=2.0\n",
+		"[loop]\nmax_tool_calls=0\nshell_timeout=\"5m\"\n",
 	} {
-		os.WriteFile(path, []byte(body), 0600)
+		must.WriteFile(t, path, []byte(body), 0600)
 		cfg, err := Load(path)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%s: %v", body, err)
 		}
-		if limits, err := cfg.Budget.Limits(0); err != nil || limits.Cost != want {
-			t.Fatalf("%s: %+v %v", body, limits.Cost, err)
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("%s: %v", body, err)
 		}
+	}
+	must.WriteFile(t, path, []byte("[budget]\nnonsense=1\n"), 0600)
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "budget.nonsense") {
+		t.Fatalf("an unknown key loaded: %v", err)
 	}
 }
 

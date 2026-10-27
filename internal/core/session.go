@@ -98,10 +98,10 @@ type Session struct {
 	// delegate tool, chosen as it opened (ADR 27, amended 2026-10-09). The
 	// tool list is fixed for the session, so they are fixed too.
 	delegates []string
-	// limitsOff: the task's turns have no turn limits (ADR 49), as
-	// limitsActor chose; under mu, read as each turn starts. limitsMu
-	// serializes choices, so the log's last record is the one in effect.
-	limitsOff   bool
+	// taskLimits are the task's own limits (ADR 49, amended 2026-10-27), as
+	// limitsActor set them; under mu, read as each turn starts. limitsMu
+	// serializes changes, so the log's last record is the one in effect.
+	taskLimits  budget.Task
 	limitsActor string
 	limitsMu    sync.Mutex
 	// The plan a turn must record before it may do anything irreversible
@@ -126,10 +126,8 @@ type Session struct {
 	uploadMu      sync.Mutex
 	uploadSetting string
 	uploadSet     bool
-	// The spend limit's soft limit as a checkpoint last raised it, and
-	// whether a turn has said the limit cannot see a request's cost
-	// (spend.go). Both under mu.
-	costSoft   int64
+	// Whether a turn has said the spend limit cannot see a request's cost
+	// (spend.go). Under mu.
 	spendNoted bool
 	// spendBefore is what the requests a resumed session does not hold in
 	// memory cost (knownSpend); fixed when it resumes.
@@ -188,34 +186,22 @@ func (s *Session) Repo() string { return s.opts.Repo }
 // Tools lists the tools offered to the model.
 func (s *Session) Tools() []llm.Tool { return s.loop.Tools() }
 
-// Limits are the budget this session's next turn starts from: the
-// configuration it was opened with, whatever Settings has changed since.
+// Limits are the budget this session's next turn starts from: the task's
+// own limits, as set now.
 func (s *Session) Limits() budget.Limits {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	limits, _ := s.limits()
-	return limits
+	return s.limits()
 }
 
-// limits computes a turn's budget; s.mu is held. The spend limit is the
-// task's: a soft limit raised at a checkpoint holds for later turns (and
-// each turn starts from what the earlier ones cost). A task whose limits
-// are off keeps only that one (ADR 49).
-func (s *Session) limits() (budget.Limits, error) {
-	limits, err := s.opts.Config.Budget.Limits(s.opts.Config.Loop.MaxToolCalls)
-	if err != nil {
-		return budget.Limits{}, err
-	}
+// limits computes a turn's budget from the task's limits; s.mu is held. A
+// scheduled run's spend limit is the run's own (ADR 49 §9).
+func (s *Session) limits() budget.Limits {
+	limits := s.taskLimits.Limits()
 	if run := s.scheduledRun.Load(); run != nil {
 		limits.Cost = scheduledCost(run.Cost)
 	}
-	if s.limitsOff {
-		limits = withoutTurnLimits(limits)
-	}
-	if limits.Cost.Hard > 0 && s.costSoft > limits.Cost.Soft && s.costSoft <= limits.Cost.Hard {
-		limits.Cost.Soft = s.costSoft
-	}
-	return limits, nil
+	return limits
 }
 
 // Events is the stream a front-end reads. It is closed by Close.
@@ -232,7 +218,8 @@ func (s *Session) SendPlanned(text string) error { return s.send(text, true) }
 
 // SendRunTurn starts a supervised run's turn with the message
 // (run-turn-prompt task complete-line turn max-turns), which is Scheme like
-// every other prompt; the turn must plan, as with SendPlanned.
+// every other prompt; the turn must plan, as with SendPlanned. maxTurns 0
+// is a run without a limit on turns.
 func (s *Session) SendRunTurn(task, completeLine string, turn, maxTurns int) error {
 	if err := s.modelAvailable(); err != nil {
 		return err
@@ -245,8 +232,9 @@ func (s *Session) SendRunTurn(task, completeLine string, turn, maxTurns int) err
 			return err
 		}
 		// A run checkpoint follows every turn but the last, and a person
-		// answers it unless the run is unattended.
-		return s.turn(ctx, text, true, !s.opts.Unattended && turn < maxTurns)
+		// answers it unless the run is unattended. A run without a limit
+		// on turns (maxTurns 0) has no last one.
+		return s.turn(ctx, text, true, !s.opts.Unattended && (maxTurns == 0 || turn < maxTurns))
 	})
 }
 
@@ -335,11 +323,7 @@ func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.
 		s.mu.Unlock()
 		return errors.New("core: the model is being switched; send when it is done")
 	}
-	limits, err := s.limits()
-	if err != nil {
-		s.mu.Unlock()
-		return err
-	}
+	limits := s.limits()
 	if run != nil {
 		limits.Cost = scheduledCost(run.Cost)
 	}

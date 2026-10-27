@@ -33,8 +33,9 @@ import (
 // Definition is what a person chose: the source and how often it is
 // polled, the filters an event must pass, the message each run sends, where
 // runs go (a task per subject, or one task for every event), and the
-// choices of the tasks it opens (folder, worktree, model, turn limits,
-// spend per run and per day). Concurrency is how many of its runs may go at
+// choices of the tasks it opens (folder, worktree, model, spend per run and
+// per day); like any task, those have no turn limits unless a person adds
+// some to one (ADR 49, amended 2026-10-27). Concurrency is how many of its runs may go at
 // once (0: two); Existing handles what the source has when the workflow
 // starts, which is otherwise only recorded.
 type Definition struct {
@@ -47,7 +48,6 @@ type Definition struct {
 	Repo        string         `json:"repo"`
 	Worktree    bool           `json:"worktree,omitempty"`
 	Model       string         `json:"model,omitempty"`
-	NoLimits    bool           `json:"no_limits,omitempty"`
 	Cost        float64        `json:"cost"`
 	DayCost     float64        `json:"day_cost,omitempty"`
 	Concurrency int            `json:"concurrency,omitempty"`

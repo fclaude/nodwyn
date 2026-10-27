@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/event"
@@ -38,9 +39,8 @@ func TestKeyEndingASentenceNeverLeaves(t *testing.T) {
 	must.WriteFile(t, filepath.Join(repo, "notes.md"), []byte("The bucket key is "+awsKey+".\n"), 0o644)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
-	cfg.Loop.MaxToolCalls = 10
 	var logb bytes.Buffer
-	s, err := core.New(core.Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: &logb})
+	s, err := core.New(core.Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: &logb, Limits: &core.LimitsChoice{Limits: budget.Task{ToolCalls: 10}}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,36 +7,38 @@ import (
 	"github.com/fclaude/nodwyn/internal/log"
 )
 
-// LimitsChoice says whether a task's turns stop at the turn limits (ADR 49),
-// and who chose, for the log. Off, a turn has no limit on tool calls, tokens,
-// actions or time: a task that runs while nobody watches may wait for an
-// answer overnight. The spend limit, the timeouts and the progress guard are
-// not turn limits and stay.
+// LimitsChoice is a task's own limits (ADR 49, amended 2026-10-27), and who
+// set them, for the log. There is no configured default: a task has none
+// unless a person set some, on the task or on the command line. Each is one
+// number, and a turn stops at it without asking first.
 type LimitsChoice struct {
-	On    bool
-	Actor string
+	Limits budget.Task
+	Actor  string
 }
 
-// LimitsOn reports whether the task's turns stop at the turn limits, and who
-// last chose (empty for the default, on).
-func (s *Session) LimitsOn() (bool, string) {
+// TaskLimits are the task's limits, and who last set them (empty while it
+// has never had any).
+func (s *Session) TaskLimits() (budget.Task, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return !s.limitsOff, s.limitsActor
+	return s.taskLimits, s.limitsActor
 }
 
-// SetLimits turns the task's turn limits on or off, as actor, from its next
-// turn: a turn running now keeps the limits it started with, since its
-// deadline is already its context's. The choice is recorded before it
-// applies, and resuming the task keeps it.
-func (s *Session) SetLimits(on bool, actor string) error {
+// SetLimits replaces the task's limits, as actor, from its next turn: a turn
+// running now keeps the limits it started with, since its deadline is
+// already its context's. The change is recorded before it applies, and
+// resuming the task keeps it.
+func (s *Session) SetLimits(limits budget.Task, actor string) error {
 	if s.opts.Managed != nil {
 		return errors.New("managed: turn limits are operator-owned")
+	}
+	if err := limits.Validate(); err != nil {
+		return err
 	}
 	s.limitsMu.Lock()
 	defer s.limitsMu.Unlock()
 	s.mu.Lock()
-	closed, same := s.closed || s.closing, s.limitsOff == !on
+	closed, same := s.closed || s.closing, s.taskLimits == limits
 	s.mu.Unlock()
 	if closed {
 		return errors.New("core: session is closed")
@@ -44,29 +46,24 @@ func (s *Session) SetLimits(on bool, actor string) error {
 	if same {
 		return nil
 	}
-	if _, err := s.Record(log.KindSessionLimits, log.SessionLimits{Actor: actor, On: on}); err != nil {
+	if _, err := s.Record(log.KindSessionLimits, log.SessionLimits{Actor: actor, Task: limits}); err != nil {
 		return err
 	}
 	s.mu.Lock()
-	s.limitsOff, s.limitsActor = !on, actor
+	s.taskLimits, s.limitsActor = limits, actor
 	s.mu.Unlock()
 	return nil
 }
 
-// withoutTurnLimits is limits with the four turn limits off: what a turn of
-// a task whose limits are off starts from. The spend limit is the task's,
-// not the turn's, and stays.
-func withoutTurnLimits(limits budget.Limits) budget.Limits {
-	return budget.Limits{Cost: limits.Cost}
-}
-
-// lastLimits is the latest session.limits record, if the log has one.
+// lastLimits is the latest session.limits record, if the log has one. One
+// written before a task's limits were its own held only on or off, and
+// reads as none.
 func lastLimits(events []log.Event) (rec log.SessionLimits, found bool) {
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i].Kind != log.KindSessionLimits {
 			continue
 		}
-		if err := events[i].Decode(&rec); err != nil {
+		if err := events[i].Decode(&rec); err != nil || rec.Validate() != nil {
 			return log.SessionLimits{}, false
 		}
 		return rec, true

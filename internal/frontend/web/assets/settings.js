@@ -611,63 +611,32 @@ function dontAskWarning() {
   );
 }
 
-function limitsSection(ctx) {
-  const pair = (label, soft, hard, opts = {}) => [
-    h("div", { class: "limit-name" }, label),
-    input(ctx, soft, { width: "narrow", placeholder: "the stop", ...opts.soft }),
-    input(ctx, hard, { width: "narrow", ...opts.hard }),
-  ];
-  const v = values(ctx.desk);
-  const costOn = v["budget.cost_hard"]?.value > 0;
+// waitingSection is how long a model reply and a command may take before
+// they are given up as hung. A task's limits are not here: each task has
+// its own, none unless set on the task (ADR 49, amended 2026-10-27).
+function waitingSection(ctx) {
   return section(
-    "limits",
-    "Limits",
-    "Each turn — a message and the work it sets off — stops at “stop at”. It asks you whether to go on only if you set an “ask at” below that. Leave a field empty for its default.",
+    "waiting",
+    "Waiting",
+    "How long nodwyn waits before it gives up a call that hangs. To stop a long task, set a limit on the task itself, in its panel.",
     ...row(
-      "Each turn",
-      h(
-        "div",
-        { class: "limits" },
-        h("div", {}),
-        h("div", { class: "limit-head" }, "Ask at"),
-        h("div", { class: "limit-head" }, "Stop at"),
-        ...pair("Tool calls", "budget.tool_calls_soft", "budget.tool_calls_hard"),
-        ...pair("Tokens used", "budget.tokens_soft", "budget.tokens_hard"),
-        ...pair("Actions", "budget.actions_soft", "budget.actions_hard"),
-        ...pair("Time", "budget.wall_soft", "budget.wall_hard"),
-      ),
-      h("p", { class: "hint" }, "Tokens used adds up each request's prompt and reply, a prompt token the provider read from its cache counted as a tenth. Every request sends the whole conversation again, so it grows faster than the conversation. Actions are writes, commands and other steps that change something."),
-    ),
-    ...row(
-      "Spend",
-      h(
-        "div",
-        { class: "limits" },
-        h("div", {}),
-        h("div", { class: "limit-head" }, "Ask at"),
-        h("div", { class: "limit-head" }, "Stop at"),
-        ...pair("The whole task", "budget.cost_soft", "budget.cost_hard", { soft: { prefix: "$", placeholder: costOn ? "the stop" : "—" }, hard: { prefix: "$", placeholder: "off" } }),
-      ),
-      h("p", { class: "hint" }, "In US dollars, for what a task's model requests cost as far as known: as the provider reports it, or from each model's own prices (Models, below). It counts every turn of a task, and is off until “stop at” is set. A request nobody priced isn't counted."),
-    ),
-    ...row(
-      "Waiting",
+      "Up to",
       h("div", { class: "row-actions" }, h("span", { class: "muted" }, "A model reply up to"), input(ctx, "loop.request_timeout", { width: "narrow" }), h("span", { class: "muted" }, "and a command up to"), input(ctx, "loop.shell_timeout", { width: "narrow" })),
     ),
   );
 }
 
-// advancedFold holds what most people never change: the limits on a turn,
-// the context window and the container runtime. It is open when the address
+// advancedFold holds what most people never change: how long a call may
+// hang, the context window and the container runtime. It is open when the address
 // that was folded into it asked for it, or when something in it waits in the
 // bar, so a change is never hidden.
 function advancedFold(ctx, redraw) {
-  const waiting = [...edits.keys()].some((name) => name.startsWith("budget.") || name.startsWith("loop.") || name.startsWith("window.") || name === "mcp.runtime");
+  const waiting = [...edits.keys()].some((name) => name.startsWith("loop.") || name.startsWith("window.") || name === "mcp.runtime");
   return h(
     "details",
     { class: "advanced", id: "advanced", open: advancedOpen || waiting, ontoggle: (event) => (advancedOpen = event.target.open) },
-    h("summary", {}, "Advanced: limits, context window, containers"),
-    limitsSection(ctx),
+    h("summary", {}, "Advanced: waiting, context window, containers"),
+    waitingSection(ctx),
     windowSection(ctx),
     containersSection(ctx, redraw),
   );

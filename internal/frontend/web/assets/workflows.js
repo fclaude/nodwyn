@@ -170,7 +170,7 @@ function renderBuilder(root, ctx) {
   const folders = desk.folders();
   const defaults = () => ({
     name: "", source: { kind: "gitea-pulls", server: "", repo: "", credential: "", query: "", command: [], on: ["opened", "updated"] }, every: 2, filters: [], message: "", routing: "subject",
-    repo: folders[0] || "", worktree: false, model: "", no_limits: false, cost: 0, day_cost: 0, concurrency: 0, existing: false,
+    repo: folders[0] || "", worktree: false, model: "", cost: 0, day_cost: 0, concurrency: 0, existing: false,
     then: { post: "", auto: false, notify: "" },
   });
   if (!draft || draft.id !== editingId) draft = { id: editingId, def: defaults(), loaded: !editingId, test: null, credentials: [] };
@@ -248,7 +248,6 @@ function renderBuilder(root, ctx) {
     field("Folder", select("wf-repo-folder", d.repo, folders.map((f) => [f, desk.folderName(f)]), (v) => set({ repo: v }))),
     h("label", { class: "check" }, h("input", { id: "wf-worktree", type: "checkbox", checked: !!d.worktree, onchange: (e) => set({ worktree: e.target.checked }) }), "Each task in a worktree of its own"),
     field("Model", model),
-    h("label", { class: "check" }, h("input", { id: "wf-limits", type: "checkbox", checked: !d.no_limits, onchange: (e) => set({ no_limits: !e.target.checked }) }), "Limits (stop each turn at Settings' limits)"),
     h("div", { class: "schedule-row schedule-bounds" },
       field("Spend limit per run ($; 0 means none)", h("input", { id: "wf-cost", class: "input", type: "number", min: 0, step: "any", value: d.cost, oninput: (e) => set({ cost: Number(e.target.value) || 0 }) })),
       field("Spend limit per day ($; 0 means none)", h("input", { id: "wf-day-cost", class: "input", type: "number", min: 0, step: "any", value: d.day_cost || 0, oninput: (e) => set({ day_cost: Number(e.target.value) || 0 }) }))),

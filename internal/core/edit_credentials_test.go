@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nodwyn/internal/config"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -20,7 +19,7 @@ func TestEditThroughACredentialPlaceholder(t *testing.T) {
 	const key = "sk-ant-" + "abcdefgh1234"
 	const other = "sk-ant-" + "zzzzzzzz9999"
 	const holder = "[REDACTED anthropic-key]"
-	r := newRigWith(t, false, func(c *config.Config) { c.Loop.MaxToolCalls = 10 },
+	r := newRigCalls(t, false, 10, nil,
 		toolTurn("1", "fs-read", map[string]any{"path": "fixture.go"}),
 		toolTurn("2", "fs-edit", map[string]any{"path": "fixture.go", "old": `body := "` + holder + `"`, "new": `body := "` + holder + `" // fixture`}),
 		fake.Turn{Content: "kept"},

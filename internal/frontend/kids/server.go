@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/event"
@@ -318,12 +319,14 @@ func (s *Server) session(id string) (*conversation, error) {
 	cfg.Window = config.Window{HighWater: 20000, LowWater: 10000, MaxResultTokens: 2000, OutputReserve: 4096, Fixed: true, ResultsFixed: true}
 	cfg.Loop.Profile = config.ProfileLean
 	cfg.Loop.RequestTimeout = "2m"
-	cfg.Budget = config.Budget{ToolCallsSoft: 40, ToolCallsHard: 40, ActionsSoft: 20, ActionsHard: 20, TokensSoft: 200000, TokensHard: 200000, WallSoft: "8m", WallHard: "8m"}
 	cfg.Approval = config.Approval{Writes: "allow", Commands: "ask"}
 	cfg.Docs = config.Docs{}
 	c := &conversation{status: "Saved", messages: []message{}}
 	_ = readJSON(s.chatPath(id), &c.messages)
 	opts := core.Options{Config: cfg, Paths: config.PathsUnder(filepath.Join(s.profile.State, "config", id), filepath.Join(s.profile.State, "data", id)), Repo: filepath.Join(s.profile.Workspace, id), Provider: s.provider, InitFile: s.init, Unattended: true, AutoApprove: true}
+	// The profile's turn limits are its own, the same for every
+	// conversation, and no conversation changes them.
+	opts.Limits = &core.LimitsChoice{Limits: budget.Task{ToolCalls: 40, Actions: 20, Tokens: 200000, Wall: int64(8 * time.Minute)}, Actor: "managed"}
 	opts.Managed = &core.ManagedProfile{Endpoint: s.profile.Endpoint, Model: s.profile.Model, WriteFile: func(path string, b []byte, mode os.FileMode) error { return s.store.Write(id, c.turn, path, b, mode) }}
 	var err error
 	if p.Task != "" {

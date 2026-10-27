@@ -694,3 +694,8 @@ storage.
 
 Not built: the TUI and line mode keep no choice for the next task, as they
 offer none at open (docs/clients.md).
+
+Later the same day a task's limits became its own, none unless set (ADR 49,
+amended 2026-10-27): Home has no **Limits** box, so whether the limits are
+off is no longer kept (`no_limits` an older `new-task.toml` holds is
+ignored), and the `tasks` check covers the task's own limits instead.

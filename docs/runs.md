@@ -33,24 +33,26 @@ Each turn sends the message `(run-turn-prompt task complete-line turn
 max-turns)` makes, a Scheme prompt a project may redefine
 ([docs/scheme.md](scheme.md) §9.1); the turn must plan before it acts (§9.5).
 
-The task is UTF-8 text, at most 64 KiB. Both limits are required; the turn limit
-is 1–10000. `--budget-wall` is the total run lifetime, including model waits,
-approval waits and time spent stopped. The daemon's configured per-turn budgets
-still apply, including planning tokens reported by the control provider. A
-provider response can exceed its token ceiling; no further operation then starts.
-The judge's tokens are recorded (`jev.req`) and shown, not counted against
-the token budget; its cost, when its prices are known (`[judge]`, else its
-provider's), counts against a spend
-limit.
+The task is UTF-8 text, at most 64 KiB. A run's limits are optional, as a
+task's are (ADR 49, amended 2026-10-27): with none, it goes on until the
+model reports the task complete, a turn stops it, or you do. `--max-turns`
+(`run.start {max_turns}`) is 1–10000 when given. `--budget-wall`
+(`run.start {wall}`) is the total run lifetime, including model waits,
+approval waits and time spent stopped. A resume keeps both.
 
-`--budget-cost USD` (`run.start {cost}`) gives the run a spend limit: what
-its model requests cost, as far as known, over the whole run, replacing
-`budget.cost_hard` for its session. The turn that reaches it stops with
-outcome `spend_limit` and the run ends `limited`; a resume keeps the limit,
-as it keeps the deadline, so a resumed run stops at once until the limit is
-raised. A configured `budget.cost_hard` applies the same way when the run
-gives none. Requests with no known cost are not counted (the manual,
-"Choosing models").
+The run's task takes a task's own limits (`run.start {limits}`, as
+`session.open` takes them): `--max-tool-calls`, `--budget-tokens`,
+`--budget-actions` and `--turn-wall` stop each of its turns, and
+`--budget-cost USD` is the whole run's spend, as far as known. Each is none
+unless given, and the task keeps them when the run resumes; while the run
+goes on, `session.limits.set` is refused. A provider response can exceed a
+token limit; no further operation then starts. The turn that reaches the
+spend limit stops with outcome `spend_limit` and the run ends `limited`, so
+a resumed run stops at once until the limit is raised or removed (on the
+task between runs). The judge's tokens are recorded (`jev.req`) and shown,
+not counted against the token limit; its cost, when its prices are known
+(`[judge]`, else its provider's), counts against a spend limit. Requests
+with no known cost are not counted (the manual, "Choosing models").
 
 A run's turn ends on evidence (docs/scheme.md §9): the default loop reminds a
 model that stops before changing anything, or without a test run after its
@@ -91,7 +93,7 @@ plan panel, and the evidence is in the transcript.
 Before another turn, the operator gets a **run checkpoint**. A one-time yes
 continues the run; it grants no filesystem, command, credential or network
 permission. The checkpoint's prompt ID and answering peer are recorded.
-Tool prompts and soft-budget checkpoints remain separate.
+Tool prompts remain separate.
 
 A successful plain model response whose exact final line is
 `NODWYN_RUN_COMPLETE` ends the run as **model-reported completion**. This is not
@@ -100,8 +102,8 @@ tool calls, truncated responses, and marker substrings do not signal completion.
 The final reply is the last one the conversation still shows: a reply inside a
 folded context, such as a reviewer sub-agent's verdict, is not the model's
 answer, so it neither completes a run nor hides the model's completion line.
-Review the transcript and normal project checks. A hard turn budget permits a
-checkpoint and another turn; user refusal, cancellation, progress stops and
+Review the transcript and normal project checks. A turn stopped at one of its
+task's limits permits a checkpoint and another turn; user refusal, cancellation, progress stops and
 provider failures stop continuation.
 
 ## Stop, inspect and resume
@@ -151,10 +153,6 @@ fewer, and nothing in it ever waits for a person:
   confirms are answered yes instead. Security confirms (a credential-shaped
   write, a protected path, a command built from tool output) are declined
   either way.
-- **A soft budget checkpoint goes on to the hard limit**, recorded as answered
-  by `unattended`; the hard limits still stop the turn. (By default the soft
-  limits are the hard ones, so only a soft limit set lower, or the spend
-  limit's, makes one.)
 - **The run checkpoint is answered by progress.** A turn that marked at least
   one step of its plan done or skipped (`plan-step`, recorded as
   `plan.step`; a plan that no longer fits is marked skipped, as the run's
@@ -182,7 +180,7 @@ fewer, and nothing in it ever waits for a person:
   works in a supervised run, where you still answer the run checkpoints.
 - Everything else is as for a supervised run: a recorded plan in every turn,
   the run's, carried until every step is marked,
-  finite turn and wall limits, the progress guard, completion only by the
+  the turn and wall limits it was given, the progress guard, completion only by the
   model's final line, the same pin, denylist and binding table.
 
 `run.state` records how the run was started (`unattended`, `auto_approve`,

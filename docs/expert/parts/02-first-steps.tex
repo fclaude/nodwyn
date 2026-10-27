@@ -253,40 +253,35 @@ guard. The only difference is the origin: yours is \code{user}.
 \section{Budgets: how a turn stops}
 
 A turn runs until the model answers without asking for a tool, or until it
-hits a \textbf{budget}. There are four dimensions, each with a hard limit
-(a stop) and a soft one (a checkpoint that asks you whether to continue).
-By default each soft limit is its hard one, so no checkpoint interrupts a
-turn:
+hits one of its task's \textbf{limits}. A task has none unless you set some
+for it (ADR 49, amended 2026-10-27): there is no limit in \file{config.toml}
+that every task stops at. There are five, each set on its own, and each is
+one number that stops the turn without asking first:
 
 \begin{center}
 \begin{tabular}{lll}
 \toprule
-\textbf{dimension} & \textbf{hard limit} & \textbf{flag for the hard limit} \\
+\textbf{limit} & \textbf{counts} & \textbf{flag} \\
 \midrule
-tool calls & 500 & \code{-{}-max-tool-calls N} \\
-wall time & 4 hours & \code{-{}-budget-wall 2h} \\
-model tokens & 10M reported & \code{-{}-budget-tokens N} \\
-irreversible actions & 200 attempts & \code{-{}-budget-actions N} \\
-spend, the whole task's & none unless you set one & \code{-{}-budget-cost 5} (US dollars) \\
+tool calls & a turn's & \code{-{}-max-tool-calls N} \\
+wall time & a turn's & \code{-{}-budget-wall 1h30m} \\
+model tokens & a turn's & \code{-{}-budget-tokens N} \\
+writes and commands & a turn's & \code{-{}-budget-actions N} \\
+spend & the whole task's & \code{-{}-budget-cost 5} (US dollars) \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-For checkpoints, set a soft limit lower: \code{tool\_calls\_soft},
-\code{wall\_soft}, \code{tokens\_soft} or \code{actions\_soft} in
-\code{[budget]}, or ``ask at'' in Settings \textrightarrow{} Limits. A soft
-limit the file leaves unset follows its hard one, so lowering a hard limit
-moves the checkpoint with it. At a checkpoint, \code{y} doubles the soft
-limit, \code{n} stops, and a number sets a new soft limit. Approvals and
-hard ceilings do not change.
-
-A task started in the console can do without the four turn limits (ADR 49):
-untick \textbf{Limits} on Home, or in the task between turns. Its turns then
-run, and wait for an answer, as long as they need; the spend limit, the
-timeouts and the progress guard still apply. \code{session.info} reports
-such a task with \code{limits: false} and a hard limit of 0, none, for the
-four, and the log records the choice as \code{session.limits}, which a
-resume keeps. A paired device cannot make it.
+The flags set the limits of the task line mode opens; with
+\code{-{}-resume} they replace those they name, \code{0} removing one. In
+the console the task's panel has them under its monitor: \textbf{Limits}
+\textbf{None} until you choose \textbf{Add a limit}, then a chip for each,
+which changes it or removes it. A change applies from the next turn, the log
+records it as \code{session.limits}, which a resume keeps, and
+\code{session.info} reports the task's \code{limits}. A paired device may
+add a limit or lower one, never raise or remove one. Without limits, a turn
+runs, and waits for an answer, as long as it needs; the timeouts and the
+progress guard still apply.
 
 After each reply the terminal shows what the request used:
 
@@ -303,22 +298,18 @@ most-cold request, marked ≈; the cost appears only when it is known
 the timings only when the server reports them, as Ollama does. The
 request's wall time, as this machine measured it, gives a speed whenever
 there are tokens to divide by — \code{22.0~tok/s} — the one speed every
-provider gets, prompt processing included. A
-checkpoint also says what the turn has cost so far. The token budget adds
+provider gets, prompt processing included. The token limit adds
 up each request's prompt and reply, a prompt token read from the
 provider's cache counted as a tenth of one: about what it costs, and what
 it asks of the server.
 
-Money has its own limit, if you want one: \code{cost\_soft} and
-\code{cost\_hard} in \code{[budget]}, in dollars, or
-\code{-{}-budget-cost}. It is the task's, not the turn's: every turn of a
-session or a run counts against it, a resumed session's history too, and a
-soft limit you raise at its checkpoint stays raised. At the hard limit the
+The spend limit is the task's, not the turn's: every turn of a session or a
+run counts against it, a resumed session's history too. At the limit the
 task stops (\code{turn.end} says \code{spend\_limit}), a run ends, and the
 next message stops before it reaches the model. Only costs it knows count;
 the first turn with a request nobody priced says so in a note.
 
-Independently of budgets, a \textbf{progress guard} ends a turn that goes in
+Independently of limits, a \textbf{progress guard} ends a turn that goes in
 circles: the same call four times in a row, a denied call retried three
 times, ten failures in a row, or one tool failing on one file in six of the
 last sixteen responses, or a background command that is still running
@@ -379,15 +370,15 @@ watching, the default loop also changes its manners: it asks the model to
 work by evidence and ends a turn only when something changed and a test ran
 after it (Chapter~\ref{ch:plans}).
 
-\code{-{}-yolo} still leaves someone to answer a budget checkpoint you set,
-and the checkpoints between turns. For a run that nobody answers at
+\code{-{}-yolo} still leaves someone to answer the checkpoints between
+turns. For a run that nobody answers at
 all, and for one whose confirms the judge answers instead of a blanket yes,
 see \code{nodwyn run -{}-unattended} and \code{-{}-judge} in
 Chapter~\ref{ch:plans}: a batch tool for scripts and benchmarks.
 
 \begin{careful}
 The guard makes \code{-{}-yolo} survivable, not safe. Use it on a copy, set
-budgets for the job, and read the log afterwards.
+the task's limits for the job, and read the log afterwards.
 \end{careful}
 
 On Linux, \code{python3 scripts/install-desktop.py /absolute/path/to/nodwyn}

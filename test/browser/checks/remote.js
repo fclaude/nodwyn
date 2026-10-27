@@ -81,7 +81,7 @@ check(async () => {
   // Where a task's content goes is chosen on the computer nodwyn runs on (ADR
   // 30, ADR 40): the phone is told the default model, and has no picker.
   assert.strictEqual(await page.$("#new-task-model-model"), null, "the phone is offered a model picker");
-  // Nor does it lift a task's limits (ADR 49): its tasks start with them on.
+  // A task starts without limits on any screen (ADR 49, amended 2026-10-27).
   assert.strictEqual(await page.$("#new-task-limits"), null, "the phone is offered Limits on Home");
   await shows(page, ".ask-bar .where", "demo");
   await page.fill("#task", "The session list shows each session's first message. Make them easy to tell apart.");
@@ -103,7 +103,27 @@ check(async () => {
   assert.strictEqual(await page.isDisabled("#task-model-effort"), true, "the phone can change a task's effort");
   await shows(page, ".reply-opts .mp-notes", "chosen on the computer nodwyn runs on");
   assert.strictEqual(sent.of("session.model.set").length, 0, "the phone asked to change a model");
-  assert.strictEqual(await page.isVisible(".reply-opts .limits-toggle"), false, "the phone is offered a task's Limits");
+  // The phone may add a limit to the task, or lower one, and the daemon
+  // refuses it a raise; it is offered no way to remove one.
+  const chips = () => page.$$eval(".task-limits .limit-chip", (els) => els.map((el) => el.textContent.trim()));
+  await page.click(".task-limits .limit-add");
+  await page.click('.limit-menu button:has-text("Tool calls")');
+  await shows(page, "#limit-edit-hint", "From this device you can add a limit or lower one.");
+  await page.fill("#limit-edit-input", "30");
+  await page.press("#limit-edit-input", "Enter");
+  await until("the phone's limit set", async () => (await chips()).join() === "Tool calls 30 a turn", chips);
+  assert.strictEqual(await page.$(".limit-chip .limit-remove"), null, "the phone is offered to remove a limit");
+  await page.click('.limit-chip[data-limit="tool_calls"] .limit-value');
+  await page.fill("#limit-edit-input", "50");
+  await page.press("#limit-edit-input", "Enter");
+  await until("the raise refused", async () => (await page.textContent(".toast.error").catch(() => ""))?.includes("A paired device may add a limit to a task or lower one"));
+  assert.strictEqual(await page.inputValue("#limit-edit-input"), "50", "the refused raise lost what was typed");
+  await page.fill("#limit-edit-input", "10");
+  await page.press("#limit-edit-input", "Enter");
+  await until("the phone's limit lowered", async () => (await chips()).join() === "Tool calls 10 a turn", chips);
+  const id = sent.of("session.open").length && (await page.evaluate(() => decodeURIComponent(location.hash.split("#/task/")[1])));
+  assert.deepStrictEqual(sent.of("session.limits.set"), [30, 50, 10].map((n) => ({ id, limits: { tool_calls: n } })), "the phone's limits sent");
+  for (const button of await page.$$(".toast.error button[aria-label=Dismiss]")) await button.click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: `${out}/phone-approve.png` });
   await page.click(".ask-card .btn.accent");

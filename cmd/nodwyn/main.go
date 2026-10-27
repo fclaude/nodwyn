@@ -39,7 +39,10 @@ commands:
   run [flags]          carry a task to its end with no conversation, for scripts and
                        benchmarks (docs/runs.md; --unattended: nobody answers it;
                        --judge: the judge answers its confirms; --sandbox container:
-                       this machine is a disposable container, every path its tools')
+                       this machine is a disposable container, every path its tools';
+                       no limits unless given: --budget-wall and --max-turns the run's,
+                       --max-tool-calls, --budget-tokens, --budget-actions, --turn-wall
+                       and --budget-cost its task's)
   run status|stop|resume [--socket PATH] SESSION  (resume also takes --yolo, --judge, --unattended, --sandbox)
   daemon [--socket PATH] serve local sessions, turns and events
   workflows [pause|resume|check|run REF]  list the daemon's workflows and timetables, or act on one

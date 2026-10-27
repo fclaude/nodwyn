@@ -325,7 +325,6 @@ func windowRig(t *testing.T, high, numCtx int, respond func(fake.Request) fake.T
 	srv := fake.NewFunc(respond)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
-	cfg.Loop.MaxToolCalls, cfg.Budget.ToolCallsSoft = 200, 150
 	cfg.Window.HighWater, cfg.Window.LowWater, cfg.Window.Fixed = high, high/2, true
 	cfg.Control.NumCtx = numCtx
 	logb := &bytes.Buffer{}

@@ -21,7 +21,7 @@ Package & Owns \\
 \code{internal/extract} & text from attached documents; checks on attached images; every text a document carries, before it is uploaded \\
 \code{internal/window} & the context window, derived from the log \\
 \code{internal/loop} & the loop's primitives and its default Scheme: the strategy, the plan gate, prompts, compaction, sub-agents, working habits \\
-\code{internal/budget} & per-turn accounting, ceilings and checkpoints \\
+\code{internal/budget} & per-turn accounting, a task's own limits, ceilings and checkpoints \\
 \code{internal/core} & \code{Session}: the UI-agnostic fa\c{c}ade that assembles the rest \\
 \code{internal/event}, \code{internal/log} & what a front-end sees; the append-only log and its typed payloads \\
 \code{internal/config}, \code{internal/policyfile} & paths and settings files; locked, atomic policy-file writes \\
@@ -144,9 +144,10 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
   (\code{index-search}, \code{index-update}, \code{recall}).
 \item One person. A workspace is not shared, and the socket and the paired
   devices are one user's.
-\item A spend limit is off unless you set one (\code{cost\_soft} and
-  \code{cost\_hard} in \code{[budget]}, or \code{-{}-budget-cost}), and it
-  counts only the costs it knows: a request that neither the provider nor
+\item A task has no limits unless you set some on it (its panel, or
+  \code{-{}-max-tool-calls} and the \code{-{}-budget-*} flags): a turn
+  nobody watches is bounded only by the timeouts and the progress guard. A
+  spend limit counts only the costs it knows: a request that neither the provider nor
   the model's \code{price\_*} prices adds nothing to it.
 \item A plan step marked done is the model's word. An unattended run
   (\code{nodwyn run -{}-unattended}) goes on from turn to turn on those

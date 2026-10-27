@@ -11,6 +11,7 @@ import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
 import { keychainForm } from "./setup.js";
 import { ModelPicker, choiceNamed, effortLabel, judgesOf } from "./modelpicker.js";
+import { limitsPanel, parseLimit } from "./limits.js";
 
 const drafts = new Map(); // per task, this tab only
 const openSteps = new Map(); // per task, the plan steps the reader unfolded, this tab only
@@ -47,7 +48,11 @@ export class TaskView {
     this.totalSnapshot = null;
     this.infoVersion = 0; // only the newest session.info read may redraw this task
     this.approveAllPending = null;
-    this.limitsPending = undefined; // a limits choice sent and not yet answered
+    // The task's limits panel: a change on its way, the limit being typed
+    // ({key, draft}) and whether the kinds to add are shown.
+    this.limitsPending = false;
+    this.limitEdit = null;
+    this.limitMenu = false;
     this.notes = null;
     this.index = null; // index.status: the project's repository index, or null when unknown
     this.asideScroll = new Map();
@@ -144,7 +149,9 @@ export class TaskView {
     this.infoVersion++;
     this.switching = false;
     this.approveAllPending = null;
-    this.limitsPending = undefined;
+    this.limitsPending = false;
+    this.limitEdit = null;
+    this.limitMenu = false;
     this.notes = null;
     this.index = null;
     // What was written for a review or for the notes outlives a reload of the
@@ -544,8 +551,7 @@ export class TaskView {
     // A model or effort chosen here or on another screen, or applied as a
     // response ended: the picker shows what the conversation has now.
     if ((event.kind === "schedule.run" || event.kind === "session.schedule" || event.kind === "session.model" || event.kind === "session.judge") && !this.loading && this.item?.open) this.loadInfo();
-    // Limits turned off or on here or on another screen: the tick, the
-    // heading and the budget follow.
+    // Limits set here or on another screen: the panel and the budget follow.
     if (event.kind === "session.limits" && !this.loading && this.item?.open) this.loadInfo();
     // The repository's index built or refreshed: the Workspace tab says so.
     if (event.kind === "index.update" && !this.loading) this.loadIndex();
@@ -702,21 +708,12 @@ export class TaskView {
       h("input", { type: "checkbox", onchange: (event) => this.setApproveAll(event.target.checked) }),
       h("span", {}, "Don't ask: approve writes and commands"),
     );
-    // The task's turn limits (ADR 49): on unless this computer turned them
-    // off (session.limits.set, which a paired device's hello does not list).
-    // A change applies from the next turn.
-    const limits = h(
-      "label",
-      { class: "dont-ask limits-toggle", title: "Stop this task's turns at the limits in Settings › General: tool calls, tokens, actions and time. Untick to let them run, and wait for your answers, as long as they need; the spend limit still applies. A change applies from the next turn." },
-      h("input", { type: "checkbox", onchange: (event) => this.setLimits(event.target.checked) }),
-      h("span", {}, "Limits"),
-    );
     // The model and effort the next message is answered with, changeable
     // here at any time: while a response runs the change waits for its end.
     const picker = new ModelPicker("task-model", true);
     // The models this task's model may hand work to, chosen when it opened.
     const helpers = h("span", { class: "task-helpers", id: "task-helpers", hidden: true, title: "Chosen when the task started; labels can be edited in Settings › Models at any time" });
-    const opts = h("div", { class: "reply-opts" }, picker.el, helpers, dontAsk, limits);
+    const opts = h("div", { class: "reply-opts" }, picker.el, helpers, dontAsk);
     picker.el.hidden = true;
     const form = h(
       "form",
@@ -733,7 +730,7 @@ export class TaskView {
     const head = h("header", { class: "task-head" });
     this.root.replaceChildren(head, h("div", { class: "task-body" }, main, side));
     this.picker = picker;
-    this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk, helpers, limits };
+    this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk, helpers };
     this.transcript = new Transcript(transcript);
   }
   controls() {
@@ -790,13 +787,6 @@ export class TaskView {
     check.checked = !!approveAll;
     check.disabled = !this.info || this.switching || !this.conn.live;
     box.classList.toggle("on", check.checked);
-    // A run keeps the limits it started with; an older daemon reports none.
-    const limits = this.el.limits;
-    limits.hidden = !this.conn.has("session.limits.set") || !open || typeof this.info?.limits !== "boolean" || run?.status === "running";
-    const limitsCheck = limits.querySelector("input");
-    limitsCheck.checked = this.limitsPending ?? !!this.info?.limits;
-    limitsCheck.disabled = this.limitsPending !== undefined || !this.conn.live;
-    limits.classList.toggle("on", !limitsCheck.checked);
     this.drawModel();
   }
   // noteModel keeps what the log says the conversation talks to, which is all
@@ -930,23 +920,81 @@ export class TaskView {
       this.controls();
     }
   }
-  // setLimits turns the task's turn limits on or off from its next turn
-  // (ADR 49), drawing the choice at once and the daemon's answer after.
-  async setLimits(on) {
+  // limitsSection is the task's limits on its panel (ADR 49, amended
+  // 2026-10-27): none unless set here or on the command line, each one the
+  // task's own. It shows for an open task whose daemon takes them; a run
+  // keeps the limits it started with, so they are only read while it goes.
+  limitsSection() {
+    const limits = this.info?.limits;
+    if (!this.item?.open || !this.conn.has("session.limits.set") || !limits || typeof limits !== "object") return null;
+    return limitsPanel(
+      {
+        limits,
+        edit: this.limitEdit,
+        menu: this.limitMenu,
+        busy: this.limitsPending || !this.conn.live,
+        locked: this.item.run?.status === "running",
+        // A paired device's hello lacks what is this computer's to choose;
+        // the daemon lets it add a limit or lower one, and nothing else.
+        device: !this.conn.has("session.model.set"),
+      },
+      {
+        menu: (open) => {
+          this.limitMenu = open;
+          this.aside();
+        },
+        edit: (key, draft) => {
+          this.limitEdit = { key, draft };
+          this.limitMenu = false;
+          this.aside();
+          this.el?.side.querySelector("#limit-edit-input")?.focus();
+        },
+        draft: (text) => {
+          if (this.limitEdit) this.limitEdit.draft = text;
+        },
+        cancel: () => {
+          this.limitEdit = null;
+          this.aside();
+        },
+        save: (key, text) => {
+          let value;
+          try {
+            value = parseLimit(key, text);
+          } catch (error) {
+            toastError(error.message);
+            return;
+          }
+          this.changeLimits({ ...limits, [key]: value });
+        },
+        remove: (key) => {
+          const next = { ...limits };
+          delete next[key];
+          this.changeLimits(next);
+        },
+      },
+    );
+  }
+  // changeLimits replaces the task's limits from its next turn, and draws
+  // the daemon's answer: a refusal keeps what was typed, to correct.
+  async changeLimits(next) {
     const id = this.item?.id;
-    if (!id || this.limitsPending !== undefined) return;
+    if (!id || this.limitsPending) return;
     const version = this.version;
-    this.limitsPending = on;
-    this.controls();
+    this.limitsPending = true;
+    this.aside();
+    let saved = false;
     try {
-      await this.conn.call("session.limits.set", { id, on });
+      await this.conn.call("session.limits.set", { id, limits: next });
+      saved = true;
     } catch (error) {
       toastError(error.message);
     } finally {
       if (version === this.version) {
+        if (saved) this.limitEdit = null;
         await this.loadInfo();
-        this.limitsPending = undefined;
-        this.controls();
+        this.limitsPending = false;
+        this.aside();
+        if (!this.limitEdit) this.el?.side.querySelector("[data-limit-focus=add]")?.focus({ preventScroll: true });
       }
     }
   }
@@ -1076,7 +1124,6 @@ export class TaskView {
       h("strong", {}, this.desk.folderName(this.desk.project(item))),
       h("span", { class: "mono" }, shortPath(this.desk.project(item), home)),
       item.worktree ? h("span", { class: "badge plain mono", title: `In its own git worktree at ${item.worktree.path}` }, icon("commit", 13), item.worktree.branch) : null,
-      item.open && this.info?.limits === false ? h("span", { class: "badge", id: "no-limits", title: "This task's turns have no limit on tool calls, tokens, actions or time; its spend limit still applies." }, "No turn limits") : null,
       item.started ? h("span", { class: "started" }, `· started ${sameDay(item.started) ? clock(item.started) : ago(item.started)}`) : null,
       !item.open && this.logModel ? h("span", { class: "started", id: "saved-model" }, `· ${this.logModel.model}${this.logModel.effort ? ` · ${effortLabel(this.logModel.effort)} effort` : ""}, as it was left`) : null,
       item.archived ? h("span", { class: "badge plain" }, "archived") : null,
@@ -1265,8 +1312,11 @@ export class TaskView {
     const typing = [...side.querySelectorAll("textarea[data-notes]")].find((field) => field === document.activeElement);
     const caret = typing ? [typing.selectionStart, typing.selectionEnd, typing.scrollTop] : null;
     // A tab button the reader is on keeps the focus across the redraw, as
-    // the notes field keeps its caret.
+    // the notes field keeps its caret; so does a control of the limits, the
+    // limit being typed with its caret.
     const focusing = side.querySelector("[role=tab]:focus");
+    const limitFocus = side.contains(document.activeElement) ? document.activeElement.dataset?.limitFocus : undefined;
+    const limitCaret = limitFocus === "input" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
     const tabs = this.asideTabs();
     this.tab ||= tabs[0].id;
     let at = tabs.findIndex((t) => t.id === this.tab);
@@ -1310,7 +1360,12 @@ export class TaskView {
       ? h("button", { type: "button", class: "btn small review-open", "aria-expanded": String(this.inspecting === "review"), "aria-controls": "task-inspector", onclick: () => this.openReview() }, this.reviewLabel())
       : null;
     const reviewFocused = side.querySelector(".review-open:focus");
-    side.replaceChildren(...[this.monitorPanel(), review, bar, body].filter(Boolean));
+    side.replaceChildren(...[this.monitorPanel(), this.limitsSection(), review, bar, body].filter(Boolean));
+    if (limitFocus) {
+      const node = side.querySelector(`[data-limit-focus="${limitFocus}"]`);
+      node?.focus({ preventScroll: true });
+      if (node && limitCaret) node.setSelectionRange(limitCaret[0], limitCaret[1]);
+    }
     if (reviewFocused) review?.focus({ preventScroll: true });
     body.scrollTop = this.asideScroll.get(tabs[at].id) || 0;
     if (focusing) side.querySelector(`#${focusing.id}`)?.focus();
@@ -1484,9 +1539,10 @@ export class TaskView {
     const turn = this.lastTurn();
     const budgets = this.info?.budgets;
     if (!turn) return null;
-    // By default a soft limit is its hard one, so nothing asks first (ADR 35).
-    const asks = budgets && ["tool_calls", "tokens", "actions", "wall_ns", "cost"].some((d) => budgets[d]?.soft < budgets[d]?.hard);
-    const note = !budgets ? "counted from the log" : this.info?.limits === false ? "no turn limits" : asks ? "asks before a limit" : "stops at a limit";
+    // A task's limits are none unless set, and stop a turn without asking
+    // first (ADR 49, amended 2026-10-27).
+    const anyLimit = budgets && ["tool_calls", "tokens", "actions", "wall_ns", "cost"].some((d) => budgets[d]?.hard > 0);
+    const note = !budgets ? "counted from the log" : anyLimit ? "stops at a limit" : "no limits";
     const panel = h("section", { class: "panel" }, h("h2", {}, "This turn", h("span", { class: "note" }, note)));
     const meters = h("div", { class: "stack-md", dataset: { meters: "1" } });
     panel.append(meters);

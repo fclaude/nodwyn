@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/budget"
-	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -44,11 +43,11 @@ func TestPlanViewSeparatesGateOutcomesAndMessages(t *testing.T) {
 }
 
 func TestBudgetViewUsesLatestTurnCheckpointsNotLiveUsage(t *testing.T) {
-	limits, _ := config.Default().Budget.Limits(3)
+	limits := budget.Task{ToolCalls: 3}.Limits()
 	record := log.TurnCheckpoint{Checkpoint: budget.Checkpoint{Dimension: "wall", Used: int64(time.Minute), Limit: budget.Limit{Soft: int64(time.Minute), Hard: int64(time.Hour)}, State: budget.State{ToolCalls: 2, Tokens: 123, Actions: 1, Elapsed: time.Minute, Files: []string{"note"}}}, Choice: budget.Choice{Continue: true, Soft: int64(2 * time.Minute)}}
 	events := []log.Event{historyRecord(1, log.KindUserMsg, log.UserMsg{Text: "first"}), historyRecord(2, log.KindTurnCheckpoint, record), historyRecord(3, log.KindTurnEnd, log.Note{Text: "done"})}
 	text, err := formatBudgets(limits, events)
-	for _, want := range []string{"tool_calls · soft 3 · hard 3", "tokens: 123", "elapsed: 1m0s", "continue requested · new soft limit 2m0s", "Turn end is recorded", "not live counters"} {
+	for _, want := range []string{"tool_calls · 3\n", "tokens · no limit", "tokens: 123", "elapsed: 1m0s", "continue requested · new soft limit 2m0s", "Turn end is recorded", "not live counters"} {
 		if err != nil || !strings.Contains(text, want) {
 			t.Fatalf("budget view missing %q: %s (%v)", want, text, err)
 		}
@@ -70,7 +69,7 @@ func TestBudgetViewUsesLatestTurnCheckpointsNotLiveUsage(t *testing.T) {
 }
 
 func TestPlanAndBudgetInspectorsRejectMalformedRecords(t *testing.T) {
-	limits, _ := config.Default().Budget.Limits(0)
+	var limits budget.Limits
 	events := []log.Event{historyRecord(1, log.KindUserMsg, log.UserMsg{Text: "request"}), historyRecord(2, log.KindGatePlan, "invalid")}
 	if _, err := formatPlan(events); err == nil {
 		t.Fatal("malformed plan accepted")
@@ -86,10 +85,10 @@ func TestPlanAndBudgetInspectorsRejectMalformedRecords(t *testing.T) {
 	}
 }
 
-func TestBudgetInspectionAndCheckpointThroughTheDaemon(t *testing.T) {
+// :budget reads the task's limits through the daemon, and a turn stops at
+// one without a checkpoint asking first (ADR 49, amended 2026-10-27).
+func TestBudgetInspectionThroughTheDaemon(t *testing.T) {
 	o := testOptions(t)
-	o.Config.Budget.ToolCallsSoft = 1
-	o.Config.Loop.MaxToolCalls = 3
 	server := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "one", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "two", Name: "fs-list", Args: map[string]any{"path": "."}}}})
 	defer server.Close()
 	o.Provider = llm.NewOllama(server.URL)
@@ -101,6 +100,9 @@ func TestBudgetInspectionAndCheckpointThroughTheDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := b.client.Call(ctx, "session.limits.set", map[string]any{"id": snap.ID, "limits": map[string]any{"tool_calls": 1}}, nil); err != nil {
+		t.Fatal(err)
+	}
 	m := newModel(ctx, b, o.Repo, snap.ID, false)
 	m.restore(snap)
 	before, err := b.History(ctx, snap.ID)
@@ -108,7 +110,7 @@ func TestBudgetInspectionAndCheckpointThroughTheDaemon(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Update(m.inspect(":budget")())
-	if !strings.Contains(m.inspector.content, "tool_calls · soft 1 · hard 3") {
+	if !strings.Contains(m.inspector.content, "tool_calls · 1\n") || !strings.Contains(m.inspector.content, "wall · no limit") {
 		t.Fatal(m.inspector.content)
 	}
 	m.Update(m.inspect(":plan")())
@@ -122,7 +124,7 @@ func TestBudgetInspectionAndCheckpointThroughTheDaemon(t *testing.T) {
 	if err := b.Send(ctx, snap.ID, "list twice", false); err != nil {
 		t.Fatal(err)
 	}
-	completed, prompted := false, false
+	outcome := ""
 	for {
 		ev, err := b.Next(ctx)
 		if err != nil {
@@ -130,35 +132,25 @@ func TestBudgetInspectionAndCheckpointThroughTheDaemon(t *testing.T) {
 		}
 		m.consume(ev)
 		if ev.Kind == event.PromptCheckpoint {
-			prompted = true
-			if m.prompt == nil || !strings.Contains(m.prompt.detail, "Tool calls: 1") || !strings.Contains(m.prompt.detail, "tokens:") {
-				t.Fatal("checkpoint usage missing or inspector hid prompt")
-			}
-			p, _ := decode[event.Checkpoint](ev.Payload)
-			if err := b.Answer(ctx, snap.ID, p.ID, "n"); err != nil {
-				t.Fatal(err)
-			}
+			t.Fatal("a checkpoint asked")
 		}
 		if ev.Kind == string(log.KindTurnEnd) {
-			completed = true
+			end, _ := decode[log.TurnEnd](ev.Payload)
+			outcome = end.Outcome
 		}
-		if completed && ev.Kind == event.Status && !m.busy {
+		if outcome != "" && ev.Kind == event.Status && !m.busy {
 			break
 		}
 	}
 	m.Update(m.inspect(":budget")())
-	if !prompted || !strings.Contains(m.inspector.content, "Decision: stop") || !strings.Contains(m.inspector.content, "Turn end is recorded") {
-		t.Fatal(m.inspector.content)
-	}
-	m.Update(m.inspect(":plan")())
-	if !strings.Contains(m.inspector.content, "No planning outcome recorded for this message") {
-		t.Fatal("missing gate was presented as planning success")
+	if outcome != "hard_budget" || !strings.Contains(m.inspector.content, "Turn end is recorded") {
+		t.Fatal(outcome, m.inspector.content)
 	}
 }
 
 func TestPlanAndCheckpointTextIsSanitizedForDisplay(t *testing.T) {
 	const canary = "sk-ant-abcdefgh1234"
-	limits, _ := config.Default().Budget.Limits(0)
+	var limits budget.Limits
 	events := []log.Event{
 		historyRecord(1, log.KindUserMsg, log.UserMsg{Text: canary}),
 		historyRecord(2, log.KindGatePlan, log.GatePlan{Noul: "degraded", Plan: canary + "\x1b[2Jplan", Reason: canary}),
@@ -242,13 +234,13 @@ func TestBudgetViewSpend(t *testing.T) {
 	}
 }
 
-// A task whose limits are off (ADR 49) reports a hard limit of 0 for the
-// four turn dimensions: the daemon's details are taken, not refused, and
-// :budget says there is no limit rather than "hard 0".
+// A task has no limit unless one is set (ADR 49, amended 2026-10-27): the
+// daemon reports a hard limit of 0 for it, which is taken, not refused, and
+// :budget says there is no limit rather than "0".
 func TestBudgetViewOfATaskWithoutLimits(t *testing.T) {
 	cost := budget.Limit{Soft: 2_000_000, Hard: 2_000_000}
 	if err := checkTurnLimits(budget.Limits{Cost: cost}); err != nil {
-		t.Fatalf("limits off refused: %v", err)
+		t.Fatalf("no turn limits refused: %v", err)
 	}
 	if err := checkTurnLimits(budget.Limits{ToolCalls: budget.Limit{Soft: 0, Hard: 5}}); err == nil {
 		t.Fatal("a hard limit with no soft one was taken")
@@ -257,20 +249,20 @@ func TestBudgetViewOfATaskWithoutLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"tool_calls · no limit", "tokens · no limit", "actions · no limit", "wall · no limit", "cost · soft $2.00 · hard $2.00"} {
+	for _, want := range []string{"tool_calls · no limit", "tokens · no limit", "actions · no limit", "wall · no limit", "cost · $2.00"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("budget view missing %q:\n%s", want, text)
 		}
 	}
 }
 
-// A task's limits turned off or on are said in the conversation, as a model
-// or judge choice is, with who chose.
+// A task's limits as set are said in the conversation, as a model or judge
+// choice is, with who set them; removing them all says none.
 func TestLimitsChoiceInTheConversation(t *testing.T) {
 	m := testModel()
-	m.consume(wire(string(log.KindSessionLimits), log.SessionLimits{On: false, Actor: "unix:uid=1"}, 1))
-	m.consume(wire(string(log.KindSessionLimits), log.SessionLimits{On: true}, 2))
-	for _, want := range []string{"limits → off: turns run as long as they need · by unix:uid=1", "limits → on: turns stop at the configured limits"} {
+	m.consume(wire(string(log.KindSessionLimits), log.SessionLimits{Actor: "unix:uid=1", Task: budget.Task{ToolCalls: 40, Cost: 2}}, 1))
+	m.consume(wire(string(log.KindSessionLimits), log.SessionLimits{}, 2))
+	for _, want := range []string{"limits → tool calls 40 a turn; spend $2.00 for the task · by unix:uid=1", "limits → none"} {
 		if !transcriptHas(m, want)() {
 			t.Fatalf("the conversation does not say %q", want)
 		}
@@ -278,11 +270,9 @@ func TestLimitsChoiceInTheConversation(t *testing.T) {
 }
 
 // The spend limit reaches :budget (the daemon's was once dropped), and the
-// view reads the session's limits, not the configuration: a task whose
-// limits are off has none but its spend limit.
+// view reads the task's limits: none until set, then those set.
 func TestBudgetViewHasTheSpendLimitAndTheSessionsLimits(t *testing.T) {
 	o := testOptions(t)
-	o.Config.Budget.CostHard = 5
 	b, _ := testRemote(t, o)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -294,13 +284,13 @@ func TestBudgetViewHasTheSpendLimitAndTheSessionsLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if limits.Cost.Hard != 5*budget.Micro || limits.ToolCalls.Hard == 0 {
-		t.Fatalf("limits %+v", limits)
+	if limits != (budget.Limits{}) {
+		t.Fatalf("a new task has limits %+v", limits)
 	}
-	if err := b.client.Call(ctx, "session.limits.set", map[string]any{"id": snap.ID, "on": false}, nil); err != nil {
+	if err := b.client.Call(ctx, "session.limits.set", map[string]any{"id": snap.ID, "limits": map[string]any{"cost": 5, "tool_calls": 7}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if limits, err = b.Budgets(ctx, snap.ID); err != nil || limits.ToolCalls.Hard != 0 || limits.Cost.Hard != 5*budget.Micro {
-		t.Fatalf("limits of a task with them off: %+v %v", limits, err)
+	if limits, err = b.Budgets(ctx, snap.ID); err != nil || limits.ToolCalls.Hard != 7 || limits.Cost.Hard != 5*budget.Micro || limits.Tokens.Hard != 0 {
+		t.Fatalf("limits of a task with some set: %+v %v", limits, err)
 	}
 }

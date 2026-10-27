@@ -368,16 +368,16 @@ check(async () => {
   const configOf = (w) => fs.readFileSync(`${w.root}/config/nodwyn/config.toml`, "utf8");
   const laptopConfig = configOf(laptop);
   await page.click("#advanced > summary");
-  await page.fill("[id='set-budget.tool_calls_soft']", "40");
+  await page.fill("[id='set-loop.shell_timeout']", "3m");
   await page.waitForSelector(".save-bar:not([hidden]) .btn.accent");
   await page.screenshot({ path: `${out}/workshop-settings.png` });
   await page.click(".save-bar .btn.accent");
-  await until("workshop's config.toml to ask at 40 tool calls", () => /\[budget\][^[]*tool_calls_soft = 40/.test(configOf(workshop)));
-  assert.deepStrictEqual(of(sent.workshop, "settings.write"), [{ set: { "budget.tool_calls_soft": 40 } }], "the setting went to workshop");
+  await until("workshop's config.toml to wait 3 minutes for a command", () => /\[loop\][^[]*shell_timeout = "3m"/.test(configOf(workshop)));
+  assert.deepStrictEqual(of(sent.workshop, "settings.write"), [{ set: { "loop.shell_timeout": "3m" } }], "the setting went to workshop");
   assert.strictEqual(of(sent.local, "settings.write").length, 0, "workshop's setting went to the laptop");
   assert.strictEqual(configOf(laptop), laptopConfig, "workshop's setting changed the laptop's config.toml");
   await until("the save bar gone", async () => await page.locator(".save-bar").isHidden());
-  assert.strictEqual(await page.inputValue("[id='set-budget.tool_calls_soft']"), "40", "workshop's Settings do not show the saved value");
+  assert.strictEqual(await page.inputValue("[id='set-loop.shell_timeout']"), "3m", "workshop's Settings do not show the saved value");
   await page.click("main.settings-page [role=tab]:has-text('Models')");
   await page.waitForSelector("#settings-panel-models");
   assert.strictEqual(await page.locator("#add-provider").count(), 0, "a link can add a provider at workshop");
@@ -396,7 +396,7 @@ check(async () => {
   assert.strictEqual(of(sent.local, "settings.control.write").length, 0, "workshop's default model went to the laptop");
   await until("workshop's config.toml to change its [control]", () => configOf(workshop) !== tarroBefore);
   assert.strictEqual(configOf(laptop), laptopConfig, "workshop's default model changed the laptop's config.toml");
-  step("a link vouched for by the person's passkey changes workshop's limits and default model from this window, and not the laptop's, and cannot choose its approvals");
+  step("a link vouched for by the person's passkey changes workshop's settings and default model from this window, and not the laptop's, and cannot choose its approvals");
 
   // The models of workshop's list are the link's to add, change and remove,
   // among the providers workshop has; the providers themselves are not.

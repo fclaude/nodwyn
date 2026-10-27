@@ -83,7 +83,7 @@ check(async () => {
   await go("#/settings/general");
   await page.waitForSelector("#advanced[open]");
   await page.click(".save-bar button:text-is('Discard')");
-  step("limits, the context window and the container runtime are one closed fold");
+  step("waiting, the context window and the container runtime are one closed fold");
 
   // ---------- the judge: one way to be off, and its tuning folded ----------
   await go("#/settings/judge");
