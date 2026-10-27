@@ -131,14 +131,17 @@ func TestStoppingValidateStopsWhatItRuns(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	var group int
-	for deadline := time.Now().Add(30 * time.Second); group == 0; time.Sleep(50 * time.Millisecond) {
+	var group, other int
+	for deadline := time.Now().Add(30 * time.Second); group == 0 || other == 0; time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			_ = cmd.Process.Kill()
-			t.Fatal("the helper never started its check")
+			t.Fatal("the helper never started its checks")
 		}
 		if raw, err := os.ReadFile(filepath.Join(dir, "group")); err == nil {
 			group, _ = strconv.Atoi(strings.TrimSpace(string(raw)))
+		}
+		if raw, err := os.ReadFile(filepath.Join(dir, "other")); err == nil {
+			other, _ = strconv.Atoi(strings.TrimSpace(string(raw)))
 		}
 	}
 	_ = cmd.Process.Signal(syscall.SIGTERM)
@@ -146,9 +149,11 @@ func TestStoppingValidateStopsWhatItRuns(t *testing.T) {
 	if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 130 {
 		t.Fatalf("validate stopped with %v, want exit 130", err)
 	}
-	for deadline := time.Now().Add(5 * time.Second); syscall.Kill(-group, 0) == nil; time.Sleep(50 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatalf("the check's own group %d still runs after validate stopped", group)
+	for _, g := range []int{group, other} {
+		for deadline := time.Now().Add(5 * time.Second); syscall.Kill(-g, 0) == nil; time.Sleep(50 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("a check's own group %d still runs after validate stopped", g)
+			}
 		}
 	}
 	if fileExists(filepath.Join(dir, "second")) {
@@ -157,17 +162,51 @@ func TestStoppingValidateStopsWhatItRuns(t *testing.T) {
 }
 
 // stopHelper is validate as the stop test sees it: a check like run.sh,
-// which runs a command in a group of its own and stops it on SIGTERM, then
-// a second command, which must never start.
+// which runs a command in a group of its own and stops it on SIGTERM, and
+// another check running beside it, then a second command, which must never
+// start.
 func stopHelper(dir string) {
 	stopOnSignal()
 	script := `timeout 60 sleep 60 & pid=$!
 trap 'kill -KILL -- -$pid; exit 143' TERM
 echo $pid > "$1/group.tmp" && mv "$1/group.tmp" "$1/group"
 wait $pid`
-	_, _, _ = run(dir, filepath.Join(dir, "first.log"), time.Minute, "bash", "-c", script, "bash", dir)
+	concurrently(
+		func() []result {
+			_, _, _ = run(dir, filepath.Join(dir, "first.log"), time.Minute, "bash", "-c", script, "bash", dir)
+			return nil
+		},
+		func() []result {
+			_, _, _ = run(dir, filepath.Join(dir, "other.log"), time.Minute, "sh", "-c", `echo $$ > "$1/other.tmp" && mv "$1/other.tmp" "$1/other"; exec sleep 60`, "sh", dir)
+			return nil
+		})
 	_, _, _ = run(dir, filepath.Join(dir, "second.log"), time.Minute, "touch", "second")
 	select {} // the signal handler exits
+}
+
+// Checks run at the same time, so the run takes as long as the slowest, and
+// their results come back in the order they were given, whichever ended
+// first, so the summary reads the same every time.
+func TestConcurrentlyOverlapsJobsAndKeepsTheirOrder(t *testing.T) {
+	slow := func(name string, d time.Duration) func() []result {
+		return func() []result {
+			time.Sleep(d)
+			return []result{{name: name}}
+		}
+	}
+	start := time.Now()
+	got := concurrently(slow("a", 600*time.Millisecond), slow("b", 10*time.Millisecond), slow("c", 300*time.Millisecond))
+	took := time.Since(start)
+	var names []string
+	for _, r := range got {
+		names = append(names, r.name)
+	}
+	if !slices.Equal(names, []string{"a", "b", "c"}) {
+		t.Fatalf("results %v, want the jobs' order a b c", names)
+	}
+	if took > 900*time.Millisecond {
+		t.Fatalf("jobs took %s: they ran one after another (sum 910ms), not together (slowest 600ms)", took)
+	}
 }
 
 func TestRunStopsAtItsLimit(t *testing.T) {

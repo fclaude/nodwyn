@@ -72,14 +72,49 @@ func plan(base string, changed []string) []check {
 		}})
 	}
 	if accept {
-		checks = append(checks, check{"make accept", func(logs string) result {
-			return step("make accept", "go vet, staticcheck, lints, go test -race ./..., exfil", logs, 30*time.Minute, "make", "accept")
-		}})
+		checks = append(checks, check{"make accept", acceptChecks})
 	}
 	if browser {
 		checks = append(checks, check{"browser checks", func(logs string) result { return browserChecks(base, logs) }})
 	}
 	return checks
+}
+
+// acceptChecks is make accept (lint, test, exfil: the Makefile's `accept`
+// names them in that order) with the independent parts run at the same
+// time. Lint (vet, staticcheck, the boundary and ingress lints) does not
+// need the tests, and the tests take several times as long; the exfil suite
+// is part of `go test ./...`, so running it after the tests costs a cache
+// hit and keeps promotion's three steps all here. It is one result, named
+// as the check always was, with each step's time in its detail.
+func acceptChecks(logs string) result {
+	const limit = 30 * time.Minute
+	parts := concurrently(
+		func() []result {
+			return []result{step("make lint", "go vet, staticcheck, lints", logs, limit, "make", "lint")}
+		},
+		func() []result {
+			tests := step("make test", "go test -race ./...", logs, limit, "make", "test")
+			if tests.status == "FAIL" {
+				return []result{tests}
+			}
+			return []result{tests, step("make exfil", "exfil", logs, limit, "make", "exfil")}
+		})
+	merged := result{status: "PASS", name: "make accept"}
+	var details []string
+	for _, p := range parts {
+		details = append(details, p.name+": "+p.detail)
+		if p.status != "FAIL" {
+			continue
+		}
+		merged.status = "FAIL"
+		if merged.log == "" {
+			merged.log = p.log
+		}
+		merged.tail += "== " + p.name + "\n" + p.tail + "\n"
+	}
+	merged.detail = strings.Join(details, "; ")
+	return merged
 }
 
 // browserNeeds is whether a change to p can change what a browser check

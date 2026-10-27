@@ -425,3 +425,38 @@ reintroduced. Local bare-remote tests cover unchanged landing, empty-main
 rebases, changed-main rebases, failed checks and later edits. A fake-provider
 matrix checks PASS/exit agreement and changes during validation through each
 execution route.
+
+## Amendment 2026-10-27: the checks run at the same time
+
+validate ran its checks one after another: gofmt, the catalogue, `make
+accept` (which itself ran lint, then the tests, then the exfil suite), the
+browser checks, and last the changed tests on the unchanged code. They do
+not depend on each other, and a run is mostly waiting (on `go test -race`,
+on Chromium, on a copy's tests), so a change that needed all of them paid
+the sum of their times.
+
+- **Every check starts at once** and the summary is printed when the last
+  ends, in the order the checks were planned, so it reads the same whichever
+  finished first. Each plan check prints a `validate: NAME: STATUS (time)`
+  line as it ends, so a long run shows what is still outstanding.
+- **`make accept` is its three steps, run as such:** `make lint` beside `make
+  test`, then `make exfil` once the tests passed. The exfil suite is inside
+  `go test ./...`, so that last step is a cache hit; it stays so that what
+  validate runs is still what promotion runs. The check keeps its name and
+  stays one result, with each step's time in its detail and, on a failure,
+  the end of each failing step's output. Anyone who changes the `accept`
+  line of the `Makefile` changes `acceptChecks` with it.
+- **Stopping validate stops every running command's group**, not one: the
+  single "running" slot became a set. `TestStoppingValidateStopsWhatItRuns`
+  runs two commands at once and fails when only one is stopped.
+
+The run is now as long as its slowest check (the tests) and no longer the
+sum of all of them. On the 4-core machine of this session, where every
+package but three failing for environmental reasons was in the test cache,
+lint (2 to 25 s), the tests (55 s) and the changed tests on the unchanged
+code overlapped, and a run took 55 s. The browser checks now overlap the
+Go tests, too; they run every check at once themselves, so on a machine that
+limits processes (this session's service allows 1024 threads and processes)
+the peak load is higher than before, and a check that fails for want of a
+process shows as the flaky or unchanged-code warning it already produces.
+The checks' names, their results and PASS or FAIL are what they were.

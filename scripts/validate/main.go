@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -49,13 +50,22 @@ func main() {
 		os.Exit(2)
 	}
 	fmt.Printf("validate: %d changed files since %s (%s); full output in %s\n", len(changed), short(base), against, logs)
-	var results []result
+	// The checks do not depend on each other, and most of the time is spent
+	// waiting on tests and browsers, so they run at the same time: the run
+	// takes as long as the slowest check, not their sum.
+	var jobs []func() []result
 	for _, c := range plan(base, changed) {
-		results = append(results, c.run(logs))
+		jobs = append(jobs, func() []result {
+			start := time.Now()
+			r := c.run(logs)
+			fmt.Printf("validate: %s: %s (%s)\n", r.name, r.status, time.Since(start).Round(time.Second))
+			return []result{r}
+		})
 	}
-	results = append(results, againstBase(base, changed, logs)...)
-	results = append(results, docRules(base, changed)...)
-	os.Exit(summarise(os.Stdout, results))
+	jobs = append(jobs,
+		func() []result { return againstBase(base, changed, logs) },
+		func() []result { return docRules(base, changed) })
+	os.Exit(summarise(os.Stdout, concurrently(jobs...)))
 }
 
 // git runs git in the working directory and returns its trimmed output.

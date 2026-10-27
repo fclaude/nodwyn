@@ -26,18 +26,19 @@ type result struct {
 
 // Each command leads a process group of its own, which a signal to
 // validate's group does not reach, so stopping validate stops it by hand.
-// running is the group run waits for (0 when none) and stopping says a
-// signal came: under mu, a command either starts before the signal and is
-// stopped, or does not start.
+// running is the set of groups run is waiting for (checks run at the same
+// time) and stopping says a signal came: under mu, a command either starts
+// before the signal and is stopped, or does not start.
 var (
 	mu       sync.Mutex
-	running  int
+	running  = map[int]bool{}
 	stopping bool
 )
 
-// stopOnSignal stops the running command's group when validate is
+// stopOnSignal stops every running command's group when validate is
 // interrupted or stopped, then exits. shell-stop sends SIGTERM and SIGKILL
-// two seconds later, so the group gets its own SIGTERM and one second.
+// two seconds later, so the groups get their own SIGTERM and one second,
+// all at once.
 func stopOnSignal() {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
@@ -45,13 +46,42 @@ func stopOnSignal() {
 		<-signals
 		mu.Lock()
 		stopping = true
-		group := running
-		mu.Unlock()
-		if group != 0 {
-			stopGroup(group)
+		groups := make([]int, 0, len(running))
+		for group := range running {
+			groups = append(groups, group)
 		}
+		mu.Unlock()
+		var wg sync.WaitGroup
+		for _, group := range groups {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				stopGroup(group)
+			}()
+		}
+		wg.Wait()
 		os.Exit(130)
 	}()
+}
+
+// concurrently runs the jobs at the same time and returns their results in
+// the jobs' order, so the summary does not depend on which finished first.
+func concurrently(jobs ...func() []result) []result {
+	parts := make([][]result, len(jobs))
+	var wg sync.WaitGroup
+	for i, job := range jobs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			parts[i] = job()
+		}()
+	}
+	wg.Wait()
+	var all []result
+	for _, p := range parts {
+		all = append(all, p...)
+	}
+	return all
 }
 
 // stopGroup sends a process group SIGTERM, and SIGKILL to what is left a
@@ -96,11 +126,11 @@ func run(dir, logPath string, limit time.Duration, name string, args ...string) 
 		return -1, false, err
 	}
 	group := -cmd.Process.Pid
-	running = group
+	running[group] = true
 	mu.Unlock()
 	defer func() {
 		mu.Lock()
-		running = 0
+		delete(running, group)
 		mu.Unlock()
 	}()
 	done := make(chan error, 1)
