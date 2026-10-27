@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=nodwyn
+Comment=Work with your coding agent
+Exec=nodwyn app
+Icon=com.nodwyn.app
+Terminal=false
+Categories=Development;
+StartupWMClass=com.nodwyn.app

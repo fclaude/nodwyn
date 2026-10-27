@@ -3275,3 +3275,12 @@ fragment before sending requests, consumes it only for an unpaired browser,
 and never replaces an existing pairing. Use no parent invitation for this.
 
 For operator recovery, `nodwyn-kids --profile PATH --revoke NAME` removes one named device. Use parent passkey controls for routine administration.
+
+## Desktop shortcut icon
+
+The native app uses the same cream **n** and blue dot as the console. On
+macOS, pin `Nodwyn.app` from Applications. On Linux, run
+`python3 scripts/install-desktop.py /absolute/path/to/nodwyn` from the source
+checkout, then pin nodwyn from the application menu. This installs the
+launcher and icons for your account; see [the app](app.md#application-icon-and-linux-shortcuts)
+for package paths and options.

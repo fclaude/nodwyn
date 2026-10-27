@@ -1102,3 +1102,8 @@ static-app capability ceiling, a separate browser surface and daily local-model
 accounting (ADR~56). A child creates a project, asks for a change and opens its
 private preview. The operator owns policy and publishing; the ordinary desktop
 application is not a child sandbox. See the manual's managed-service section.
+
+On Linux, \code{python3 scripts/install-desktop.py /absolute/path/to/nodwyn}
+installs an application-menu shortcut and the console's icon for your
+account. Pin nodwyn from that menu. The native window and launcher share
+\code{com.nodwyn.app}; macOS uses the icon in \file{Nodwyn.app}.

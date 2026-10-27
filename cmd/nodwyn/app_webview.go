@@ -21,6 +21,9 @@ import (
 //go:embed desktop.js
 var desktopJS string
 
+//go:embed icon.png
+var desktopIcon []byte
+
 func desktopScript(origin, token string) string {
 	quoted, _ := json.Marshal(origin)
 	capability, _ := json.Marshal(token)
@@ -48,8 +51,10 @@ func openWindow(ctx context.Context, address string, forceBrowser bool) error {
 	}
 	bridge := desktopBridge{origin: origin, token: hex.EncodeToString(capability[:])}
 	app = application.New(application.Options{
-		Name: "nodwyn",
-		Mac:  application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		Name:  "nodwyn",
+		Icon:  desktopIcon,
+		Linux: application.LinuxOptions{ApplicationID: "com.nodwyn.app"},
+		Mac:   application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 		RawMessageHandler: func(window application.Window, message string, source *application.OriginInfo) {
 			if source == nil {
 				return

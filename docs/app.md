@@ -168,3 +168,34 @@ locked keychain stops a run. A daemon `nodwyn app` starts closes with its
 window; Settings › General › **While you're away** › **Start at login**
 (`nodwyn startup on`) has one
 start at login instead, which the app then uses and leaves running.
+
+## Application icon and Linux shortcuts
+
+The native window carries the console's cream **n** and blue dot on a dark
+background. The macOS bundle includes `Nodwyn.icns`; move `Nodwyn.app` to
+Applications and pin that bundle in the Dock.
+
+On Linux, after building or installing nodwyn, install its application-menu
+entry and hicolor icons for your account:
+
+```sh
+python3 scripts/install-desktop.py /absolute/path/to/nodwyn
+# Or, after promotion:
+python3 scripts/install-desktop.py ~/.local/bin/nodwyn-stable
+```
+
+The installer uses `XDG_DATA_HOME` (normally `~/.local/share`), or
+`--data-dir PATH`. It points the shortcut at that exact executable and runs
+`app` without a terminal. Pin nodwyn from the application menu; replace an
+older pinned shortcut if it still shows a generic icon. Paths with spaces
+are supported; executable paths containing percent signs or newlines are
+refused. The binary must stay at the installed path.
+An existing per-user `nodwyn.desktop` is updated too, as a hidden alias for
+old pins, so the application menu shows only the new entry.
+
+Distribution packages can install `packaging/linux/com.nodwyn.app.desktop`
+in `share/applications`, and the console's `icons/icon.svg` and
+`icons/icon-512.png` as `com.nodwyn.app.svg` and `com.nodwyn.app.png` under
+`share/icons/hicolor/scalable/apps` and `share/icons/hicolor/512x512/apps`.
+The native GTK application id and launcher id are both `com.nodwyn.app`, so
+Wayland can associate the window with the shortcut's icon.

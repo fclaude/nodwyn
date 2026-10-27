@@ -41,3 +41,15 @@ WSL backend. The Linux runner still publishes portable binaries and books;
 native app publication needs a separately exercised build recipe. macOS signing
 remains ad hoc and no notarisation is claimed. The Linux native check is not
 evidence that a macOS or Windows app has run.
+
+## Amendment 2026-10-27: Carry the icon into the native app
+
+The console and macOS bundle already have the cream n and blue dot, but the
+native Wails options did not carry an icon and the repository provided no
+Linux application-menu entry. Embed the console PNG in the native build and
+set the GTK application id to `com.nodwyn.app`, matching the new desktop file.
+Install the existing SVG and PNG in the hicolor theme with that name. A
+source-checkout installer targets an explicitly selected executable and the
+person's XDG data directory; it reads no project policy or session content.
+The macOS bundle keeps its existing icon. Linux distribution packages can
+install the supplied desktop file and the same assets in their prefix.
