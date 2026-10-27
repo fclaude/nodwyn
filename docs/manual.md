@@ -3166,8 +3166,9 @@ run it (ADR 54). The laptop links to the server once:
    The laptop keeps the link's token in its keychain, which has to be open:
    the form offers to unlock or create it.
 
-The sidebar then groups the tasks under each host, with its state, and
-Home's **Runs on** chooses the host a new task starts on, with that host's
+The sidebar then groups the tasks under each host, with its state; each host
+starts folded, and its heading opens its folders (this browser remembers which
+you opened). Home's **Runs on** chooses the host a new task starts on, with that host's
 folders and model; the next task starts on the host chosen last. A task on the server says so in its heading; you answer
 it, message it and give it files from the laptop, and the server records the
 answers as the laptop's. A notice of the server's task opens it there.

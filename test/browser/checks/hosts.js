@@ -235,25 +235,31 @@ check(async () => {
   await page.click("a.new-task");
   step("opening the notice opens workshop's task");
 
-  // A host's heading folds its folders away, keeping its state in view, and
-  // this browser remembers it across a reload; this computer's is separate.
+  // A host starts folded, its folders away and its state in view; its
+  // heading opens it, and this browser remembers it across a reload. This
+  // computer's is separate.
   const tarroFolders = ".nav-host[data-host='workshop'] .folder-head";
   const tarroHead = ".nav-host[data-host='workshop'] button.host-head";
-  assert.ok((await page.locator(tarroFolders).count()) > 0, "workshop shows no folder to fold");
-  const localFolders = await page.locator(".nav-host[data-host=''] .folder-head").count();
-  await page.click(tarroHead);
-  await until("workshop folded", async () => (await page.locator(tarroFolders).count()) === 0);
-  assert.strictEqual(await page.getAttribute(tarroHead, "aria-expanded"), "false", "a folded host says it is open");
+  const localFolders = ".nav-host[data-host=''] .folder-head";
+  const localHead = ".nav-host[data-host=''] button.host-head";
+  assert.strictEqual(await page.getAttribute(tarroHead, "aria-expanded"), "false", "workshop starts open");
+  assert.strictEqual(await page.getAttribute(localHead, "aria-expanded"), "false", "this computer starts open");
+  assert.strictEqual(await page.locator(tarroFolders).count(), 0, "a folded host shows its folders");
+  assert.strictEqual(await page.locator(localFolders).count(), 0, "a folded this computer shows its folders");
   await shows(page, ".nav-host[data-host='workshop'] .host-head", "workshop");
-  assert.strictEqual(await page.locator(".nav-host[data-host=''] .folder-head").count(), localFolders, "folding workshop folded this computer");
+  await page.click(tarroHead);
+  await until("workshop opened", async () => (await page.locator(tarroFolders).count()) > 0);
+  assert.strictEqual(await page.getAttribute(tarroHead, "aria-expanded"), "true", "an opened host says it is folded");
+  assert.strictEqual(await page.locator(localFolders).count(), 0, "opening workshop opened this computer");
   await page.reload();
   await ready(page);
   await page.waitForSelector(tarroHead);
-  assert.strictEqual(await page.locator(tarroFolders).count(), 0, "workshop unfolded on reload");
+  assert.ok((await page.locator(tarroFolders).count()) > 0, "workshop folded again on reload");
+  assert.strictEqual(await page.locator(localFolders).count(), 0, "this computer opened on reload");
   await page.click(tarroHead);
-  await until("workshop unfolded", async () => (await page.locator(tarroFolders).count()) > 0);
-  assert.strictEqual(await page.getAttribute(tarroHead, "aria-expanded"), "true", "an unfolded host says it is folded");
-  step("a host's heading folds its folders, and the fold is remembered");
+  await until("workshop folded", async () => (await page.locator(tarroFolders).count()) === 0);
+  assert.strictEqual(await page.getAttribute(tarroHead, "aria-expanded"), "false", "a folded host says it is open");
+  step("a host starts folded, its heading opens it, and the choice is remembered");
 
   // At a phone's width the hosts and Runs on fit, and the drawer holds the
   // hosts with their tasks.

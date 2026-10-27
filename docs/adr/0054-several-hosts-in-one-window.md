@@ -340,3 +340,18 @@ changes its efforts, chooses it as workshop's default and sees no Remove on it;
 removes another and sees `settings.model.remove` with its name sent to workshop
 only and gone from workshop's `config.toml`. It fails on the console before this
 change, which draws no Add a model on that tab.
+
+## Amendment 2026-10-27: hosts start folded
+
+With several hosts the sidebar listed every host's folders and tasks open, so
+the list of computers was lost under their tasks. A host's heading now starts
+folded, showing its name and state, and opens its folders when chosen. This
+browser remembers the hosts opened (`nodwyn-hosts-open`, where folders still
+remember the ones folded in `nodwyn-folded`), so a host folded under the old
+rule is folded again until it is opened. A search shows every match whatever is
+folded, and Needs you is unchanged, so a task that asks is still in view.
+
+**Evidence.** The `hosts` browser check sees both headings folded on first
+sight, with no folders under them; opens workshop without opening this computer;
+sees workshop still open after a reload; and folds it again. It fails on the
+sidebar before this change ("workshop starts open").

@@ -16,26 +16,32 @@ let searching = false;
 const showArchived = new Set();
 // Folders showing all their tasks, this tab only.
 const expanded = new Set();
-// Folders and hosts folded away, remembered by this browser.
-const folded = new Set(readFolded());
+// Folders folded away, remembered by this browser.
+const folded = new Set(readList("nodwyn-folded"));
+// Hosts opened, remembered by this browser: a host is folded until it is
+// opened, so the sidebar of several computers starts as a short list of them.
+const hostsOpen = new Set(readList("nodwyn-hosts-open"));
 
 // perFolder is how many tasks a folder shows before "Show more".
 const perFolder = 5;
 
-function readFolded() {
+function readList(key) {
   try {
-    const list = JSON.parse(localStorage.getItem("nodwyn-folded") || "[]");
+    const list = JSON.parse(localStorage.getItem(key) || "[]");
     return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
 }
-function saveFolded() {
+function saveList(key, set) {
   try {
-    localStorage.setItem("nodwyn-folded", JSON.stringify([...folded]));
+    localStorage.setItem(key, JSON.stringify([...set]));
   } catch {
-    /* this browser keeps nothing: folders unfold on the next load */
+    /* this browser keeps nothing: folders unfold and hosts fold on the next load */
   }
+}
+function saveFolded() {
+  saveList("nodwyn-folded", folded);
 }
 
 // byFolder groups tasks, given newest activity first, by folder; a folder
@@ -134,17 +140,16 @@ export function renderSidebar(nav, { desk, hosts, route, conn, rerender }) {
   // hostSection is a host's heading, with its state, and its folders and
   // archived tasks while it can be read. The heading folds them away, as a
   // folder's does, and its state stays in view; a search shows every match.
+  // A host is folded until it is opened, unlike a folder.
   const hostSection = (entry) => {
     const [dot, words, detail] = hostState(entry);
     const live = entry.conn.live;
-    // A host's key starts with a tab, which no folder's key (a host's name,
-    // a newline and a path, or a path) does.
-    const key = `\t${entry.name}`;
-    const open = !!filter || !folded.has(key);
+    const key = entry.name;
+    const open = !!filter || hostsOpen.has(key);
     const toggle = () => {
-      if (folded.has(key)) folded.delete(key);
-      else folded.add(key);
-      saveFolded();
+      if (hostsOpen.has(key)) hostsOpen.delete(key);
+      else hostsOpen.add(key);
+      saveList("nodwyn-hosts-open", hostsOpen);
       rerender();
     };
     const folders = live && open ? foldersOf(entry.desk) : [];

@@ -1091,7 +1091,8 @@ there by hand.
 With a linked host, the sidebar groups tasks under each host's name and
 state, below one **Needs you** for every host, each task there naming its
 host. A host's heading folds its folders away, keeping its state in view
-(this browser remembers which, as it does for folders). Home's **Runs on** chooses the host a new task starts on, and the next
+(this browser remembers which hosts are open: a host starts folded, unlike a
+folder). Home's **Runs on** chooses the host a new task starts on, and the next
 task starts on the one chosen last (`newtask.last`): the folders,
 the model (from that host's list, when it lets this computer choose) and the
 options follow it, and Enter starts it there. The lists below Home's
