@@ -90,8 +90,9 @@ export function renderSidebar(nav, { desk, hosts, route, conn, rerender }) {
     const running = item.open && (item.busy || item.run?.status === "running");
     if (!running) return row(d, item, ago(item.last_event), "");
     const run = item.run?.status === "running" ? item.run : null;
-    const left = run ? new Date(run.deadline).getTime() - Date.now() : 0;
-    return row(d, item, run ? `${run.unattended ? "Unattended · " : ""}Turn ${run.turns} of ${run.max_turns} · ${left > 0 ? minutes(left) + " left" : "time up"}` : "Working", "run");
+    const deadline = run?.deadline && !run.deadline.startsWith("0001-") ? new Date(run.deadline).getTime() : null;
+    const left = deadline === null ? null : deadline - Date.now();
+    return row(d, item, run ? `${run.unattended ? "Unattended · " : ""}Turn ${run.turns}${run.max_turns > 0 ? ` of ${run.max_turns}` : ""}${left === null ? "" : ` · ${left > 0 ? minutes(left) + " left" : "time up"}`}` : "Working", "run");
   };
   // foldersOf is the folders of the host d shows, each with its tasks. A
   // linked host's folder is folded by its host and path, this computer's by

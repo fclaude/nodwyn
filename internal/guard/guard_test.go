@@ -7,7 +7,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
@@ -23,6 +26,47 @@ func (f fixed) Name() string                                                 { r
 func (f fixed) Check(context.Context, *scheme.Prim, []scheme.Value) Decision { return f.d }
 
 var prim = &scheme.Prim{Name: "p", Meta: scheme.Meta{Doc: "d"}}
+
+// Read-only tools may overlap, but Scheme predicates can mutate shared
+// policy state. Every registered predicate uses the same evaluator, so
+// serialisation must cover different checkers as well as one checker.
+func TestConcurrentCallsSerialiseSchemePredicates(t *testing.T) {
+	var active atomic.Int32
+	g := New(nil, nil)
+	g.WithSchemeEval(func(context.Context, scheme.Value, []scheme.Value) (scheme.Value, error) {
+		n := active.Add(1)
+		defer active.Add(-1)
+		if n > 1 {
+			return scheme.Void, errors.New("Scheme policy evaluations overlapped")
+		}
+		time.Sleep(time.Millisecond)
+		return scheme.Bool(false), nil
+	})
+	for _, name := range []string{"first", "second"} {
+		if err := g.RegisterChecker(name, "deny", scheme.Void); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := make(chan struct{})
+	errs := make(chan error, 16)
+	var calls sync.WaitGroup
+	for range cap(errs) {
+		calls.Add(1)
+		go func() {
+			defer calls.Done()
+			<-start
+			errs <- g.Before(context.Background(), prim, nil)
+		}()
+	}
+	close(start)
+	calls.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 type decisionLog struct {
 	decisions []log.GuardDecision

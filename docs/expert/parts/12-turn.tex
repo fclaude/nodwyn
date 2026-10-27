@@ -116,7 +116,9 @@ call that ran is never answered as not executed: when the progress guard
 stops the turn at one call of such a batch, the calls after it have already
 run and keep their results. Any other batch, and a batch of one, runs in order,
 which is also what a strategy gets that hands \code{run-tools} one call at a
-time.
+time. Scheme guard predicates are evaluated one at a time across all the
+session's checkers, since they share mutable interpreter bindings; the reads
+themselves still run together.
 
 \section{What the core promises, whatever you write}
 

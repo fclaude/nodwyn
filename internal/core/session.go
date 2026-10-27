@@ -95,7 +95,7 @@ type Session struct {
 	judge string
 	// judges is the config the daemon had when a task last chose its judge,
 	// kept for its [servers] and [judge] tables: a judge set up after the
-	// task opened is one it may be given (UseJudges). Nil until then, when
+	// task opened is one it may be given (SetJudgeFrom). Nil until then, when
 	// the config it opened with stands. Guarded by mu.
 	judges *config.Config
 	// delegates are the configured models the task may hand work to with its

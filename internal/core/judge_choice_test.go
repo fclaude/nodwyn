@@ -149,8 +149,7 @@ func TestTaskOpenedWithNoJudgeSetUpChoosesOneLater(t *testing.T) {
 	if _, err := s.SetJudge("second", "tester"); err == nil {
 		t.Fatal("a judge the task has not heard of was chosen")
 	}
-	s.UseJudges(later)
-	state, err := s.SetJudge("second", "tester")
+	state, err := s.SetJudgeFrom(later, "second", "tester")
 	if err != nil || state.Server != "second" || !state.Available {
 		t.Fatalf("choosing a judge set up since: %+v %v", state, err)
 	}

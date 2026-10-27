@@ -5,9 +5,56 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
 )
+
+// A refused choice must not install Settings' newer judge configuration:
+// the task keeps both its judge and what that judge sees until a choice
+// succeeds, including while a turn is answering.
+func TestRejectedJudgeChoiceKeepsTheTasksConfiguration(t *testing.T) {
+	for _, busy := range []bool{false, true} {
+		t.Run(map[bool]string{false: "invalid", true: "busy"}[busy], func(t *testing.T) {
+			o := options(t)
+			if err := os.MkdirAll(o.Paths.ConfigDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			st, err := keychain.Create(o.Paths.Keychain, keychain.FastKDF, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			o.Keychain = st
+			model := &heldProvider{started: make(chan struct{}), release: make(chan struct{})}
+			o.Provider = model
+			path, _ := start(t, o)
+			c := connect(t, path)
+			c.hello()
+			c.ok("settings.provider.write", map[string]any{"name": "jev", "provider": "jev", "url": "https://judge.example.invalid", "api_key": "sk-judge-canary-0001"})
+			var task struct {
+				ID    string          `json:"id"`
+				Judge core.JudgeState `json:"judge"`
+			}
+			into(t, c.ok("session.open", map[string]any{"repo": t.TempDir(), "judge": "jev"}), &task)
+			if task.Judge.Server != "jev" || !task.Judge.Available {
+				t.Fatalf("initial judge: %+v", task.Judge)
+			}
+			if busy {
+				c.ok("session.send", map[string]any{"id": task.ID, "text": "hello"})
+				waitStarted(t, model)
+				t.Cleanup(func() { close(model.release) })
+			}
+			c.ok("settings.write", map[string]any{"set": map[string]any{"judge.content": config.JudgeContentNone}})
+			if r := c.call("session.judge.set", map[string]any{"id": task.ID, "judge": "missing"}); r.Error == nil {
+				t.Fatal("the invalid judge was accepted")
+			}
+			into(t, c.ok("session.info", map[string]any{"id": task.ID}), &task)
+			if task.Judge.Server != "jev" || !task.Judge.Available {
+				t.Fatalf("a refused choice changed the judge: %+v", task.Judge)
+			}
+		})
+	}
+}
 
 // A task chooses its judge as it opens and between turns (ADR 47), among
 // the judges settings.read lists with their model and prices, which nobody

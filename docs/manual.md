@@ -893,7 +893,9 @@ overrule its refusals. Still denied, exactly as with a human at the prompt:
 Limits are what stop a runaway turn when nobody is watching, and a task has
 none unless you give it some, so give the run's task its limits ("A task's
 limits" above) and the run its `--budget-wall` and `--max-turns`, for the
-job. A turn
+job. The console shows an omitted limit as "no limit" on Home; the sidebar
+and task heading show a turn maximum or time remaining only when one is set.
+A turn
 that one of them, or the progress guard, stops is not left one edit past its
 tests: each time a test run passes after the turn changed something, nodwyn
 keeps the changes as they are, and on the stop it puts the files back to that
@@ -1163,7 +1165,8 @@ put to you.
 New task window and a conversation have a **Judge** select beside the model
 and effort, with **No judge** first, and the TUI has `:judge NAME` and
 `:judge none`. A judge is moved while the task is idle, from its next
-question; the log records each choice as `session.judge`, and a resumed task
+question; a refused choice keeps the task's judge and its configuration as
+they were. The log records each successful choice as `session.judge`, and a resumed task
 asks the judge it chose. A task opened before any judge was set up, or before
 the one you want was, can be given it in the same way: no restart is needed
 (the keychain must have been open when the task opened). One `config.toml` no
@@ -3313,6 +3316,9 @@ HTTPS hostname, connect each browser with its own one-use child invitation,
 create a project and describe the app or change. See app opens its separate
 private preview origin; Your website opens the last checked public publication.
 Saved means the edit is durable; it does not mean publication has succeeded.
+An operator path whose parent is a directory alias, such as macOS's `/var`,
+keeps the same journalled writes as its physical spelling. Links within a
+project are still refused.
 
 Only the operator bootstraps a parent invitation. Register a passkey separately
 on each child hostname; this does not replace another host's registration.

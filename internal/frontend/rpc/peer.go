@@ -17,7 +17,7 @@ type peer struct {
 	// device is set once, at hello, by a client that relays a paired device
 	// (via): the web bridge. A process claiming it only limits itself.
 	device bool
-	ready  bool // used only by the connection's request reader
+	ready  bool // set by the reader before asynchronous calls; immutable afterwards
 	// relay, once host.connect set it, carries the rest of the connection to
 	// a linked host (ADR 54): the request reader hands its lines over.
 	relay func(context.Context, *bufio.Scanner)

@@ -168,8 +168,18 @@ so a person who added Jev or an OpenAI key afterwards saw it in the task's
 Judge select and was told to close and resume the task. Now the primitives
 are registered whenever a keychain is open and `judge.content` is not `none`,
 and `session.judge.set` hands the task the daemon's current `[servers]` and
-`[judge]` tables (`Session.UseJudges`) before the choice is checked. Only
+`[judge]` tables when a choice succeeds (`Session.SetJudgeFrom`). Only
 those tables are taken: the task's model and window stay what it opened with.
 The judge's tools offered to the model still depend on the judge the task
 started with, since the tool list cannot gain them later. A task opened with
 no keychain, or with `judge.content = "none"`, still has to be resumed.
+
+## Amendment 2026-10-27: a refused judge choice changes nothing
+
+The review found that installing the daemon's judge configuration before
+checking the choice let an invalid or busy request change the task's current
+judge without a `session.judge` record. `SetJudgeFrom` now holds the idle
+session, validates the candidate configuration and choice, records the
+successful choice, then installs both together and retargets the primitives.
+`TestRejectedJudgeChoiceKeepsTheTasksConfiguration` exercises an invalid
+choice and a request made while the model is answering.

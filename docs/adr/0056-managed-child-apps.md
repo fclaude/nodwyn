@@ -89,6 +89,18 @@ requests, revocation, cross-origin refusal and actual browser project/chat/
 rename/delete actions. A production claim additionally requires isolated
 container, model-proxy, laptop UID, HTTPS and public publication checks.
 
+## Amendment 2026-10-27: journal paths use the operator's directory spelling
+
+The managed mutation acceptance test exposed a path identity mismatch on
+macOS: the core pins a project's files beneath `/private/var`, while the
+journal's workspace may be beneath `/var`. The durable-write adapter now
+takes the relative path from the core's physical project root and passes it
+to the journal under the operator's workspace spelling. The journal still
+checks the project-relative path, quotas and links before acknowledging a
+write; no project link is followed to make a write succeed.
+`TestManagedTurnWritesThroughAWorkspaceAlias` covers an aliased parent
+directory and verifies the exported mutation and blob as well as the file.
+
 ## Amendment 2026-10-24: Buffered local inference
 
 The first live Ollama request exposed an optional-callback bug: the core buffers

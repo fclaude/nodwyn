@@ -1408,6 +1408,57 @@ check(async () => {
   want(cacheUsage.zero.includes("0% cached") && !cacheUsage.zero.includes("≈"), `reported zero wins: ${cacheUsage.zero}`);
   want(cacheUsage.reported.includes("40% cached") && !cacheUsage.reported.includes("≈"), `reported usage wins: ${cacheUsage.reported}`);
   want(!cacheUsage.unknown.includes("cached"), `a new turn leaves unknown cache usage out: ${cacheUsage.unknown}`);
+  // A run's time and turn limits are independent and optional. Draw the
+  // same state on Home, in the sidebar and in the task heading: absent
+  // limits must not look exhausted, and real expired deadlines still do.
+  const runLimits = await page.evaluate(async () => {
+    const { Desk } = await import("/desk.js");
+    const { renderHome } = await import("/home.js");
+    const { renderSidebar } = await import("/sidebar.js");
+    const { TaskView } = await import("/task.js");
+    const conn = { live: true, has: () => false, onEvent: () => {}, onResult: () => {} };
+    const future = new Date(Date.now() + 3600000).toISOString();
+    const past = new Date(Date.now() - 3600000).toISOString();
+    const cases = {
+      unlimited: { max_turns: 0, deadline: "0001-01-01T00:00:00Z" },
+      omitted: {},
+      turns: { max_turns: 5, deadline: "0001-01-01T00:00:00Z" },
+      time: { max_turns: 0, deadline: future },
+      bounded: { max_turns: 5, deadline: future },
+      expired: { max_turns: 5, deadline: past },
+    };
+    const result = {};
+    for (const [name, limits] of Object.entries(cases)) {
+      const desk = new Desk(conn);
+      const item = { id: "run-limits", repo: "/tmp/run-limits", title: "Run limits", open: true, busy: true, last_event: new Date().toISOString(), run: { status: "running", turns: 1, ...limits } };
+      desk.sessions.set(item.id, item);
+      const root = document.createElement("div"), nav = document.createElement("nav");
+      document.body.replaceChildren(root, nav);
+      renderHome(root, { conn, desk, navigate: () => {} });
+      renderSidebar(nav, { conn, desk, route: { name: "home" }, rerender: () => {} });
+      result[name] = {
+        home: root.querySelector(".home-grid .card").textContent,
+        sidebar: nav.querySelector(".nav-task .sub").textContent,
+        heading: TaskView.prototype.status.call({ item, activePrompt: () => null }).label,
+        fills: [...root.querySelectorAll(".meter-fill")].map((el) => el.style.width),
+      };
+    }
+    return result;
+  });
+  for (const name of ["unlimited", "omitted", "turns"]) {
+    const r = runLimits[name];
+    want(r.home.includes("Time leftno limit") && !/expired|time up/.test(r.home + r.sidebar), `a run without a deadline is unlimited: ${name} ${JSON.stringify(r)}`);
+  }
+  for (const name of ["unlimited", "omitted", "time"]) {
+    const r = runLimits[name];
+    want(r.home.includes("Turns1 · no limit") && !/of 0|of undefined|1 \/ 0|NaN/.test(r.home + r.sidebar + r.heading), `a run without a turn cap has no denominator: ${name} ${JSON.stringify(r)}`);
+  }
+  for (const name of ["turns", "bounded", "expired"]) {
+    const r = runLimits[name];
+    want(r.home.includes("Turns1 / 5") && r.sidebar.includes("Turn 1 of 5") && r.heading.includes("turn 1 of 5") && r.fills[0] === "20%", `a bounded run keeps its turn cap: ${name} ${JSON.stringify(r)}`);
+  }
+  want(runLimits.time.sidebar.includes("left") && runLimits.bounded.sidebar.includes("left"), "future run deadlines show time left");
+  want(runLimits.expired.home.includes("expired") && runLimits.expired.sidebar.includes("time up"), "an expired run deadline still shows expired");
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
 });

@@ -184,7 +184,7 @@ choose between, each with its efforts and its own settings (its context
 length, its prices, whether it takes images); and the default model and effort
 new tasks start on. Under the message box of the New task window, a Model and an
 Effort select change what the next message is answered with; the next task
-starts on the model, effort, judge, helpers, limits and Runs on chosen for
+starts on the model, effort, judge, helpers and Runs on chosen for
 the one before, which nodwyn keeps itself, across an app restart too. In a conversation
 they are tucked behind a compact model-and-effort summary: click it, or focus it
 and press Enter, to expand them. Warnings and change notices remain visible
@@ -654,7 +654,8 @@ it (\adr{47}). The console sets a judge up in Settings \(\rightarrow\)
 Judge with its key alone, since its model and price are known, the key bound
 for its host by \code{POST} alone and listed with the other providers' keys
 under Connections; \code{[judge]} is the default, and each task chooses its
-own beside its model. Once a task has a judge whose key is stored, the
+own beside its model. A refused judge choice keeps both the task's judge and
+its configuration unchanged. Once a task has a judge whose key is stored, the
 default loop's plan gate runs before each message, and the judge answers
 commands before you are asked (\code{approval.commands = "judge"}, the
 default). Set \code{judge.content = "none"} to send it nothing, or \code{"full"} to
@@ -958,7 +959,9 @@ nodwyn run resume SESSION
 For a run, \code{--budget-wall} is the deadline of the whole run, not of
 one turn, and \code{--max-turns} the most turns it takes; both are
 optional, and the run's task takes a task's limits, \code{--turn-wall}
-being each turn's time. Each turn of a run must record a plan before it may do anything
+being each turn's time. Home shows an unset run limit as ``no limit'';
+the sidebar and task heading give a maximum or deadline only when one is set.
+Each turn of a run must record a plan before it may do anything
 irreversible, and in a supervised run a person says yes at a checkpoint
 between turns. A run
 ends when the model's reply ends with the line \code{NODWYN\_RUN\_COMPLETE},

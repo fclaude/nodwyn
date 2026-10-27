@@ -54,9 +54,10 @@ need not.
 6. **Shared state.** The gate of each call charges the budget from its own
    goroutine, so `budget.Turn` takes a lock (held while a checkpoint waits
    for the person, so a limit crossed by two calls asks once). Everything
-   else the calls reach (the guard, the log, the repository index) was
-   already safe to call from several goroutines, which the `-race` run of
-   `internal/core` covers.
+   else the calls reach must also be safe to call from several goroutines.
+   In particular, Scheme checkers share mutable interpreter state and their
+   evaluations are serialised across the session's registered predicates
+   (amendment below). The log and repository index retain their own locks.
 7. **Clients.** A batch's log is calls, guard decisions, then results, where a
    one-at-a-time run's is a call and its result in turn. The console and the
    terminal client pair a result with its own call by id, not with the last
@@ -79,3 +80,15 @@ need not.
 - Time in the log is as real: a call's span runs from the batch's start to
   its result, and the statistics' tool time takes the union of the spans.
 - A model that sends the same read twice in one reply gets the old behaviour.
+
+## Amendment 2026-10-27: Scheme policy evaluations stay serial
+
+The review found that concurrent reads could enter Scheme checker predicates
+at once, although their captured and global bindings are mutable. The guard
+now shares one evaluator lock across all its Scheme checkers. Nested calls
+still skip re-entering predicates through the existing context marker; Go
+checks and the reads themselves remain concurrent. No policy verdict is
+relaxed. `TestConcurrentCallsSerialiseSchemePredicates` fails when two calls
+overlap their policy evaluations. The session integration check now sets its
+ten-call budget through `newRigCalls`, replacing a removed config field that
+prevented `internal/core` tests from compiling.

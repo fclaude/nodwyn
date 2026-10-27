@@ -484,7 +484,9 @@ before running it. A batch of two or more different read-only calls
 \code{index-grep}, \code{outline}, the git tools) is the exception: it
 charges every call in order first, runs them together, up to eight at once,
 and then settles them in order, so the answers keep the order of the calls
-(\adr{57}). Either way \code{runTools} stops the turn when the progress guard
+(\adr{57}). Scheme policy predicates still run one at a time: their shared
+interpreter bindings are mutable even when the tools only read files.
+Either way \code{runTools} stops the turn when the progress guard
 (\file{progress.go}) sees it going in circles: the same call four times in a
 row, a denied call retried three times, ten failures in a row, or one tool
 failing on one file in six of the last sixteen responses, or a background

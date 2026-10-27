@@ -809,10 +809,11 @@ export function renderHome(root, ctx) {
       ),
     );
     if (run) {
-      const left = new Date(run.deadline).getTime() - Date.now();
+      const deadline = run.deadline && !run.deadline.startsWith("0001-") ? new Date(run.deadline).getTime() : null;
+      const left = deadline === null ? null : deadline - Date.now();
       const meter = (label, value, pct) =>
         h("div", { class: "meter" }, h("div", { class: "meter-head" }, h("span", {}, label), h("span", {}, value)), h("div", { class: "meter-track" }, h("div", { class: "meter-fill", style: `width:${Math.max(0, Math.min(100, pct))}%` })));
-      card.append(h("div", { class: "meters" }, meter("Turns", `${run.turns} / ${run.max_turns}`, (run.turns / run.max_turns) * 100), meter("Time left", left > 0 ? minutes(left) : "expired", 0)));
+      card.append(h("div", { class: "meters" }, meter("Turns", run.max_turns > 0 ? `${run.turns} / ${run.max_turns}` : `${run.turns} · no limit`, run.max_turns > 0 ? (run.turns / run.max_turns) * 100 : 0), meter("Time left", left === null ? "no limit" : left > 0 ? minutes(left) : "expired", 0)));
     }
     card.append(h("div", { class: "card-foot" }, icon("folder", 15), h("span", { class: "mono", style: "color:var(--ink)" }, shortPath(desk.project(item), desk.home)), item.worktree ? h("span", { class: "mono branch" }, item.worktree.branch) : null, h("span", { style: "margin-left:auto" }, `active ${ago(item.last_event)}`)));
     return card;

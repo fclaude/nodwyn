@@ -60,6 +60,10 @@ response payloads are not printed to daemon diagnostics. Application results
 and error messages pass through shared redaction; caller-selected correlation
 IDs are transport data and are echoed unchanged.
 
+After the first successful `hello`, readiness and peer identity stay fixed.
+A later `hello` without `via` reads the handshake again; it may run beside
+an outstanding `session.attach` without changing that shared state.
+
 ### Naming
 
 A method is `<noun>.<verb>`, with the noun taken from the thing it acts on
@@ -180,7 +184,9 @@ server whose provider is `jev` or `openai` with a credential (`-32000`
 otherwise, with why). `session.judge.set` moves an open task to another
 judge, or none, from its next question; it is refused while a turn runs or
 an attachment is added (`-32000`: choose it when the turn ends), and during
-a run. A ChatGPT plan's sign-in is refused as a judge wherever it is chosen,
+a run. The daemon's current judge configuration is installed together with a
+successful choice; a refusal changes neither the task's judge nor that
+configuration. A ChatGPT plan's sign-in is refused as a judge wherever it is chosen,
 since the keychain never sends it to the Decisions API. Each choice, at open
 and later, is a `session.judge` event (`server`, `provider`, `host`, `model`,
 `actor`); resuming asks the last one's judge, or none, with a note, when
@@ -847,7 +853,7 @@ method, and refuses one before it with code -32030.
 | `workspace.list` | `{}` | Named workspaces: `[{name, path, mounts, git, earlier_tasks}]`; `earlier_tasks` is whether the model may search the folder's earlier tasks (ADR 50) |
 | `workspace.forgotten` | `{}` | `[absolute paths]`: the folders `workspace.remove` forgot, which the console leaves out of its suggestions, not out of task history. A paired device may read it. An older daemon lacks the method, and the console then hides nothing |
 | `workspace.active` | `{}` reads, `{"path"}` records | `{"path"}`: the folder the console last picked for a new task, which a window or tab that has not picked starts in; kept in `last-workspace.toml` beside `workspaces.toml`, since the app's window has a console on a new port every launch and the browser remembers nothing across a restart |
-| `newtask.last` | `{}` reads, `{"choices"}` replaces | `{runs_on, hosts: [{host, model?, effort?, judge?, helpers?, no_limits?, worktree?: [{folder, on}]}]}`: what the console chose last for a new task, which the next one starts with (ADR 41, amended 2026-10-27): the host it runs on (`""` this computer) and, for each host, the model and effort (absent: Settings' default), the judge (absent: Settings' default; `""`: no judge), the helpers, whether the limits are off, and per folder whether it opens in a worktree. Kept in `new-task.toml` in the config directory, so every console, browser and address starts with it. It only preselects: `session.open` checks each choice again. At most 64 hosts, 64 helpers and 256 worktree choices each; a folder is absolute; an effort needs its model. The daemon refuses a replacement to an actor that carries `via` without `passkey` |
+| `newtask.last` | `{}` reads, `{"choices"}` replaces | `{runs_on, hosts: [{host, model?, effort?, judge?, helpers?, worktree?: [{folder, on}]}]}`: what the console chose last for a new task, which the next one starts with (ADR 41, amended 2026-10-27): the host it runs on (`""` this computer) and, for each host, the model and effort (absent: Settings' default), the judge (absent: Settings' default; `""`: no judge), the helpers and per folder whether it opens in a worktree. A new task starts without limits. Kept in `new-task.toml` in the config directory, so every console, browser and address starts with it. It only preselects: `session.open` checks each choice again. At most 64 hosts, 64 helpers and 256 worktree choices each; a folder is absolute; an effort needs its model. The daemon refuses a replacement to an actor that carries `via` without `passkey` |
 | `workspace.save` | `{"path","name","mounts"}` (all required; `mounts` may be `[]`), and optionally `"earlier_tasks"` | The saved workspace. The name, the mounts and whether the model may search the folder's earlier tasks go to `workspaces.toml` in the config directory; nothing is written into the folder. Without `earlier_tasks` the saved choice is kept, so a client that does not send it never turns it off |
 | `workspace.remove` | `{"path"}` | `{}`; forgets a named or unnamed absolute folder, its name and mounts, never its files or tasks; persists a suggestion-exclusion marker and clears a matching last pick. Repeated removal is harmless. `workspace.save`, or a task started or resumed in the folder (by any client, a paired device or a terminal included), clears the marker |
 | `versions.list` | `{"repo","path"}` | A file's kept previous versions (outside git); `repo` must be a named workspace or a folder a task has used |

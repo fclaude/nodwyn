@@ -323,11 +323,20 @@ func (s *Server) session(id string) (*conversation, error) {
 	cfg.Docs = config.Docs{}
 	c := &conversation{status: "Saved", messages: []message{}}
 	_ = readJSON(s.chatPath(id), &c.messages)
-	opts := core.Options{Config: cfg, Paths: config.PathsUnder(filepath.Join(s.profile.State, "config", id), filepath.Join(s.profile.State, "data", id)), Repo: filepath.Join(s.profile.Workspace, id), Provider: s.provider, InitFile: s.init, Unattended: true, AutoApprove: true}
+	root := config.CanonicalPath(filepath.Join(s.profile.Workspace, id))
+	opts := core.Options{Config: cfg, Paths: config.PathsUnder(filepath.Join(s.profile.State, "config", id), filepath.Join(s.profile.State, "data", id)), Repo: root, Provider: s.provider, InitFile: s.init, Unattended: true, AutoApprove: true}
 	// The profile's turn limits are its own, the same for every
 	// conversation, and no conversation changes them.
 	opts.Limits = &core.LimitsChoice{Limits: budget.Task{ToolCalls: 40, Actions: 20, Tokens: 200000, Wall: int64(8 * time.Minute)}, Actor: "managed"}
-	opts.Managed = &core.ManagedProfile{Endpoint: s.profile.Endpoint, Model: s.profile.Model, WriteFile: func(path string, b []byte, mode os.FileMode) error { return s.store.Write(id, c.turn, path, b, mode) }}
+	opts.Managed = &core.ManagedProfile{Endpoint: s.profile.Endpoint, Model: s.profile.Model, WriteFile: func(path string, b []byte, mode os.FileMode) error {
+		// The core pins paths to the physical root. The journal uses the
+		// operator's spelling, which may reach it through a directory alias.
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		return s.store.Write(id, c.turn, filepath.Join(s.profile.Workspace, id, rel), b, mode)
+	}}
 	var err error
 	if p.Task != "" {
 		c.session, err = core.Resume(opts, p.Task)

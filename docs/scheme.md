@@ -528,6 +528,11 @@ callable only from user-originated Scheme — the model cannot add or
 bypass checkers at runtime. Checkers registered this way run after all
 built-in Go checkers in the pipeline.
 
+Read-only tools may run concurrently, but Scheme checker predicates are
+evaluated one at a time across all the session's registered checkers. They
+share the interpreter's bindings, so a predicate's state changes cannot race
+another predicate. Their strictest-wins and fail-closed rules still apply.
+
 Loading a `.scm` file can grow the primitive table and the global
 environment. It **cannot** add special forms or change evaluation: `eval`
 and `apply` are two fixed Go functions, and the test suite checks, after loading

@@ -375,7 +375,11 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 				client.device = true
 			}
 		}
-		client.ready = true
+		// The handshake is immutable before asynchronous attachments begin.
+		// A repeated hello reads it without racing their readiness check.
+		if !client.ready {
+			client.ready = true
+		}
 		return helloResult{ProtocolVersion, s.options.Version, methods, client.actor}, nil
 	}
 	if !client.ready {
@@ -605,8 +609,7 @@ func (s *server) judge(req request, client *peer) (any, *rpcError) {
 		return nil, rerr
 	}
 	// The task may be given a judge set up since it opened.
-	owned.session.UseJudges(s.options.Config)
-	state, err := owned.session.SetJudge(p.Judge, client.actor)
+	state, err := owned.session.SetJudgeFrom(s.options.Config, p.Judge, client.actor)
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}

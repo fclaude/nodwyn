@@ -86,7 +86,7 @@ func PlanSignIn(store *keychain.Store, class string) bool {
 
 // judgeConfig is the config the task's judge is read from: the one it
 // opened with, with the [servers] and [judge] tables of the daemon's when a
-// person last chose a judge for it (UseJudges).
+// person last successfully chose a judge for it (SetJudgeFrom).
 func (s *Session) judgeConfig() config.Config {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -95,16 +95,6 @@ func (s *Session) judgeConfig() config.Config {
 		c.Servers, c.Judge = s.judges.Servers, s.judges.Judge
 	}
 	return c
-}
-
-// UseJudges makes the judges of c, the daemon's config now, the ones this
-// task may be given: a judge set up after the task opened is one it can ask
-// when chosen (ADR 47, amended 2026-10-28). Only the servers and the [judge]
-// table are taken, so the task's model and window stay what it opened with.
-func (s *Session) UseJudges(c config.Config) {
-	s.mu.Lock()
-	s.judges = &c
-	s.mu.Unlock()
 }
 
 // judgeSpec is the task's judge now, false when it has none.
@@ -178,28 +168,40 @@ func (s *Session) Judge() JudgeState {
 // resumed task keeps it. It waits for no turn: a judge chosen while the
 // task is answering would judge half of a turn, so it is refused then.
 func (s *Session) SetJudge(server, actor string) (JudgeState, error) {
+	return s.setJudge(s.judgeConfig(), server, actor)
+}
+
+// SetJudgeFrom chooses a judge from the daemon's current configuration,
+// including one set up since the task opened. A refused choice keeps the
+// task's judge and configuration together as they were.
+func (s *Session) SetJudgeFrom(c config.Config, server, actor string) (JudgeState, error) {
+	cfg := s.opts.Config
+	cfg.Servers, cfg.Judge = c.Servers, c.Judge
+	return s.setJudge(cfg, server, actor)
+}
+
+func (s *Session) setJudge(cfg config.Config, server, actor string) (JudgeState, error) {
 	if s.opts.Managed != nil {
 		return JudgeState{}, errors.New("managed: judge selection is unavailable")
-	}
-	cfg := s.judgeConfig()
-	if err := CheckJudge(cfg, s.keychain, server); err != nil {
-		return JudgeState{}, err
-	}
-	if _, ok := s.interp.Lookup("judge-yes-no"); server != "" && !ok {
-		return JudgeState{}, errors.New("this task opened with no judge it could ask (no keychain open, or judge.content is \"none\"), so it cannot ask one now: close it and resume it")
 	}
 	done, err := s.holdIdle()
 	if err != nil {
 		return JudgeState{}, err
 	}
 	defer done()
+	if err := CheckJudge(cfg, s.keychain, server); err != nil {
+		return JudgeState{}, err
+	}
+	if _, ok := s.interp.Lookup("judge-yes-no"); server != "" && !ok {
+		return JudgeState{}, errors.New("this task opened with no judge it could ask (no keychain open, or judge.content is \"none\"), so it cannot ask one now: close it and resume it")
+	}
 	// The record goes in before the judge changes, so the questions asked
 	// of the new judge come after it in the log.
 	if _, err := s.Record(log.KindSessionJudge, judgeRecord(cfg, server, actor)); err != nil {
 		return JudgeState{}, err
 	}
 	s.mu.Lock()
-	s.judge = server
+	s.judge, s.judges = server, &cfg
 	s.mu.Unlock()
 	if server != "" {
 		o, _ := s.JudgeOptions()

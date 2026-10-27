@@ -17,6 +17,46 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
+// A repeated hello is allowed while an attachment is dispatched on the same
+// connection. Run under -race: readiness becomes immutable at the first hello,
+// before the reader starts any attachment goroutine.
+func TestRepeatedHelloBesideAttachments(t *testing.T) {
+	path, _ := start(t, options(t))
+	c := connect(t, path)
+	c.hello()
+	if err := c.conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 30 {
+		for _, req := range []map[string]any{
+			{"jsonrpc": "2.0", "id": 2 * i, "method": "session.attach", "params": map[string]any{"id": "missing", "path": "/nonexistent"}},
+			{"jsonrpc": "2.0", "id": 2*i + 1, "method": "hello", "params": map[string]any{"protocol": 1}},
+		} {
+			if err := c.enc.Encode(req); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	seen := map[int]bool{}
+	for range 60 {
+		var r reply
+		if err := c.dec.Decode(&r); err != nil {
+			t.Fatal(err)
+		}
+		var id int
+		if err := json.Unmarshal(r.ID, &id); err != nil {
+			t.Fatal(err)
+		}
+		if seen[id] || id < 0 || id >= 60 {
+			t.Fatalf("unexpected response id %d", id)
+		}
+		seen[id] = true
+		if (r.Error != nil) != (id%2 == 0) {
+			t.Fatalf("response %d: %+v", id, r.Error)
+		}
+	}
+}
+
 // A client with one connection can attach an image: the connection goes on
 // reading while its session.attach waits, so the same connection answers the
 // confirm it was sent as an event.

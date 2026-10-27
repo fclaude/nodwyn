@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
@@ -125,6 +126,9 @@ type Guard struct {
 	// run a Scheme-registered checker. Set by the core (which owns the
 	// interpreter). nil means no Scheme checkers are possible.
 	ev SchemeEval
+	// Scheme predicates share their interpreter's mutable bindings. Reads
+	// may run together, but their policy evaluations must not overlap.
+	schemeMu sync.Mutex
 	// scopes names an OAuth2 credential's scopes in a confirm (ADR 24 §4).
 	scopes CredentialScopes
 }
@@ -174,7 +178,7 @@ func (g *Guard) RegisterChecker(name, verdict string, predicate scheme.Value) er
 	default:
 		return fmt.Errorf("register-check: verdict must be \"deny\" or \"confirm\", got %q", verdict)
 	}
-	g.Add(&schemeChecker{name: name, predicate: predicate, decision: d, ev: g.ev})
+	g.Add(&schemeChecker{name: name, predicate: predicate, decision: d, ev: g.ev, mu: &g.schemeMu})
 	return nil
 }
 
@@ -183,6 +187,7 @@ type schemeChecker struct {
 	predicate scheme.Value // (prim-name args) → any value; everything but #f matches
 	decision  Decision     // returned when predicate is true
 	ev        SchemeEval
+	mu        *sync.Mutex
 }
 
 // schemeEvalDepth is a context key to prevent re-entrant scheme checker
@@ -197,6 +202,8 @@ func (sc *schemeChecker) Check(ctx context.Context, p *scheme.Prim, args []schem
 		return Decision{Verdict: Allow, Reason: fmt.Sprintf("checker %q: re-entrant", sc.name)}
 	}
 	ctx = context.WithValue(ctx, schemeEvalDepth(0), schemeEvalDepth(1))
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	out, err := sc.ev(ctx, sc.predicate, []scheme.Value{scheme.Str(p.Name), scheme.List(args...)})
 	if err != nil {
 		// A checker that errors is a policy error; fail closed.

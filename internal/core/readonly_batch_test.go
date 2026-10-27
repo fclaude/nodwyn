@@ -16,7 +16,7 @@ import (
 // calls (run under -race: the guard, the budget and the log are shared).
 func TestReadOnlyBatchThroughTheSession(t *testing.T) {
 	t.Parallel()
-	r := newRigWith(t, false, func(c *config.Config) { c.Loop.MaxToolCalls = 10 }, fake.Turn{ToolCalls: []fake.ToolCall{
+	r := newRigCalls(t, false, 10, func(c *config.Config) { c.Loop.Profile = config.ProfileFull }, fake.Turn{ToolCalls: []fake.ToolCall{
 		{ID: "one", Name: "fs-read", Args: map[string]any{"path": "a.txt"}},
 		{ID: "two", Name: "fs-read", Args: map[string]any{"path": "b.txt"}},
 		{ID: "three", Name: "index-grep", Args: map[string]any{"path": ".", "pattern": "needle"}},

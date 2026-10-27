@@ -64,7 +64,7 @@ func TestManagedChildCannotReachRPCOrParentAuthority(t *testing.T) {
 	}
 }
 func TestManagedConsoleUsesPrivateUnixHTTPAndExactOrigin(t *testing.T) {
-	listener, e := net.Listen("unix", filepath.Join(t.TempDir(), "http.sock"))
+	listener, e := net.Listen("unix", filepath.Join(tempRoot(t, "nodwyn-managed-"), "http.sock"))
 	if e != nil {
 		t.Fatal(e)
 	}

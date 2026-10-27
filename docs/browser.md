@@ -1237,7 +1237,10 @@ limit stops it, and asks you only what Settings › General › Approvals leaves
 and benchmarks ([runs](runs.md)). The console shows such a run like any
 task: its status says "Run" or "Unattended run" (and "judged" when the judge
 answers its confirms) with the turn count, the sidebar shows the turns and
-the time left, and the plan panel shows each turn's progress. A supervised
+the time left when those limits are set, and the plan panel shows each turn's
+progress. Home says "no limit" for a run's unset turn or time limit; neither
+the task heading nor the sidebar gives an unset turn maximum or says an
+unset deadline expired. A supervised
 run's checkpoint arrives as an ordinary prompt. **Stop** aborts the session
 and with it the run; a message afterwards goes on with the task as a chat.
 The transcript says when an unattended run went on or stopped by itself,

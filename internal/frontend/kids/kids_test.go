@@ -180,8 +180,27 @@ func profileFor(t *testing.T) Profile {
 	return Profile{Child: "test-child", Host: "https://child.test", Preview: "https://child.test:8443", Public: "https://child.example", Endpoint: "http://model:11434", Model: "local-model", State: filepath.Join(d, "state"), Workspace: filepath.Join(d, "work"), Export: filepath.Join(d, "export"), Socket: filepath.Join(d, "http.sock"), DailyTokens: 2000000, DailyMinutes: 60}
 }
 func TestManagedTurnWritesThroughJournalAndOffersOnlyStaticTools(t *testing.T) {
+	testManagedTurnWrites(t, profileFor(t))
+}
+
+// The operator may reach the workspace through a parent directory alias. The
+// core's physical paths still reach the same durable journal, while links
+// within a project remain subject to the managed guard.
+func TestManagedTurnWritesThroughAWorkspaceAlias(t *testing.T) {
+	profile := profileFor(t)
+	real := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "workspace")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Fatal(err)
+	}
+	profile.Workspace = filepath.Join(alias, "projects")
+	testManagedTurnWrites(t, profile)
+}
+
+func testManagedTurnWrites(t *testing.T, profile Profile) {
+	t.Helper()
 	fake := &scripted{turns: []llm.Response{{Message: llm.Message{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "write", Name: "fs-write", Args: json.RawMessage(`{"path":"index.html","content":"<h1>Changed</h1>"}`)}}}}, {Message: llm.Message{Role: "assistant", Content: "Your app is ready to see."}}}}
-	s, e := New(profileFor(t), fake)
+	s, e := New(profile, fake)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -223,6 +242,28 @@ func TestManagedTurnWritesThroughJournalAndOffersOnlyStaticTools(t *testing.T) {
 	b, e := os.ReadFile(filepath.Join(s.profile.Workspace, p.ID, "index.html"))
 	if e != nil || !strings.Contains(string(b), "Changed") {
 		t.Fatalf("no mutation %q %v status %s", b, e, status)
+	}
+	records, err := os.ReadDir(filepath.Join(profile.Export, "records"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	journalled := false
+	for _, entry := range records {
+		var mutation Mutation
+		if err := readJSON(filepath.Join(profile.Export, "records", entry.Name()), &mutation); err != nil {
+			t.Fatal(err)
+		}
+		if mutation.Op != "write" || mutation.Turn != "test-turn" {
+			continue
+		}
+		blob, err := os.ReadFile(filepath.Join(profile.Export, "blobs", mutation.Hash))
+		if err != nil || mutation.Path != "index.html" || string(blob) != "<h1>Changed</h1>" {
+			t.Fatalf("journalled mutation %+v: %q %v", mutation, blob, err)
+		}
+		journalled = true
+	}
+	if !journalled {
+		t.Fatal("the edit was not journalled before acknowledgement")
 	}
 	fake.mu.Lock()
 	defer fake.mu.Unlock()

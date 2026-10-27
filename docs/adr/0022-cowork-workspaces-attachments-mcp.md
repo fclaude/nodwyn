@@ -642,3 +642,11 @@ workbook/deck ordering remain authoritative.
 ## Amendment 2026-10-28: one connection can attach an image
 
 The daemon ran a connection's calls in order, so a client with one connection received an image's confirm as an event but could not answer it: `session.answer` waited behind the `session.attach` that waited for it. The daemon now serves a single-request `session.attach` apart from its connection's reader, which goes on reading; the reply may follow those of later calls, and a batch stays in order. `TestImageAttachOnOneConnection` attaches and answers on one connection and times out on the code before this change.
+
+## Amendment 2026-10-27: the handshake stays immutable during attachments
+
+A repeated `hello` wrote readiness while a concurrent attachment read it.
+Only the first successful handshake now sets readiness, before any attachment
+goroutine starts; repeated handshakes read it and cannot change identity.
+`TestRepeatedHelloBesideAttachments` exercises interleaved requests under
+the race detector.
