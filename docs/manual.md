@@ -3284,3 +3284,10 @@ macOS, pin `Nodwyn.app` from Applications. On Linux, run
 checkout, then pin nodwyn from the application menu. This installs the
 launcher and icons for your account; see [the app](app.md#application-icon-and-linux-shortcuts)
 for package paths and options.
+
+## Office extraction cancellation
+
+Office document extraction honours cancellation and request deadlines before
+reading and between XML tokens. A cancelled extraction returns an error rather
+than a successful partial document; spreadsheet cell references and the
+workbook/deck ordering remain authoritative.

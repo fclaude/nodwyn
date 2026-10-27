@@ -320,3 +320,9 @@ to the canonical key with \file{notes.md.before-path-migration} backups. Conflic
 notes or duplicate registered aliases require reconciliation rather than combining
 permissions or discarding data. A managed worktree keeps its own checkout identity
 and the main project's identity for shared resources (ADR 45).
+
+\paragraph{Cancelled document extraction.}
+Office document extraction honours cancellation and request deadlines before
+reading and between XML tokens. A cancelled extraction returns an error rather
+than a successful partial document; spreadsheet cell references and the
+workbook/deck ordering remain authoritative.

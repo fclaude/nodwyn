@@ -56,6 +56,9 @@ var imageTypes = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gi
 // File extracts the text of the file at path; name (the file's original
 // name) decides its type.
 func File(ctx context.Context, path, name string) (Result, error) {
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return Result{}, err
@@ -71,11 +74,11 @@ func File(ctx context.Context, path, name string) (Result, error) {
 	case ext == ".pdf":
 		return pdf(ctx, path)
 	case ext == ".docx":
-		return docx(path)
+		return docx(ctx, path)
 	case ext == ".xlsx":
-		return xlsx(path)
+		return xlsx(ctx, path)
 	case ext == ".pptx":
-		return pptx(path)
+		return pptx(ctx, path)
 	case imageTypes[ext]:
 		return Result{}, fmt.Errorf("%w: %s is an image, which is sent as an image (ReadImage), never as text; nothing is OCRed", ErrUnsupported, name)
 	case textTypes[ext] || ext == "":
@@ -172,9 +175,18 @@ func readZip(r *zip.ReadCloser, name string) ([]byte, error) {
 
 // walkXML calls on for each start element, end element and character data.
 func walkXML(raw []byte, on func(tok xml.Token)) error {
+	return walkXMLContext(context.Background(), raw, on)
+}
+
+// walkXMLContext checks cancellation between tokens so large Office parts do
+// not keep parsing after their attachment request has ended.
+func walkXMLContext(ctx context.Context, raw []byte, on func(tok xml.Token)) error {
 	d := xml.NewDecoder(bytes.NewReader(raw))
 	d.Strict = false
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		tok, err := d.Token()
 		if err == io.EOF {
 			return nil
@@ -187,7 +199,7 @@ func walkXML(raw []byte, on func(tok xml.Token)) error {
 }
 
 // docx reads word/document.xml: paragraphs, tabs, breaks and text runs.
-func docx(path string) (Result, error) {
+func docx(ctx context.Context, path string) (Result, error) {
 	r, err := openZip(path)
 	if err != nil {
 		return Result{}, err
@@ -199,7 +211,7 @@ func docx(path string) (Result, error) {
 	}
 	var b strings.Builder
 	inText := false
-	err = walkXML(raw, func(tok xml.Token) {
+	err = walkXMLContext(ctx, raw, func(tok xml.Token) {
 		switch t := tok.(type) {
 		case xml.StartElement:
 			switch t.Name.Local {
@@ -232,14 +244,18 @@ func docx(path string) (Result, error) {
 // pptx reads each slide's text in the order of the deck, which
 // presentation.xml gives and the numbers in the slides' file names do not
 // once slides are moved, added or deleted.
-func pptx(path string) (Result, error) {
+func pptx(ctx context.Context, path string) (Result, error) {
 	r, err := openZip(path)
 	if err != nil {
 		return Result{}, err
 	}
 	defer r.Close()
 	var slides []string
-	for _, p := range orderedParts(r, "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels", "sldId") {
+	parts, err := orderedParts(ctx, r, "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels", "sldId")
+	if err != nil {
+		return Result{}, err
+	}
+	for _, p := range parts {
 		slides = append(slides, p.path)
 	}
 	if len(slides) == 0 {
@@ -253,7 +269,7 @@ func pptx(path string) (Result, error) {
 		}
 		fmt.Fprintf(&b, "## Slide %d\n", i+1)
 		inText := false
-		_ = walkXML(raw, func(tok xml.Token) {
+		err = walkXMLContext(ctx, raw, func(tok xml.Token) {
 			switch t := tok.(type) {
 			case xml.StartElement:
 				if t.Name.Local == "t" {
@@ -272,6 +288,9 @@ func pptx(path string) (Result, error) {
 				}
 			}
 		})
+		if err != nil {
+			return Result{}, err
+		}
 		b.WriteByte('\n')
 	}
 	return Result{Type: "pptx", Text: b.String(), Pages: len(slides)}, nil
@@ -307,11 +326,11 @@ type part struct{ name, path string }
 // elements (sheet, sldId) refer to by relationship id, resolved through the
 // relationships in rels. A package that does not say (no such parts) gives
 // none, and the caller goes by the file names.
-func orderedParts(r *zip.ReadCloser, main, rels, elem string) []part {
+func orderedParts(ctx context.Context, r *zip.ReadCloser, main, rels, elem string) ([]part, error) {
 	targets := map[string]string{}
 	if raw, err := readZip(r, rels); err == nil {
 		base := zpath.Dir(zpath.Dir(rels)) // the folder the relationships are relative to
-		_ = walkXML(raw, func(tok xml.Token) {
+		err = walkXMLContext(ctx, raw, func(tok xml.Token) {
 			t, ok := tok.(xml.StartElement)
 			if !ok || t.Name.Local != "Relationship" {
 				return
@@ -337,13 +356,19 @@ func orderedParts(r *zip.ReadCloser, main, rels, elem string) []part {
 				targets[id] = zpath.Join(base, target)
 			}
 		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	raw, err := readZip(r, main)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var out []part
-	_ = walkXML(raw, func(tok xml.Token) {
+	err = walkXMLContext(ctx, raw, func(tok xml.Token) {
 		t, ok := tok.(xml.StartElement)
 		if !ok || t.Name.Local != elem {
 			return
@@ -361,7 +386,7 @@ func orderedParts(r *zip.ReadCloser, main, rels, elem string) []part {
 			out = append(out, p)
 		}
 	})
-	return out
+	return out, err
 }
 
 // cellColumn is the zero-based column of a cell reference such as "C12",
@@ -381,7 +406,7 @@ func cellColumn(ref string) (int, bool) {
 // A row is given with its number and its cells in their columns, empty ones
 // as empty fields, since a spreadsheet does not store them; a row with no
 // cell holding anything is left out, its number a gap.
-func xlsx(path string) (Result, error) {
+func xlsx(ctx context.Context, path string) (Result, error) {
 	r, err := openZip(path)
 	if err != nil {
 		return Result{}, err
@@ -391,7 +416,7 @@ func xlsx(path string) (Result, error) {
 	if raw, err := readZip(r, "xl/sharedStrings.xml"); err == nil {
 		var cur strings.Builder
 		inSI, inT := false, false
-		_ = walkXML(raw, func(tok xml.Token) {
+		err = walkXMLContext(ctx, raw, func(tok xml.Token) {
 			switch t := tok.(type) {
 			case xml.StartElement:
 				switch t.Name.Local {
@@ -415,11 +440,19 @@ func xlsx(path string) (Result, error) {
 				}
 			}
 		})
+		if err != nil {
+			return Result{}, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Result{}, err
 	}
 	// The sheets in the workbook's order and under the names it gives them,
 	// not in the order of the files' numbers, which are the order they were
 	// made in.
-	sheets := orderedParts(r, "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "sheet")
+	sheets, err := orderedParts(ctx, r, "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "sheet")
+	if err != nil {
+		return Result{}, err
+	}
 	if len(sheets) == 0 {
 		for i, name := range numbered(r, "xl/worksheets/sheet", ".xml") {
 			sheets = append(sheets, part{name: fmt.Sprintf("Sheet %d", i+1), path: name})
@@ -437,7 +470,7 @@ func xlsx(path string) (Result, error) {
 		var rowNumber, column int
 		inValue := false
 		var inline strings.Builder
-		_ = walkXML(raw, func(tok xml.Token) {
+		err = walkXMLContext(ctx, raw, func(tok xml.Token) {
 			switch t := tok.(type) {
 			case xml.StartElement:
 				switch t.Name.Local {
@@ -500,6 +533,9 @@ func xlsx(path string) (Result, error) {
 				}
 			}
 		})
+		if err != nil {
+			return Result{}, err
+		}
 		b.WriteByte('\n')
 	}
 	return Result{Type: "xlsx", Text: b.String(), Pages: len(sheets)}, nil

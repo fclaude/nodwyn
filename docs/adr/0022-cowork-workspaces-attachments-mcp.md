@@ -631,3 +631,10 @@ Tests: `TestKeepWritesNothingThroughALinkInTheStore`,
 `TestFsWriteFailsWhenTheStoreLinksOutside` (prim) fail on the code before
 this change; `TestVersionsOfSeveralSessionsLoseNoneAndLeaveNoOrphan` covers the
 lock.
+
+## Amendment 2026-10-27: Office extraction cancellation
+
+Office document extraction honours cancellation and request deadlines before
+reading and between XML tokens. A cancelled extraction returns an error rather
+than a successful partial document; spreadsheet cell references and the
+workbook/deck ordering remain authoritative.

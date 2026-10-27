@@ -714,3 +714,9 @@ privileges. Credential bindings answer where and how a key may be used; HTTPS is
 a separate default, with an explicit user exception for remote HTTP. These are
 implemented boundaries, not promises that all project code or network content is
 safe (\adr{45}, \file{docs/security.md}).
+
+\paragraph{Cancelled document extraction.}
+Office document extraction honours cancellation and request deadlines before
+reading and between XML tokens. A cancelled extraction returns an error rather
+than a successful partial document; spreadsheet cell references and the
+workbook/deck ordering remain authoritative.
