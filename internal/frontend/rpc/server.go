@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -132,9 +133,26 @@ func (s *server) connection(ctx context.Context, conn net.Conn) {
 	written := make(chan struct{})
 	go func() { defer close(written); client.write() }()
 	defer func() { client.close(); <-written }()
+	// calls are the requests answered apart from the reader (waitsForPerson),
+	// which the queue is not closed on until they have answered.
+	var calls sync.WaitGroup
 	for reader.Scan() {
 		if ctx.Err() != nil {
 			return
+		}
+		if client.ready && waitsForPerson(reader.Bytes()) {
+			// An image's session.attach waits for its confirm, which the same
+			// connection may be the one to answer: its next lines must be read
+			// meanwhile, or a client with one connection can never attach one.
+			raw := bytes.Clone(reader.Bytes())
+			calls.Add(1)
+			go func() {
+				defer calls.Done()
+				if reply := s.frame(raw, client); reply != nil {
+					client.enqueue(reply)
+				}
+			}()
+			continue
 		}
 		reply := s.frame(reader.Bytes(), client)
 		if reply != nil && !client.enqueue(reply) {
@@ -151,6 +169,7 @@ func (s *server) connection(ctx context.Context, conn net.Conn) {
 		// A client may half-close its request stream while still reading.
 		// Remove all producers before closing the queue, then flush replies.
 		s.unsubscribe(client)
+		calls.Wait()
 		close(client.out)
 		<-written
 	}

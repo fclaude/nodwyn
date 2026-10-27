@@ -638,3 +638,7 @@ Office document extraction honours cancellation and request deadlines before
 reading and between XML tokens. A cancelled extraction returns an error rather
 than a successful partial document; spreadsheet cell references and the
 workbook/deck ordering remain authoritative.
+
+## Amendment 2026-10-28: one connection can attach an image
+
+The daemon ran a connection's calls in order, so a client with one connection received an image's confirm as an event but could not answer it: `session.answer` waited behind the `session.attach` that waited for it. The daemon now serves a single-request `session.attach` apart from its connection's reader, which goes on reading; the reply may follow those of later calls, and a batch stays in order. `TestImageAttachOnOneConnection` attaches and answers on one connection and times out on the code before this change.

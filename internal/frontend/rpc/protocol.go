@@ -104,6 +104,19 @@ func (s *server) frame(raw []byte, client *peer) any {
 	}
 	return replies
 }
+
+// waitsForPerson reports whether a frame is one request for a method that may
+// wait for a person's answer, which the connection serves without holding up
+// its next lines. Only session.attach does (an image's confirm); a batch
+// stays in order.
+func waitsForPerson(raw []byte) bool {
+	var req struct {
+		Method string `json:"method"`
+	}
+	raw = bytes.TrimSpace(raw)
+	return len(raw) > 0 && raw[0] == '{' && json.Unmarshal(raw, &req) == nil && req.Method == "session.attach"
+}
+
 func (s *server) call(raw []byte, client *peer) any {
 	// Decode envelope names exactly; encoding/json's struct matching otherwise
 	// accepts alternate casing, contrary to JSON-RPC's case-sensitive names.

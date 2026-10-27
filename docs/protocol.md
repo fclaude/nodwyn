@@ -906,9 +906,11 @@ attached only after the person says yes to its own confirm, which reaches
 the session's subscribers as an ordinary `prompt.confirm` with `Security`
 set, `Prim` `"attach image"`, `Args` the file name, and reasons that name the
 control model's host and say the pixels cannot be redacted. Answer it with
-`session.answer` (`y` or `n`; no standing answer applies) from a connection
-other than the one waiting in `session.attach`, since a connection's calls
-run in order; the daemon serves other methods meanwhile. A daemon session
+`session.answer` (`y` or `n`; no standing answer applies), from the connection
+that sent `session.attach` or another: the daemon reads that connection's next
+lines while the attach waits, so its reply may follow the replies of calls sent
+after it (match them by `id`; a `session.attach` inside a batch still blocks
+the batch), and serves other methods meanwhile. A daemon session
 that answers confirms itself (a run's `auto_approve` or `judge`) or that
 nobody answers (`unattended`) declines it, and so
 does `session.abort`, or ten minutes without an answer; `session.attach`
