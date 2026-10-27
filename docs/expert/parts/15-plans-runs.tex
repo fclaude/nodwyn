@@ -584,3 +584,15 @@ request is longer than 200 characters or mentions ``refactor'', and
 otherwise goes straight to \code{agent-turn}. What happens in a supervised
 run when the request is short?\ans{17}
 \end{puzzle}
+
+\paragraph{Validation certificates in this repository.}
+Validation in this repository follows a fingerprint of tracked and non-ignored
+untracked file contents, executable bits and link targets, rather than Git
+status or commit IDs. Only exit zero with a PASS summary and the same known
+fingerprint before and after the check certifies the contents. This applies to
+the validate tool, \code{shell-exec}, and background \code{shell-start}/\code{shell-read} checks in
+both profiles. A commit or content-preserving rebase keeps that certificate;
+failed checks, edits during or after checks, and unknown fingerprints do not.
+Credential-denied files are omitted, symlinks are not followed, and a listing
+over 16 MiB or file contents over 256 MiB leaves the state unknown. Deleting
+non-ignored generated files changes this strict content fingerprint too.

@@ -397,3 +397,31 @@ each fails on the init file before this: the lean reminder names `make
 validate` through `shell-exec` and not the tool, the full one the tool; and
 after a failing shell `make validate` with no edit since, no reminder
 follows, whether the run came before the first reminder or after it.
+
+## Amendment 2026-10-27: validation certifies unchanged contents
+
+The old Git status/diff fingerprint changed when validated untracked files
+became committed. It also missed repeated edits to an untracked file and
+recorded a failed attempt as validated. The content-state primitive is
+host-owned and reads the workspace through an OS root; a repository may supply
+bytes to hash but cannot use it to execute Git filters or read outside its root.
+
+Validation in this repository follows a fingerprint of tracked and non-ignored
+untracked file contents, executable bits and link targets, rather than Git
+status or commit IDs. Only exit zero with a PASS summary and the same known
+fingerprint before and after the check certifies the contents. This applies to
+the validate tool, shell-exec, and background shell-start/shell-read checks in
+both profiles. A commit or content-preserving rebase keeps that certificate;
+failed checks, edits during or after checks, and unknown fingerprints do not.
+Credential-denied files are omitted, symlinks are not followed, and a listing
+over 16 MiB or file contents over 256 MiB leaves the state unknown. Deleting
+non-ignored generated files changes this strict content fingerprint too.
+
+The existing reminder limit and repository completeness policy stay in place.
+The generic strategy retains compatibility with older repositories; this
+repository overrides attempt recording and generated-file settling so they
+cannot certify failed or changed contents. No planning or prompt experiment is
+reintroduced. Local bare-remote tests cover unchanged landing, empty-main
+rebases, changed-main rebases, failed checks and later edits. A fake-provider
+matrix checks PASS/exit agreement and changes during validation through each
+execution route.

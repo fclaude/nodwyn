@@ -16,26 +16,11 @@
 ;; shell-start, since make accept and the browser checks together can pass
 ;; shell-exec's ten minutes, and reads until make exits.
 
-;; The repository as the finish check compares it: the files git does not
-;; track, and the diff of the tracked ones against the change's base, so a
-;; second edit to a file already changed counts too and a commit changes
-;; nothing. The base is the commit a session's worktree started from, else
-;; the one HEAD named when the turn began (validation-base): against HEAD,
-;; a commit emptied the diff, and every commit-only turn was told to
-;; validate again (at least ten times in the local sessions of 2026-10-04
-;; and 05:
-;; 20261005T035352Z-5a76f6e4 seq 556, cb8a1bdf 482, 871dfe24 575, ...). An
-;; untracked file edited again keeps its status line, and is missed.
-(define validation-base (guard (e (else #f)) validation-base))
-
-(define (validation-against)
-  (or (guard (e (else #f)) (let ((w (worktree))) (and w (assoc-ref w "base-commit" #f))))
-      validation-base
-      "HEAD"))
-
+;; Validation follows file contents, not Git's status/diff presentation:
+;; committing an unchanged tree must not invalidate its passing checks.
+;; Unknown state never certifies a validation result (ADR 37).
 (define (validation-state)
-  (list (filter (lambda (l) (string-prefix? "?? " l)) (or (git-state) '()))
-        (guard (e (else "")) (format "~a" (git-diff "." #f (validation-against))))))
+  (guard (e (else #f)) (git-content-state)))
 
 ;; What the repository looked like when validate last finished; kept across
 ;; a reload.
@@ -54,12 +39,15 @@
 
 (register-tool "validate"
   (lambda ()
-    (let* ((started (format "~a" (shell-start "make" '("validate"))))
+    (let* ((before (validation-state))
+           (started (format "~a" (shell-start "make" '("validate"))))
            (lines (string-split started "\n"))
            (id (car (string-split (car lines) ":")))
            (opening (string-join (cdr lines) "\n"))
            (report (validate-read id)))
-      (set! validated-state (validation-state))
+      (validation-record before
+                         (string-contains? (car (string-split report "\n")) ": exited 0")
+                         (string-contains? (string-append opening report) "validate: PASS"))
       (string-append opening report)))
   '((doc . "Run this repository's checks for what changed since the branch left its upstream (make validate, scripts/validate): gofmt, make accept, the browser checks for console, host and fake changes, the book catalogue's check after Go or Scheme changes (generate.py --check, counting the files git does not track yet), the release tests after a change to the release publisher, each changed Go test against the unchanged code, and the house rules a diff can show, among them removed tests and scenarios and edits to the guard. It does not build the book or the expert guide: the release flow does. It can take ten minutes or more. Returns a summary whose last line says PASS or FAIL; quote it in your answer, warnings included.")
     (params . ())))
@@ -87,24 +75,65 @@
                  (if (validate-offered?) "validate" "make validate with shell-exec")
                  ", read its summary, fix what it reports, and quote the summary in your answer, warnings included."))
 
-;; A run of the repository's validate through the shell (validate-commands:
-;; make validate, go run ./scripts/validate) counts as the tool's, whatever
-;; it found: validated-run (strategy.scm) sets validated-state as the tool
-;; does. The evidence loop calls it for the calls of an unattended or
-;; planned turn; the chat loop and the reminder's own continuation did not,
-;; so a lean run told to validate ran make validate and was told again with
-;; no edit since (commit-bench 48f90ea8: "No code changes this turn; re-ran
-;; validate"), and a chat's shell run never counted. Wrapping run-calls
-;; counts it in every loop. The base is captured once, as below, so a
-;; reload does not wrap the wrapper. This runs every round: a failure to
-;; count is no reason to fail the round's calls.
+;; Shell validation counts in both profiles, but a failed or interrupted
+;; check cannot certify contents. Keep each background run's starting state
+;; and whether PASS has appeared, without retaining its output (ADR 37).
+(define validation-pending (guard (e (else '())) validation-pending))
+
+(define (validation-record before success passed)
+  (let ((after (validation-state)))
+    (set! validated-state
+          (and success passed before after (equal? before after) after))))
+
+;; The generic loop records attempts for old project wrappers. This
+;; repository records successful checks in run-calls instead, and never
+;; recertifies changed contents through generated-file cleanup.
+(define (validated-run call result) #f)
+(define (validate-settle made print) #f)
+
+(define (validation-forget id)
+  (set! validation-pending
+        (filter (lambda (entry) (not (equal? (car entry) id))) validation-pending)))
+
+(define (validation-shell-result before call result)
+  (let* ((name (assoc-ref call 'name ""))
+         (passed (and (assoc-ref result 'ok #f)
+                      (string-contains? (format "~a" (assoc-ref result 'value "")) "validate: PASS"))))
+    (cond
+      ((and (equal? name "shell-exec") (validate-call? call))
+       (validation-record before (equal? (run-status result) 0) passed))
+      ((and (equal? name "shell-start") (validate-call? call))
+       (set! validated-state #f)
+       (let ((id (proc-id result)) (status (proc-exit-status result)))
+         (when id
+           (validation-forget id)
+           (if status
+               (validation-record before (equal? status 0) passed)
+               (set! validation-pending (cons (cons id (list before passed)) validation-pending))))))
+      ((member name '("shell-read" "shell-stop"))
+       (let* ((id (proc-call-id call)) (pending (and id (assoc-ref validation-pending id #f))))
+         (when pending
+           (let ((status (proc-exit-status result)) (seen (or passed (cadr pending))))
+             (validation-forget id)
+             (if status
+                 (validation-record (car pending) (equal? status 0) seen)
+                 (set! validation-pending (cons (cons id (list (car pending) seen)) validation-pending))))))))))
+
 (define validate-base-run-calls
   (or (guard (e (else #f)) validate-base-run-calls) run-calls))
 
 (define (run-calls calls)
-  (let ((results (validate-base-run-calls calls)))
-    (guard (e (else #f))
-      (for-each (lambda (c r) (validated-run (tool-call c) (tool-result c r))) calls results))
+  (let* ((before (and (let scan ((left calls))
+                        (and (pair? left)
+                             (or (let ((call (tool-call (car left))))
+                                   (and (member (assoc-ref call 'name) '("shell-exec" "shell-start"))
+                                        (validate-call? call)))
+                                 (scan (cdr left)))))
+                       (validation-state)))
+         (results (validate-base-run-calls calls)))
+    (for-each (lambda (c r)
+                (validation-shell-result before (tool-call c) (tool-result c r)))
+              calls results)
     results))
 
 ;; The turn this wraps, captured once: a reload runs this file again, and
@@ -130,12 +159,12 @@
         (loop (ask-model) (reading-rounds calls reading))))))
 
 (define (default-agent-turn request)
-  (set! validation-base (guard (e (else #f)) (git-head)))
   (let ((before (validation-state)))
     (validate-base-agent-turn request)
     (let remind ((left validate-reminders))
       (let ((now (validation-state)))
-        (when (and (> left 0) (not turn-stopping) (not (equal? now before)) (not (equal? now validated-state)))
+        (when (and (> left 0) (not turn-stopping) (or (not now) (not before) (not (equal? now before)))
+                   (or (not now) (not (equal? now validated-state))))
           (add-message (validate-reminder))
           (validate-continue request)
           (remind (- left 1)))))))

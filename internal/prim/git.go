@@ -32,6 +32,7 @@ const gitTimeout = 30 * time.Second
 // the evidence loop reads it to know whether the turn changed anything.
 func gitPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 	return []*scheme.Prim{
+		gitContentState(o),
 		{
 			Name: "git-status",
 			Meta: scheme.Meta{

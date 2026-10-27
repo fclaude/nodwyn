@@ -262,18 +262,18 @@ func TestTheValidateReminderNamesWhatTheModelCanRun(t *testing.T) {
 }
 
 // A run of the repository's validate through shell-exec counts as the tool's,
-// whatever it found, in the reminder and in the reminder's own continuation:
+// when it passes, in the reminder and in the reminder's own continuation:
 // after it, with no edit since, the turn is not told that validate has not
 // run. The continuation did not count it, so a lean session that ran make
 // validate after the first reminder got the second anyway (commit-bench,
 // 48f90ea8: "No code changes this turn; re-ran validate"), and a chat's turn
-// did not count it at all. Here validate fails, which still counts as a run.
+// did not count it at all. A passing check must count in either profile.
 func TestAShellValidateRunCountsAsValidate(t *testing.T) {
 	const reminder = "validate has not run since your last change"
 	shellRepo := func(t *testing.T) string {
 		t.Helper()
 		repo := fixture(t, map[string]string{
-			"Makefile":     "validate:\n\t@echo 'validate: FAIL (1 failure)'\n\t@exit 1\n",
+			"Makefile":     "validate:\n\t@echo 'validate: PASS (0 warnings)'\n",
 			"calc/calc.go": "package calc\n\nfunc One() int { return 1 }\n",
 		})
 		copyInit(t, repo)
@@ -285,7 +285,7 @@ func TestAShellValidateRunCountsAsValidate(t *testing.T) {
 				editCall("e", "calc/calc.go", "return 1 }", "return 2 }"),
 				fake.Turn{Content: "Done."},
 				shellCall("v", "make validate"),
-				fake.Turn{Content: "validate: FAIL (1 failure), which the unchanged code has too."},
+				fake.Turn{Content: "validate: PASS (0 warnings)."},
 			)
 			p.turn(t, s, 1, 1)
 			if len(srv.Requests) != 4 || requestsSaying(srv, reminder) != 2 {
@@ -299,7 +299,7 @@ func TestAShellValidateRunCountsAsValidate(t *testing.T) {
 			s, srv := p.session(t, shellRepo(t),
 				editCall("e", "calc/calc.go", "return 1 }", "return 2 }"),
 				shellCall("v", "make validate"),
-				fake.Turn{Content: "validate: FAIL (1 failure), which the unchanged code has too."},
+				fake.Turn{Content: "validate: PASS (0 warnings)."},
 			)
 			p.turn(t, s, 1, 1)
 			if len(srv.Requests) != 3 || requestsSaying(srv, reminder) != 0 {

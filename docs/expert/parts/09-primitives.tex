@@ -72,6 +72,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(index-update [path])} & bring the repository's index up to date, or add a directory git ignores (ADR 50) \\
 \code{(recall seq [start [count [task]]])} & one event of the conversation, or of an earlier task, by its seq, as the log recorded it, in lines like a ranged \code{fs-read} (ADR 50); a turn's first message with what the turn did and its events (ADR 51) \\
 \code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree: what changed, since the last commit or since \code{against}, and the commit HEAD is on; read-only, no approval \\
+\code{(git-content-state)} & hidden host primitive: fingerprint workspace contents independently of commits; unknown on errors or size limits \\
 \code{(keep-passing)} & keep the changes as a test run passed on them (hidden): an unattended turn that a hard limit or the progress guard stops has its files put back to it, and what they held saved \\
 \code{(check-without cmd args)} & run a check again with each part of the change taken out in turn, putting each back (hidden): the parts it still passes without are the ones it does not test \\
 \code{(change-removals request)} & what the change takes away that its check cannot show (hidden): the definitions gone from their package, and the cases, assertions, \code{want} values and phrase checks of existing tests removed or rewritten \\

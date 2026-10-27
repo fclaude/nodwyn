@@ -3291,3 +3291,16 @@ Office document extraction honours cancellation and request deadlines before
 reading and between XML tokens. A cancelled extraction returns an error rather
 than a successful partial document; spreadsheet cell references and the
 workbook/deck ordering remain authoritative.
+
+## Validation certificates in this repository
+
+Validation in this repository follows a fingerprint of tracked and non-ignored
+untracked file contents, executable bits and link targets, rather than Git
+status or commit IDs. Only exit zero with a PASS summary and the same known
+fingerprint before and after the check certifies the contents. This applies to
+the validate tool, shell-exec, and background shell-start/shell-read checks in
+both profiles. A commit or content-preserving rebase keeps that certificate;
+failed checks, edits during or after checks, and unknown fingerprints do not.
+Credential-denied files are omitted, symlinks are not followed, and a listing
+over 16 MiB or file contents over 256 MiB leaves the state unknown. Deleting
+non-ignored generated files changes this strict content fingerprint too.
