@@ -10,13 +10,18 @@ import (
 )
 
 func TestUsageLine(t *testing.T) {
-	cached, cost := 9672, 0.0123
+	cached, cost, est := 9672, 0.0123, 900
 	for _, tc := range []struct {
 		u    log.Usage
 		want string
 	}{
 		// Ollama: no cache report, no cost, a duration.
 		{log.Usage{PromptTokens: 1200, OutputTokens: 30, TotalMS: 2000}, "1,200→30 tok · 2.0s"},
+		// A provider that reports no cache count: the estimate from its
+		// prompt-eval time is marked ≈.
+		{log.Usage{PromptTokens: 1200, OutputTokens: 30, TotalMS: 2000, EstimatedCachedTokens: &est}, "1,200→30 tok · ≈75% cached · 2.0s"},
+		// A reported share wins over the estimate.
+		{log.Usage{PromptTokens: 12400, OutputTokens: 800, TotalMS: 2000, CachedTokens: &cached, EstimatedCachedTokens: &est}, "12,400→800 tok · 78% cached · 2.0s"},
 		// A hosted model: hit rate and cost, no duration.
 		{log.Usage{PromptTokens: 12400, OutputTokens: 800, CachedTokens: &cached, Cost: &cost}, "12,400→800 tok · 78% cached · $0.012"},
 		// An estimate from configured prices is marked.

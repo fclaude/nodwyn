@@ -187,6 +187,13 @@ type Usage struct {
 	CachedTokens     *int `json:"cached_tokens,omitempty"`
 	CacheWriteTokens int  `json:"cache_write_tokens,omitempty"`
 	ReasoningTokens  int  `json:"reasoning_tokens,omitempty"`
+	// EstimatedCachedTokens are the prompt tokens this reply read from the
+	// model's prompt cache, estimated from its prompt-eval time against the
+	// session's slowest of the model's (the most-cold request), when the
+	// provider reports no CachedTokens (Ollama); nil when there is no
+	// estimate. It is an estimate: figures show it marked ≈, as a cost
+	// estimated from configured prices, and a reported share always wins.
+	EstimatedCachedTokens *int `json:"estimated_cached_tokens,omitempty"`
 	// Cost is the request's cost in USD: reported by the provider, or, with
 	// CostEstimated, estimated from the model's configured prices. Absent is
 	// unknown, never free.

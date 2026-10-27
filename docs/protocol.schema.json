@@ -453,6 +453,12 @@
         "cached": {
           "type": "integer"
         },
+        "est_cached": {
+          "type": "integer"
+        },
+        "est_prompt": {
+          "type": "integer"
+        },
         "prompt": {
           "type": "integer"
         }
@@ -3047,6 +3053,16 @@
         },
         "cost_estimated": {
           "type": "boolean"
+        },
+        "estimated_cached_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "eval_ms": {
           "type": "integer"

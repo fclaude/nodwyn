@@ -22,7 +22,9 @@ calls are in Statistics › This turn and the cache rate is Statistics →
 Totals' **Token cache rate**: the rounded, token-weighted share of raw prompt
 tokens read from cache across the session, not the percentage of requests
 hitting cache (missing or unreported usage is excluded; no positive prompt
-total shows **unknown**, reported zero cache reads give **0%**; with truncated
+total shows **unknown**, reported zero cache reads give **0%**; where no reply
+reports cache reads, as Ollama never does, the rate is estimated from each
+reply's prompt-eval time and shows marked **≈**; with truncated
 history it covers the log that remains). A task whose requests the log cannot
 price shows **unpriced** for spend, not "at least $0.0000". Other unknown
 figures stay as a dash. Context shows a percentage against the recorded high
@@ -59,8 +61,9 @@ reads at a glance; clicking a step shows the whole of it, the note with it.
 ## Statistics
 
 After each reply the conversation shows its tokens,
-and when the provider reports them or the model has prices, how much of the
-prompt came from the cache and what it cost (the manual, "Choosing models");
+how much of the prompt came from the cache — the provider's report, or,
+where it reports none, an estimate from the reply's prompt-eval time, marked
+≈ — and what it cost, when the model has prices (the manual, "Choosing models");
 over several requests, the largest single prompt too, since each request
 sends the whole prompt again. Statistics' Context meter shows how full
 the context the model holds is against the window's high water, from the

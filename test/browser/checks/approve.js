@@ -501,13 +501,31 @@ check(async () => {
   });
   assert.ok(Math.abs(ticks.cost - 19.999) < 1e-6, `the long log's spend: ${ticks.cost}`);
   assert.ok(ticks.ms < 250, `a thousand ticks over a long log took ${Math.round(ticks.ms)} ms`);
-  assert.deepStrictEqual(ticks.cache, { prompt: 1999900, cached: 499975 }, "session cache totals reuse: whole-session raw token totals");
+  assert.deepStrictEqual(ticks.cache, { prompt: 1999900, cached: 499975, estPrompt: 0, estCached: 0 }, "session cache totals reuse: whole-session raw token totals");
   assert.strictEqual(ticks.rendered, "25%", "session cache totals reuse: repeated Totals renders show the rate");
   assert.ok(ticks.reused, "session cache totals reuse: a thousand ticks and renders do not read usage again");
   assert.ok(ticks.refreshed, "session cache totals reuse: new usage invalidates the aggregation");
-  assert.deepStrictEqual(ticks.newCache, { prompt: 3999800, cached: 2499875 }, "session cache totals reuse: new usage reaches token totals");
+  assert.deepStrictEqual(ticks.newCache, { prompt: 3999800, cached: 2499875, estPrompt: 0, estCached: 0 }, "session cache totals reuse: new usage reaches token totals");
   assert.strictEqual(ticks.updated, "63%", "session cache totals reuse: new usage updates the rendered percentage");
   step("session cache totals reuse");
+  // A provider that reports no cache count (Ollama): the estimate from its
+  // prompt-eval time tallies under est_prompt/est_cached and renders marked
+  // ≈, where a reply reporting no share at all stays out.
+  const est = await page.evaluate(async () => {
+    const { TaskView } = await import("/task.js");
+    const view = new TaskView({ onEvent: () => () => {}, has: () => false }, {}, () => {});
+    const base = Date.now() - 3600_000;
+    view.seen.set(1, { seq: 1, ts: new Date(base + 100).toISOString(), kind: "user.msg", payload: {} });
+    view.seen.set(2, { seq: 2, ts: new Date(base + 200).toISOString(), kind: "llm.resp", payload: { usage: { cost: 0.001, prompt_tokens: 1000, estimated_cached_tokens: 600 } } });
+    view.seen.set(3, { seq: 3, ts: new Date(base + 300).toISOString(), kind: "llm.resp", payload: { usage: { cost: 0.001, prompt_tokens: 1000 } } });
+    view.busy = true;
+    const t = view.totals();
+    const rate = [...view.totalsPanel().querySelectorAll(".kv")].find((n) => n.firstElementChild.textContent === "Token cache rate")?.lastElementChild.textContent ?? null;
+    view.dispose();
+    return { cache: t.cache, rate };
+  });
+  assert.deepStrictEqual(est.cache, { prompt: 0, cached: 0, estPrompt: 1000, estCached: 600 }, "estimated cache share tallies under est_prompt/est_cached");
+  assert.strictEqual(est.rate, "≈60%", "an estimate-only session renders the cache rate marked ≈");
   step("totals rules");
 
   // Home: nothing waits for an answer now, and the task is with the finished.

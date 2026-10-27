@@ -2253,7 +2253,11 @@ In the TUI, `:model` shows the same list and `:model NAME [EFFORT]` chooses
 console show its tokens, and when the provider says so, how much of the
 prompt came from its cache and what the request cost:
 `12,400→800 tok · 78% cached · $0.012`, with the reasoning share of the
-output when the provider reports it (`800 tok (300 reasoning)`). A server
+output when the provider reports it (`800 tok (300 reasoning)`). Where the
+provider reports no cache reads, as Ollama does, the share is estimated
+from the prompt-eval time — a cached token does not take it — against the
+session's most-cold request of the model, and shows marked:
+`12,400→800 tok · ≈78% cached`; a reported share always wins. A server
 that sends no token counts reads `tokens not reported`, not `0→0`. The
 request's wall time, as this machine measured it from the sending to the
 reply's complete arrival, gives a speed too — `22.0 tok/s` — and it is the
@@ -2640,7 +2644,11 @@ adds tokens before dividing, not request percentages: it is not the share
 of requests hitting cache, and does not use the token budget's discount.
 Missing or unreported usage stays out of both totals. A reported zero cache
 read with positive prompt tokens gives 0%; without a positive prompt total
-the figure is "unknown", not 0%. Like the other totals, it covers only the
+the figure is "unknown", not 0%. Where no reply reports cache reads, as
+Ollama never does, the rate is estimated from each reply's prompt-eval
+time — a cached token does not take it — against the session's most-cold
+request, and shows marked ≈; a reported share always wins over it. Like
+the other totals, it covers only the
 log that remains if history was truncated. Times are in tenths of a second
 while short. A turn still
 running counts up to now, into the running time even while it waits for

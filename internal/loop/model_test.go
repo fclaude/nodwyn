@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 // responseRecord carries the request's host-measured wall time into the
@@ -31,5 +32,49 @@ func TestResponseRecordKeepsTheBlocks(t *testing.T) {
 	rec := responseRecord(&llm.Response{Message: llm.Message{Blocks: blocks}}, llm.Rates{})
 	if len(rec.Blocks) != 2 || llm.ThinkingBlock(rec.Blocks[0]) != blocks[0] || llm.ThinkingBlock(rec.Blocks[1]) != blocks[1] {
 		t.Fatalf("logged blocks: %+v", rec.Blocks)
+	}
+}
+
+// estimateCache is the cache share a provider that reports none (Ollama)
+// still shows: the prompt-eval time a cached token does not take, against
+// the session's slowest of the model's — the most-cold request. A reply
+// that sets the reference gets no estimate, and a provider-reported share
+// always wins.
+func TestEstimateCache(t *testing.T) {
+	l := &Loop{}
+	// No signal: a reported share, no prompt tokens, no prompt-eval time.
+	cached := 100
+	if got := l.estimateCache("m", log.Usage{PromptTokens: 1000, PromptEvalMS: 5000, CachedTokens: &cached}); got != nil {
+		t.Fatalf("a provider-reported share wins: got %d", *got)
+	}
+	if got := l.estimateCache("m", log.Usage{PromptEvalMS: 5000}); got != nil {
+		t.Fatalf("no prompt tokens: got %d", *got)
+	}
+	if got := l.estimateCache("m", log.Usage{PromptTokens: 1000}); got != nil {
+		t.Fatalf("no prompt-eval time: got %d", *got)
+	}
+	// The first reply is the most-cold seen: it sets the reference and gets
+	// no estimate of its own.
+	if got := l.estimateCache("m", log.Usage{PromptTokens: 1000, PromptEvalMS: 10000}); got != nil {
+		t.Fatalf("the coldest reply: got %d, want no estimate", *got)
+	}
+	// A reply four times faster per token is estimated at 60% cached.
+	if got := l.estimateCache("m", log.Usage{PromptTokens: 1000, PromptEvalMS: 4000}); got == nil || *got != 600 {
+		t.Fatalf("warm reply: got %v, want 600", got)
+	}
+	// A slower reply raises the reference and itself gets no estimate.
+	if got := l.estimateCache("m", log.Usage{PromptTokens: 1000, PromptEvalMS: 20000}); got != nil {
+		t.Fatalf("a colder reply: got %d, want no estimate", *got)
+	}
+	if got := l.estimateCache("m", log.Usage{PromptTokens: 1000, PromptEvalMS: 4000}); got == nil || *got != 800 {
+		t.Fatalf("against the raised reference: got %v, want 800", got)
+	}
+	// A near-zero prompt-eval is clamped at the reply's own prompt.
+	if got := l.estimateCache("m", log.Usage{PromptTokens: 1000, PromptEvalMS: 1}); got == nil || *got != 1000 {
+		t.Fatalf("clamped: got %v, want 1000", got)
+	}
+	// A model's reference is its own: another model starts cold again.
+	if got := l.estimateCache("other", log.Usage{PromptTokens: 1000, PromptEvalMS: 4000}); got != nil {
+		t.Fatalf("another model's first reply: got %d, want no estimate", *got)
 	}
 }

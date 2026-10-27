@@ -383,7 +383,9 @@ Older daemons that do not advertise `log.runs` keep the complete-history view.
 records. Its `through` is the inclusive last complete sequence and `truncated`
 reports a partial tail. It returns `started`, `cost` (USD), `unpriced` and
 `estimated`; `cache {prompt,cached}` counts raw prompt tokens only for replies
-that reported both prompt and cache-read usage; `speed {out,ms,replies}` sums
+that reported both prompt and cache-read usage, and
+`cache {est_prompt,est_cached}` (absent when zero) the same for replies that
+reported a prompt and carry an estimated cache share; `speed {out,ms,replies}` sums
 output tokens and request wall time for replies with reported output usage.
 The rate is `out / (ms / 1000)`, unknown when `ms` is zero.
 `judge {calls,tokens,cost,unpriced}` keeps judge usage separately.
@@ -516,7 +518,10 @@ person gets carries the judge's answer among its reasons.
 
 `llm.resp` `usage` may carry `cached_tokens` (the prompt tokens the
 provider read from its cache; absent is unknown, not 0), `cache_write_tokens`,
-`reasoning_tokens`, and `cost` in USD with `cost_estimated` when it comes
+`reasoning_tokens`, `estimated_cached_tokens` (the prompt tokens the provider
+read from its cache, estimated from the reply's prompt-eval time against the
+session's slowest of the model's when the provider reports no
+`cached_tokens`), and `cost` in USD with `cost_estimated` when it comes
 from the model's configured prices rather than the provider. It may also
 carry `wall_ms`, how long the request took as the host measured it, from
 the sending to the reply's complete arrival, the successful attempt only

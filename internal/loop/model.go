@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -149,7 +150,9 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 	}
 	notes := append(l.tidyCalls(resp), keepDetails(resp)...)
 	l.show(resp)
-	if err := l.record(log.KindLLMResp, responseRecord(resp, ep.Rates)); err != nil {
+	respRec := responseRecord(resp, ep.Rates)
+	respRec.Usage.EstimatedCachedTokens = l.estimateCache(ep.Model, respRec.Usage)
+	if err := l.record(log.KindLLMResp, respRec); err != nil {
 		return nil, err
 	}
 	for _, text := range notes {
@@ -273,4 +276,42 @@ func responseRecord(resp *llm.Response, rates llm.Rates) log.LLMResp {
 		rec.Blocks = append(rec.Blocks, log.ThinkingBlock(b))
 	}
 	return rec
+}
+
+// estimateCache is the prompt tokens this reply read from the model's prompt
+// cache, when the provider reports none (Ollama's API has no cache count):
+// the prompt-eval time a cached token does not take, against the slowest
+// prompt-eval this session has seen of the model's — the most-cold request,
+// whose per-token time the uncached prompt pays. The most-cold reply sets
+// the reference and gets no estimate of its own; so does one with no
+// prompt-eval time, no prompt tokens, or a provider-reported share, which
+// always wins. It is an estimate, so the log marks it and the figures show
+// ≈.
+func (l *Loop) estimateCache(model string, u log.Usage) *int {
+	if u.CachedTokens != nil || u.PromptTokens <= 0 || u.PromptEvalMS <= 0 {
+		return nil
+	}
+	mpt := float64(u.PromptEvalMS) / float64(u.PromptTokens)
+	l.coldBaseMu.Lock()
+	defer l.coldBaseMu.Unlock()
+	if l.coldBase == nil {
+		l.coldBase = map[string]float64{}
+	}
+	base := l.coldBase[model]
+	if mpt >= base {
+		l.coldBase[model] = mpt
+		return nil
+	}
+	est := int(math.Round((1 - mpt/base) * float64(u.PromptTokens)))
+	if est < 0 {
+		est = 0
+	}
+	if est > u.PromptTokens {
+		est = u.PromptTokens
+	}
+	if est == 0 {
+		return nil
+	}
+	v := est
+	return &v
 }

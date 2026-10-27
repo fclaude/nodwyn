@@ -286,3 +286,24 @@ every payload on its own, whoever opened it. The hook is removed, with the
 package used, so that a filter installed later cannot make the log differ from
 what the mandatory boundary then sees. The boundary is tested by
 `TestWriterRedactsEveryPayload`.
+
+## Amendment — 2026-10-27: the estimated cache share
+
+No new kind. `llm.resp` `usage` gains optional
+`estimated_cached_tokens`: the prompt tokens the provider read from its
+cache, estimated by the loop when the provider reports no `cached_tokens`
+(Ollama's API has no cache count) and the reply carries a prompt count and
+a prompt-eval time. A cached token does not take prompt-eval time, so the
+share is `round((1 − m/slowest) × prompt_tokens)`, where `m` is the
+reply's prompt-eval time per prompt token and `slowest` is the largest such
+value the session has seen of that model's — the most-cold request, whose
+per-token time the uncached prompt pays. A reply at or above the reference
+sets it and gets no estimate of its own, and one with a provider-reported
+share, no prompt tokens or no prompt-eval time records none: a reported
+share always wins. It is computed when the reply is recorded, against what
+the session has seen so far, so a session's first request of a model sets
+the reference and carries no estimate, and an older log or a resumed
+session reads as before. It is an estimate, so the figures that show it
+mark it ≈, as a cost estimated from configured prices, and
+`session.totals` `cache` counts the estimate in `est_prompt` and
+`est_cached` beside the reported `prompt` and `cached`.

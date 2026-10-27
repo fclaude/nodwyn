@@ -56,6 +56,11 @@ type SessionTotals struct {
 type CacheTotals struct {
 	Prompt int64 `json:"prompt"`
 	Cached int64 `json:"cached"`
+	// EstPrompt and EstCached are the replies that reported no cache count
+	// but carry an estimate from their prompt-eval time (estimated_cached_tokens):
+	// a reported share always counts above them.
+	EstPrompt int64 `json:"est_prompt,omitempty"`
+	EstCached int64 `json:"est_cached,omitempty"`
 }
 
 type SpeedTotals struct {
@@ -227,9 +232,14 @@ func (t *totalsFold) observe(ev log.Event) {
 			} else {
 				t.Unpriced++
 			}
-			if !u.Unreported && u.CachedTokens != nil && u.PromptTokens > 0 {
-				t.Cache.Prompt += int64(u.PromptTokens)
-				t.Cache.Cached += int64(*u.CachedTokens)
+			if !u.Unreported && u.PromptTokens > 0 {
+				if u.CachedTokens != nil {
+					t.Cache.Prompt += int64(u.PromptTokens)
+					t.Cache.Cached += int64(*u.CachedTokens)
+				} else if u.EstimatedCachedTokens != nil {
+					t.Cache.EstPrompt += int64(u.PromptTokens)
+					t.Cache.EstCached += int64(*u.EstimatedCachedTokens)
+				}
 			}
 			wall := u.WallMS
 			if wall == 0 && t.SpeedOpen > 0 && ts > t.SpeedOpen {

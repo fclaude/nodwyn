@@ -706,3 +706,26 @@ daemon that started after the app's first dial, the app attaches to it.
 another on its socket; `TestListenBindsUnderTheSocketLock` holds the lock and
 checks that `Listen` waits for it. Not built: a daemon that removes a stale
 socket does not say so in its output.
+
+## Amendment 2026-10-27: a cache share the provider does not report shows estimated
+
+Ollama's API has no cache count, so a session on it showed no cache hit
+rate at all: the per-request line no share, and Totals' Token cache rate
+unknown — though the provider's prompt-eval time, which a cached token does
+not take, was in the log. ADR 2's amendment of 2026-10-27 estimates the
+share from it, against the session's most-cold request of the model, and
+records it as `estimated_cached_tokens`.
+
+The usage line (the TUI, line mode and the console) shows it the way a cost
+estimated from configured prices is marked: `≈78% cached`, where a
+provider-reported share always wins and shows unmarked. Totals' Token cache
+rate, which the amendment of 2026-10-07 (ADR 9) kept to replies that
+reported cache reads, falls back to the estimate when no reply did: the
+estimates summed the same way, token-weighted and marked `≈`, with the
+reported share above them and `unknown` when neither exists. The daemon's
+totals count the estimate in `cache {est_prompt,est_cached}` beside the
+reported `prompt` and `cached`, and the complete log's tally under
+`estPrompt` and `estCached`. The estimate is what it is — a figure from
+timings, not a report — so it is never mixed into a reported total and is
+always marked. The browser check asserts the estimate-only rate renders
+marked and the tallies keep the two apart.

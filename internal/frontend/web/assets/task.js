@@ -1600,6 +1600,15 @@ export class TaskView {
     const runSpend = this.runSpend(t);
     const spend = `${t.unpriced ? "at least " : ""}${usd(t.cost, t.estimated)}`;
     const spendHint = "What the task's model and judge requests cost, as far as the log prices them and as a spend limit counts them; a request without a known cost makes this a lower bound";
+    // A share the provider reported wins over any estimate; only then does
+    // the estimate from each reply's prompt-eval time show, marked ≈. The
+    // daemon's totals name the estimate's fields est_prompt/est_cached, the
+    // complete log's estPrompt/estCached.
+    const cache = t.cache;
+    const estPrompt = cache.estPrompt ?? cache.est_prompt ?? 0;
+    const estCached = cache.estCached ?? cache.est_cached ?? 0;
+    const cacheRate = cache.prompt > 0 ? `${Math.round((100 * cache.cached) / cache.prompt)}%` : estPrompt > 0 ? `≈${Math.round((100 * estCached) / estPrompt)}%` : "unknown";
+    const cacheHint = "The share of raw prompt tokens read from the provider's cache, added up across the session's model replies that reported cache reads and prompt tokens; missing or unreported usage stays out, and without a positive prompt total the rate is unknown; where the provider reports no cache reads (Ollama), the estimate from each reply's prompt-eval time against the session's most-cold request shows instead, marked ≈; this is not the share of requests hitting cache or the discounted token budget";
     return h(
       "section",
       { class: "panel", dataset: { totals: "1" } },
@@ -1619,7 +1628,7 @@ export class TaskView {
             "How fast the models answered: output tokens per second of wall time, from each request to its reply, added up over the requests that reported tokens; whichever model answered, this is the speed the session experienced",
           )
         : null,
-      statRow("Token cache rate", t.cache.prompt > 0 ? `${Math.round((100 * t.cache.cached) / t.cache.prompt)}%` : "unknown", {}, "The share of raw prompt tokens read from the provider's cache, added up across the session's model replies that reported cache reads and prompt tokens; missing or unreported usage stays out, and without a positive prompt total the rate is unknown; this is not the share of requests hitting cache or the discounted token budget"),
+      statRow("Token cache rate", cacheRate, {}, cacheHint),
       statRow("Tool time", spanWords(t.tools), { dataset: { tools: "1" } }, "How long the task's tool calls took to run, from a call to its result, with the wait for a person's approval left out; the time waiting for you to answer is in no figure here"),
     );
   }
@@ -2304,19 +2313,29 @@ function spendOf(evs) {
 
 // cacheOf adds raw prompt tokens and cache reads over the replies that
 // report both, so the rate is token-weighted across turns and models, not
-// a mean of request rates or the budget's discounted token count. Unknown
-// usage and replies without a positive prompt count cannot give a share.
+// a mean of request rates or the budget's discounted token count. Replies
+// that report no cache count but carry the estimate from their prompt-eval
+// time (estimated_cached_tokens) tally under est_prompt/est_cached: a
+// reported share always wins over them. Unknown usage and replies without
+// a positive prompt count cannot give a share.
 function cacheOf(evs) {
   let prompt = 0,
-    cached = 0;
+    cached = 0,
+    estPrompt = 0,
+    estCached = 0;
   for (const e of evs) {
     if (e.kind !== "llm.resp") continue;
     const u = e.payload?.usage;
-    if (!u || u.unreported || u.cached_tokens == null || !(u.prompt_tokens > 0)) continue;
-    prompt += u.prompt_tokens;
-    cached += u.cached_tokens;
+    if (!u || u.unreported || !(u.prompt_tokens > 0)) continue;
+    if (u.cached_tokens != null) {
+      prompt += u.prompt_tokens;
+      cached += u.cached_tokens;
+    } else if (u.estimated_cached_tokens != null) {
+      estPrompt += u.prompt_tokens;
+      estCached += u.estimated_cached_tokens;
+    }
   }
-  return { prompt, cached };
+  return { prompt, cached, estPrompt, estCached };
 }
 
 // speedOf is how fast the task's models answered: output tokens per second

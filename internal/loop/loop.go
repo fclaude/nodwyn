@@ -129,6 +129,12 @@ type Loop struct {
 	// vision caches, per model name, whether the model takes images.
 	visionMu sync.Mutex
 	vision   map[string]bool
+
+	// coldBase holds, per model, the slowest prompt-eval time per token this
+	// session has seen: the most-cold request, the reference a cache read
+	// saves against (estimateCache).
+	coldBaseMu sync.Mutex
+	coldBase   map[string]float64
 }
 
 // Endpoint is one model a strategy can ask by name.

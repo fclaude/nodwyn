@@ -362,8 +362,10 @@ do:
 \end{center}
 
 Prompt and output tokens always; the share of the prompt the provider read
-from its cache, and the request's cost, only when known (a cost estimated
-from the model's configured prices is marked $\approx$); the time only when
+from its cache — or, where it reports none, as Ollama does, an estimate from
+the reply's prompt-eval time against the session's most-cold request, marked
+$\approx$ — and the request's cost, only when known (a cost estimated from
+the model's configured prices is likewise marked); the time only when
 the server reports it. A budget checkpoint says what the turn has cost so
 far, ``at least'' when some requests had no known cost.
 
@@ -423,7 +425,10 @@ Totals: the rounded percentage of raw prompt tokens read from cache, summed
 across turns and models before dividing. Only model replies reporting cache
 reads and prompt tokens count; missing or unreported usage stays out. A
 reported zero with positive prompt tokens gives 0\%; without a positive
-prompt total the rate is ``unknown''. It is not the percentage of requests
+prompt total the rate is ``unknown''. Where no reply reports cache reads,
+as Ollama never does, the rate is estimated from each reply's prompt-eval
+time against the session's most-cold request and shows marked $\approx$;
+a reported share always wins. It is not the percentage of requests
 hitting cache, nor the budget's discounted token count. Where history was
 truncated, Totals says ``from the log that remains'', and the rate covers
 only that retained history (\adr{9}).

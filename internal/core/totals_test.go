@@ -204,7 +204,7 @@ func TestIndexedTotalsKeepUsageAndRunClocks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	zero, full, cost := 0, 50, 0.1
+	zero, full, cost, est := 0, 50, 0.1, 160
 	free := 0.0
 	add(1, log.KindUserMsg, log.UserMsg{Text: "one"})
 	add(2, log.KindLLMReq, log.LLMReq{})
@@ -214,6 +214,7 @@ func TestIndexedTotalsKeepUsageAndRunClocks(t *testing.T) {
 	add(7, log.KindLLMResp, log.LLMResp{Usage: log.Usage{PromptTokens: 100, OutputTokens: 20, WallMS: 1000}})
 	add(8, log.KindLLMReq, log.LLMReq{})
 	add(10, log.KindLLMResp, log.LLMResp{Usage: log.Usage{PromptTokens: 50, OutputTokens: 10, CachedTokens: &full, Cost: &cost}})
+	add(11, log.KindLLMResp, log.LLMResp{Usage: log.Usage{PromptTokens: 200, EstimatedCachedTokens: &est, Cost: &free}})
 	add(11, log.KindJevReq, log.JevReq{})
 	add(12, log.KindJevReq, log.JevReq{Usage: &log.JevUsage{InputTokens: 5}})
 	add(13, log.KindGuardDecision, log.GuardDecision{Decision: "confirm", Actor: "judge"})
@@ -230,7 +231,7 @@ func TestIndexedTotalsKeepUsageAndRunClocks(t *testing.T) {
 	if got.Clock.Total != 20000 || got.Clock.Work != 20000 {
 		t.Fatalf("driver gaps or automatic answers: %+v", got.Clock)
 	}
-	if got.Cost != cost || got.Unpriced != 3 || got.Estimated || got.Cache.Prompt != 150 || got.Cache.Cached != 50 || got.Speed.MS != 4000 || got.Speed.Out != 50 || got.Speed.Replies != 3 || got.Judge.Calls != 2 || got.Judge.Unpriced != 1 {
+	if got.Cost != cost || got.Unpriced != 3 || got.Estimated || got.Cache.Prompt != 150 || got.Cache.Cached != 50 || got.Cache.EstPrompt != 200 || got.Cache.EstCached != 160 || got.Speed.MS != 4000 || got.Speed.Out != 50 || got.Speed.Replies != 3 || got.Judge.Calls != 2 || got.Judge.Unpriced != 1 {
 		t.Fatalf("usage: %+v", got)
 	}
 	if len(idx.Turns) != 3 {

@@ -296,7 +296,10 @@ After each reply the terminal shows what the request used:
 
 That is the prompt's tokens, the reply's, the share of the prompt the
 provider read from its cache, and what the request cost. The cache share
-and the cost appear only when they are known (Chapter~\ref{ch:keys}), and
+is the provider's report, or — where it reports none, as Ollama does —
+an estimate from the reply's prompt-eval time against the session's
+most-cold request, marked ≈; the cost appears only when it is known
+(Chapter~\ref{ch:keys}), and
 the timings only when the server reports them, as Ollama does. The
 request's wall time, as this machine measured it, gives a speed whenever
 there are tokens to divide by — \code{22.0~tok/s} — the one speed every

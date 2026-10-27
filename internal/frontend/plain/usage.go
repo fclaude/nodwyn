@@ -11,9 +11,11 @@ import (
 
 // UsageLine is one model request's usage as the TUI and line mode show it:
 // "12,400→800 tok · 78% cached · $0.012 · 3.2s". The cache hit rate and the
-// cost appear only when known (a provider that reports them, or configured
-// prices: an estimate is marked ≈), the time only when the provider
-// reports one, so an Ollama request or an older log reads as it always did.
+// cost appear only when known: the provider's reported share, or, when it
+// reports none (Ollama), the estimate from its prompt-eval time, and the
+// cost when prices are configured; an estimate is marked ≈. The time
+// appears only when the provider reports it, so an older log reads as it
+// always did.
 func UsageLine(u log.Usage) string {
 	tok := fmt.Sprintf("%s→%s tok", Thousands(int64(u.PromptTokens)), Thousands(int64(u.OutputTokens)))
 	if u.Unreported {
@@ -26,6 +28,11 @@ func UsageLine(u log.Usage) string {
 	parts := []string{tok}
 	if u.CachedTokens != nil && u.PromptTokens > 0 {
 		parts = append(parts, fmt.Sprintf("%d%% cached", Percent(int64(*u.CachedTokens), int64(u.PromptTokens))))
+	} else if u.EstimatedCachedTokens != nil && u.PromptTokens > 0 {
+		// The provider reports no cache count (Ollama): the estimate from
+		// its prompt-eval time is shown marked, as a cost estimated from
+		// configured prices.
+		parts = append(parts, fmt.Sprintf("≈%d%% cached", Percent(int64(*u.EstimatedCachedTokens), int64(u.PromptTokens))))
 	}
 	if u.Cost != nil {
 		parts = append(parts, USD(*u.Cost, u.CostEstimated))
