@@ -183,8 +183,15 @@ func TestPostingWithoutAskingAndAfterEditing(t *testing.T) {
 	f.Set("fc/nodwyn", forge.Pull{Number: 142, Title: "fix: login loop", Author: "ana", Head: "b2"})
 	s.pollWorkflows(context.Background(), time.Now().Add(4*time.Minute))
 	scheduleIdle(t, s, task)
+	// The forge has the review before the workflow records that it was
+	// posted (deliver appends the record after PostReview returns), so the
+	// wait is for both.
+	posted := func() bool {
+		d := flowState(t, s, id).Delivered
+		return len(f.Reviews()) >= 2 && len(d) > 0 && d[len(d)-1].By == "workflow"
+	}
 	deadline := time.Now().Add(5 * time.Second)
-	for len(f.Reviews()) < 2 && time.Now().Before(deadline) {
+	for !posted() && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	reviews := f.Reviews()

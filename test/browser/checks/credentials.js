@@ -32,7 +32,11 @@ check(async () => {
     await page.goto("about:blank");
     await page.goto(url);
   };
+  // The page leaves before the app stops. Its socket tries the port again a
+  // second after it drops (retryFirst in connection.js), and on a slow runner
+  // the app is not back by then: the refused connection is a page error.
   const stopApp = async (app) => {
+    await page.goto("about:blank");
     app.kill("SIGTERM");
     assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
   };
