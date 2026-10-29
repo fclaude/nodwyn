@@ -12,12 +12,14 @@ jobs:
       - name: Queue this exact main commit in Beauties
         env:
           DISPATCH_TOKEN: ${{ secrets.BEAUTIES_DISPATCH_TOKEN }}
+          DISPATCH_URL: ${{ vars.PACKAGES_DISPATCH_URL }}
           SOURCE_SHA: ${{ gitea.sha }}
         run: |
           node --input-type=module <<'JS'
           const sha = process.env.SOURCE_SHA;
           if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('Invalid source commit');
-          const response = await fetch('http://git.example.com/api/v1/repos/beauties/packages/actions/workflows/nodwyn.yml/dispatches', {
+          if (!process.env.DISPATCH_URL) throw new Error('PACKAGES_DISPATCH_URL is not set');
+          const response = await fetch(process.env.DISPATCH_URL, {
             method: 'POST', redirect: 'error',
             headers: {Authorization: 'token ' + process.env.DISPATCH_TOKEN, 'Content-Type': 'application/json'},
             body: JSON.stringify({ref: 'main', inputs: {source_sha: sha}})
