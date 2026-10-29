@@ -8,7 +8,7 @@ nodwyn app --browser    # your browser, even in a webview build
 nodwyn app --no-open    # print the launch address and open nothing
 ```
 
-`nodwyn app` is the whole product in one program. It shows the console and, when no daemon is running yet, it starts one inside the same process. Nobody has to run `nodwyn daemon`, copy a pairing code or unlock a keychain at a terminal.
+`nodwyn app` shows the console and starts a daemon inside the same process if none is running. You can set up the model and unlock the keychain in the console; there's no terminal setup step first.
 
 What it does depends on what it finds:
 

@@ -2,7 +2,7 @@
 
 nodwyn can run on a computer nobody sits at, like a home server, and be used from a laptop, a phone and any number of terminals. Tasks live in the daemon on the server, so they keep going when every client has disconnected.
 
-The pieces are two programs that run as your own user: the daemon, which owns the tasks, the keychain and the schedules, and the console, which serves the web page to other devices.
+You run two processes as your own user: `nodwyn daemon` owns the tasks, keychain and schedules; `nodwyn ui` serves the console to other devices.
 
 ## Start both at boot
 
@@ -23,7 +23,7 @@ nodwyn ui --no-open --listen 127.0.0.1:7777 --name https://nodwyn.example.net
 
 `--listen` is where the console accepts connections, and `--name` is the address people type. Without `--no-open` it would try to open a browser on a machine with no screen.
 
-I haven't shipped a unit for the console, so this one is a sketch to start from. It goes in `~/.config/systemd/user/nodwyn-ui.service`, next to the `nodwyn.service` that `nodwyn startup on` writes:
+There isn't a shipped service unit for the console yet. Here's an example to adapt, assuming you installed `nodwyn` in `~/.local/bin`. Put it in `~/.config/systemd/user/nodwyn-ui.service`, next to the `nodwyn.service` that `nodwyn startup on` writes:
 
 ```ini
 [Unit]
@@ -54,7 +54,7 @@ Pairing takes no code. Once, on the server:
 nodwyn devices invite
 ```
 
-It prints an invitation. Open the console's address on your laptop or phone, name the device, enter the invitation and choose **Connect and make a passkey**. That first passkey always comes from `nodwyn devices invite`, so making the person who owns the server stays with the terminal and the passkey. After that, your other devices sign in with the passkey and need no invitation, or you invite them from Settings › Keys & devices on a device that's signed in.
+It prints an invitation. Open the console's address on your laptop or phone, name the device, enter the invitation and choose **Connect and make a passkey**. Creating the first passkey needs an invitation from the server's terminal. After that, your other devices can sign in with the passkey or use an invitation from Settings › Keys & devices on a device that's already signed in.
 
 ![Settings, Keys & devices, where devices are invited and listed](shot:settings-devices)
 

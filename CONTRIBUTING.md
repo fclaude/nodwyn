@@ -1,9 +1,9 @@
 # Contributing to nodwyn
 
-Thanks for wanting to help. This page is what I'd tell you across a desk: how
-to get the code running and what to check before you send a change. [AGENTS.md](AGENTS.md) has the same
-rules in full, written for coding agents (which includes nodwyn itself), so
-it's the place to look when this page is vague.
+Thanks for wanting to help. This page explains how to get the code running
+and what to check before you send a change. [AGENTS.md](AGENTS.md) has the
+full working rules, including the checks for each kind of change. I use
+those with coding agents, including nodwyn itself.
 
 By sending a change you license it under the project's
 [Apache 2.0 licence](LICENSE), as section 5 of that licence says. There's no

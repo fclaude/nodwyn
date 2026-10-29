@@ -2,8 +2,7 @@
 
 How to build, run and set up nodwyn, and what its budgets, approvals and
 clients do. The [README](../README.md) is the short version, the
-[manual](manual.md) is the long one, and this page keeps the details that
-used to open the README.
+[manual](manual.md) goes into the code and the individual features.
 
 See [Security boundaries and user choices](security.md) for project trust,
 credential transport and migration, and [the maintenance review](maintenance-review.md)
@@ -11,10 +10,8 @@ for a behaviour-preserving simplification plan.
 
 ## Maintainer map
 
-The packages and what to read first in each are the package map in
-[the manual](manual.md#package-map), kept there once. Their
-responsibilities, which stay useful as nodwyn gains more integrations and
-front-ends:
+The [manual's package map](manual.md#package-map) lists the files to read
+first. This table groups the packages by what they do:
 
 | Packages | Responsibility |
 |---|---|
@@ -33,7 +30,7 @@ front-ends:
 | `termemu`, `frontend/termvt` | Give the terminal primitives an emulator behind an interface, with the Charm library only under `frontend`. |
 | `mcp`, `extract` | Talk to remote MCP servers (pinned manifests, bound keys); turn attached documents into redacted text, check attached images by their content, and read all a document carries before it is sent. |
 | `frontend/workflows` | Read the daemon's workflows and held answers, say them in words and act on them, for the command line and the TUI alike. |
-| `frontend/run` | Chain planned turns under a finite deadline and turn count; ask a person to continue, or, unattended, go on only after a turn that marked a plan step done. |
+| `frontend/run` | Chain planned turns, with optional deadline and turn limits; ask a person to continue, or, unattended, go on only after a turn that marked a plan step done or skipped. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nodwyn` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
 **A user message:** the front-end calls `Session.Send`. The session records

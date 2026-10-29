@@ -9,7 +9,8 @@ leaves your machine is small, written in Go, and doesn't trust the model.
   <img src="docs/images/task-light.webp" alt="The nodwyn console: a task waiting for an answer, with its plan beside it">
 </picture>
 
-The screenshot is the console running on synthetic data. A task has stopped to ask whether it may run a command, and the plan sits beside it with two of its four steps done.
+The screenshot uses synthetic data. The task is waiting for permission to run
+a command, with two of its four plan steps done.
 
 The agent itself is a Scheme program running on a Go host. The loop, the
 prompts, how it plans and when it asks you are all Scheme you can read and
@@ -26,11 +27,10 @@ terminal UI, a plain line-mode chat, or scripts. It runs on Linux and macOS;
 there's no Windows build yet. MCP servers can run in containers, which needs
 podman or docker.
 
-It's pre-1.0 and I use it every day, so expect rough edges. It's also not a
-sandbox. Commands you approve run with your user's privileges. The checks
-around them stop mistakes and leaks, and a determined program would get past
-them. [docs/security.md](docs/security.md) says exactly what is and isn't
-promised.
+It's pre-1.0 and I use it every day, so expect rough edges. It isn't a sandbox:
+commands you approve run with your user's privileges. The checks help catch
+mistakes and leaks, but a determined program can get past them.
+[docs/security.md](docs/security.md) explains those limits.
 
 ## Install
 
@@ -71,7 +71,8 @@ nodwyn tui          # full-screen client
 nodwyn              # plain chat in the current repository
 ```
 
-and put a control model in `~/.config/nodwyn/config.toml`:
+For the terminal clients, set a control model in `~/.config/nodwyn/config.toml`.
+This example needs Ollama running locally with `qwen3:8b` already pulled:
 
 ```toml
 [control]

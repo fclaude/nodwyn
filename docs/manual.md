@@ -1,9 +1,10 @@
 # nodwyn manual
 
-Two parts: how to **read the code**, and how to **use** the bootstrap-era
-binary. For *why* things are shaped this way read [SPEC.md](../SPEC.md);
-for *what comes next* read [plan.md](../plan.md); for individual decisions
-read [docs/adr/](adr/).
+This manual covers how to read the code and how to use nodwyn. If you're
+starting with the console, the [website's guide](https://fclaude.github.io/nodwyn/)
+walks through a first task with screenshots. Read [SPEC.md](../SPEC.md) for the
+architecture, [plan.md](../plan.md) for what's built and what comes next, and
+the [decision records](adr/) for why things work the way they do.
 
 ---
 
@@ -26,7 +27,8 @@ view are all derived from it.
 
 ### Follow one tool call through the code
 
-This is the spine. Read these in order and you have read the system.
+Follow these in order to see a message become a model request, a tool call
+and a recorded result.
 
 | Step | Where | What to notice |
 |---|---|---|

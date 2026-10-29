@@ -1,6 +1,6 @@
 # Approvals
 
-The point of an agent is that it can run things. The point of this page is what you see when it wants to do something nothing has approved yet.
+When a tool call needs permission, the task stops and asks. This page explains what the question means and what each answer allows.
 
 ## What asks, and what doesn't
 
@@ -22,7 +22,7 @@ The buttons are the answers you can give.
 
 **Allow once** lets this one call through. **Deny** refuses it, and the model is told that you didn't confirm, so it can try something else. **Always under** `ls` (the label names the command) approves that program and subcommand for the rest of the task. A command the model runs through `bash -c` is offered as the command inside it when there's exactly one, and a line with several commands, or a program that runs whatever it's handed (a shell, python, node, ssh), offers no Always and asks each time. For writes there's also an answer that approves every further write until the turn ends.
 
-Read the reason lines under the heading. "Command line names a path outside the repository" and "uses the network tool curl" are the guard telling you what a yes would do.
+Read the reasons under the heading. For example, "Command line names a path outside the repository" tells you why this call needs a separate answer. Check the call itself before allowing it.
 
 Every answer is logged with who gave it: the terminal, this browser, or a named device.
 
@@ -43,7 +43,7 @@ Settings › General › Approvals › **Don't ask in tasks** can offer a switch
 
 ## The judge
 
-A judge is a second model that gets one question about a call: should it go ahead? When it's confident enough, the call runs without bothering you. When it isn't, or when the call is one of the always-ask kinds, the question comes to you with what the judge answered. It sees redacted content and never a secret.
+A judge is a second model that gets one question about a call: should it go ahead? If its answer meets the approval threshold, the call runs. Otherwise the question comes to you with the judge's answer. Calls that always need your approval still ask you. The judge sees redacted content, not the keys in your keychain.
 
 ![Settings, Judge](shot:settings-judge)
 

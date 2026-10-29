@@ -1,17 +1,20 @@
 # Install
 
-nodwyn is one program, written in Go, for Linux and macOS. There's no Windows build yet.
+nodwyn runs on Linux and macOS. The host is written in Go, and the agent's loop and prompts are Scheme. There's no Windows build yet.
 
 ## From a release
 
 The [releases page](https://github.com/fclaude/nodwyn/releases) has an archive for each system: Linux or macOS, amd64 or arm64. Each archive holds `nodwyn`, a helper called `nodwyn-egress`, and the licence files. Download the archive and `SHA256SUMS`, check the digest, and put both programs next to each other on your `PATH`:
 
 ```sh
-sha256sum nodwyn-linux-amd64.tar.gz        # shasum -a 256 on macOS
+sha256sum nodwyn-linux-amd64.tar.gz        # compare with its line in SHA256SUMS
 tar xzf nodwyn-linux-amd64.tar.gz
+mkdir -p ~/.local/bin
 install nodwyn nodwyn-egress ~/.local/bin/
 nodwyn version
 ```
+
+This example is for Linux amd64. Use your archive's name instead; on macOS, use `shasum -a 256` to compute its digest. Make sure the directory you install into is on your `PATH`. The checksum catches a damaged or mismatched download; it doesn't prove who published it.
 
 The helper is only for MCP servers that run in containers, where it is the one way out to the network. It is always a Linux program, because it runs inside the container, so a macOS archive carries the Linux one for the same architecture.
 

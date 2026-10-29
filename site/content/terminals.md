@@ -15,10 +15,12 @@ All three attach to the daemon on the default socket. If none answers, the TUI a
 The clients talk to the daemon over a Unix socket, so a terminal that's on the server's own account is a terminal on the daemon. From your laptop, that means an ssh session:
 
 ```sh
-ssh -t server nodwyn tui --repo ~/src/project
+ssh -t server 'nodwyn tui --repo ~/src/project'
 ```
 
-Anything running in it can be dropped. The TUI's **Ctrl+Q** detaches: the task and its turn go on in the daemon, for every other client and for the scheduler. Ctrl+C aborts the turn first, if that's what you want. Closing the ssh connection does the same as detaching, because the work was never in the terminal. Open the TUI again, choose the task in the list (typing narrows it), and the conversation comes back from its log. **Ctrl+R** reconnects a TUI whose connection dropped, and it never resends anything.
+The quotes let the server expand `~` to your home directory there. This assumes its daemon is already running, as in [the server setup](server.html#start-both-at-boot).
+
+You can disconnect without stopping the task. The TUI's **Ctrl+Q** detaches: the task and its turn go on in the daemon. Ctrl+C aborts the turn first, if that's what you want. Closing the ssh connection also leaves the task running. Open the TUI again, choose the task in the list (typing narrows it), and the conversation comes back from its log. **Ctrl+R** reconnects a TUI whose connection dropped without resending your message.
 
 Run it inside `tmux` or `screen` on the server if you like your terminal to be there when you come back. The task is safe either way.
 
@@ -61,7 +63,7 @@ nodwyn run stop SESSION
 nodwyn run resume SESSION
 ```
 
-It's supervised: it has a deadline and a turn count, and you can attach the console or the TUI to the daemon to answer its prompts. With no one to answer, `--yolo` approves ordinary confirms, `--judge` puts them to the judge, and `--unattended` means nobody answers anything, so confirms are declined unless one of the others answers them. [Runs](../reference/runs.html) covers completion and recovery.
+The example sets a two-hour deadline and a maximum of 20 turns. Those limits are optional; without them, a run has neither. You can attach the console or the TUI to answer its prompts. For a run nobody watches, `--unattended` declines confirms unless `--yolo` approves ordinary ones or `--judge` asks the judge. [Runs](../reference/runs.html) covers completion and recovery.
 
 ## Terminals that aren't on the server
 
