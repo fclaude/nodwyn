@@ -29,7 +29,12 @@ jobs:
       - name: Acceptance checks
         run: make accept GO_TEST_FLAGS=-count=1
       - name: Release builder checks
-        run: python3 -B -m unittest discover -s test/release -v
+        run: |
+          # The launcher test runs freedesktop's validator and GIO's launcher
+          # on what install-desktop.py writes; the runner image has neither.
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends desktop-file-utils libglib2.0-bin
+          python3 -B -m unittest discover -s test/release -v
       - name: Known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: Cross-compile release targets
