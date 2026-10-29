@@ -93,7 +93,7 @@ servers, workflows and the rest.
 
 | Page | What it covers |
 |---|---|
-| [The website](https://fclaude.github.io/nodwyn/) | A guide to the console, running it standalone and running it on a server, with screenshots; the reference below is on it too |
+| [The website](https://nodwyn.com/) | A guide to the console, running it standalone and running it on a server, with screenshots; the reference below is on it too |
 | [docs/manual.md](docs/manual.md) | How to use nodwyn, and how to read the code |
 | [docs/reference.md](docs/reference.md) | Build and run commands, budgets, approvals and the clients in one page |
 | [SPEC.md](SPEC.md) | The architecture and the invariants it keeps |

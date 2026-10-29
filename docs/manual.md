@@ -1,7 +1,7 @@
 # nodwyn manual
 
 This manual covers how to read the code and how to use nodwyn. If you're
-starting with the console, the [website's guide](https://fclaude.github.io/nodwyn/)
+starting with the console, the [website's guide](https://nodwyn.com/)
 walks through a first task with screenshots. Read [SPEC.md](../SPEC.md) for the
 architecture, [plan.md](../plan.md) for what's built and what comes next, and
 the [decision records](adr/) for why things work the way they do.
