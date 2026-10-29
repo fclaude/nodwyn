@@ -207,6 +207,7 @@ TEMPLATE = """<!doctype html>
 <meta name="description" content="{description}">
 <link rel="icon" href="{root}assets/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="{root}assets/site.css">
+<script defer src="https://analytics.recoded.cl/script.js" data-website-id="28086628-1e0a-441e-9379-35c5278c19ae"></script>
 </head>
 <body class="{kind}">
 <header class="top">
