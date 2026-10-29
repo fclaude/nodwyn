@@ -2,7 +2,9 @@
 
 ![The console: a task waiting for an answer, with its plan beside it](shot:task)
 
-The model writes the plan and asks to run commands. Your API keys sit in an encrypted keychain, and the model only holds a handle to one. A key can be used at the places you bound it to, and the host puts it into the request after the model has finished writing it. Everything that leaves Scheme for the host goes through one guard, and what the guard refuses stays refused.
+Give nodwyn a repository and a task, such as fixing a test. It can read the project, make changes and ask to run commands. You can follow its work, answer approvals and review the changes before landing them.
+
+Your API keys sit in an encrypted keychain. The model gets a handle rather than the key itself, and the host puts the key into a request only where you have allowed it. A guard checks the operations the agent asks the host to perform; what it refuses stays refused.
 
 This guide walks through the console and shows how to run nodwyn on your own computer or on a server.
 

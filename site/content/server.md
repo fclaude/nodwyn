@@ -44,7 +44,11 @@ Then `systemctl --user enable --now nodwyn-ui.service`.
 
 Devices can pair and answer over plain http, but nobody can sign in with a passkey over it, so the setup choices stay on the server. For the full set, give the console https in one of three ways.
 
-A proxy of your own that ends TLS in front of it (Caddy, nginx with certbot, a VPN's https, `tailscale serve`) works with `--name https://NAME`. Certificate files from any ACME client or a CA of your own go in with `--tls-cert` and `--tls-key`, and the console reads them again when they're renewed. On a server the internet reaches on port 443 with no proxy in front, `--acme nodwyn.example.net --acme-accept-terms` has the console ask Let's Encrypt for a certificate itself and renew it. In a unit that needs `AmbientCapabilities=CAP_NET_BIND_SERVICE` to bind 443, and `--acme-directory` points at another CA, such as Let's Encrypt's staging one, so you can try it first.
+You can use any of these:
+
+- **A proxy:** End TLS in front of the console with Caddy, nginx with certbot, a VPN's https or `tailscale serve`. Set `--name https://NAME` to the address devices use.
+- **Certificate files:** Give the console a certificate and key from an ACME client or your own CA with `--tls-cert` and `--tls-key`. It reads them again when they're renewed.
+- **A certificate managed by nodwyn:** On a server the internet reaches on port 443 with no proxy in front, `--acme nodwyn.example.net --acme-accept-terms` asks Let's Encrypt for a certificate and renews it. A service unit needs `AmbientCapabilities=CAP_NET_BIND_SERVICE` to bind port 443. Use `--acme-directory` to try another CA, such as Let's Encrypt's staging service, first.
 
 ## Pair a device
 
@@ -58,7 +62,7 @@ It prints an invitation. Open the console's address on your laptop or phone, nam
 
 ![Settings, Keys & devices, where devices are invited and listed](shot:settings-devices)
 
-A device stays signed in while you use it and signs out after 90 days of not. Restarting or upgrading nodwyn signs nobody out. A device signed in with the passkey can make the choices the computer makes: a task's model, judge, limits and schedule, and unlocking the keychain. Before it changes setup it asks for a touch of the passkey, once per sitting of changes. A device that paired with a plain invitation can start and answer tasks and no more.
+A device stays signed in while you use it and signs out after 90 days of inactivity. Restarting or upgrading nodwyn signs nobody out. A device signed in with the passkey can make the choices the computer makes: a task's model, judge, limits and schedule, and unlocking the keychain. Before it changes setup it asks for a touch of the passkey, once per sitting of changes. A device that paired with a plain invitation can start and answer tasks and no more.
 
 The console's journal records every sign-in, invitation and setup change, with the device that made it. On the server, `nodwyn devices` lists devices and `nodwyn devices revoke NAME` ends one. Settings removes a lost phone's passkey.
 

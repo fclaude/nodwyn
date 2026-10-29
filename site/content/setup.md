@@ -12,7 +12,7 @@ Settings has five tabs. A choice you make waits in a bar at the foot of the page
 
 ![Settings, Models](shot:settings-models)
 
-A provider is an address and, if it needs one, a key. A model sits on a provider and has its own settings: the efforts it takes, its context length, its prices. **Test** tries a model before you save it, and **Add a model** names one the provider lists. The default for new tasks is chosen at the top. Everything is written to `config.toml` with the rest of the file kept as it was, and a key never goes there. A task picks its model, effort and judge as it opens, and can change them between turns.
+A provider is an address and, if it needs one, a key. Each model has its own settings for reasoning effort, context length and price. **Test** tries a model before you save it, and **Add a model** names one the provider lists. The default for new tasks is chosen at the top. Everything is written to `config.toml` with the rest of the file kept as it was, and a key never goes there. A task picks its model, effort and judge as it opens, and can change them between turns.
 
 **Judge** sets up the second model that answers "should this go ahead?", described under [Approvals](approvals.html#the-judge).
 

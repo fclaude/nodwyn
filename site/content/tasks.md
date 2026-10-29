@@ -10,7 +10,9 @@ Your messages, the model's replies and its tool calls are in the middle column. 
 
 When the model needs something from you, an approval card appears in the conversation and the task shows **Waiting for you** in its heading. [Approvals](approvals.html) has the details. The reply box under it says to answer first, because a turn that's waiting can't take another message.
 
-While a turn runs you can still send a message to queue, or press **Stop**. The heading shows the one action that fits the state: **Stop** while the model works, **Resume** once the task is saved. The **⋯** menu holds the rarer ones: **Search** within the task, **Schedule…**, **Close**, **Archive** and **Delete**.
+While a turn runs, you can write a message and choose **Queue** to send it after the current response and any messages already queued. **Steer** stops the current response and sends your message next, ahead of the queue. **Stop** stops the response and discards messages still waiting in the queue.
+
+The heading shows the action that fits the state: **Stop** while the model works, **Resume** once the task is saved. The **⋯** menu holds the rarer ones: **Search** within the task, **Schedule…**, **Close**, **Archive** and **Delete**.
 
 ## The panel on the right
 

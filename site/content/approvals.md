@@ -4,7 +4,7 @@ When a tool call needs permission, the task stops and asks. This page explains w
 
 ## What asks, and what doesn't
 
-By default a write inside the task's folder goes ahead. The diff is logged and shown in the conversation, and the file's old contents are kept first, so Restore or `nodwyn undo` puts it back. A command nothing approved goes to a judge first, if you've set one up, and to you when the judge refuses or there isn't one.
+By default a write inside the task's folder goes ahead. The diff is logged and shown in the conversation, and the file's old contents are kept first, so Restore or `nodwyn undo` puts it back. A command without approval goes to the judge first, if you've set one up. If the judge refuses, or there isn't one, nodwyn asks you.
 
 Some things always ask you, whatever the settings say: a write to a protected path (git hooks, CI configuration, the Makefile, `scripts/`, `.nodwyn/`), content that looks like a credential, a command built out of what a tool returned, a request that carries a credential, and an upload. Nothing outside the task's folder gets written at all.
 
@@ -20,7 +20,11 @@ An approval shows up in the conversation, on Home under **Needs you**, and on yo
 
 The buttons are the answers you can give.
 
-**Allow once** lets this one call through. **Deny** refuses it, and the model is told that you didn't confirm, so it can try something else. **Always under** `ls` (the label names the command) approves that program and subcommand for the rest of the task. A command the model runs through `bash -c` is offered as the command inside it when there's exactly one, and a line with several commands, or a program that runs whatever it's handed (a shell, python, node, ssh), offers no Always and asks each time. For writes there's also an answer that approves every further write until the turn ends.
+**Allow once** lets this one call through. **Deny** refuses it, and the model is told that you didn't confirm, so it can try something else.
+
+**Always under** `ls` (the label names the command) approves that program and subcommand for the rest of the task. If the model runs one command through `bash -c`, the card offers the command inside it. A line with several commands, or a program that runs whatever it's handed (a shell, python, node, ssh), offers no Always and asks each time.
+
+For writes there's also an answer that approves every further write until the turn ends.
 
 Read the reasons under the heading. For example, "Command line names a path outside the repository" tells you why this call needs a separate answer. Check the call itself before allowing it.
 
