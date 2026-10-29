@@ -1,13 +1,7 @@
-% Both books use the same source typography so line numbers mean the same thing.
+% Both books share source references and code typography.
 \usepackage{amssymb}
 \usepackage{upquote}
 \usepackage{xurl}
-% Full listings need room for four-digit page numbers in the contents.
-\makeatletter
-\renewcommand{\@pnumwidth}{3em}
-\renewcommand{\@tocrmarg}{4em}
-\renewcommand*{\l@section}{\@dottedtocline{1}{1.5em}{3.5em}}
-\makeatother
 \lstdefinestyle{repository}{
   basicstyle=\ttfamily\footnotesize,
   numbers=left,numberstyle=\tiny\color{gray},numbersep=8pt,
@@ -26,7 +20,7 @@
     {µ}{{$\mu$}}1 {“}{{\textquotedblleft}}1 {”}{{\textquotedblright}}1
     {�}{{\fbox{?}}}1
 }
-\newcommand{\src}[1]{\hyperref[src:#1]{\nolinkurl{#1}}}
+\newcommand{\src}[1]{\href{https://github.com/fclaude/nodwyn/blob/main/#1}{\nolinkurl{#1}}}
 \newcommand{\sourcefile}[2]{%
   \clearpage
   \section{\texorpdfstring{\protect\nolinkurl{#1}}{\detokenize{#1}}}%

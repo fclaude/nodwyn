@@ -3,23 +3,19 @@
 
 \chapter{From a working session to the file that owns it}
 
-Read this part with the source catalogue open. Each linked path leads to a
-complete listing later in this book; the numbers in its left margin are
-source lines, starting again at one for each file. Wrapped lines have no
-new number. The catalogue is a reference, not a demand to read every file
-in alphabetical order. First follow a request through the host; then follow
-one Scheme wrapper back through the same boundary.
+Read this part with the repository open. Linked paths lead to the current
+source on GitHub. For the exact source of a release, check out the commit
+named in its \file{SOURCE.json}; the links follow \code{main} as it changes.
+First follow a request through the host; then follow one Scheme wrapper
+back through the same boundary.
 
-The two books share this map and the same source catalogue. The earlier
+The two books share this map. The earlier
 chapters of the design book explain the decisions; those of the expert
 guide teach the language and operating habits. This part connects both to
-the implementation. The catalogue prints every tracked, non-test Go file
-and every tracked \file{.scm} file, including the project init file and the
-exfiltration scenarios. Go test files, including their embedded Scheme
-examples, remain in the checkout; the reading routes below name the tests
-to study. JavaScript, CSS, shell scripts and third-party dependencies are
-not reproduced. The console's Go bridge is included, but understanding its
-rendering also requires \file{internal/frontend/web/assets/}.
+the implementation, including this repository's init file and development
+tools. The reading routes name the tests to study alongside each contract.
+For the console, read its Go bridge together with
+\file{internal/frontend/web/assets/}.
 
 \section{The ownership map}
 
@@ -136,7 +132,7 @@ Contained servers also involve \src{internal/core/contained.go},
 \src{internal/container/server.go} and \src{internal/egress/proxy.go}.
 Trace both the tool call and the server's onward network request; approving
 one is not a general approval of the other. Study \file{test/exfil/}
-alongside these files. Its Scheme scenarios at the end of the catalogue
+alongside these files. Its Scheme scenarios in the checkout
 are adversarial inputs, not setup commands to run in your working session.
 
 \section{Route four: the same session through the console}
@@ -174,8 +170,7 @@ asking a model or executing tools. Read
 
 This is a worked example from this checkout, not a hypothetical plugin.
 Keep \src{.nodwyn/init.scm}, \src{dev/go.scm}, \src{dev/git.scm} and
-\src{dev/repo.scm} open together. They contain the whole customisation;
-the catalogue reproduces them without shortening the functions.
+\src{dev/repo.scm} open together. They contain the whole customisation.
 
 \section{Who writes the policy, and what loading means}
 
@@ -222,7 +217,7 @@ The latter finds a zero-padded ADR prefix using \code{pad4}; an absent ADR
 raises an ordinary Scheme error. These are two ways to reuse host
 capabilities without adding a Go primitive.
 
-The standing approvals printed after the init listing explain why these
+The standing approvals in \src{.nodwyn/allow.toml} explain why these
 commands can usually proceed without repeated questions. The write list
 covers implementation, documentation, tests and \file{dev/}; it excludes
 \file{.nodwyn/}, \file{scripts/} and the Makefile. This is why the validation
@@ -291,7 +286,7 @@ hunks add and remove, and its part of the diff. Files git does not track are
 added by their status lines. A turn whose change gained or altered a Go file
 that is not a test, or Scheme outside \file{test/}, is told once a session
 what the change lacks of what AGENTS.md asks for: a test, a document, a
-decision record and, when the counts the catalogue prints moved, the
+decision record and, when the source inventory's counts moved, the
 regenerated catalogue. The model may add them or say why the change needs
 none, and \code{repo-finish-continue} carries the conversation on as the
 validation wrapper's continuation does. The section calls only procedures the
@@ -403,8 +398,7 @@ belongs in \file{llm/}; provider-neutral context selection belongs in
 bridge capability and UI action together. A new persistent fact needs a
 log payload and a replay/resume decision, not just an in-memory field.
 
-Use the catalogue as a searchable symbol reference. Every file has its
-own PDF bookmark and complete numbered listing. In a checkout, these
+Use the checkout as a searchable symbol reference. These
 commands locate definitions and their consumers without a model call:
 \begin{sh}
 rg -n 'func .*Send|func .*startTurn' internal/core
@@ -418,13 +412,13 @@ Read the surrounding test before modifying a contract. The fake provider
 in \src{test/fakes/ollama/ollama.go} is scripted: \code{NewT} fails a test
 if the loop asks after its script ends. The fake home helper in
 \src{test/fakes/home/home.go} isolates tests which construct a guard or
-commit. The catalogue includes the other fake services so readers can
-follow integration tests without a paid model, real key or passphrase.
+commit. The other fake services in \file{test/fakes/} let integration tests
+run without a paid model, real key or passphrase.
 
 \section{Three study exercises with a way to check your answer}
 
-\paragraph{Explain a refused write.} Pick one write scenario from the
-catalogue. Draw the call from model arguments through metadata and the
+\paragraph{Explain a refused write.} Pick one write scenario from
+\file{test/exfil/}. Draw the call from model arguments through metadata and the
 guard to the uncalled handler. Verify the expected refusal in its Go test.
 Your explanation is incomplete if it cannot name the argument carrying
 the path and the argument carrying the payload.
@@ -442,13 +436,13 @@ Then repeat with a failed validation and an already-untracked file. The
 correct answer includes the two limitations described in the customisation
 chapter rather than promising that the wrapper proves every change sound.
 
-\section{Keeping the printed source honest}
+\section{Checking the books against the checkout}
 
-\file{docs/book/source/generate.py} generates only the catalogue and its
-coverage totals. Listings use \code{lstinputlisting} to read the actual
-repository files at PDF build time; there is no second copy of the code
-to edit. Both books include the same generated file. After adding, removing
-or renaming source files, regenerate the catalogue and review its diff:
+The books keep explanatory examples and reading routes; the complete source
+stays in the repository. \file{docs/book/source/generate.py} maintains the
+source inventory used by validation. The books do not include that generated
+catalogue. After adding, removing or renaming source files, regenerate the
+inventory and review its diff:
 \begin{sh}
 python3 docs/book/source/generate.py
 python3 docs/book/source/generate.py --check
@@ -460,9 +454,9 @@ make validate
 The generator enumerates git-tracked files. Add a new source file to git's
 index before regenerating, or it will not yet be in the inventory. Its
 check mode fails when the inventory or measured line counts are stale.
-Source text edits are picked up by LaTeX directly; regenerate too if line
-counts change. PDFs are a snapshot of the checkout used for that build,
-not a claim that a particular release contains every listed function.
+Regenerate too if source line counts change. Check explanatory examples
+against the checkout used to build the books. A release's \file{SOURCE.json}
+names that commit; links to \code{main} may show later changes.
 
 The repository's validation command selects checks by changed paths. It
 builds neither book; the release flow does. For any changed, added or
