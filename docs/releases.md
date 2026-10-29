@@ -64,7 +64,9 @@ python3 scripts/release.py build /tmp/nodwyn-release-assets --version v0.1.0
 ```
 
 You need Go 1.26, Python 3.12 or newer, bash, make, latexmk and the TeX packages
-both books use (including Libertine and Inconsolata).
+both books use (including Latin Modern, Libertine and Inconsolata). The release
+workflow installs `lmodern` explicitly so the design book's `lmodern.sty` is
+available when recommended packages are disabled.
 
 ## Books
 
