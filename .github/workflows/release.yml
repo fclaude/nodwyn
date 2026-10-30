@@ -17,8 +17,34 @@ jobs:
   check:
     uses: ./.github/workflows/ci.yml
 
-  release:
+  # The macOS app needs cgo and the macOS SDK, so a Mac builds it. Its
+  # executable reports the source commit, as the portable archives do, and
+  # Finder shows the release's number; the script runs this Mac's slice.
+  app:
     needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+      - name: Build Nodwyn.app from the source commit
+        run: scripts/app-macos.sh "$GITHUB_SHA" "${RELEASE_VERSION#v}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nodwyn-macos-app
+          path: bin/Nodwyn-macos-universal.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [check, app]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -42,10 +68,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends latexmk lmodern texlive-latex-extra \
             texlive-fonts-recommended texlive-fonts-extra
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nodwyn-macos-app
+          path: ${{ runner.temp }}/nodwyn-app
       - name: Build binaries and books from the source commit
         run: |
           release_dir=$(mktemp -d "$RUNNER_TEMP/nodwyn-release.XXXXXX")
-          python3 scripts/release.py build "$release_dir" --version "$RELEASE_VERSION"
+          # The build takes the app only if it was built from this commit as this version.
+          python3 scripts/release.py build "$release_dir" --version "$RELEASE_VERSION" \
+            --app "$RUNNER_TEMP/nodwyn-app/Nodwyn-macos-universal.zip"
           printf 'RELEASE_DIRECTORY=%s\n' "$release_dir" >> "$GITHUB_ENV"
       - name: Upload to a draft, check it as downloaded, then publish
         run: |
@@ -64,7 +96,7 @@ jobs:
             --draft --target "$GITHUB_SHA" --title "nodwyn $RELEASE_VERSION" \
             --notes "Source commit: \`$GITHUB_SHA\`
 
-          Portable Linux and macOS binaries for amd64 and arm64, both books rebuilt from this source, and SHA-256 checksums. Acceptance checks and the Linux amd64 fake-model selfcheck passed. Other targets are cross-compiled, not executed. Builds omit the native webview: \`nodwyn app\` opens a browser. macOS builds are unsigned and not notarised. Each archive includes a Linux nodwyn-egress for its architecture, for MCP containers."
+          The macOS app (Nodwyn-macos-universal.zip): Apple silicon and Intel in one bundle, with its own window and icon, built and started on a macOS runner; it is signed ad hoc, not notarised, so the first launch is right-click → Open. Portable Linux and macOS binaries for amd64 and arm64, both books rebuilt from this source, and SHA-256 checksums. Acceptance checks and the Linux amd64 fake-model selfcheck passed; the other portable targets are cross-compiled, not executed. The portable builds omit the native webview, so their \`nodwyn app\` opens a browser. Each archive includes a Linux nodwyn-egress for its architecture, for MCP containers."
           downloaded=$(mktemp -d "$RUNNER_TEMP/nodwyn-downloaded.XXXXXX")
           gh release download "$RELEASE_VERSION" --dir "$downloaded"
           python3 scripts/release.py verify "$downloaded" --version "$RELEASE_VERSION" --commit "$GITHUB_SHA"

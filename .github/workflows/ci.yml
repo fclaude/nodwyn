@@ -52,6 +52,21 @@ jobs:
       - name: Check source stayed clean
         run: test -z "$(git status --porcelain)"
 
+  # The macOS app's recipe, on every push: a release builds it the same way
+  # (release.yml), so a push that breaks it is found before a release.
+  app:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+      - name: Build Nodwyn.app and run it
+        run: scripts/app-macos.sh
+
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 30

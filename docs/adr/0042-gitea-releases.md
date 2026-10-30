@@ -120,3 +120,28 @@ commit and a published release is never replaced. The Python publisher and its
 Gitea client are gone, and with them the repair of an interrupted draft: a
 run that fails deletes the draft it made, and the next run starts again. Decisions 3, 4 and 6 stand;
 decisions 1, 2 and 5 now read as this amendment says.
+
+## Amendment 2026-10-30: The macOS app is a release file
+
+Decision 3 built every target without cgo, so a Mac had only the portable
+binary, whose `nodwyn app` opens the browser. Homebrew made up for it with a
+bundle of its own: a shell script that started `nodwyn app` from that binary,
+with no icon. On 2026-10-30 the person reported both, the browser and the
+blank icon, on their own Mac, where `~/Applications/Nodwyn.app` led to that
+script.
+
+The release now has a ninth file, `Nodwyn-macos-universal.zip`: the bundle
+`scripts/app-macos.sh` builds, as `make app` does, with the webview tag,
+both architectures in one executable, its icon and the Linux egress proxies,
+signed ad hoc. A job on a macOS runner builds it from the release's commit,
+the full commit as `main.version` (what the portable archives report) and
+the release's number as the bundle's version, and the script runs the
+runner's half (`nodwyn version`) before the zip is handed on. `ci.yml`
+builds it the same way on every push, so a change that breaks the recipe is
+found before a release. `scripts/release.py build` takes it with `--app` and
+refuses one that lacks a part of the bundle, holds anything outside it, is
+not universal, is numbered as another release or does not contain this
+commit; `verify` checks the downloaded copy the same way. `SOURCE.json`
+says what the app is and that its Apple silicon half was executed. The
+portable archives are unchanged and still open the browser. The bundle is
+not notarised, and the Intel half is cross-compiled, not executed.

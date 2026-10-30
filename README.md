@@ -37,7 +37,10 @@ mistakes and leaks, but a determined program can get past them.
 Releases are on the [GitHub Releases page](https://github.com/fclaude/nodwyn/releases).
 Pick the archive for your system (Linux or macOS, amd64 or arm64), check it
 against `SHA256SUMS`, and put `nodwyn` and `nodwyn-egress` next to each other
-on your `PATH`. [docs/releases.md](docs/releases.md) has the details.
+on your `PATH`. On a Mac, take the app instead, with its own window and
+icon: `brew install --cask fclaude/fclaude-packages/nodwyn`, or
+`Nodwyn-macos-universal.zip` from the release.
+[docs/releases.md](docs/releases.md) has the details.
 
 To build from source you need Go 1.26 or newer:
 
@@ -59,8 +62,8 @@ dependency.
 nodwyn app          # one program: a window, and a daemon if none is running
 ```
 
-On a build without the native window (the release archives), `nodwyn app`
-opens your browser instead. With no model set up yet, the first screen asks for
+On a build without the native window (the portable release archives),
+`nodwyn app` opens your browser instead. With no model set up yet, the first screen asks for
 a provider and a model. Ollama needs no key. For one that does, nodwyn offers to
 create the keychain and keeps the key there.
 

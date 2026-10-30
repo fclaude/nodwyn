@@ -7,7 +7,7 @@ bootstrap safety envelope; `§3.4`, the control plane's reference; `§4, B3`,
 the bootstrap's dev tools), which `plan.md` no longer has: read it with
 `git show 2f4394f^:plan.md`.
 
-- [0042](./0042-gitea-releases.md) — Releases distribute binaries and books (amended: from Gitea to GitHub)
+- [0042](./0042-gitea-releases.md) — Releases distribute binaries and books (amended: from Gitea to GitHub; the macOS app is a release file)
 - [0044](./0044-wails-desktop.md) — Wails owns the native window while console RPC keeps its origin and authentication
 
 - [0001](./0001-value-representation.md) — Value representation

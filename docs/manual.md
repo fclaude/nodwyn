@@ -3212,7 +3212,10 @@ include SHA-256 checksums. Publication requires a manual workflow run
 on `main` with the version supplied; pushes only run checks. Linux and macOS archives cover amd64 and arm64;
 each includes the Linux egress proxy used by MCP containers. Portable builds
 open the browser for `nodwyn app`; macOS builds are unsigned and not notarised.
-Only Linux amd64 is executed in CI. See [the release guide](releases.md) for
+The macOS app, `Nodwyn-macos-universal.zip`, has the native window and icon;
+it is built and started on a macOS runner and signed only ad hoc
+(`brew install --cask fclaude/fclaude-packages/nodwyn`). Only Linux amd64 of the
+portable builds is executed in CI. See [the release guide](releases.md) for
 downloads, verification and publication. Local `make promote` remains separate.
 
 Git tracks the books' LaTeX sources and generated

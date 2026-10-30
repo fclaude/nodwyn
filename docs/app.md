@@ -86,7 +86,11 @@ passkey and touches it ([browser.md](browser.md), "Other devices").
 make app          # bin/Nodwyn.app — universal (Apple silicon and Intel), ad-hoc signed
 ```
 
-It needs Xcode's command line tools (for cgo and WebKit). The bundle is the
+Each release has the same bundle, `Nodwyn-macos-universal.zip`, built on a
+macOS runner from the release's commit ([releases.md](releases.md)); Homebrew
+installs it with `brew install --cask fclaude/fclaude-packages/nodwyn`, which
+also puts its `nodwyn` on your `PATH`. Building it needs Xcode's command line
+tools (for cgo and WebKit). The bundle is the
 same `nodwyn` binary built with the `webview` tag and Wails v3; started from Finder or the
 Dock it runs `nodwyn app`, takes the login shell's `PATH` (so tools installed
 with Homebrew are found), and writes its diagnostics to

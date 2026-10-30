@@ -13,7 +13,10 @@ at \code{v0.1.0}; a manual workflow run on \code{main} supplies the
 version and publishes only after checks pass.
 
 These builds open the browser for \code{nodwyn app}; they do not contain a
-native webview window. macOS builds are unsigned and not notarised. Only
+native webview window. The release's macOS app,
+\file{Nodwyn-macos-universal.zip}, does: a macOS runner builds it from the
+same commit and starts it, and the release checks it is universal and built
+from that commit. Homebrew installs it as a cask. macOS builds are unsigned and not notarised. Only
 Linux amd64 is executed by CI; the other builds are cross-compiled.
 \code{nodwyn-egress} is a Linux executable even in the macOS archive,
 because it runs inside the MCP container. The release guide at

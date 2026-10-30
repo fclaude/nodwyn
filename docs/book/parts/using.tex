@@ -14,7 +14,10 @@ with the archive's architecture. Only Linux amd64 is executed in CI; the
 other targets are cross-compiled. macOS builds are unsigned and not notarised.
 
 Portable builds omit the native webview, so \code{nodwyn app} opens a
-browser. Publication requires a manual workflow run on \code{main} with an
+browser. The macOS app, \file{Nodwyn-macos-universal.zip}, has the window
+and the icon: a macOS runner builds it from the same commit and starts its
+Apple silicon half, the release takes it only when it is universal and
+built from that commit, and it is signed ad hoc, not notarised. Publication requires a manual workflow run on \code{main} with an
 explicit version. Acceptance checks precede publication; both PDFs are
 rebuilt from that same commit. A release remains a draft until its downloads
 verify, and a published release is never overwritten by a rerun. See

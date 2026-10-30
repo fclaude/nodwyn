@@ -53,3 +53,13 @@ source-checkout installer targets an explicitly selected executable and the
 person's XDG data directory; it reads no project policy or session content.
 The macOS bundle keeps its existing icon. Linux distribution packages can
 install the supplied desktop file and the same assets in their prefix.
+
+## Amendment 2026-10-30: The release publishes the macOS app
+
+The "separately exercised build recipe" this ADR left for native app
+publication is `scripts/app-macos.sh` on a macOS runner, in `ci.yml` on every
+push and in the release (ADR 42, amended 2026-10-30). The script now runs the
+bundle's executable after signing it, so a bundle that does not start fails
+the job; it does not open the window, which still needs a desktop session.
+Homebrew installs the release's bundle as a cask, in place of a formula that
+wrapped the portable binary in a script without an icon.

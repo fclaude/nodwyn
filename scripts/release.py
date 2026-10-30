@@ -2,7 +2,9 @@
 """Build portable release assets, and verify a downloaded copy of them.
 
 Publishing is the release workflow's job (.github/workflows/release.yml): it uploads
-what `build` wrote, downloads it again and runs `verify` before the draft is published."""
+what `build` wrote, downloads it again and runs `verify` before the draft is published.
+The macOS app needs cgo and the macOS SDK, so the workflow builds it on a Mac
+(scripts/app-macos.sh) and `build` takes it with --app, once it has checked it."""
 
 import argparse
 import gzip
@@ -11,18 +13,28 @@ import io
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shutil
 import subprocess
 import tarfile
 import tempfile
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = ("linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64")
+APP = "Nodwyn-macos-universal.zip"
 PAYLOADS = {f"nodwyn-{target}.tar.gz" for target in TARGETS} | {
-    "nodwyn.pdf", "expert.pdf", "SOURCE.json"
+    APP, "nodwyn.pdf", "expert.pdf", "SOURCE.json"
 }
+# What the app must hold: its executable, the Linux egress proxies for the
+# container's architecture, its Info.plist and its icon (scripts/app-macos.sh).
+APP_FILES = {"Nodwyn.app/Contents/MacOS/nodwyn", "Nodwyn.app/Contents/MacOS/nodwyn-egress-linux-amd64",
+             "Nodwyn.app/Contents/MacOS/nodwyn-egress-linux-arm64", "Nodwyn.app/Contents/Info.plist",
+             "Nodwyn.app/Contents/Resources/Nodwyn.icns"}
+# A universal Mach-O starts with the fat header's magic, big-endian.
+FAT_MAGIC = b"\xca\xfe\xba\xbe"
 ASSETS = PAYLOADS | {"SHA256SUMS"}
 
 
@@ -51,12 +63,36 @@ def release_version(value):
     return value
 
 
-def build(output, version=None):
+def check_app(path, commit, version):
+    """Checks the macOS app zip is this release's: the bundle whole, its
+    executable universal and built from this commit, its version this one's,
+    and nothing in it outside the bundle but the zip's resource forks."""
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        if missing := APP_FILES - names:
+            raise RuntimeError(f"the app lacks {', '.join(sorted(missing))}")
+        if stray := {n for n in names if not n.startswith(("Nodwyn.app/", "__MACOSX/"))}:
+            raise RuntimeError(f"the app zip holds files outside the bundle: {', '.join(sorted(stray))}")
+        info = plistlib.loads(archive.read("Nodwyn.app/Contents/Info.plist"))
+        executable = archive.read("Nodwyn.app/Contents/MacOS/nodwyn")
+    if (info.get("CFBundleIdentifier"), info.get("CFBundleIconFile"), info.get("CFBundleShortVersionString")) != (
+            "com.nodwyn.app", "Nodwyn", version.removeprefix("v")):
+        raise RuntimeError("the app's Info.plist is not this release's")
+    if not executable.startswith(FAT_MAGIC):
+        raise RuntimeError("the app's executable is not universal")
+    if commit.encode() not in executable:
+        raise RuntimeError("the app was built from another commit")
+
+
+def build(output, version=None, app=None):
     version = release_version(version or os.environ.get("RELEASE_VERSION", ""))
+    if app is None:
+        raise RuntimeError("the macOS app built by scripts/app-macos.sh is required (--app)")
     if run("git", "status", "--porcelain", "--untracked-files=no"):
         raise RuntimeError("commit tracked changes before building a release")
     commit = run("git", "rev-parse", "HEAD")
     epoch = int(run("git", "show", "-s", "--format=%ct", "HEAD"))
+    check_app(app, commit, version)
     subprocess.run(["python3", "docs/book/source/generate.py", "--check"], cwd=ROOT, check=True)
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
@@ -99,10 +135,13 @@ def build(output, version=None):
             if not source.read_bytes().startswith(b"%PDF-"):
                 raise RuntimeError(f"{name} is not a PDF")
             shutil.copyfile(source, output / name)
+    shutil.copyfile(app, output / APP)
     metadata = {"commit": commit, "tag": version, "source_date_epoch": epoch,
                 "go": run("go", "version"), "targets": list(TARGETS),
                 "executed_target": "linux-amd64", "webview": False,
-                "proxy": "Linux, matching the archive architecture; runs inside the MCP container"}
+                "proxy": "Linux, matching the archive architecture; runs inside the MCP container",
+                "app": {"file": APP, "webview": True, "architectures": ["arm64", "x86_64"],
+                        "signature": "ad hoc, not notarised", "executed": "arm64, on the macOS runner"}}
     (output / "SOURCE.json").write_text(json.dumps(metadata, indent=2) + "\n")
     (output / "SHA256SUMS").write_text("".join(
         f"{digest((output / name).read_bytes())}  {name}\n" for name in sorted(PAYLOADS)))
@@ -136,6 +175,7 @@ def verify(directory, commit, version):
     metadata = json.loads((directory / "SOURCE.json").read_bytes())
     if metadata.get("commit") != commit or metadata.get("tag") != version:
         raise RuntimeError("release assets belong to another commit or version")
+    check_app(directory / APP, commit, version)
     print(f"Verified {len(ASSETS)} assets of {version} for {commit}")
 
 
@@ -145,9 +185,10 @@ def main():
     parser.add_argument("directory", type=Path)
     parser.add_argument("--version", required=True, help="release version, for example v0.1.0")
     parser.add_argument("--commit", help="verify: the full commit the release must have been built from")
+    parser.add_argument("--app", type=Path, help="build: the zip scripts/app-macos.sh wrote, built from this commit")
     args = parser.parse_args()
     if args.action == "build":
-        build(args.directory.resolve(), args.version)
+        build(args.directory.resolve(), args.version, args.app and args.app.resolve())
     else:
         verify(args.directory.resolve(), args.commit or "", args.version)
 
@@ -155,5 +196,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
+    except (RuntimeError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile, plistlib.InvalidFileException) as error:
         raise SystemExit(f"release: {error}")

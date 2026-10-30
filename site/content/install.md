@@ -18,7 +18,9 @@ This example is for Linux amd64. Use your archive's name instead; on macOS, use 
 
 The helper is only for MCP servers that run in containers, where it is the one way out to the network. It is always a Linux program, because it runs inside the container, so a macOS archive carries the Linux one for the same architecture.
 
-The release builds have no native window. `nodwyn app` opens your browser instead, which is the same console. The macOS binaries aren't signed or notarised, so the first launch needs a right-click and Open.
+On a Mac, install the app instead: each release has `Nodwyn-macos-universal.zip`, the app with its own window and icon for Apple silicon and Intel, and `brew install --cask fclaude/fclaude-packages/nodwyn` installs it and puts its `nodwyn` on your `PATH`. It is signed only ad hoc and not notarised, so the first launch needs a right-click and Open.
+
+The portable archives have no native window. Their `nodwyn app` opens your browser instead, which is the same console. The macOS binaries aren't signed or notarised, so the first launch needs a right-click and Open.
 
 ## From source
 
