@@ -235,7 +235,7 @@ func TestDontAskSkipsTheJudge(t *testing.T) {
 // outsideTurn reads a file outside the repository, which asks as a security
 // confirm.
 func outsideTurn(id string) fake.Turn {
-	return toolTurn(id, "shell-exec", map[string]any{"cmd": "cat", "args": []any{"/var/lib/dpkg/status"}})
+	return toolTurn(id, "shell-exec", map[string]any{"cmd": "cat", "args": []any{"/opt/nodwyn-test-outside/notes"}})
 }
 
 // approval.commands = "judge-auto" puts a security confirm about a command (a
