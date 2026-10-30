@@ -756,3 +756,17 @@ server was sent no cookie and its page finds no session in its storage, that
 the browser holds no cookie for the console, and that the console loaded again
 is still paired; on HEAD the server was sent the cookie. The other console
 checks pair through the token as they did through the cookie.
+
+## Amendment 2026-10-30: the first launch is Open Anyway
+
+The consequence above said an unsigned `Nodwyn.app` needs a right-click →
+Open on its first launch. Since macOS 15 that no longer gets past Gatekeeper:
+a quarantined app signed only ad hoc is refused ("Nodwyn" Not Opened), and the
+person allows it with **Open Anyway** in System Settings → Privacy & Security.
+On this Mac, the 0.1.4 app installed by the Homebrew cask was refused that way
+(`syspolicyd`: "Prompt shown", then `ASP: Security policy would not allow
+process`; `nodwyn version` exited 137) although its signature verifies.
+GitHub's macOS runners have Gatekeeper switched off, so the release and
+package checks that start the app do not see this. The app guide, the release
+guide, the install page, the manual and the release notes say Open Anyway
+now. Notarising, which would remove the step, is still not done.

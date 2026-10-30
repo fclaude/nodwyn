@@ -96,7 +96,7 @@ jobs:
             --draft --target "$GITHUB_SHA" --title "nodwyn $RELEASE_VERSION" \
             --notes "Source commit: \`$GITHUB_SHA\`
 
-          The macOS app (Nodwyn-macos-universal.zip): Apple silicon and Intel in one bundle, with its own window and icon, built and started on a macOS runner; it is signed ad hoc, not notarised, so the first launch is right-click → Open. Portable Linux and macOS binaries for amd64 and arm64, both books rebuilt from this source, and SHA-256 checksums. Acceptance checks and the Linux amd64 fake-model selfcheck passed; the other portable targets are cross-compiled, not executed. The portable builds omit the native webview, so their \`nodwyn app\` opens a browser. Each archive includes a Linux nodwyn-egress for its architecture, for MCP containers."
+          The macOS app (Nodwyn-macos-universal.zip): Apple silicon and Intel in one bundle, with its own window and icon, built and started on a macOS runner; it is signed ad hoc, not notarised, so macOS refuses the first launch until Open Anyway is clicked in System Settings → Privacy & Security. Portable Linux and macOS binaries for amd64 and arm64, both books rebuilt from this source, and SHA-256 checksums. Acceptance checks and the Linux amd64 fake-model selfcheck passed; the other portable targets are cross-compiled, not executed. The portable builds omit the native webview, so their \`nodwyn app\` opens a browser. Each archive includes a Linux nodwyn-egress for its architecture, for MCP containers."
           downloaded=$(mktemp -d "$RUNNER_TEMP/nodwyn-downloaded.XXXXXX")
           gh release download "$RELEASE_VERSION" --dir "$downloaded"
           python3 scripts/release.py verify "$downloaded" --version "$RELEASE_VERSION" --commit "$GITHUB_SHA"

@@ -28,8 +28,11 @@ prints the full commit. The checksums catch a damaged or mismatched download.
 They don't prove who published the release.
 
 On a Mac, the app is the one to install: unzip it, move `Nodwyn.app` to
-Applications, and open it with a right-click and **Open** the first time, since
-it is signed only ad hoc and not notarised. Its `Contents/MacOS/nodwyn` is the
+Applications, and open it. It is signed only ad hoc and not notarised, so
+macOS refuses the first launch: choose **Done**, then click **Open Anyway**
+beside Nodwyn in System Settings → Privacy & Security and confirm (a
+right-click → Open no longer does it since macOS 15, and a new version may ask
+again). Its `Contents/MacOS/nodwyn` is the
 whole command line too. Homebrew installs it, and links that `nodwyn` onto
 your `PATH`, with `brew install --cask fclaude/fclaude-packages/nodwyn`.
 

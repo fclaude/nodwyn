@@ -100,10 +100,12 @@ sessions — lives where the command-line nodwyn keeps it (`nodwyn paths`), per 
 ### Sharing it with family
 
 1. `make app`, then zip `bin/Nodwyn.app` (Finder: Compress) and send it.
-2. They move `Nodwyn.app` to Applications. The first time, macOS says it is from
-   an unidentified developer: **right-click → Open → Open** (once). The app is
-   signed only ad hoc; signing with a Developer ID and notarizing is what would
-   remove that step.
+2. They move `Nodwyn.app` to Applications. The first time, macOS refuses it
+   ("Nodwyn" Not Opened): they choose **Done**, then in System Settings →
+   Privacy & Security click **Open Anyway** beside Nodwyn and confirm. A
+   right-click → Open no longer gets past this since macOS 15, and a new
+   version may ask again. The app is signed only ad hoc; signing with a
+   Developer ID and notarizing is what would remove that step.
 3. On first launch they choose a provider and a model (see First run). For a model
    running on your machine, give its address on your network (for example
    `http://workshop:11434`, over Tailscale); nothing leaves their computer until

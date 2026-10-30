@@ -3214,7 +3214,8 @@ each includes the Linux egress proxy used by MCP containers. Portable builds
 open the browser for `nodwyn app`; macOS builds are unsigned and not notarised.
 The macOS app, `Nodwyn-macos-universal.zip`, has the native window and icon;
 it is built and started on a macOS runner and signed only ad hoc
-(`brew install --cask fclaude/fclaude-packages/nodwyn`). Only Linux amd64 of the
+(`brew install --cask fclaude/fclaude-packages/nodwyn`), so its first launch is
+allowed with **Open Anyway** in System Settings → Privacy & Security. Only Linux amd64 of the
 portable builds is executed in CI. See [the release guide](releases.md) for
 downloads, verification and publication. Local `make promote` remains separate.
 
