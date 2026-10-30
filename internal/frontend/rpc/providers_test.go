@@ -358,6 +358,9 @@ func TestSessionEffortFromOpenToQueuedChange(t *testing.T) {
 	subscribed(t, c, id, 0, 100)
 	c.ok("session.send", map[string]any{"id": id, "text": "first"})
 	c.until(string(log.KindTurnEnd))
+	// The session is busy until it says it is idle, which follows the turn's
+	// end: a choice made in between is queued, not applied.
+	c.until(event.Status)
 
 	var set state
 	into(t, c.ok("session.model.set", map[string]any{"id": id, "name": "127-0-0-1-thinker", "effort": "low"}), &set)

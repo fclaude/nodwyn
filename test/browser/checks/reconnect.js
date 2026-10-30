@@ -104,6 +104,30 @@ check(async () => {
   const phoneContext = await counted({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const phone = watch(await phoneContext.newPage(), "phone");
   const sent = requests(phone);
+  // The requests each of the phone's sockets has sent and not had answered:
+  // the console asks its connection to answer only when none is waiting.
+  const unanswered = new Map();
+  phone.on("websocket", (socket) => {
+    const ids = new Set();
+    unanswered.set(socket, ids);
+    socket.on("close", () => unanswered.delete(socket));
+    const frame = (payload) => {
+      try {
+        return JSON.parse(payload);
+      } catch {
+        return {};
+      }
+    };
+    socket.on("framesent", ({ payload }) => {
+      const f = frame(payload);
+      if (f.method && f.id != null) ids.add(f.id);
+    });
+    socket.on("framereceived", ({ payload }) => {
+      const f = frame(payload);
+      if (!f.method && f.id != null) ids.delete(f.id);
+    });
+  });
+  const waiting = () => [...unanswered.values()].reduce((n, ids) => n + ids.size, 0);
   // An unpaired browser learns it is one when its socket is refused.
   expectError(/^WebSocket connection to 'ws:\/\/desk\.test:\d+\/socket' failed: .*403$/);
   await phone.goto(`http://desk.test:${port}/`);
@@ -130,8 +154,14 @@ check(async () => {
   // keeps it when it does.
   const hellos = sent.of("hello").length;
   let made = await sockets(phone);
-  await phone.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-  await until("the phone asked its connection to answer", () => sent.of("hello").length === hellos + 1);
+  // The task's last requests may still be waiting: shown again then, the
+  // phone asks nothing, so it is shown again once none is.
+  await until("the phone asked its connection to answer", async () => {
+    if (sent.of("hello").length > hellos) return true;
+    if (!waiting()) await phone.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    return false;
+  });
+  assert.strictEqual(sent.of("hello").length, hellos + 1, "the phone asked its connection to answer more than once");
   assert.strictEqual(await sockets(phone), made, "the phone connected again though its connection answered");
   step("shown again, the phone checks its connection and keeps it");
 

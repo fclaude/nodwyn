@@ -254,7 +254,10 @@ check(async () => {
   await page.reload();
   await ready(page);
   await page.waitForSelector(workshopHead);
-  assert.ok((await page.locator(workshopFolders).count()) > 0, "workshop folded again on reload");
+  // The heading is drawn open from what this browser remembers; its folders
+  // come once workshop's socket is up again, which the heading does not wait for.
+  assert.strictEqual(await page.getAttribute(workshopHead, "aria-expanded"), "true", "workshop folded again on reload");
+  await until("workshop's folders after the reload", async () => (await page.locator(workshopFolders).count()) > 0);
   assert.strictEqual(await page.locator(localFolders).count(), 0, "this computer opened on reload");
   await page.click(workshopHead);
   await until("workshop folded", async () => (await page.locator(workshopFolders).count()) === 0);

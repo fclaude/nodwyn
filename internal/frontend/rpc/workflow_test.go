@@ -91,6 +91,15 @@ func taskEvents(t *testing.T, s *server, id string) []log.Event {
 	return page.Events
 }
 
+// midday is noon today, here: a test that checks a workflow's day moves its
+// clock on from it by minutes, and the day it counts is today's by the
+// computer's clock, so a run that starts just before midnight must not cross
+// into tomorrow (they did, run at 23:57).
+func midday() time.Time {
+	y, m, d := time.Now().Date()
+	return time.Date(y, m, d, 12, 0, 0, 0, time.Local)
+}
+
 // A workflow on a forge's pull requests records what is open when it
 // starts, then runs a task for each new pull request: the event attached as
 // data, the workflow's message as the request, the task named after the pull
@@ -105,7 +114,7 @@ func TestAWorkflowRunsATaskForEachPullRequest(t *testing.T) {
 	s := schedulerServer(t, o)
 	f.Set("fc/nodwyn", forge.Pull{Number: 1, Title: "old", Author: "ana", Head: "a1"})
 	id := setWorkflow(t, s, pullsWorkflow(f, t.TempDir()))
-	now := time.Now()
+	now := midday()
 	s.pollWorkflows(context.Background(), now)
 	if state := flowState(t, s, id); !state.Seeded || state.Seen["1"] != "a1" || len(state.Fires) != 0 {
 		t.Fatalf("the first check did not just record what is open: %+v", state)
@@ -306,7 +315,7 @@ func TestAWorkflowsDailySpendLimitHoldsItsEvents(t *testing.T) {
 	d.Filters, d.Existing, d.DayCost = nil, true, 1
 	f.Set("fc/nodwyn", forge.Pull{Number: 1, Title: "one", Author: "ana", Head: "a"})
 	id := setWorkflow(t, s, d)
-	now := time.Now()
+	now := midday()
 	s.pollWorkflows(context.Background(), now)
 	state := flowState(t, s, id)
 	if len(state.Fires) != 1 {

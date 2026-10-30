@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/log"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -60,6 +61,9 @@ func TestSessionModelSetMovesTheNextTurn(t *testing.T) {
 
 	c.ok("session.send", map[string]any{"id": id, "text": "first"})
 	c.until(string(log.KindTurnEnd))
+	// The session is busy until it says it is idle, which follows the turn's
+	// end: a switch made in between is queued, not applied.
+	c.until(event.Status)
 	if got := requested(t, c, id); len(got) != 1 || got[0] != "model-a" {
 		t.Fatalf("first turn asked %v", got)
 	}

@@ -19,7 +19,8 @@ check(async () => {
   // Reached from the sidebar, empty, with the two ways to make one.
   await page.click('.nav-link[href="#/workflows"]');
   await page.waitForSelector('#new-watcher');
-  assert.ok((await page.textContent('.workflow-list')).includes('No workflows yet'), 'the page does not say there are none');
+  // The page says it is reading until workflow.list answers.
+  await until('the page says there are none', async () => (await page.textContent('.workflow-list')).includes('No workflows yet'), () => page.textContent('.workflow-list'));
   await page.click('#new-watcher');
   await page.waitForSelector('#wf-kind');
   step("the builder opens from the Workflows page");
@@ -157,8 +158,10 @@ check(async () => {
   assert.strictEqual(await page.inputValue('#wf-repo'), 'fc/nodwyn'); assert.strictEqual(await page.inputValue('#wf-message'), 'Review this pull request.');
   await page.fill('#wf-name', 'Review PRs');
   await page.click('#wf-save');
-  await page.waitForSelector('.workflow-row');
-  assert.ok((await page.textContent('.workflow-row')).includes('Review PRs') && (await page.locator('.workflow-fires li').count()) === 2, 'a change lost what the workflow had done');
+  // The list is drawn at once from what workflow.list last said, the old
+  // name, and again when it answers: the row is read once the change shows.
+  await until('the change listed', async () => (await page.textContent('.workflow-row')).includes('Review PRs'), () => page.textContent('.workflow-row'));
+  assert.strictEqual(await page.locator('.workflow-fires li').count(), 2, 'a change lost what the workflow had done');
   assert.ok(sent.of('workflow.write').at(-1).id, 'a change made another workflow');
   assert.strictEqual(await page.evaluate(() => window.__rowsGone), false, 'the workflow\'s row disappeared while the page was redrawn');
   await page.evaluate(() => (window.__removing = true));
