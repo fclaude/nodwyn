@@ -68,6 +68,16 @@
   '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 8) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
 (define plan-earlier-requests 2)   ; a chat's earlier messages the gate reads with its latest
 (define plan-earlier-cap 2000)     ; the characters of each it reads
+;; The characters of the agent's last answer the explorer and the planner
+;; read (plan-model-request). It was cut at plan-earlier-cap, and in session
+;; 20261030T084016Z-f5a3cbe1 the explorer of "fix the existing problems you
+;; found" read the first 2000 of a 5023-character review, which stopped
+;; before its findings: it spent its 12 rounds on 20 index-search calls to
+;; recover them from the conversation and 3 fs-reads of the code, and was
+;; stopped with reads still asked for (ADR 32, amended 2026-10-30). A
+;; review, a list of findings or a question with its options is what a
+;; reply answers, and it is longer than a message the person types.
+(define plan-reply-cap 16000)
 
 ;; A chat's latest request as the gate reads it: after the person's last
 ;; plan-earlier-requests messages before it, each cut at plan-earlier-cap
@@ -85,12 +95,12 @@
          (recent (list-tail earlier (max 0 (- (length earlier) plan-earlier-requests)))))
     (if (null? recent)
         request
-        (plan-request-with-earlier (map plan-cut recent) request))))
+        (plan-request-with-earlier (map (lambda (r) (plan-cut r plan-earlier-cap)) recent) request))))
 
-;; A text cut at plan-earlier-cap characters.
-(define (plan-cut r)
-  (if (> (string-length r) plan-earlier-cap)
-      (string-append (substring r 0 plan-earlier-cap) "…")
+;; A text cut at cap characters.
+(define (plan-cut r cap)
+  (if (> (string-length r) cap)
+      (string-append (substring r 0 cap) "…")
       r))
 
 ;; What the explorer and the planner read: the request as the judge reads
@@ -105,7 +115,7 @@
 ;; asks and the plan, and the agent's replies are not sent (ADR 19).
 (define (plan-model-request asked)
   (let* ((context (guard (e (else '())) (request-context)))
-         (reply (plan-cut (format "~a" (assoc-ref context 'reply ""))))
+         (reply (plan-cut (format "~a" (assoc-ref context 'reply "")) plan-reply-cap))
          (files (assoc-ref context 'attachments '())))
     (string-append
      (if (string-empty? (string-trim reply)) "" (plan-request-after-reply reply))

@@ -3064,3 +3064,25 @@ as a fallback behind a deploy hook) and said nothing of it. It is said under
 `lean-quiet` too, in either profile, since it is sandbox mode's and not a
 rung of the lean ladder; no other session hears it. Not yet measured; ADR 55,
 amended 2026-10-19, has the rest.
+
+## Amendment 2026-10-30: the planner reads the last answer whole
+
+The amendment of 2026-10-05 had the plan gate's explorer and planner read
+the agent's last answer, cut at `plan-earlier-cap` (2000 characters), the
+cap of the person's earlier messages. A reply answers what the agent last
+said, and what it last said is often a review, a list of findings or a
+question with its options: longer than a message a person types. In session
+20261030T084016Z-f5a3cbe1 (mistral-large-4-0) the person asked "fix the
+existing problems you found" after a 5023-character review. The explorer
+read its first 2000 characters, which stopped before the findings; its
+first reply said the review "was cut off", and of its 27 calls in its 12
+rounds, 20 were `index-search` calls to recover the findings from the
+conversation and 3 were `fs-read`s of the code. It was stopped with two
+reads still asked for, and its report said it could not re-read the files
+the findings cite.
+
+The last answer is now cut at `plan-reply-cap`, 16000 characters (about
+4000 tokens, beside `plan-excerpts-cap`'s 12000), and the person's earlier
+messages stay at `plan-earlier-cap`. The judge still reads no reply (ADR
+19). TestThePlannerReadsALongLastAnswerWhole holds this. Not yet measured
+beyond that session.

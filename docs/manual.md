@@ -1180,8 +1180,8 @@ a question, a review, an explanation or a proposal is answered, not
 planned, however much reading it takes. A later message in a chat is read
 after your two before it, so a reply to the model's question or a
 correction is not judged alone; the model that explores and drafts the plan
-also reads the agent's last answer and the names of the files you attached,
-which the judge is not sent. If it needs a plan, the model drafts one,
+also reads the agent's last answer (up to 16,000 characters) and the names
+of the files you attached, which the judge is not sent. If it needs a plan, the model drafts one,
 the judge scores it against the ask (up to three revisions), and the plan goes
 into the task block the model sees. Its thresholds and prompts are Scheme definitions a
 project may redefine. As the model works it marks the plan's steps done or

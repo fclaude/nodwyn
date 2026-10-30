@@ -253,6 +253,39 @@ func TestThePlannerReadsTheLastAnswerAndTheAttachments(t *testing.T) {
 	}
 }
 
+// The explorer and the planner read a last answer longer than a person's
+// message whole, up to plan-reply-cap: cut at plan-earlier-cap, the
+// explorer of session 20261030T084016Z-f5a3cbe1 read the first 2000
+// characters of a 5023-character review, which stopped before its
+// findings, and spent its rounds recovering them (ADR 32, amended
+// 2026-10-30).
+func TestThePlannerReadsALongLastAnswerWhole(t *testing.T) {
+	t.Parallel()
+	review := "# Review\n\n" + strings.Repeat("What is solid, at length. ", 200) + "\n\n## Findings\n\n1. The reader drops a byte."
+	r := strategyRig(t, `
+(define gate-saw #f)
+(define base-agent-turn agent-turn)
+(define (agent-turn request)
+  (if (equal? request "fix the problems you found")
+      (set! gate-saw (plan-model-request (plan-chat-request request)))
+      (base-agent-turn request)))`, 10,
+		fake.Turn{Content: review},
+	)
+	if e := r.turn("review this repository"); e != "" {
+		t.Fatal(e)
+	}
+	if e := r.turn("fix the problems you found"); e != "" {
+		t.Fatal(e)
+	}
+	if seen := r.eval("gate-saw"); !strings.Contains(seen, "1. The reader drops a byte.") {
+		t.Errorf("the explorer and the planner read %d characters, without the findings:\n%s", len(seen), seen)
+	}
+	// An answer past plan-reply-cap is still cut.
+	if got := r.eval(`(string-length (plan-cut "` + strings.Repeat("a", 20000) + `" plan-reply-cap))`); got != "16001" {
+		t.Errorf("a 20000-character answer is cut to %s characters", got)
+	}
+}
+
 // A plan written again keeps the marks of the steps it keeps word for word,
 // at their new numbers, and the model reads them under it; a new step
 // starts unmarked. Written again word for word, a plan started its marks

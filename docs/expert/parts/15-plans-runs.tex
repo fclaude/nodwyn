@@ -21,7 +21,8 @@ like this:
     \code{plan-earlier-requests} (2) messages before it, so a reply to the
     model's question is not judged alone, and the score reads the same
     text. The explorer and the planner read it after the agent's last
-    answer and with the names of the files attached
+    answer (cut at \code{plan-reply-cap}, 16000 characters, where the
+    person's messages are cut at 2000) and with the names of the files attached
     (\code{plan-model-request}, from \code{(request-context)}); the judge
     is not sent them, since at \code{judge.content = "plan"} it reads the
     person's asks and the plan (\adr{19}). Below \code{plan-needed-threshold}
