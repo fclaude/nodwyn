@@ -4,7 +4,7 @@ A task is a conversation with the model, pinned to a folder. Everything it does 
 
 ## The conversation
 
-Your messages, the model's replies and its tool calls are in the middle column. Routine work is folded into **Activity** rows, one per stretch between replies, which say in a line what happened: "read 2 files, searched once, listed 1 folder". Click one to see each call. When a reply is only thinking and reading, the thinking sits inside that row. Thinking is hidden until you choose to show it in Settings › This browser.
+Your messages, the model's replies and its tool calls are in the middle column. Routine work is folded into **Activity** rows, one per stretch between replies, which say in a line what happened: "read 2 files, searched once, listed 1 folder". Click one to see each call. When a reply is only thinking and reading, the thinking sits inside that row, and so does what the planner and other helpers reply to nodwyn, such as a plan written in Scheme. Thinking is hidden until you choose to show it in Settings › This browser.
 
 ![A task with its activity opened](shot:task-activity)
 

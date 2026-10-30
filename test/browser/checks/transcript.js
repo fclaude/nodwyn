@@ -1408,6 +1408,34 @@ check(async () => {
   want(cacheUsage.zero.includes("0% cached") && !cacheUsage.zero.includes("≈"), `reported zero wins: ${cacheUsage.zero}`);
   want(cacheUsage.reported.includes("40% cached") && !cacheUsage.reported.includes("≈"), `reported usage wins: ${cacheUsage.reported}`);
   want(!cacheUsage.unknown.includes("cached"), `a new turn leaves unknown cache usage out: ${cacheUsage.unknown}`);
+  // The planner's reply, its plan in Scheme forms, is folded under Activity
+  // as it streams and once recorded, and nothing of it is prose in the
+  // turn; a reply after its context folds is the model's to the person again.
+  const planner = await page.evaluate(async () => {
+    const { Transcript } = await import("/transcript.js");
+    const root = document.createElement("div");
+    document.body.replaceChildren(root);
+    const t = new Transcript(root);
+    const plan = '(change "src/flags.py" "parse_flags" "accept --verbose")\n(test "tests/test_flags.py" "test_verbose" "--verbose sets verbose")\n(check "pytest")';
+    const prose = () => [...root.querySelectorAll(".turn.agent > .prose")].map((el) => el.textContent).join("|");
+    const notes = () => [...root.querySelectorAll(".activity-fold-body > .audit > summary")].map((el) => el.textContent);
+    t.render({ kind: "user.msg", payload: { text: "Add --verbose" } });
+    t.render({ kind: "context.narrow", payload: { agent: "planner", system: "Plan." } });
+    t.render({ kind: "stream.text", payload: { text: plan.slice(0, 20) } });
+    const streaming = { prose: prose(), notes: notes(), open: root.querySelector(".activity-fold").open };
+    t.render({ kind: "llm.resp", payload: { content: plan, usage: { prompt_tokens: 10, output_tokens: 5 } } });
+    const aside = root.querySelector(".audit.aside");
+    const folded = { prose: prose(), notes: notes(), source: aside?.querySelector("pre")?.textContent, open: aside?.open, replying: root.querySelectorAll(".audit").length };
+    t.render({ kind: "context.fold", payload: {} });
+    t.render({ kind: "gate.plan", payload: { noul: "plan", plan: "1. Change: src/flags.py parse_flags — accept --verbose." } });
+    t.render({ kind: "llm.resp", payload: { content: "Done: --verbose is accepted." } });
+    const after = { prose: prose(), asides: root.querySelectorAll(".audit.aside").length };
+    t.end();
+    return { streaming, folded, after };
+  });
+  want(planner.streaming.prose === "" && planner.streaming.notes.includes("Planner is replying…") && !planner.streaming.open, `the planner's reply streams behind Activity: ${JSON.stringify(planner.streaming)}`);
+  want(planner.folded.prose === "" && planner.folded.notes.includes("Planner replied in Scheme · 3 lines") && !planner.folded.notes.includes("Planner is replying…") && planner.folded.source?.startsWith('(change "src/flags.py"') && !planner.folded.open, `the planner's plan in Scheme is one folded row: ${JSON.stringify(planner.folded)}`);
+  want(planner.after.prose === "Done: --verbose is accepted." && planner.after.asides === 1, `a reply after the planner's context folds is prose: ${JSON.stringify(planner.after)}`);
   // A run's time and turn limits are independent and optional. Draw the
   // same state on Home, in the sidebar and in the task heading: absent
   // limits must not look exhausted, and real expired deadlines still do.

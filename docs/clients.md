@@ -75,6 +75,7 @@ it can see the thing but not change it.
 | Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` (recorded as `eval.req` and `eval.result`, as in the TUI) | `nodwyn eval`, `nodwyn repl` |
 | Thinking | inline, folded | `:thinking` toggles it | `--show-thinking` | `--show-thinking replay` |
 | Tool calls | grouped into one Activity row per stretch between replies | one line per call; `:details` expands them | a card per call | — |
+| A named focused context's reply (the planner's plan in Scheme, a sub-agent's answer) | folded as a note in the Activity row, streaming there too | one line (`⎿ planner replied in Scheme · 9 lines`), streaming too; `:details` expands it and the context's system prompt | printed as a reply | `replay` prints it |
 | Retrieval calls said in words (`index-search` and where it searched, `recall` and its seq, `index-update`; ADR 50) | yes, folded as looks (`searched 3 times · recalled 1 event · updated the index`) | yes | yes | `replay` |
 | An index build or refresh (`index.update`) | a line under the call that made it | a line under the call | a line | `replay` |
 | Usage per reply (tokens, cache share, cost) | yes; reported cache reads win, otherwise timing estimates show ≈ | yes; the same precedence | yes; the same precedence | — |

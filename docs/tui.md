@@ -208,6 +208,12 @@ says so; if the interval ends without one, it says `no result recorded`.
 PgUp/PgDn scroll through long arguments, results and standing-approval diffs.
 All rendered fields pass through the existing redaction and terminal sanitizer.
 
+A focused context the loop names (the planner's, a sub-agent's) is folded
+the same way: its system prompt is behind `── context narrowed: planner ──`,
+and what it replies, addressed to nodwyn rather than to you, is one line
+(`⎿ planner replied in Scheme · 9 lines`, or `⎿ planner is replying…` while
+it streams). `:details` shows both, indented under their lines.
+
 Calls execute serially. The frontend joins a result only to the current open
 call with the same ID and name, so reused provider IDs do not overwrite earlier
 calls. A result without a matching call (including a skipped call) is displayed

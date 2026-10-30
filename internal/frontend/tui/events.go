@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -63,6 +64,36 @@ func limitsLine(p log.SessionLimits) string {
 	return line
 }
 
+// asideAgent is the agent whose replies answer the harness rather than the
+// person: the innermost narrowed context's, when the loop named it (the
+// planner, a sub-agent). A context narrowed with no name may be a project's
+// strategy answering the person from it, and is "", as in the console
+// (transcript.js asideAgent).
+func (m *model) asideAgent() string {
+	if n := len(m.narrowed); n > 0 {
+		return m.narrowed[n-1]
+	}
+	return ""
+}
+
+// schemeReply is a reply that opens with a form, fenced or not.
+var schemeReply = regexp.MustCompile("^\\s*(```[\\w-]*\\s*)?\\(")
+
+// asideLine is such a reply's one line: who replied, whether in Scheme
+// forms (the planner's plan, ADR 32 amended 2026-10-16), and how long it is.
+func asideLine(agent, content string) string {
+	lines := strings.Count(strings.TrimSpace(content), "\n") + 1
+	in := ""
+	if schemeReply.MatchString(content) {
+		in = " in Scheme"
+	}
+	unit := "lines"
+	if lines == 1 {
+		unit = "line"
+	}
+	return fmt.Sprintf("⎿ %s replied%s · %d %s", agent, in, lines, unit)
+}
+
 func decode[T any](raw json.RawMessage) (T, error) {
 	var p T
 	err := json.Unmarshal(raw, &p)
@@ -93,6 +124,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 		}
 	case string(log.KindUserMsg):
 		m.endToolInterval()
+		m.narrowed = nil // a narrowed context ends with the turn
 		var p log.UserMsg
 		p, err = decode[log.UserMsg](e.Payload)
 		m.append("\nyou> " + p.Text)
@@ -105,7 +137,13 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if p.Thinking != "" {
 			m.transcript = append(m.transcript, entry{text: safe("thinking> " + p.Thinking), thinking: true})
 		}
-		if p.Content != "" {
+		if agent := m.asideAgent(); p.Content != "" && agent != "" {
+			// A reply inside a named narrowed context (the planner's, a
+			// sub-agent's) answers the harness, not the person: one line, as
+			// a call is, its text under :details. The planner's plan in
+			// Scheme forms otherwise filled the screen before the work began.
+			m.transcript = append(m.transcript, entry{text: safe(asideLine(agent, p.Content)), detail: safe(p.Content)})
+		} else if p.Content != "" {
 			m.append("nodwyn> " + p.Content)
 		}
 		m.append("      " + plain.UsageLine(p.Usage))
@@ -261,10 +299,22 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if p.Lasting {
 			m.append(plain.LastingNarrowLine(p))
 		} else {
-			m.append("── context narrowed ──\n" + p.System)
+			// Its system prompt is the planner's or a sub-agent's standing
+			// instructions, pages long: behind :details, as the reply is.
+			m.narrowed = append(m.narrowed, p.Agent)
+			line := "── context narrowed ──"
+			if p.Agent != "" {
+				line = "── context narrowed: " + p.Agent + " ──"
+			}
+			m.transcript = append(m.transcript, entry{text: line, detail: safe(p.System)})
+		}
+	case string(log.KindContextFold):
+		if n := len(m.narrowed); n > 0 {
+			m.narrowed = m.narrowed[:n-1]
 		}
 	case string(log.KindContextWiden):
 		m.endToolInterval()
+		m.narrowed = nil
 		m.append("── context widened ──")
 	case string(log.KindTurnCheckpoint):
 		var p log.TurnCheckpoint

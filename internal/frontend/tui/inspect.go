@@ -287,7 +287,8 @@ const helpText = `Commands
 :friction              Guarded read of docs/friction.md; needs an idle session.
 :eval EXPR             User-origin Scheme evaluation.
 :thinking              Show or hide thinking.
-:details               Show or hide tool arguments and results inline.
+:details               Show or hide tool arguments and results inline, and
+                       what the planner and sub-agents were told and replied.
 :help, :h              This view.
 :q, :quit, :exit       Quit, as Ctrl+Q does.
 :close                 Close the task and quit: its log is released, and a

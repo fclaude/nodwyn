@@ -39,7 +39,7 @@ Approvals are keys: **y** allows once, **n** denies, **a** approves that command
 | `:attach PATH` | Adds a file to the conversation |
 | `:plan` and `:budget` | Show the plan, and this turn's limits and spend |
 | `:log`, `:bindings`, `:replay` | Read-only views of the log, the bindings and the transcript |
-| `:thinking` and `:details` | Show the model's thinking, and expand the tool calls |
+| `:thinking` and `:details` | Show the model's thinking, and expand the tool calls and what the planner and sub-agents were told and replied |
 | `:close` | Close the task in the daemon, and quit |
 
 [The TUI page of the reference](../reference/tui.html) lists the rest. The TUI doesn't have a review view for a worktree's changes: `git diff` in the worktree does that job, and a comment on the changes is a message.

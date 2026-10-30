@@ -21,6 +21,7 @@ import (
 type entry struct {
 	tool     *toolCallView
 	text     string
+	detail   string // shown under text only with :details, as a call's arguments are
 	thinking bool
 }
 
@@ -45,6 +46,7 @@ type model struct {
 	activeTool                                   *toolCallView   // the latest call still waiting for its result
 	openTools                                    []*toolCallView // every such call: a batch of reads runs together
 	liveText, liveThinking                       string
+	narrowed                                     []string // the agents of the narrowed contexts open, innermost last
 	thinking                                     bool
 	details                                      bool // tool arguments and results inline
 	lastSeq                                      uint64
@@ -179,6 +181,7 @@ func (m *model) restore(s snapshot) {
 	m.gauge = contextGauge{}
 	m.transcript = nil
 	m.activeTool, m.openTools = nil, nil
+	m.narrowed = nil
 	m.liveText = ""
 	m.liveThinking = ""
 	m.prompt = nil
@@ -972,6 +975,11 @@ func (m *model) refresh(bottom bool) {
 		if !line.thinking || m.thinking {
 			if line.tool != nil {
 				rows = append(rows, line.tool.render(m.details))
+			} else if line.detail != "" && m.details {
+				var out strings.Builder
+				out.WriteString(line.text + "\n")
+				indent(&out, line.detail)
+				rows = append(rows, strings.TrimSuffix(out.String(), "\n"))
 			} else {
 				rows = append(rows, line.text)
 			}
@@ -981,7 +989,9 @@ func (m *model) refresh(bottom bool) {
 	if m.thinking && m.liveThinking != "" {
 		content += "\nthinking> " + safe(m.liveThinking)
 	}
-	if m.liveText != "" {
+	if agent := m.asideAgent(); m.liveText != "" && agent != "" {
+		content += "\n⎿ " + agent + " is replying…"
+	} else if m.liveText != "" {
 		content += "\nnodwyn> " + safe(m.liveText)
 	}
 	for _, text := range m.queued {

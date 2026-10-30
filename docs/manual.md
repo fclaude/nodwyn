@@ -635,7 +635,11 @@ The row counts a failed call in red ("1 failed"), whose run or group is
 open inside. A call that
 was skipped without running (an explorer out of rounds, the rest of a
 batch after a failure) did not fail: it is a note in the row that says
-why, one note for the calls skipped in a row for the same reason. Replies,
+why, one note for the calls skipped in a row for the same reason. What
+the planner or a sub-agent replies, inside its focused context, is
+addressed to nodwyn rather than to you, and is a note in the row too
+("Planner replied in Scheme · 9 lines"), its text behind it as it was
+written; the plan it makes is the row's "Made a plan" note. Replies,
 warnings, errors, a turn that stopped short and a worktree that left
 uncommitted files out stay in view, and a question is asked in its card at
 the end of the conversation. This folds the display only; `/compact

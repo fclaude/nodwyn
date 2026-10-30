@@ -189,6 +189,24 @@ function marksLabel(marks) {
   return said.map((s) => `Step${s.steps.length === 1 ? "" : "s"} ${s.steps.join(", ")} of ${s.of} marked ${s.state}`).join(" · ");
 }
 
+// asideAgent is the agent whose replies answer the harness rather than the
+// person: the innermost narrowed context's, when the loop named it (the
+// planner, a sub-agent), as "Planner". A context narrowed with no name may
+// be a project's strategy answering the person from it, and is "".
+function asideAgent(narrowed) {
+  const name = narrowed.at(-1) || "";
+  return name && name[0].toUpperCase() + name.slice(1);
+}
+
+// asideLabel is what such a reply's fold says: who replied, whether in
+// Scheme forms (the planner's plan, ADR 32 amended 2026-10-16), and how
+// long the reply is.
+function asideLabel(agent, content) {
+  const lines = content.trim().split("\n").length;
+  const scheme = /^\s*(```[\w-]*\s*)?\(/.test(content);
+  return `${agent} replied${scheme ? " in Scheme" : ""} · ${lines} ${lines === 1 ? "line" : "lines"}`;
+}
+
 export class Transcript {
   constructor(container) {
     this.el = container;
@@ -203,7 +221,9 @@ export class Transcript {
     this.marks = null;
     this.call = null;
     this.open = new Map(); // the calls of a concurrent batch still waiting for their results, by id
+    this.narrowed = []; // the agents of the narrowed contexts open, innermost last
     this.streamText = null;
+    this.streamFold = null;
     this.streamThinking = null;
     this.thought = null;
     this.usage = null;
@@ -221,6 +241,7 @@ export class Transcript {
     this.call = null;
     this.open.clear();
     this.streamText = null;
+    this.streamFold = null;
     this.streamThinking = null;
     this.thought = null;
     this.usage = null;
@@ -369,6 +390,7 @@ export class Transcript {
     switch (event.kind) {
       case "user.msg": {
         this.end();
+        this.narrowed = []; // a narrowed context ends with the turn
         const turn = h("div", { class: "turn user" }, h("div", { class: "who" }, "You"), h("div", { class: "you-text" }, p.text));
         // Files attached just before belong to this message.
         const last = this.el.lastElementChild;
@@ -396,7 +418,13 @@ export class Transcript {
         this.audit("nodwyn told the model", p.text ?? p.Text, "harness-note");
         break;
       case "stream.text": {
-        if (!this.streamText) {
+        if (!this.streamText && asideAgent(this.narrowed)) {
+          // A narrowed context's reply streams behind a fold, where llm.resp
+          // will draw it.
+          this.streamText = h("pre");
+          this.streamFold = this.audit(`${asideAgent(this.narrowed)} is replying…`);
+          this.streamFold.append(this.streamText);
+        } else if (!this.streamText) {
           this.fold = null;
           this.streamText = h("div", { class: "prose streaming" });
           this.agent().append(this.streamText);
@@ -419,12 +447,21 @@ export class Transcript {
         // Streamed fragments were provisional; the recorded response is what
         // the log holds, so it replaces them.
         this.streamText?.remove();
+        this.streamFold?.remove();
         this.streamThinking?.closest("details")?.remove();
         this.streamText = null;
+        this.streamFold = null;
         this.streamThinking = null;
         const turn = this.agent();
         const previousFold = this.fold;
-        if (p.content) this.fold = null;
+        // A reply inside a narrowed context (the planner's, a sub-agent's)
+        // answers the harness, not the person: it is folded as a call is,
+        // and the plan it makes is drawn again by its gate.plan. Drawn as
+        // prose, the planner's plan in Scheme forms ran to a screen of one
+        // run-on paragraph before the work began.
+        const aside = p.content && asideAgent(this.narrowed) ? p.content : "";
+        const said = aside ? "" : p.content;
+        if (said) this.fold = null;
         this.thought = null;
         if (p.thinking) {
           const node = thinking(p.thinking);
@@ -436,18 +473,19 @@ export class Transcript {
           // so the thought follows it. Left beside the group inside Activity,
           // the thought fell behind the group's later writes.
           const first = (p.tool_calls || [])[0];
-          const writing = category(first?.name) === "write" && this.writeGroup && !p.content;
+          const writing = category(first?.name) === "write" && this.writeGroup && !said;
           if (writing) this.absorb();
           const open = category(first?.name) === "command" ? this.commandGroup : writing ? this.writeGroup : this.group;
-          if (p.content) turn.append(node);
+          if (said) turn.append(node);
           else if (open) open.body.append(node);
           else {
             this.activity(node);
             this.thought = node;
           }
         }
-        if (p.content) {
-          turn.append(markdown(p.content));
+        if (aside) this.audit(asideLabel(asideAgent(this.narrowed), aside), aside, "aside");
+        if (said) {
+          turn.append(markdown(said));
           this.group = null;
           this.marks = null;
           this.closeCommands();
@@ -644,6 +682,7 @@ export class Transcript {
       case "context.narrow":
         // A lasting narrowing, such as a compaction's, is where later turns
         // start; any other ends with its turn.
+        if (!p.lasting) this.narrowed.push(p.agent || "");
         // Its system prompt is the session's own, so the details say nothing
         // new; a compaction's numbers are in its context.compact.
         if (p.lasting) this.audit(`The conversation goes on from here${p.agent ? ` (${p.agent})` : ""}`);
@@ -719,6 +758,14 @@ export class Transcript {
         // "Don't ask" switched, rather than one standing answer.
         if (p.kind === "all") this.audit(p.off ? "Don't ask: off, writes and commands ask again" : "Don't ask: on, writes and commands approved without asking", p, p.off ? "" : "warn");
         else this.audit(auditLabels[event.kind], p);
+        break;
+      case "context.fold":
+        this.narrowed.pop();
+        this.audit(auditLabels[event.kind], p);
+        break;
+      case "context.widen":
+        this.narrowed = [];
+        this.audit(auditLabels[event.kind], p);
         break;
       default:
         if (auditLabels[event.kind]) this.audit(auditLabels[event.kind], p);

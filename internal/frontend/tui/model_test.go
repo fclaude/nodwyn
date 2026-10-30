@@ -190,3 +190,41 @@ func TestApprovalAuditIsVisibleAndDeduplicated(t *testing.T) {
 		t.Fatal("replay recreated approval")
 	}
 }
+
+// The planner's plan in Scheme forms, and the system prompt of its narrowed
+// context, are one line each until :details, while streaming too; a reply
+// after the context folds is the model's to the person again.
+func TestPlannerReplyIsOneLineUntilDetails(t *testing.T) {
+	m := testModel()
+	plan := "(change \"src/flags.py\" \"parse_flags\" \"accept --verbose\")\n(test \"tests/test_flags.py\" \"test_verbose\" \"--verbose sets verbose\")\n(check \"pytest\")"
+	m.consume(wire(string(log.KindUserMsg), log.UserMsg{Text: "Add --verbose"}, 1))
+	m.consume(wire(string(log.KindContextNarrow), log.ContextNarrow{Agent: "planner", System: "PLANNER STANDING INSTRUCTIONS"}, 2))
+	m.consume(wire(event.StreamText, event.Text{Text: "(change \"src/flags"}, 0))
+	m.refresh(false)
+	if view := m.viewport.GetContent(); strings.Contains(view, "(change") || !strings.Contains(view, "⎿ planner is replying…") {
+		t.Fatalf("the planner's reply streams into view:\n%s", view)
+	}
+	m.consume(wire(string(log.KindLLMResp), log.LLMResp{Content: plan}, 3))
+	m.consume(wire(string(log.KindContextFold), log.ContextFold{}, 4))
+	m.consume(wire(string(log.KindLLMResp), log.LLMResp{Content: "Done: --verbose is accepted."}, 5))
+	m.refresh(false)
+	view := m.viewport.GetContent()
+	for _, hidden := range []string{"(change", "(check", "PLANNER STANDING INSTRUCTIONS"} {
+		if strings.Contains(view, hidden) {
+			t.Fatalf("%q is in view without :details:\n%s", hidden, view)
+		}
+	}
+	for _, shown := range []string{"── context narrowed: planner ──", "⎿ planner replied in Scheme · 3 lines", "nodwyn> Done: --verbose is accepted."} {
+		if !strings.Contains(view, shown) {
+			t.Fatalf("%q is not in view:\n%s", shown, view)
+		}
+	}
+	m.details = true
+	m.refresh(false)
+	view = m.viewport.GetContent()
+	for _, shown := range []string{"    (change \"src/flags.py\"", "    (check \"pytest\")", "    PLANNER STANDING INSTRUCTIONS"} {
+		if !strings.Contains(view, shown) {
+			t.Fatalf("%q is not under :details:\n%s", shown, view)
+		}
+	}
+}
