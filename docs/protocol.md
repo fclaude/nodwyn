@@ -768,7 +768,7 @@ provider_model, price_input?, price_output?, state, detail?, default?}`,
 `state` being `ready`, `needs_key`, `locked`, `unbound` or `plan`.
 `settings.write` takes `set`, from those names to new
 values; `null` removes a key so its default applies. It accepts only
-`approval.writes` and `approval.commands` (what a task does without asking,
+`approval.writes` and `approval.commands` (what a task does without asking; commands take `judge`, `judge-auto`, `ask` or `allow`,
 ADR 35), `approval.dont_ask` (`true` or `false`: whether tasks offer "don't
 ask"; saving `false` also turns it off in every open session, ADR 17), `loop.request_timeout`
 and `loop.shell_timeout`, the `window.*` marks, `judge.server` (one of the

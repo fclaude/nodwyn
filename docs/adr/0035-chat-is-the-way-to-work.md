@@ -231,3 +231,22 @@ a send is: no model chosen, an attachment or a model switch under way, a run
 driving the task; and an evaluation is never queued. A client shows what it
 queued itself until the message's `user.msg` arrives: there is no event for
 the queue. The queue is in memory, so a daemon that stops loses what waited.
+
+## Amendment 2026-10-30: `approval.commands = "judge-auto"`
+
+In session 792638a8 (a task on another host) the person was asked about
+fourteen commands that only read the Go module cache. The judge was working:
+it allowed the three ordinary commands it was asked about. Each of the others
+was a security confirm (the command line names a path outside the
+repository), and a security confirm never reaches the judge, in a session a
+person answers or in a run, which declines it unasked (ADR 18 §5).
+
+`approval.commands` takes a fourth value, `judge-auto`, off by default. The
+judge is the only one asked about a command, a security confirm about it
+included, with the unwatched question (a person is not asked), and what it
+does not allow, or having no judge set up, is a no, as in a judged run. A
+write, an egress, a binding proposal and an upload still ask the person, who
+is the control for what leaves the machine or changes what is trusted, and
+`(approve-refuse? call)` still refuses more. "Don't ask" has nothing to
+answer under it. The default `judge` is unchanged: it still asks about a
+security confirm.

@@ -73,6 +73,14 @@ check(async () => {
   await page.waitForSelector("[id='set-approval.writes-ask'][aria-pressed=true]");
   step("the Docs upload answer waits in the bar with a setting, and one Save writes both");
 
+  // ---------- the judge alone answers commands ----------
+  await page.click("[id='set-approval.commands-judge-auto']");
+  assert.match(await page.innerText("#section-approval"), /never asked about a command|every command is refused/, "the hint does not say the judge alone answers");
+  await page.click(".save-bar button:text-is('Save')");
+  await until("the judge alone saved", async () => sent.of("settings.write").length === 2 && (await barText()) === "");
+  assert.deepStrictEqual(sent.of("settings.write")[1], { set: { "approval.commands": "judge-auto" } });
+  step("The judge alone is offered for commands and saved as approval.commands");
+
   // ---------- what most people never change is folded away ----------
   assert.strictEqual(await page.$eval("#advanced", (d) => d.open), false, "Advanced starts open");
   await page.click("#advanced > summary");

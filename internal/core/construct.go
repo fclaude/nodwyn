@@ -621,7 +621,7 @@ func (s *Session) initialize() (err error) {
 	case o.AutoApprove:
 		confirmer = guard.AutoAllow
 	case o.JudgeApprove:
-		confirmer = judgeConfirmer{s}
+		confirmer = judgeConfirmer{s: s}
 	case o.Unattended:
 		confirmer = guard.DenyAll
 	default:

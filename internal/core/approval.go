@@ -33,6 +33,8 @@ func (s *Session) personConfirmer() guard.Confirmer {
 	switch s.approval().Commands {
 	case config.ApproveJudge:
 		return approvalConfirmer{s: s, judge: true}
+	case config.ApproveJudgeAuto:
+		return approvalConfirmer{s: s, judge: true, auto: true}
 	case config.ApproveAllow:
 		return approvalConfirmer{s: s}
 	}
@@ -47,9 +49,19 @@ func (s *Session) personConfirmer() guard.Confirmer {
 // here is a question for the person, who is told what the judge answered.
 // Without it, those confirms are answered yes. Everything else, every
 // security confirm included, goes to the person.
+//
+// With auto (approval.commands = "judge-auto") the judge is the only one
+// asked about a command, a security confirm about it included (the usual
+// one is a path outside the repository, which the judge never saw and so
+// the person was asked about a read of the module cache), and what it does
+// not allow, or having no judge, is a no, as in a judged run: nobody is
+// asked. A write, an egress, a binding proposal and an upload still go to
+// the person, who is the control for what leaves the machine or changes
+// what is trusted.
 type approvalConfirmer struct {
 	s     *Session
 	judge bool
+	auto  bool
 }
 
 func (a approvalConfirmer) Confirm(ctx context.Context, p guard.Prompt) (bool, error) {
@@ -61,8 +73,11 @@ func (a approvalConfirmer) Confirm(ctx context.Context, p guard.Prompt) (bool, e
 // never becomes a standing one. A person's "always this session" still
 // does, and then the call is no longer asked about.
 func (a approvalConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
-	if p.Security || p.Path != "" || p.Egress != nil || p.Binding != nil || p.Prim == uploadPrim {
+	if p.Path != "" || p.Egress != nil || p.Binding != nil || p.Prim == uploadPrim || (p.Security && !a.auto) {
 		return a.s.ConfirmApproval(ctx, p)
+	}
+	if a.auto {
+		return judgeConfirmer{s: a.s, security: true}.ConfirmApproval(ctx, p)
 	}
 	if !a.judge {
 		return guard.Approval{Allowed: true, Actor: "setting", Scope: "once"}, nil

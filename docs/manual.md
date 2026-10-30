@@ -730,7 +730,7 @@ changes (ADR 35):
 ```toml
 [approval]
 writes = "allow"    # the default: writes in the folder go ahead; or "ask"
-commands = "judge"  # the default: the judge, then you; "ask": you; "allow": nobody asks
+commands = "judge"  # the default: the judge, then you; "judge-auto": the judge alone; "ask": you; "allow": nobody asks
 dont_ask = false    # the default: no task offers "Don't ask" ("Standing approvals" below)
 ```
 
@@ -1269,6 +1269,15 @@ command runs if its probability of allow is at least
 `judge.approve_threshold` (0.8). The decision is Go's: no Scheme can approve
 what the judge refused, and a project's `(approve-refuse? call)` can only
 refuse more. When it refuses, you are asked, and told its answer.
+
+A security confirm about a command (the usual one is a read of a path outside
+the task's folder, say the Go module cache) is never put to the judge by
+`"judge"`: you are asked. `commands = "judge-auto"` (Settings › General ›
+*The judge alone*) puts it to the judge too, tells it nobody is watching, and
+takes what it does not allow, or having no judge, as a no: you are not asked
+about a command. A write, a send out of the machine, a key's binding and an
+upload still ask you, and a standing refusal or `(approve-refuse? call)` still
+applies.
 
 **What the judge used.** The judge reports each request's tokens, never its
 cost, and nodwyn records them in `jev.req` with the model that answered

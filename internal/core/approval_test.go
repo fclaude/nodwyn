@@ -231,3 +231,67 @@ func TestDontAskSkipsTheJudge(t *testing.T) {
 		t.Fatalf("judge asked %s", got)
 	}
 }
+
+// outsideTurn reads a file outside the repository, which asks as a security
+// confirm.
+func outsideTurn(id string) fake.Turn {
+	return toolTurn(id, "shell-exec", map[string]any{"cmd": "cat", "args": []any{"/var/lib/dpkg/status"}})
+}
+
+// approval.commands = "judge-auto" puts a security confirm about a command (a
+// path outside the repository, from the tarro session 792638a8, where the
+// person was asked about every read of the module cache) to the judge, and
+// nobody is asked when it allows; with "judge" the person is asked, unasked
+// the judge.
+func TestJudgeAutoAnswersSecurityConfirms(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		mode     string
+		asked    int
+		judged   string
+		decision string
+	}{
+		{config.ApproveJudgeAuto, 0, "noul choice", "yes"},
+		{config.ApproveJudge, 1, "noul", "no"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			t.Parallel()
+			judge := newFakeJudge(t, noul(0.2), choice(0.95))
+			r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) {
+				o.NoConfirm = false
+				o.Config.Approval.Commands = tc.mode
+			}, outsideTurn("1"), fake.Turn{Content: "done"})
+			asked := r.asked("run it", "n")
+			if len(asked) != tc.asked || (tc.asked == 1 && !asked[0].Prompt.Security) {
+				t.Fatalf("prompts %+v", asked)
+			}
+			if got := strings.Join(judge.asked(), " "); got != tc.judged {
+				t.Fatalf("judge asked %q, want %q", got, tc.judged)
+			}
+			if d := r.decision("shell-exec", ""); d.Answer != tc.decision {
+				t.Fatalf("decision: %+v", d)
+			}
+		})
+	}
+}
+
+// With "judge-auto" a judge that does not allow is a no, and the person is
+// not asked; with no judge set up it is a no too.
+func TestJudgeAutoRefusesWithoutAsking(t *testing.T) {
+	t.Parallel()
+	for name, judge := range map[string]*fakeJudge{"refusing": newFakeJudge(t, noul(0.2), choice(0.1)), "none": nil} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) {
+				o.NoConfirm = false
+				o.Config.Approval.Commands = config.ApproveJudgeAuto
+			}, outsideTurn("1"), fake.Turn{Content: "done"})
+			if asked := r.asked("run it", "y"); len(asked) != 0 {
+				t.Fatalf("prompts %+v", asked)
+			}
+			if d := r.decision("shell-exec", ""); d.Answer != "no" {
+				t.Fatalf("decision: %+v", d)
+			}
+		})
+	}
+}

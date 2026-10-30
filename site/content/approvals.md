@@ -10,7 +10,7 @@ Some things always ask you, whatever the settings say: a write to a protected pa
 
 ![Settings, General: what a task may do without asking](shot:settings-general)
 
-Settings › General › Approvals sets the first two. **Writing files** is *Without asking* or *Ask me*, and **Running commands** is *The judge, then me*, *Ask me* or *Without asking*.
+Settings › General › Approvals sets the first two. **Writing files** is *Without asking* or *Ask me*, and **Running commands** is *The judge, then me*, *The judge alone*, *Ask me* or *Without asking*. *The judge alone* also puts a security confirm about a command (a read of a path outside the task's folder, such as the Go module cache) to the judge, and what the judge does not allow is refused rather than put to you; writes, sending out and keys still ask you.
 
 ## The approval card
 

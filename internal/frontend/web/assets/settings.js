@@ -64,7 +64,7 @@ export function applyThinking(shown) {
 const writeChoices = [["allow", "Without asking"], ["ask", "Ask me"]];
 const dontAskChoices = [[false, "Not offered"], [true, "Offered in each task"]];
 const notifyChoices = [[false, "Off"], [true, "When no nodwyn window is open"]];
-const commandChoices = [["judge", "The judge, then me"], ["ask", "Ask me"], ["allow", "Without asking"]];
+const commandChoices = [["judge", "The judge, then me"], ["judge-auto", "The judge alone"], ["ask", "Ask me"], ["allow", "Without asking"]];
 
 function writesHint(writes) {
   if (writes === "ask") return "Every write waits for your answer.";
@@ -73,6 +73,7 @@ function writesHint(writes) {
 
 function commandsHint(commands, judge) {
   if (commands === "ask") return "You answer each command that no allow list covers.";
+  if (commands === "judge-auto") return judge ? "The judge answers every command, a read of a path outside the task's folder included, and what it does not allow is refused: you're never asked about a command. Writes, sending out and keys still ask you." : "No judge is set up, so every command is refused.";
   if (commands === "allow") return "Commands, and tools that act, run without asking: with writes also free, nobody is looking.";
   return judge ? "The judge decides what it can; you're asked about the rest, and told what it answered." : "No judge is set up, so you're asked.";
 }

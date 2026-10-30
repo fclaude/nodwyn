@@ -44,7 +44,7 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0032](./0032-working-habits.md) — The default loop works the way pil did (amended 2026-10-17: a lean profile for sessions nobody approves, and a full one; 2026-10-18: the lean prompt carries AGENTS.md, this repository's completeness rules are in its own init.scm, and sandbox mode's lean prompt and no-change reminder)
 - [0033](./0033-go-126-base.md) — Go 1.26 is the base
 - [0034](./0034-sessions-in-git-worktrees.md) — Sessions in git worktrees (partly implemented: a session in a worktree from the console)
-- [0035](./0035-chat-is-the-way-to-work.md) — A chat is the way to work, and it asks less (amends 17, 18, 30)
+- [0035](./0035-chat-is-the-way-to-work.md) — A chat is the way to work, and it asks less (amends 17, 18, 30; amended: `approval.commands = "judge-auto"` lets the judge answer security confirms about commands)
 - [0036](./0036-agents-md-in-the-system-prompt.md) — A repository's AGENTS.md joins the system prompt (amended: the lean prompt carries it too)
 - [0037](./0037-validate-before-done.md) — Work on nodwyn is validated before it is called done
 - [0038](./0038-several-edits-in-one-call.md) — fs-edit takes several edits to one file in one call

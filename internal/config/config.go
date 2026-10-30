@@ -147,8 +147,10 @@ type Approval struct {
 	// Commands is who answers any other ordinary confirm no standing
 	// approval covers — a command, input to a running program, an MCP tool
 	// that acts: "judge" (the default: the judge, and the person when it
-	// refuses or there is none), "ask" (the person) or "allow" (yes, as
-	// --yolo answers).
+	// refuses or there is none), "judge-auto" (the judge alone, security
+	// confirms about a command included, and a refusal or no judge is a no:
+	// the person is never asked about a command, as in a judged run),
+	// "ask" (the person) or "allow" (yes, as --yolo answers).
 	Commands string `toml:"commands"`
 	// DontAsk offers each task the "Don't ask" switch, which answers every
 	// ordinary write and command yes until it is turned off. Off by
@@ -166,6 +168,9 @@ const (
 	ApproveAllow = "allow"
 	ApproveAsk   = "ask"
 	ApproveJudge = "judge"
+	// ApproveJudgeAuto is approval.commands alone: the judge answers every
+	// command, a security confirm too, and the person is not asked.
+	ApproveJudgeAuto = "judge-auto"
 )
 
 func (a Approval) validate() error {
@@ -175,9 +180,9 @@ func (a Approval) validate() error {
 		return fmt.Errorf("approval.writes must be %q or %q, got %q", ApproveAllow, ApproveAsk, a.Writes)
 	}
 	switch a.Commands {
-	case ApproveJudge, ApproveAsk, ApproveAllow:
+	case ApproveJudge, ApproveJudgeAuto, ApproveAsk, ApproveAllow:
 	default:
-		return fmt.Errorf("approval.commands must be %q, %q or %q, got %q", ApproveJudge, ApproveAsk, ApproveAllow, a.Commands)
+		return fmt.Errorf("approval.commands must be %q, %q, %q or %q, got %q", ApproveJudge, ApproveJudgeAuto, ApproveAsk, ApproveAllow, a.Commands)
 	}
 	return nil
 }

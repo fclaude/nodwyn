@@ -27,7 +27,13 @@ import (
 // turn a refusal into an approval. Scheme may only refuse more: if
 // (approve-refuse? call) is defined and returns true, or fails, a call the
 // judge allowed is declined.
-type judgeConfirmer struct{ s *Session }
+//
+// security says the judge is asked about a security confirm too
+// (approval.commands = "judge-auto"), where a run's declines it unasked.
+type judgeConfirmer struct {
+	s        *Session
+	security bool
+}
 
 func (j judgeConfirmer) Confirm(ctx context.Context, p guard.Prompt) (bool, error) {
 	a, err := j.ConfirmApproval(ctx, p)
@@ -37,7 +43,7 @@ func (j judgeConfirmer) Confirm(ctx context.Context, p guard.Prompt) (bool, erro
 // ConfirmApproval answers p, attributed to "judge" (or, for a security
 // confirm, "unattended"), once: a judged answer never becomes a standing one.
 func (j judgeConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
-	if p.Security {
+	if p.Security && !j.security {
 		_, err := j.s.Record(log.KindNote, log.Note{Text: "judged approval: " + p.Prim + " declined without asking the judge (a security confirm)"})
 		return guard.Approval{Actor: "unattended", Scope: "once"}, err
 	}
