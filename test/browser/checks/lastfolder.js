@@ -12,6 +12,11 @@ check(async () => {
   const root = tempDir("nodwyn-demo-");
   const { demo, url, repo: consoleRepo, ctx, page } = await desk({ args: ["-seed", "-pace=0", "-dir", root], viewport: { width: 1440, height: 900 } });
   const receipts = consoleRepo.replace(/\/console$/, "/receipts");
+  // A pick reaches the daemon before the page is reloaded or closed: one in
+  // flight then is lost, and the restarted window started in the folder
+  // picked before it.
+  const picks = requests(page);
+  const kept = () => until("the pick kept", async () => picks.of("workspace.active").length > 0 && picks.settled("workspace.active"));
   const pressed = () => page.$eval("#work-in button.chip[aria-pressed=true]", (b) => b.title);
   const home = async () => {
     await ready(page);
@@ -53,6 +58,7 @@ check(async () => {
   await page.click(`.ws-row:has(span.mono[title="${receipts}"]) button:text-is("New task here")`);
   await page.waitForSelector("#work-in button.chip[aria-pressed=true]");
   assert.strictEqual(await pressed(), receipts, "New task here did not pick its folder");
+  await kept();
   await page.reload();
   await home();
   assert.strictEqual(await pressed(), receipts, "the folder New task here picked did not survive a reload");
@@ -62,6 +68,7 @@ check(async () => {
   // this browser has never seen, whose localStorage holds nothing. A
   // second demo on the same root is such a restart — what a fresh tab
   // there starts in is the daemon's memory of the pick, not any browser's.
+  await kept();
   await page.close();
   demo.kill("SIGTERM");
   await demo.exited;

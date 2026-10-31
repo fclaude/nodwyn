@@ -236,8 +236,12 @@ export class Desk {
     }
     Object.assign(item, { open: state.open, busy: state.busy, needs_answer: state.needs_answer });
     // A turn that ended or a task that closed has new activity, and perhaps
-    // a title: the list, ordered by activity, is read again.
-    if (notify && previous && ((previous.busy && !state.busy) || (previous.open && !state.open))) this.reload();
+    // a title: the list, ordered by activity, is read again. So does a change
+    // to a task the list has no message of yet: the list read as it started
+    // can come before its first message is recorded, and one that asks at
+    // once stayed "Untitled task" until its turn ended.
+    const untitled = !item.title && !item.first_message;
+    if (notify && ((previous && ((previous.busy && !state.busy) || (previous.open && !state.open))) || (untitled && state.open))) this.reload();
     if (!state.open || !state.needs_answer) this.pending.delete(state.id);
     if (!!previous?.needs_answer !== !!state.needs_answer || state.needs_answer) this.scheduleAttention();
     this.notifier.update(state, previous, notify, item);

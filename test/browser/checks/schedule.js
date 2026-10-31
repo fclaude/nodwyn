@@ -174,8 +174,8 @@ check(async () => {
   assert.strictEqual(fs.existsSync(target), false, 'scheduled write bypassed approval');
   await page.screenshot({ path: `${out}/schedule-approval.png` });
   await page.click('.ask-card button:text-is("Allow once")');
-  await until('scheduled file written', () => fs.existsSync(target));
-  assert.ok(fs.readFileSync(target, 'utf8').includes('Write scheduled-again'));
+  // The file exists before its content is all written: read it until it is.
+  await until('scheduled file written', () => fs.existsSync(target) && fs.readFileSync(target, 'utf8').includes('Write scheduled-again'));
   await page.waitForFunction(() => document.querySelector('.task-head .pill')?.textContent === 'Idle');
   assert.ok((await page.locator('.transcript').textContent()).includes('Run now'), 'run marker missing');
   await page.click('#aside-tab-statistics');

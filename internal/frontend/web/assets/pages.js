@@ -11,6 +11,11 @@ let addingWorkspace = false; // the editor for a folder not on the list yet is o
 let removing = ""; // the folder whose forgetting waits for confirmation
 let reviewing = ""; // the folder whose startup files are open for review
 let revoking = ""; // the folder whose trust waits to be revoked
+// What each folder's index and startup files were last read as: the page is
+// drawn again at every change of the desk, and its lines stood empty until
+// read again, so a redraw shows these first and reads them anew.
+const indexRead = new Map();
+const trustRead = new Map();
 export function renderWorkspaces(root, ctx) {
   const { desk, navigate, conn } = ctx;
   const counts = new Map();
@@ -73,12 +78,13 @@ export function renderWorkspaces(root, ctx) {
   const indexLine = (folder) => {
     const line = h("span", { class: "ws-index" });
     if (!conn.has("index.status")) return line;
-    conn.call("index.status", { repo: folder }).then((info) => {
-      if (!info.bytes) return;
+    const show = (info) => {
+      if (!info.bytes) return line.replaceChildren();
       const forget = conn.has("index.forget")
         ? h("button", { type: "button", class: "btn small ghost", onclick: async () => {
             try {
               await conn.call("index.forget", { repo: folder });
+              indexRead.delete(folder);
               toast("Forgot the search index. The next search builds it again.");
             } catch (e) {
               toast(e.message);
@@ -87,6 +93,11 @@ export function renderWorkspaces(root, ctx) {
           } }, "Forget the index")
         : null;
       line.replaceChildren(`Search index: ${info.files} files · ${sizeOf(info.bytes)}${info.updated ? ` · updated ${ago(info.updated)}` : ""}${info.trees > 1 ? ` · ${info.trees} working trees` : ""}`, forget || "");
+    };
+    if (indexRead.has(folder)) show(indexRead.get(folder));
+    conn.call("index.status", { repo: folder }).then((info) => {
+      indexRead.set(folder, info);
+      show(info);
     }).catch(() => {});
     return line;
   };
@@ -99,8 +110,8 @@ export function renderWorkspaces(root, ctx) {
   const startupLine = (folder) => {
     const line = h("span", { class: "ws-startup" });
     if (!conn.has("trust.read")) return line;
-    conn.call("trust.read", { repo: folder }).then((state) => {
-      if (!state.present) return;
+    const show = (state) => {
+      if (!state.present) return line.replaceChildren();
       const words = state.trusted ? "Startup files (.nodwyn/init.scm and allow.toml) are trusted." : "Startup files (.nodwyn/init.scm and allow.toml) are not trusted: tasks here start without them.";
       const open = reviewing === folder;
       const parts = [words, " "];
@@ -108,6 +119,11 @@ export function renderWorkspaces(root, ctx) {
       else parts.push(h("span", { class: "hint" }, "Review them with nodwyn trust --repo on the computer nodwyn runs on."));
       line.replaceChildren(...parts);
       if (open && conn.has("trust.set")) line.append(trustPanel(folder, state));
+    };
+    if (trustRead.has(folder)) show(trustRead.get(folder));
+    conn.call("trust.read", { repo: folder }).then((state) => {
+      trustRead.set(folder, state);
+      show(state);
     }).catch(() => {});
     return line;
   };
@@ -115,6 +131,7 @@ export function renderWorkspaces(root, ctx) {
     const act = async (revision, said) => {
       try {
         await conn.call("trust.set", { repo: folder, revision });
+        trustRead.delete(folder);
         toast(said);
       } catch (e) {
         toast(e.message);
@@ -292,7 +309,18 @@ export async function renderConnections(root, ctx) {
     if (conn.has("credentials.list")) await renderCredentials(body, { ...ctx, current }, redraw);
     else body.append(h("div", { class: "callout plain" }, "Credentials are listed by the computer nodwyn runs on."));
   } else await tools(body, ctx, redraw);
-  if (shown && current()) root.replaceChildren(page);
+  // What was typed into the page on screen while the new one was read would
+  // go with it: the desk's redraw is dropped then, as app.js drops one that
+  // starts while a field is being edited (a key typed in meanwhile was lost,
+  // and its Replace sent nothing).
+  if (shown && current() && !typedInto(shown)) root.replaceChildren(page);
+}
+
+// typedInto says whether a field of node has the focus or holds something
+// typed, as app.js's editing does.
+function typedInto(node) {
+  if (node.contains(document.activeElement) && document.activeElement.matches("input, textarea, select")) return true;
+  return [...node.querySelectorAll("input, textarea")].some((el) => (el.type === "checkbox" || el.type === "radio" ? el.checked !== el.defaultChecked : el.value !== el.defaultValue));
 }
 
 async function tools(body, ctx, redraw) {

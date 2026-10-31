@@ -602,6 +602,14 @@ export function renderHome(root, ctx) {
         // A schedule carries its own message, written in its dialog.
         if (scheduling ? !canStart || unready() : !ready()) return;
         const text = scheduling ? scheduling.message : task.value;
+        // The task's page is opened when the start gets there, which can be
+        // after the person went elsewhere (an image's confirm waits, then is
+        // stopped): it is opened from where they started it or on its own
+        // page, and never pulls them back from another.
+        const from = location.hash;
+        const follow = (id) => {
+          if (location.hash === from || location.hash === desk.href(id)) navigate(desk.href(id));
+        };
         starting = true;
         submit.disabled = true;
         let opened = "",
@@ -629,7 +637,7 @@ export function renderHome(root, ctx) {
           const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
           opened = info.id;
           // An image waits for its own confirm, which the task's page shows.
-          if (files.files.some(isImage)) navigate(desk.href(info.id));
+          if (files.files.some(isImage)) follow(info.id);
           if (files.files.length) await files.upload(info.id, target.name);
           sending = true;
           if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling });
@@ -639,7 +647,7 @@ export function renderHome(root, ctx) {
           // What was chosen stays for the next task (ADR 41, amended
           // 2026-10-27).
           await desk.refresh();
-          navigate(desk.href(info.id));
+          follow(info.id);
         } catch (error) {
           if (opened && !sending) {
             // The task opened, but an attachment was refused (an image's
@@ -650,7 +658,7 @@ export function renderHome(root, ctx) {
             draft = "";
             files.clear();
             toastError(`${error.message} The message was not sent: it waits in the task's reply box.`);
-            navigate(desk.href(opened));
+            follow(opened);
           } else {
             // The daemon's refusal before any task opened says so plainly;
             // a lost connection or a timeout may have started one, so those

@@ -448,7 +448,11 @@ the one folder control. The bar holds what every task needs: **Attach**,
 none) and Send. **Options** holds the rare choices, **In a worktree**,
 the helpers, **Commands** and **Schedule…**, and says how many differ from
 their defaults; Escape closes it. It and its Helpers fold stay as they were
-left through any redraw of Home, until a task starts. **Enter** starts the task and
+left through any redraw of Home, until a task starts. A started task's page
+opens when its start gets there, from Home or on that page: a start that
+ends after you went elsewhere (an image's confirm stopped) leaves you there.
+A task listed before its first message was recorded is read again at its
+next change, so it does not stay "Untitled task" while it asks. **Enter** starts the task and
 **Shift+Enter** breaks the line, as in a task's reply box (Cmd or Ctrl+Enter
 starts it too), and a line under the box says so. **Schedule…** opens the
 schedule with the message typed so far; the schedule is saved with the

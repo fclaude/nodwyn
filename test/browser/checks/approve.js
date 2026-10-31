@@ -592,13 +592,31 @@ check(async () => {
   assert.deepStrictEqual(home, { draft: "", chosen: 0 }, "Home after the message went to the task");
   step("image denied; the message waited in the task, which went on");
 
+  // The upload's answer is held until the person has gone to Settings: a
+  // start that ends after they left does not pull them back to its task.
+  let releaseUpload;
+  const uploadHeld = new Promise((resolve) => (releaseUpload = resolve));
+  let uploadAnswered = false;
+  await page.route("**/attach?*", async (route) => {
+    const response = await route.fetch();
+    await uploadHeld;
+    await route.fulfill({ response });
+    uploadAnswered = true;
+  });
   const stopped = await withImage("Describe this screenshot again");
   await page.click(".task-actions button:has-text('Stop')");
   await settles("the task idle after Stop", idle);
   await until("the note that the image was canceled", async () => (await page.textContent(".transcript")).includes("image not attached: shot.png, canceled"));
   assert.deepStrictEqual(sent.of("session.abort").at(-1), { id: stopped });
   assert.ok(!sent.of("session.send").some((s) => s.id === stopped), "the message went without its image");
-  step("image stopped");
+  await page.evaluate(() => (location.hash = "#/settings/keys"));
+  await page.waitForSelector("[id='set-policy.allow_insecure_http-default']");
+  releaseUpload();
+  await until("the stopped upload answered", async () => uploadAnswered);
+  await page.unroute("**/attach?*");
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  assert.strictEqual(await page.evaluate(() => location.hash), "#/settings/keys", "the stopped start pulled the page back to its task");
+  step("image stopped, and its start ending later leaves the page where the person went");
 
   // The transport exception is off, saved explicitly, and retained after a
   // reload; turning it off again sends and persists false, not an empty string.

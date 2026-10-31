@@ -518,4 +518,52 @@ check(async () => {
     await shows(page, "#view", "Connections", "BUILT IN", "Files, search, notes and commands", "Add a server");
     assert.ok(!(await page.textContent("#view")).includes("20 tools"), "a tool count from whichever task moved last");
   });
+  // A change of the desk redraws Connections, keeping the page on screen
+  // until the new one has read its list; what is typed meanwhile stays,
+  // since the redraw is dropped rather than swapped in over it.
+  let holdList = null;
+  let typing = null;
+  await shoot("connections-typing", { width: 1280, height: 800 }, "light", async (page) => {
+    await go(page, "#/connections");
+    await page.click("button:has-text('Add a server')");
+    const field = page.locator("#mcp-name");
+    await field.waitFor();
+    let release;
+    holdList = new Promise((resolve) => (release = resolve));
+    typing.answered = false;
+    // A task the page knows changing state redraws the page (the desk's
+    // "state" change); the finished task is said to be closed.
+    const known = await page.evaluate(() => decodeURIComponent([...document.querySelectorAll("#sidebar .nav-task")].find((a) => a.textContent.includes("Summarize what is in this folder"))?.getAttribute("href")?.replace(/^#\/task\//, "") || ""));
+    typing.ws.send(JSON.stringify({ jsonrpc: "2.0", method: "session.event", params: { kind: "session.state", payload: { id: known, open: false, busy: false, needs_answer: false, revision: 1e9 } } }));
+    await until("the redraw reading its list", async () => typing.waiting);
+    await field.fill("typed-while-it-read");
+    holdList = null;
+    release();
+    await until("the list answered", async () => typing.answered);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    assert.strictEqual(await page.inputValue("#mcp-name"), "typed-while-it-read", "a redraw of Connections threw away what was typed while it read");
+  }, "light", async (page) => {
+    typing = { waiting: false, answered: false, ids: new Set() };
+    await page.routeWebSocket("**/socket", async (ws) => {
+      const server = await ws.connectToServer();
+      typing.ws = ws;
+      ws.onMessage(async (message) => {
+        const frame = JSON.parse(message);
+        if (frame.method === "mcp.list" && holdList) {
+          typing.waiting = true;
+          typing.ids.add(frame.id);
+          await holdList;
+        }
+        server.send(message);
+      });
+      server.onMessage((message) => {
+        const id = JSON.parse(message).id;
+        if (typing.ids.has(id)) {
+          typing.ids.delete(id);
+          typing.answered = typing.ids.size === 0;
+        }
+        ws.send(message);
+      });
+    });
+  });
 });
