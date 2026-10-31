@@ -250,3 +250,45 @@ is the control for what leaves the machine or changes what is trusted, and
 `(approve-refuse? call)` still refuses more. "Don't ask" has nothing to
 answer under it. The default `judge` is unchanged: it still asks about a
 security confirm.
+
+## Amendment 2026-10-30: who answers commands answers all of them, and each task chooses
+
+With approval.commands at `allow` on tarro, the person was still asked, in
+session 34fd6421, about `go mod download` and a listing of the module cache:
+the command named a path outside the repository, a security confirm, which
+every value but `judge-auto` sent to the person. The person asked for the
+choice to mean what it says, and to be theirs per task as well as the
+default.
+
+- Who answers commands answers every confirm that is not a write and carries
+  no credential, a security confirm about a command included (a path outside
+  the repository, a command line built from tool output): `judge` asks the
+  judge first and the person when it refuses or is not set up; `judge-auto`
+  the judge alone, a refusal or no judge being a no; `allow` answers yes with
+  the actor `setting`; `ask` asks. What the guard denies outright (the
+  credential denylist, unbound egress, a literal key on a command line) is
+  not a confirm and stays denied, and a write, an egress, a binding proposal
+  and an upload still go to the person. This loosens what `allow` and
+  `judge` did: a command built from tool output, the prompt-injection case,
+  no longer always asks, so the hint under each says so. "Don't ask" is
+  unchanged and still asks about a security confirm.
+- Each task may have its own: `session.open`'s `commands`, and
+  `session.commands.set` at any time, recorded as `session.commands` and
+  kept on resume (the log index's version is 9, for the kept choice). It is
+  read at each confirm, and a question about a command waiting for the
+  person when it changes to anything but `ask` is handed back and answered
+  by the new choice, keeping its prompt id for the console's clocks. It is
+  this computer's choice, as the judge is (ADR 30): a paired device is
+  refused it. The console's task picker has a Commands select beside the judge,
+  and New task has one under Options (the composer's bar keeps one slim
+  control, as the `screens` check asks); `newtask.last` keeps the last one
+  for the next task.
+  The TUI and line mode do not choose it yet.
+
+**Evidence.** `TestCommandsAnswerSecurityConfirms` (each value against a read
+outside the repository), `TestJudgeThenPersonAsksAboutARefusedSecurityConfirm`,
+`TestATasksCommandsReplaceTheSetting`,
+`TestChoosingCommandsAnswersTheQuestionWaiting`,
+`TestTaskCommandsOutliveResume` and the RPC's
+`TestTasksChooseWhoAnswersTheirCommands`; the `models` browser check chooses
+it on an open task, on a new one, and sees it kept for the next.

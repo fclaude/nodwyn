@@ -40,7 +40,7 @@ func (idx *logIndex) observeHistory(ev log.Event) {
 		h.Intro.SessionMark = SessionMark{Seq: 1, TS: ev.TS}
 	}
 	switch ev.Kind {
-	case log.KindSessionStart, log.KindSessionResume, log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits:
+	case log.KindSessionStart, log.KindSessionResume, log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits, log.KindSessionCommands:
 		if h.Context == nil {
 			h.Context = map[log.Kind]log.Event{}
 		}

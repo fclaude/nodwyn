@@ -13,8 +13,9 @@ import (
 
 // A session a person can answer asks them less (ADR 35). approval.writes
 // makes writes the pin lets through a standing approval (guard.FolderWrites,
-// installed by newGuard), and approval.commands decides who answers the
-// other ordinary confirms; the person answers the rest.
+// installed by newGuard), and approval.commands, or the task's own choice,
+// decides who answers the confirms about commands; the person answers the
+// rest.
 
 // approval returns the session's [approval] settings, defaults filled in.
 func (s *Session) approval() config.Approval {
@@ -28,40 +29,32 @@ func (s *Session) approval() config.Approval {
 	return a
 }
 
-// personConfirmer is the confirmer of a session a person can answer.
-func (s *Session) personConfirmer() guard.Confirmer {
-	switch s.approval().Commands {
-	case config.ApproveJudge:
-		return approvalConfirmer{s: s, judge: true}
-	case config.ApproveJudgeAuto:
-		return approvalConfirmer{s: s, judge: true, auto: true}
-	case config.ApproveAllow:
-		return approvalConfirmer{s: s}
-	}
-	return s
-}
-
-// approvalConfirmer answers what approval.commands covers: an ordinary
-// confirm that is not a write (approval.writes says whether those ask) and
-// carries no credential (an egress, a binding proposal, an upload). With
-// judge, the judge is asked first, as in a judged run (judge.go), and the
-// person when it refuses, fails or is not set up: unlike a run's, a refusal
-// here is a question for the person, who is told what the judge answered.
-// Without it, those confirms are answered yes. Everything else, every
-// security confirm included, goes to the person.
+// approvalConfirmer is the confirmer of a session a person can answer. It
+// answers what approval.commands covers: a confirm that is not a write
+// (approval.writes says whether those ask) and carries no credential (an
+// egress, a binding proposal, an upload), a security confirm about a
+// command included; the usual one is a path outside the repository, such
+// as a read of the Go module cache, and the person asked who answers
+// commands so that they stop being asked about it (ADR 35, amended
+// 2026-10-30). Who answers is read at each confirm (Commands), the task's
+// own choice or the setting's:
 //
-// With auto (approval.commands = "judge-auto") the judge is the only one
-// asked about a command, a security confirm about it included (the usual
-// one is a path outside the repository, which the judge never saw and so
-// the person was asked about a read of the module cache), and what it does
-// not allow, or having no judge, is a no, as in a judged run: nobody is
-// asked. A write, an egress, a binding proposal and an upload still go to
-// the person, who is the control for what leaves the machine or changes
-// what is trusted.
+//   - judge: the judge is asked first, as in a judged run (judge.go), and
+//     the person when it refuses, fails or is not set up: unlike a run's, a
+//     refusal here is a question for the person, who is told what the judge
+//     answered.
+//   - judge-auto: the judge alone. What it does not allow, or having no
+//     judge, is a no, as in a judged run: nobody is asked.
+//   - allow: yes, without asking anyone.
+//   - ask: the person.
+//
+// What the guard denies (the credential denylist, unbound egress, a literal
+// key on a command line) is not a confirm and stays denied whatever this
+// says. A write, an egress, a binding proposal and an upload go to the
+// person, who is the control for what leaves the machine or changes what is
+// trusted.
 type approvalConfirmer struct {
-	s     *Session
-	judge bool
-	auto  bool
+	s *Session
 }
 
 func (a approvalConfirmer) Confirm(ctx context.Context, p guard.Prompt) (bool, error) {
@@ -72,19 +65,52 @@ func (a approvalConfirmer) Confirm(ctx context.Context, p guard.Prompt) (bool, e
 // ConfirmApproval answers p once: an answer from the judge or the setting
 // never becomes a standing one. A person's "always this session" still
 // does, and then the call is no longer asked about.
+//
+// A question waiting for the person when who answers commands changes is
+// handed back (SetCommands, rescoped) and answered again by the new choice,
+// so choosing the judge alone, or no asking, also answers what is on the
+// screen; the record keeps the waiting question's id, which the console's
+// clocks read to leave the person's wait out of the working time.
 func (a approvalConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
-	if p.Path != "" || p.Egress != nil || p.Binding != nil || p.Prim == uploadPrim || (p.Security && !a.auto) {
+	if !commandPrompt(p) {
 		return a.s.ConfirmApproval(ctx, p)
 	}
-	if a.auto {
+	waited := ""
+	for {
+		approval, err := a.answer(ctx, p)
+		if err != nil || approval.Scope != rescoped {
+			if approval.PromptID == "" {
+				approval.PromptID = waited
+			}
+			return approval, err
+		}
+		waited = approval.PromptID
+	}
+}
+
+// commandPrompt is a confirm approval.commands covers.
+func commandPrompt(p guard.Prompt) bool {
+	return p.Path == "" && p.Egress == nil && p.Binding == nil && p.Prim != uploadPrim
+}
+
+// rescoped is the scope of the answer a waiting question is given when who
+// answers commands changed under it: no answer, but a sign to ask again.
+const rescoped = "rescoped"
+
+// answer answers p as Commands says now.
+func (a approvalConfirmer) answer(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
+	mode, _ := a.s.Commands()
+	switch mode {
+	case config.ApproveAsk:
+		return a.s.ConfirmApproval(ctx, p)
+	case config.ApproveAllow:
+		return guard.Approval{Allowed: true, Actor: "setting", Scope: "once"}, nil
+	case config.ApproveJudgeAuto:
 		return judgeConfirmer{s: a.s, security: true}.ConfirmApproval(ctx, p)
 	}
-	if !a.judge {
-		return guard.Approval{Allowed: true, Actor: "setting", Scope: "once"}, nil
-	}
-	// "Don't ask" answers it already (confirm.go), and no judge is needed;
-	// without a judge, the person is asked.
-	if on, _ := a.s.ApproveAll(); on || !a.s.judgeAvailable() {
+	// "Don't ask" answers an ordinary confirm already (confirm.go), and no
+	// judge is needed; without a judge, the person is asked.
+	if on, _ := a.s.ApproveAll(); (on && p.Ordinary()) || !a.s.judgeAvailable() {
 		return a.s.ConfirmApproval(ctx, p)
 	}
 	allowed, why := a.s.judgeCall(ctx, p, true)
@@ -104,7 +130,7 @@ func (a approvalConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) 
 	asked := p
 	asked.Reasons = append(slices.Clone(p.Reasons), "the judge did not allow it: "+why)
 	approval, err := a.s.ConfirmApproval(ctx, asked)
-	if err == nil {
+	if err == nil && approval.Scope != rescoped {
 		a.s.noteAnswer(p, map[bool]string{true: "allowed by the person", false: "refused by the person"}[approval.Allowed])
 	}
 	return approval, err

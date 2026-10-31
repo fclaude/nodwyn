@@ -12,7 +12,7 @@
 import { h, icon, toast, toastError, ago, tablist, removal } from "./dom.js";
 import { keychainForm, passphraseForm, noPassphraseWarning } from "./setup.js";
 import { modelsRows, resetModelsUi, stagedDefault, discardDefault } from "./models.js";
-import { judgeStateWords, judgeKinds, judgeLabel } from "./modelpicker.js";
+import { judgeStateWords, judgeKinds, judgeLabel, commandsChoices } from "./modelpicker.js";
 import { uploadLabels } from "./transcript.js";
 import { pairing, passkeysHere, assert } from "./passkey.js";
 
@@ -64,7 +64,6 @@ export function applyThinking(shown) {
 const writeChoices = [["allow", "Without asking"], ["ask", "Ask me"]];
 const dontAskChoices = [[false, "Not offered"], [true, "Offered in each task"]];
 const notifyChoices = [[false, "Off"], [true, "When no nodwyn window is open"]];
-const commandChoices = [["judge", "The judge, then me"], ["judge-auto", "The judge alone"], ["ask", "Ask me"], ["allow", "Without asking"]];
 
 function writesHint(writes) {
   if (writes === "ask") return "Every write waits for your answer.";
@@ -73,9 +72,9 @@ function writesHint(writes) {
 
 function commandsHint(commands, judge) {
   if (commands === "ask") return "You answer each command that no allow list covers.";
-  if (commands === "judge-auto") return judge ? "The judge answers every command, a read of a path outside the task's folder included, and what it does not allow is refused: you're never asked about a command. Writes, sending out and keys still ask you." : "No judge is set up, so every command is refused.";
-  if (commands === "allow") return "Commands, and tools that act, run without asking: with writes also free, nobody is looking.";
-  return judge ? "The judge decides what it can; you're asked about the rest, and told what it answered." : "No judge is set up, so you're asked.";
+  if (commands === "judge-auto") return judge ? "The judge answers every command, one naming a path outside the task's folder or built from what a tool returned included, and what it does not allow is refused: you're never asked about a command. Writes, sending out and keys still ask you." : "No judge is set up, so every command is refused.";
+  if (commands === "allow") return "Commands, and tools that act, run without asking, one naming a path outside the task's folder or built from what a tool returned included: with writes also free, nobody is looking. What nodwyn refuses outright (credential files, unbound sending, a key on a command line) stays refused.";
+  return judge ? "The judge decides what it can, a command naming a path outside the task's folder included; you're asked about the rest, and told what it answered." : "No judge is set up, so you're asked.";
 }
 
 // ---------- what each setting takes ----------
@@ -550,9 +549,9 @@ function approvalSection(ctx, redraw) {
   return section(
     "approval",
     "Approvals",
-    "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/), content that looks like a credential, and a command built from what a tool returned always ask, and nothing outside the task's folder is written. “Always”, in a question, covers that command or folder for the rest of the task.",
+    "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/) and content that looks like a credential always ask, and nothing outside the task's folder is written. Who answers commands answers every command, one naming a path outside the folder or built from what a tool returned included; each task can be given its own, as it starts or since. “Always”, in a question, covers that command or folder for the rest of the task.",
     ...row("Writing files", choice(ctx, "approval.writes", writeChoices, redraw), h("p", { class: "hint" }, writesHint(picked(desk, "approval.writes")))),
-    ...row("Running commands", choice(ctx, "approval.commands", commandChoices, redraw), h("p", { class: "hint" }, commandsHint(picked(desk, "approval.commands"), !!desk.settings?.judge))),
+    ...row("Running commands", choice(ctx, "approval.commands", commandsChoices, redraw), h("p", { class: "hint" }, commandsHint(picked(desk, "approval.commands"), !!desk.settings?.judge))),
     ...row(
       "Don't ask in tasks",
       choice(ctx, "approval.dont_ask", dontAskChoices, redraw),

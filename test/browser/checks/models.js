@@ -1190,6 +1190,39 @@ check(async () => {
   await shows("#task-model summary", "no judge");
   step("a new task and a conversation choose their judge beside their model");
 
+  // Who answers commands is chosen beside the judge (ADR 35, amended
+  // 2026-10-30): for a task already open, from its next question, and for
+  // the next task, which keeps the choice made last.
+  assert.strictEqual(await page.inputValue("#task-model-commands"), "judge", "the conversation does not answer its commands as Settings does");
+  await page.selectOption("#task-model-commands", "judge-auto");
+  await page.waitForSelector(".toast >> text=The judge alone answers this task's commands from its next one.", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("session.commands.set").at(-1), { id: judged, commands: "judge-auto" });
+  await shows("#task-model summary", "the judge alone");
+  // On Home it waits behind Options, so the composer's bar keeps one slim
+  // control.
+  await go("#/");
+  await page.waitForSelector("#task");
+  assert.strictEqual(await page.locator("#new-task-model-commands").isVisible(), false, "Home's picker has a Commands select");
+  await openOptions(page);
+  assert.strictEqual(await page.inputValue("#new-task-commands"), "judge", "a new task does not start as Settings answers commands");
+  await page.selectOption("#new-task-commands", "allow");
+  await shows("#new-task-options summary", "1");
+  await until("the choice kept for the next task", () => sent.of("newtask.last").at(-1)?.choices?.hosts?.some((e) => e.host === "" && e.commands === "allow"));
+  await page.fill("#task", "Say hello");
+  await page.click("button[aria-label='Start the task']");
+  await page.waitForSelector(".task[data-loaded]", { timeout: 20000 });
+  assert.strictEqual(sent.of("session.open").at(-1).commands, "allow", "who answers commands was not sent");
+  await idle();
+  await openPicker();
+  assert.strictEqual(await page.inputValue("#task-model-commands"), "allow", "the task does not answer its commands as it was opened to");
+  await go("#/");
+  await page.waitForSelector("#task");
+  await openOptions(page);
+  assert.strictEqual(await page.inputValue("#new-task-commands"), "allow", "the next task does not start with the choice made last");
+  await page.selectOption("#new-task-commands", "judge");
+  await until("the default kept for the next task", () => !sent.of("newtask.last").at(-1)?.choices?.hosts?.some((e) => e.commands));
+  step("a new task and a conversation choose who answers their commands beside their judge, and the next task starts with the last choice");
+
   // A judge model config.toml names that its API does not answer to (the
   // name of its server, say) fails every question and prices none: Settings
   // says so, and puts it right in one click.

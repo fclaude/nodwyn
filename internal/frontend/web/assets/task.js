@@ -10,7 +10,7 @@ import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
 import { keychainForm } from "./setup.js";
-import { ModelPicker, choiceNamed, effortLabel, judgesOf } from "./modelpicker.js";
+import { ModelPicker, choiceNamed, effortLabel, judgesOf, commandsLabel } from "./modelpicker.js";
 import { limitsPanel, parseLimit } from "./limits.js";
 
 const drafts = new Map(); // per task, this tab only
@@ -82,6 +82,7 @@ export class TaskView {
     this.uploading = false; // attachments on their way, an image perhaps waiting for its confirm
     this.changing = false; // a model or effort is being changed (session.model.set)
     this.judging = false; // the judge is being changed (session.judge.set)
+    this.answering = false; // who answers commands is being changed (session.commands.set)
     this.modelChanged = false; // a choice made between turns, which the next message is the first to use
     this.logModel = null; // the model and effort the log last names, for a task that is not open
     this.timer = 0;
@@ -866,7 +867,38 @@ export class TaskView {
             onJudge: (name) => this.chooseJudge(name),
           }
         : {}),
+      // Who answers the task's commands (ADR 35, amended 2026-10-30) is
+      // read at each confirm, so it changes during a response too.
+      ...(this.conn.has("session.commands.set") && this.info?.answering
+        ? {
+            commands: this.info.answering.commands,
+            commandsDisabled: this.answering,
+            onCommands: (mode) => this.chooseCommands(mode),
+          }
+        : {}),
     });
+  }
+  // chooseCommands makes mode who answers the task's commands, from its next
+  // question; one already waiting keeps waiting for its answer.
+  async chooseCommands(mode) {
+    const item = this.item,
+      version = this.version;
+    if (!item || this.answering) return;
+    this.answering = true;
+    this.controls();
+    try {
+      const state = await this.conn.call("session.commands.set", { id: item.id, commands: mode });
+      if (version === this.version && this.info) this.info.answering = state;
+      toast(`${commandsLabel(state.commands)} answers this task's commands from its next one.`);
+    } catch (error) {
+      toastError(`${error.message} Nothing was retried; the task keeps who answered its commands.`);
+    } finally {
+      this.answering = false;
+      if (version === this.version) {
+        await this.loadInfo();
+        this.controls();
+      }
+    }
   }
   // chooseJudge makes name the task's judge, or none with "", from its next
   // question. Nothing is retried; the picker is drawn again from what the

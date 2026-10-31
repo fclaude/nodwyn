@@ -42,6 +42,24 @@ type openParams struct {
 	// Limits are the task's own limits (ADR 49, amended 2026-10-27); left
 	// out, or each one left out, none.
 	Limits *budget.Task `json:"limits,omitempty"`
+	// Commands is who answers the task's commands, one of
+	// approval.commands' values (ADR 35, amended 2026-10-30). Left out, it
+	// is approval.commands'.
+	Commands string `json:"commands,omitempty"`
+}
+
+// commandsSetParams choose who answers a task's commands: one of
+// approval.commands' values.
+type commandsSetParams struct {
+	ID       string `json:"id"`
+	Commands string `json:"commands"`
+}
+
+// commandsState is who answers a task's commands now, and who chose it:
+// empty when it is approval.commands'.
+type commandsState struct {
+	Commands string `json:"commands"`
+	Actor    string `json:"actor,omitempty"`
 }
 
 // limitsSetParams replace a task's limits: each one left out is none.

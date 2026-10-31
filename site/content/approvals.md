@@ -6,11 +6,13 @@ When a tool call needs permission, the task stops and asks. This page explains w
 
 By default a write inside the task's folder goes ahead. The diff is logged and shown in the conversation, and the file's old contents are kept first, so Restore or `nodwyn undo` puts it back. A command without approval goes to the judge first, if you've set one up. If the judge refuses, or there isn't one, nodwyn asks you.
 
-Some things always ask you, whatever the settings say: a write to a protected path (git hooks, CI configuration, the Makefile, `scripts/`, `.nodwyn/`), content that looks like a credential, a command built out of what a tool returned, a request that carries a credential, and an upload. Nothing outside the task's folder gets written at all.
+Some things always ask you, whatever the settings say: a write to a protected path (git hooks, CI configuration, the Makefile, `scripts/`, `.nodwyn/`), content that looks like a credential, a request that carries a credential, and an upload. Nothing outside the task's folder gets written at all.
 
 ![Settings, General: what a task may do without asking](shot:settings-general)
 
-Settings › General › Approvals sets the first two. **Writing files** is *Without asking* or *Ask me*, and **Running commands** is *The judge, then me*, *The judge alone*, *Ask me* or *Without asking*. *The judge alone* also puts a security confirm about a command (a read of a path outside the task's folder, such as the Go module cache) to the judge, and what the judge does not allow is refused rather than put to you; writes, sending out and keys still ask you.
+Settings › General › Approvals sets the first two. **Writing files** is *Without asking* or *Ask me*, and **Running commands** is *The judge, then me*, *The judge alone*, *Ask me* or *Without asking*. Whichever you choose for commands also answers a command that names a path outside the task's folder (a read of the Go module cache, say) or is built from what a tool returned. *The judge alone* refuses what the judge doesn't allow rather than putting it to you, and *Without asking* runs it; writes, sending out and keys still ask you.
+
+Each task can have its own: **Commands**, under New task's **Options**, sets it for the next task, and the same select in a task's model picker, beside the judge, changes it at any time. Changing it while a question about a command is waiting answers that question the new way.
 
 ## The approval card
 

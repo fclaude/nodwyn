@@ -413,7 +413,16 @@ says which judge it asks ("judged by Jev", or "no judge").
   the task to another judge, or none, from its next question
   (`session.judge.set`); while a response runs it waits, since a judge is
   chosen between turns, and the transcript says each choice ("Judge: Jev ·
-  jev-latest at api.typesafe.ai").
+  jev-latest at api.typesafe.ai"). Its **Commands** select, beside the
+  judge, chooses who answers the task's commands (ADR 35, amended
+  2026-10-30): *The judge, then me*, *The judge alone*, *Ask me* or *Without
+  asking*, the one Settings starts tasks with marked *(default)*. It changes
+  at any time, a response running included (`session.commands.set`), and a
+  question about a command already waiting is answered the new way. New
+  task has the same select under **Options**, sent as `commands` and kept
+  for the next task as the judge is (Options counts it when it is not the
+  default); the task picker's summary says it after the judge ("judged by
+  Jev · the judge alone").
 - **Helpers** (ADR 27, amended 2026-10-09). Beside the picker, New task has
   a **Helpers: none** fold listing the other models with the labels each
   carries; ticked models are sent as `delegates` in `session.open` /
@@ -426,8 +435,8 @@ says which judge it asks ("judged by Jev", or "no judge").
   hint buttons); the change reaches open tasks.
 - A paired device sees the selects, disabled, and a line saying the model is
   chosen on the computer nodwyn runs on; Home shows only the default model's
-  name. It has no Judge select: the judge is chosen on that computer too
-  (ADR 47).
+  name. It has no Judge or Commands select: the judge, and who answers
+  commands, are chosen on that computer too (ADR 47, ADR 35).
 
 ## Tasks, folders and files
 

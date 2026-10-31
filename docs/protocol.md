@@ -95,7 +95,7 @@ and `outbox.decide` name an act that is not a read or a write, as
 | Method | Named parameters | Result |
 |---|---|---|
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
-| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"`, and `"delegates":["MODEL",…]`, and `"limits":{"tool_calls":200,…}` | Open-session details |
+| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"`, and `"delegates":["MODEL",…]`, and `"limits":{"tool_calls":200,…}`, and `"commands":"judge-auto"` | Open-session details |
 | `worktree.open` | as `session.open` | Open-session details of a session in a new git worktree of `repo` |
 | `worktree.diff` | `{"id"}` | `{base,changes:[{path,status,diff}],omitted}`: what the open session changed in its worktree since its base commit |
 | `worktree.review` | `{"id","comments":[{"path","line"?,"text"}],"note"?}` | `{}`: sends the comments to the session as one message |
@@ -104,6 +104,7 @@ and `outbox.decide` name an act that is not a read or a write, as
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
 | `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"`, and `"effort"` | The model and effort the conversation talks to now, and the choice queued behind a running turn |
 | `session.judge.set` | `{"id":"SESSION_ID","judge":"jev"}`, or `"judge":""` for none | The judge the task asks now |
+| `session.commands.set` | `{"id":"SESSION_ID","commands":"allow"}` | `{commands, actor?}`: who answers the task's commands now, from its next question |
 | `session.limits.set` | `{"id":"SESSION_ID","limits":{"tool_calls":200,"cost":5}}` | the task's limits, `{"tool_calls":200,"cost":5}`, which replace its own from its next turn |
 | `session.close` | `{"id":"SESSION_ID"}` | `{}` after releasing the session writer |
 | `session.rename` | `{"id":"SESSION_ID","title":"…"}` | `{}` after recording the name; `""` takes it back |
@@ -207,6 +208,22 @@ each a turn's, and `cost`, US dollars over the whole task; one left out, or
 0, is none, and a task has none unless they are set. `limits` in
 `session.open` and `worktree.open` opens a task with them; left out, it has
 none. The timeouts and the progress guard apply either way.
+Who answers a task's commands (ADR 35, amended 2026-10-30) is one of
+`approval.commands`' values, `judge`, `judge-auto`, `ask` or `allow`, and
+covers every confirm that is not a write and carries no credential (no
+egress, binding proposal or upload), a security confirm about a command
+included. `commands` in `session.open` and `worktree.open` gives the task
+its own; left out, it follows `approval.commands`. `session.commands.set`
+changes it at any time, a running response included, and a question about a
+command waiting for the person when it changes to anything but `ask` is
+answered again by the new choice: its `prompt.closed` arrives and its guard
+decision keeps its prompt id. Session details carry it as `answering`
+(`{commands, actor?}`, `actor` empty while it is the setting's). A value
+`approval.commands` does not take is refused (`-32602`), and so is either
+from a paired device. The choice, at open when the task has one and at
+every change, is a `session.commands` event (`actor`, `commands`), and
+resuming keeps the last one's.
+
 `session.limits.set` replaces an open task's limits from its next turn: a
 turn running keeps the ones it started with. `limits` is required, `{}`
 removing them all; a negative value, or a spend that is not dollars, is
@@ -853,7 +870,7 @@ method, and refuses one before it with code -32030.
 | `workspace.list` | `{}` | Named workspaces: `[{name, path, mounts, git, earlier_tasks}]`; `earlier_tasks` is whether the model may search the folder's earlier tasks (ADR 50) |
 | `workspace.forgotten` | `{}` | `[absolute paths]`: the folders `workspace.remove` forgot, which the console leaves out of its suggestions, not out of task history. A paired device may read it. An older daemon lacks the method, and the console then hides nothing |
 | `workspace.active` | `{}` reads, `{"path"}` records | `{"path"}`: the folder the console last picked for a new task, which a window or tab that has not picked starts in; kept in `last-workspace.toml` beside `workspaces.toml`, since the app's window has a console on a new port every launch and the browser remembers nothing across a restart |
-| `newtask.last` | `{}` reads, `{"choices"}` replaces | `{runs_on, hosts: [{host, model?, effort?, judge?, helpers?, worktree?: [{folder, on}]}]}`: what the console chose last for a new task, which the next one starts with (ADR 41, amended 2026-10-27): the host it runs on (`""` this computer) and, for each host, the model and effort (absent: Settings' default), the judge (absent: Settings' default; `""`: no judge), the helpers and per folder whether it opens in a worktree. A new task starts without limits. Kept in `new-task.toml` in the config directory, so every console, browser and address starts with it. It only preselects: `session.open` checks each choice again. At most 64 hosts, 64 helpers and 256 worktree choices each; a folder is absolute; an effort needs its model. The daemon refuses a replacement to an actor that carries `via` without `passkey` |
+| `newtask.last` | `{}` reads, `{"choices"}` replaces | `{runs_on, hosts: [{host, model?, effort?, judge?, commands?, helpers?, worktree?: [{folder, on}]}]}`: what the console chose last for a new task, which the next one starts with (ADR 41, amended 2026-10-27): the host it runs on (`""` this computer) and, for each host, the model and effort (absent: Settings' default), the judge (absent: Settings' default; `""`: no judge), who answers its commands (absent: `approval.commands`), the helpers and per folder whether it opens in a worktree. A new task starts without limits. Kept in `new-task.toml` in the config directory, so every console, browser and address starts with it. It only preselects: `session.open` checks each choice again. At most 64 hosts, 64 helpers and 256 worktree choices each; a folder is absolute; an effort needs its model. The daemon refuses a replacement to an actor that carries `via` without `passkey` |
 | `workspace.save` | `{"path","name","mounts"}` (all required; `mounts` may be `[]`), and optionally `"earlier_tasks"` | The saved workspace. The name, the mounts and whether the model may search the folder's earlier tasks go to `workspaces.toml` in the config directory; nothing is written into the folder. Without `earlier_tasks` the saved choice is kept, so a client that does not send it never turns it off |
 | `workspace.remove` | `{"path"}` | `{}`; forgets a named or unnamed absolute folder, its name and mounts, never its files or tasks; persists a suggestion-exclusion marker and clears a matching last pick. Repeated removal is harmless. `workspace.save`, or a task started or resumed in the folder (by any client, a paired device or a terminal included), clears the marker |
 | `versions.list` | `{"repo","path"}` | A file's kept previous versions (outside git); `repo` must be a named workspace or a folder a task has used |

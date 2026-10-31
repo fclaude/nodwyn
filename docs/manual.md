@@ -743,8 +743,9 @@ dont_ask = false    # the default: no task offers "Don't ask" ("Standing approva
   ("The judge" below): if it allows the call, it runs; if it refuses,
   or there is no judge, you are asked, and the prompt says what it answered.
 - **Always you**, whatever `[approval]` says: a write to a protected path,
-  content that looks like a credential, a command built from tool output,
-  a request carrying a credential and an upload.
+  content that looks like a credential, a request carrying a credential and
+  an upload. A command built from tool output, or naming a path outside the
+  folder, goes to whoever answers commands, below.
 
 `[approval]` is for sessions a person answers. Line mode's `--no-confirm`
 answers its prompts no, its `--yolo` turns on Don't ask, and `nodwyn run`'s
@@ -1270,14 +1271,24 @@ command runs if its probability of allow is at least
 what the judge refused, and a project's `(approve-refuse? call)` can only
 refuse more. When it refuses, you are asked, and told its answer.
 
-A security confirm about a command (the usual one is a read of a path outside
-the task's folder, say the Go module cache) is never put to the judge by
-`"judge"`: you are asked. `commands = "judge-auto"` (Settings › General ›
-*The judge alone*) puts it to the judge too, tells it nobody is watching, and
-takes what it does not allow, or having no judge, as a no: you are not asked
-about a command. A write, a send out of the machine, a key's binding and an
-upload still ask you, and a standing refusal or `(approve-refuse? call)` still
-applies.
+Who answers commands answers a security confirm about one too: a command
+naming a path outside the task's folder (say a read of the Go module cache),
+or built from what a tool returned. With `"judge"` the judge is asked first
+and you when it refuses; `"judge-auto"` (*The judge alone*) tells it nobody
+is watching and takes what it does not allow, or having no judge, as a no;
+`"allow"` (*Without asking*) runs it; `"ask"` asks you. What nodwyn refuses
+outright (a credential file, a send no binding allows, a key on a command
+line) stays refused whichever it is, and a write, a send out of the machine,
+a key's binding and an upload still ask you.
+
+**Each task's own.** `[approval] commands` is what a task starts with. New
+task's **Options** has a **Commands** select, kept for the next task as the
+judge is, and a task's own picker, beside its judge, changes it at any time, during a
+response too: from its next question, and a question about a command already
+waiting is answered again by the new choice, so choosing *The judge alone* or
+*Without asking* takes the card away. The choice is the task's: a resumed task
+keeps it, whatever Settings says by then. Only this computer, or a device or
+another nodwyn signed in with your passkey, chooses it.
 
 **What the judge used.** The judge reports each request's tokens, never its
 cost, and nodwyn records them in `jev.req` with the model that answered

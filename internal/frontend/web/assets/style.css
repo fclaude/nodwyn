@@ -897,6 +897,9 @@ select.input { height: 34px; padding: 0 8px; }
 .dont-ask input { margin: 0; }
 .dont-ask.on { color: var(--warn-ink); }
 .dont-ask[hidden] { display: none; }
+.commands-choice { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.commands-choice .input { width: auto; }
+.option > .commands-choice + .hint { padding-left: 0; }
 .worktree-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
 .worktree-toggle input { margin: 0; }
 .branch { font-size: 12px; color: var(--muted); }

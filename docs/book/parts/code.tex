@@ -700,14 +700,17 @@ judge and declines a security one without asking; in an unattended run
 with neither, it answers every confirm with no. Otherwise a person answers
 (line mode's \code{--no-confirm} answers no as a person would, in the
 front-end, and its \code{--yolo} is the task's Don't ask),
-and it is \code{personConfirmer} (\file{internal/core/approval.go}), which
-reads \code{approval.commands}. With \code{"judge"}, the default, an
-ordinary confirm that is not a write and carries no credential (no egress,
-binding proposal or upload) goes to the judge through the same
-\code{judgeCall}; if the judge refuses, fails or is not set up, the
-person is asked, with the judge's answer added to the prompt's reasons.
-With \code{"allow"} such a confirm is answered yes with the actor
-\code{setting}. Everything else, and everything with \code{"ask"}, goes
+and it is \code{approvalConfirmer} (\file{internal/core/approval.go}),
+which reads, at each confirm, the task's own choice of who answers its
+commands, else \code{approval.commands}. With \code{"judge"}, the
+default, a confirm that is not a write and carries no credential (no
+egress, binding proposal or upload), a security one about a command
+included, goes to the judge through the same \code{judgeCall}; if the
+judge refuses, fails or is not set up, the person is asked, with the
+judge's answer added to the prompt's reasons. With \code{"judge-auto"}
+the judge's no is the answer, and with \code{"allow"} such a confirm is
+answered yes with the actor \code{setting}. Everything else, and
+everything with \code{"ask"}, goes
 to the session, which implements it in \file{internal/core/confirm.go} as
 an event and a wait. Our \code{fs-edit} names a path, so it goes there:
 

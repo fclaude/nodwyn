@@ -38,7 +38,7 @@ import (
 // reach (the default denylist), and whatever could write it could write the
 // log itself.
 
-const indexVersion = 8
+const indexVersion = 9
 
 // markEvery is how many events apart the index notes where a line starts: a
 // page is read from the nearest mark before it, at most this many events
@@ -95,12 +95,12 @@ type resumeFold struct {
 	// Spend is what the requests so far cost, as knownSpend adds it.
 	Spend float64 `json:"spend,omitempty"`
 	// Latest are the latest records of the choices a resumed task keeps,
-	// wherever they are in the log: its model, judge, helpers and limits.
+	// wherever they are in the log: its model, judge, helpers, limits and who answers its commands.
 	Latest map[log.Kind]log.Event `json:"latest,omitempty"`
 }
 
 // keptChoices are the kinds whose latest record resumeFold keeps.
-var keptChoices = []log.Kind{log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits, log.KindSessionSchedule, log.KindScheduleRun, log.KindContextHandover}
+var keptChoices = []log.Kind{log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits, log.KindSessionCommands, log.KindSessionSchedule, log.KindScheduleRun, log.KindContextHandover}
 
 // observe folds one event in.
 func (r *resumeFold) observe(ev log.Event) {

@@ -173,16 +173,24 @@ const (
 	ApproveJudgeAuto = "judge-auto"
 )
 
+// CheckCommands says whether mode is one approval.commands takes, which a
+// task may also be given as its own (ADR 35, amended 2026-10-30).
+func CheckCommands(mode string) error {
+	switch mode {
+	case ApproveJudge, ApproveJudgeAuto, ApproveAsk, ApproveAllow:
+		return nil
+	}
+	return fmt.Errorf("must be %q, %q, %q or %q, got %q", ApproveJudge, ApproveJudgeAuto, ApproveAsk, ApproveAllow, mode)
+}
+
 func (a Approval) validate() error {
 	switch a.Writes {
 	case ApproveAllow, ApproveAsk:
 	default:
 		return fmt.Errorf("approval.writes must be %q or %q, got %q", ApproveAllow, ApproveAsk, a.Writes)
 	}
-	switch a.Commands {
-	case ApproveJudge, ApproveJudgeAuto, ApproveAsk, ApproveAllow:
-	default:
-		return fmt.Errorf("approval.commands must be %q, %q, %q or %q, got %q", ApproveJudge, ApproveJudgeAuto, ApproveAsk, ApproveAllow, a.Commands)
+	if err := CheckCommands(a.Commands); err != nil {
+		return fmt.Errorf("approval.commands %w", err)
 	}
 	return nil
 }

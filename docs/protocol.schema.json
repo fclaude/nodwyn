@@ -471,6 +471,9 @@
     },
     "config.NewTaskForHost": {
       "properties": {
+        "commands": {
+          "type": "string"
+        },
         "effort": {
           "type": "string"
         },
@@ -2677,6 +2680,20 @@
       ],
       "type": "object"
     },
+    "log.SessionCommands": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "commands": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "commands"
+      ],
+      "type": "object"
+    },
     "log.SessionDelegates": {
       "properties": {
         "actor": {
@@ -3620,6 +3637,9 @@
     "payload.session.archive": {
       "$ref": "#/$defs/log.SessionArchive"
     },
+    "payload.session.commands": {
+      "$ref": "#/$defs/log.SessionCommands"
+    },
     "payload.session.delegates": {
       "$ref": "#/$defs/log.SessionDelegates"
     },
@@ -3929,6 +3949,9 @@
         },
         {
           "$ref": "#/$defs/request.session.close"
+        },
+        {
+          "$ref": "#/$defs/request.session.commands.set"
         },
         {
           "$ref": "#/$defs/request.session.delete"
@@ -5857,6 +5880,37 @@
       ],
       "type": "object"
     },
+    "request.session.commands.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.commands.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.commandsSetParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.delete": {
       "properties": {
         "id": {
@@ -7695,6 +7749,9 @@
       "required": [],
       "type": "object"
     },
+    "result.session.commands.set": {
+      "$ref": "#/$defs/rpc.commandsState"
+    },
     "result.session.delete": {
       "properties": {},
       "required": [],
@@ -8348,6 +8405,35 @@
         "actions",
         "wall_ns",
         "cost"
+      ],
+      "type": "object"
+    },
+    "rpc.commandsSetParams": {
+      "properties": {
+        "commands": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "commands"
+      ],
+      "type": "object"
+    },
+    "rpc.commandsState": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "commands": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "commands"
       ],
       "type": "object"
     },
@@ -9623,6 +9709,9 @@
     },
     "rpc.openParams": {
       "properties": {
+        "commands": {
+          "type": "string"
+        },
         "delegates": {
           "items": {
             "type": "string"
@@ -10358,6 +10447,9 @@
             "null"
           ]
         },
+        "answering": {
+          "$ref": "#/$defs/rpc.commandsState"
+        },
         "approve_actor": {
           "type": "string"
         },
@@ -10474,6 +10566,7 @@
         "git",
         "mcp",
         "judge",
+        "answering",
         "delegates",
         "limits"
       ],
@@ -12423,6 +12516,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.SessionArchive"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "session.commands"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionCommands"
             },
             "seq": {
               "minimum": 0,

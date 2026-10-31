@@ -180,6 +180,9 @@ type sessionDetails struct {
 	// Judge is the judge the task asks now (ADR 47); its server is empty
 	// when it has none.
 	Judge core.JudgeState `json:"judge"`
+	// Answering is who answers the task's commands now (ADR 35, amended
+	// 2026-10-30): its own choice, else approval.commands'.
+	Answering commandsState `json:"answering"`
 	// Delegates are the models the task's model may hand work to (ADR 27,
 	// amended 2026-10-09); none unless the task was opened with some.
 	Delegates []string `json:"delegates"`
@@ -196,11 +199,12 @@ func (s *server) details(session *core.Session) sessionDetails {
 	trust, actor := session.TurnApproval()
 	all, allActor := session.ApproveAll()
 	taskLimits, _ := session.TaskLimits()
+	mode, modeActor := session.Commands()
 	var runSpend *float64
 	if cost, ok := session.RunSpend(); ok {
 		runSpend = &cost
 	}
-	return sessionDetails{RunSpend: runSpend, Limits: taskLimits, Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge(), Delegates: orEmpty(session.Delegates())}
+	return sessionDetails{RunSpend: runSpend, Limits: taskLimits, Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge(), Answering: commandsState{Commands: mode, Actor: modeActor}, Delegates: orEmpty(session.Delegates())}
 }
 
 func orEmpty[T any](list []T) []T {
@@ -308,6 +312,7 @@ var methodTable = map[string]handler{
 	"session.resume":               (*server).resume,
 	"session.model.set":            (*server).model,
 	"session.judge.set":            (*server).judge,
+	"session.commands.set":         (*server).commandsSet,
 	"session.limits.set":           (*server).limitsSet,
 	"session.info":                 (*server).info,
 	"session.totals":               (*server).totals,
@@ -466,7 +471,7 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 // repository with a commit. Both take the same model choice (ADR 40).
 func (s *server) open(req request, client *peer) (any, *rpcError) {
 	var p openParams
-	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort", "judge", "delegates", "limits"); err != nil {
+	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort", "judge", "delegates", "limits", "commands"); err != nil {
 		return nil, err
 	}
 	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort, Actor: client.actor}
@@ -498,6 +503,18 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 		}
 		limits = &core.LimitsChoice{Limits: *p.Limits, Actor: client.actor}
 	}
+	var commands *core.CommandsChoice
+	if p.Commands != "" {
+		// Who answers a task's commands decides what it does unasked: this
+		// computer's choice, as its judge is (ADR 30).
+		if why := client.refuseDevice("Who answers a task's commands is chosen on the computer nodwyn runs on, not from a paired device"); why != nil {
+			return nil, why
+		}
+		if err := config.CheckCommands(p.Commands); err != nil {
+			return nil, failure(-32602, "commands "+err.Error())
+		}
+		commands = &core.CommandsChoice{Mode: p.Commands, Actor: client.actor}
+	}
 	if err := s.folder("repo", p.Repo); err != nil {
 		return nil, err
 	}
@@ -510,6 +527,7 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	options.Judge = judge
 	options.Delegates = delegates
 	options.Limits = limits
+	options.Commands = commands
 	options.Worktree = req.Method == "worktree.open"
 	var session *core.Session
 	var err error
@@ -614,6 +632,35 @@ func (s *server) judge(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	return state, nil
+}
+
+// commandsSet is session.commands.set: who answers a task's commands, from
+// its next confirm (ADR 35, amended 2026-10-30). It decides what the task
+// does unasked, so it is this computer's choice, as the judge is (ADR 30); a
+// confirm already asked keeps waiting for its answer.
+func (s *server) commandsSet(req request, client *peer) (any, *rpcError) {
+	var p commandsSetParams
+	if err := params(req.Params, &p, "id", "commands"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	if why := client.refuseDevice("Who answers a task's commands is chosen on the computer nodwyn runs on, not from a paired device"); why != nil {
+		return nil, why
+	}
+	if err := config.CheckCommands(p.Commands); err != nil {
+		return nil, failure(-32602, "commands "+err.Error())
+	}
+	owned, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	if err := owned.session.SetCommands(p.Commands, client.actor); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	mode, actor := owned.session.Commands()
+	return commandsState{Commands: mode, Actor: actor}, nil
 }
 
 // limitsSet is session.limits.set: it replaces a task's limits, from its

@@ -108,6 +108,13 @@ type Session struct {
 	taskLimits  budget.Task
 	limitsActor string
 	limitsMu    sync.Mutex
+	// commands is who answers the task's commands when it was given its own
+	// (ADR 35, amended 2026-10-30), as commandsActor chose it; "" is
+	// config.toml's approval.commands. Under mu, read at each confirm.
+	// commandsMu serializes changes, as limitsMu does.
+	commands      string
+	commandsActor string
+	commandsMu    sync.Mutex
 	// The plan a turn must record before it may do anything irreversible
 	// (SendPlanned; plan.go).
 	planRequired atomic.Bool

@@ -493,6 +493,15 @@ type SessionDelegates struct {
 	Models []string `json:"models"`
 }
 
+// SessionCommands records who answers a task's commands, chosen as it
+// opened or since (ADR 35, amended 2026-10-30): one of approval.commands'
+// values, which replaces config.toml's for this task. The latest record
+// counts, and resuming restores it.
+type SessionCommands struct {
+	Actor    string `json:"actor,omitempty"`
+	Commands string `json:"commands"`
+}
+
 // SessionLimits records a task's limits as a person set them (ADR 49,
 // amended 2026-10-27): each one left out is none, and a task without a
 // record has none. The latest record counts, and resuming restores it. A

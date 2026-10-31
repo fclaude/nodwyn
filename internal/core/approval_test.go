@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
@@ -238,21 +239,25 @@ func outsideTurn(id string) fake.Turn {
 	return toolTurn(id, "shell-exec", map[string]any{"cmd": "cat", "args": []any{"/opt/nodwyn-test-outside/notes"}})
 }
 
-// approval.commands = "judge-auto" puts a security confirm about a command (a
-// path outside the repository, from the tarro session 792638a8, where the
-// person was asked about every read of the module cache) to the judge, and
-// nobody is asked when it allows; with "judge" the person is asked, unasked
-// the judge.
-func TestJudgeAutoAnswersSecurityConfirms(t *testing.T) {
+// Who answers commands answers a security confirm about one too (ADR 35,
+// amended 2026-10-30): a path outside the repository, from the tarro
+// sessions 792638a8 and 34fd6421, where the person was asked about reads of
+// the module cache whichever answer they had chosen. With the judge, then
+// the person, the judge is asked first; alone, it decides; without asking,
+// nobody is asked; and asking asks.
+func TestCommandsAnswerSecurityConfirms(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		mode     string
 		asked    int
 		judged   string
 		decision string
+		actor    string
 	}{
-		{config.ApproveJudgeAuto, 0, "noul choice", "yes"},
-		{config.ApproveJudge, 1, "noul", "no"},
+		{config.ApproveJudgeAuto, 0, "noul choice", "yes", "judge"},
+		{config.ApproveJudge, 0, "noul choice", "yes", "judge"},
+		{config.ApproveAllow, 0, "noul", "yes", "setting"},
+		{config.ApproveAsk, 1, "noul", "no", ""},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			t.Parallel()
@@ -268,10 +273,91 @@ func TestJudgeAutoAnswersSecurityConfirms(t *testing.T) {
 			if got := strings.Join(judge.asked(), " "); got != tc.judged {
 				t.Fatalf("judge asked %q, want %q", got, tc.judged)
 			}
-			if d := r.decision("shell-exec", ""); d.Answer != tc.decision {
+			if d := r.decision("shell-exec", ""); d.Answer != tc.decision || (tc.actor != "" && d.Actor != tc.actor) {
 				t.Fatalf("decision: %+v", d)
 			}
 		})
+	}
+}
+
+// With the judge, then the person, a security confirm the judge does not
+// allow goes to the person, told what the judge answered.
+func TestJudgeThenPersonAsksAboutARefusedSecurityConfirm(t *testing.T) {
+	t.Parallel()
+	judge := newFakeJudge(t, noul(0.2), choice(0.1))
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) {
+		o.NoConfirm = false
+		o.Config.Approval.Commands = config.ApproveJudge
+	}, outsideTurn("1"), fake.Turn{Content: "done"})
+	asked := r.asked("run it", "y")
+	if len(asked) != 1 || !asked[0].Prompt.Security || !strings.Contains(strings.Join(asked[0].Prompt.Reasons, "; "), "the judge did not allow it") {
+		t.Fatalf("prompts %+v", asked)
+	}
+	if d := r.decision("shell-exec", ""); d.Answer != "yes" {
+		t.Fatalf("decision: %+v", d)
+	}
+}
+
+// A task's own choice of who answers its commands replaces the setting, from
+// the next confirm once changed.
+func TestATasksCommandsReplaceTheSetting(t *testing.T) {
+	t.Parallel()
+	r := judgedRigWith(t, nil, config.JudgeContentPlan, "", func(o *Options) {
+		o.NoConfirm = false
+		o.Config.Approval.Commands = config.ApproveAsk
+		o.Commands = &CommandsChoice{Mode: config.ApproveAllow, Actor: "opener"}
+	}, outsideTurn("1"), fake.Turn{Content: "done"})
+	if mode, actor := r.s.Commands(); mode != config.ApproveAllow || actor != "opener" {
+		t.Fatalf("commands %q by %q", mode, actor)
+	}
+	if asked := r.asked("run it", "n"); len(asked) != 0 {
+		t.Fatalf("prompts %+v", asked)
+	}
+	if d := r.decision("shell-exec", ""); d.Answer != "yes" || d.Actor != "setting" {
+		t.Fatalf("decision: %+v", d)
+	}
+	if err := r.s.SetCommands("sometimes", "desk"); err == nil {
+		t.Fatal("a mode approval.commands does not take was taken")
+	}
+}
+
+// Choosing who answers commands while a question about one waits for the
+// person answers it by the new choice: the card goes, the command runs, and
+// nobody answered it.
+func TestChoosingCommandsAnswersTheQuestionWaiting(t *testing.T) {
+	t.Parallel()
+	r := judgedRigWith(t, nil, config.JudgeContentPlan, "", func(o *Options) {
+		o.NoConfirm = false
+		o.Config.Approval.Commands = config.ApproveAsk
+	}, outsideTurn("1"), fake.Turn{Content: "done"})
+	if err := r.s.Send("run it"); err != nil {
+		t.Fatal(err)
+	}
+	timeout := time.After(idleWait)
+	asked, closed := "", ""
+	for done := false; !done; {
+		select {
+		case ev := <-r.s.Events():
+			switch ev.Kind {
+			case event.PromptConfirm:
+				asked = ev.Payload.(event.Confirm).ID
+				if err := r.s.SetCommands(config.ApproveAllow, "desk"); err != nil {
+					t.Fatal(err)
+				}
+			case event.PromptClosed:
+				closed = ev.Payload.(event.Closed).ID
+			case event.Status:
+				done = ev.Payload.(event.StatusInfo).State == "idle"
+			}
+		case <-timeout:
+			t.Fatal("no idle")
+		}
+	}
+	if asked == "" || closed != asked {
+		t.Fatalf("asked %q, closed %q", asked, closed)
+	}
+	if d := r.decision("shell-exec", ""); d.Answer != "yes" || d.Actor != "setting" || d.PromptID != asked {
+		t.Fatalf("decision: %+v", d)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -196,5 +197,47 @@ func TestAnOldLimitsRecordReadsAsNone(t *testing.T) {
 		if !found || rec.Task != (budget.Task{}) {
 			t.Fatalf("%s read as %+v (found %v)", raw, rec, found)
 		}
+	}
+}
+
+// Who answers a task's commands is the task's once chosen: recorded as it
+// opens and as it changes, and kept when the task is resumed, whatever
+// approval.commands says by then.
+func TestTaskCommandsOutliveResume(t *testing.T) {
+	t.Parallel()
+	o := diskOptions(t)
+	o.Provider = waitingProvider{}
+	o.Config.Approval.Commands = config.ApproveAsk
+	o.Commands = &CommandsChoice{Mode: config.ApproveJudgeAuto, Actor: "opener"}
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := s.ID()
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	o.Repo, o.Commands = "", nil
+	o.Config.Approval.Commands = config.ApproveJudge
+	s, err = Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode, actor := s.Commands(); mode != config.ApproveJudgeAuto || actor != "opener" {
+		t.Fatalf("resumed: %q by %q", mode, actor)
+	}
+	if err := s.SetCommands(config.ApproveAllow, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if mode, actor := s.Commands(); mode != config.ApproveAllow || actor != "desk" {
+		t.Fatalf("resumed after the change: %q by %q", mode, actor)
 	}
 }

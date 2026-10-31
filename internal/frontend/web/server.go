@@ -895,13 +895,14 @@ func (b *bridge) tierOf(method string) tier {
 	case "session.approve_all", "session.limits.set":
 		return tierAnswer
 	// Choosing a conversation's model, or the judge its plans and commands
-	// go to, decides where its content goes next (ADR 40, ADR 47); setting
+	// go to, decides where its content goes next (ADR 40, ADR 47), and who
+	// answers its commands what it does unasked (ADR 35); setting
 	// a task's schedule decides what runs with nobody watching (ADR 49). A
 	// key the model asks for (session.secret) and the keychain's passphrase
 	// are secrets the person types, and the passphrase is its own proof.
 	// The folder last picked, and the choices a new task starts with, only
 	// remember.
-	case "session.model.set", "session.judge.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "newtask.last", "startup.read", "trust.read":
+	case "session.model.set", "session.judge.set", "session.commands.set", "schedule.set", "session.secret", "keychain.unlock", "workspace.active", "newtask.last", "startup.read", "trust.read":
 		return tierPerson
 	// A workflow decides what runs with nobody watching, as a schedule does,
 	// and its source is asked with this computer's keys (ADR 53 §9).

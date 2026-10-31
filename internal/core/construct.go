@@ -80,6 +80,10 @@ type Options struct {
 	// none set, is none. A session resumed takes back the latest its log
 	// recorded instead.
 	Limits *LimitsChoice
+	// Commands is who answers the task's commands (ADR 35, amended
+	// 2026-10-30); nil is config.toml's approval.commands. A session
+	// resumed takes back the latest its log recorded instead.
+	Commands *CommandsChoice
 	// EventBuffer is the events channel capacity (default 256).
 	EventBuffer int
 	// LogWriter overrides the session log destination (tests).
@@ -137,6 +141,9 @@ func New(o Options) (*Session, error) {
 	}
 	if o.Limits != nil {
 		s.taskLimits, s.limitsActor = o.Limits.Limits, o.Limits.Actor
+	}
+	if o.Commands != nil {
+		s.commands, s.commandsActor = o.Commands.Mode, o.Commands.Actor
 	}
 	// The worktree comes first: it is the root everything else loads from
 	// (init.scm, allow.toml). A session that never starts
@@ -199,6 +206,11 @@ func New(o Options) (*Session, error) {
 		// schedule does for every run, keeps them (ADR 49).
 		_, err = s.Record(log.KindSessionLimits, log.SessionLimits{Actor: s.limitsActor, Task: s.taskLimits})
 	}
+	if err == nil && s.commands != "" {
+		// A task opened with its own answer to commands records it, so
+		// resuming it keeps it whatever approval.commands says later.
+		_, err = s.Record(log.KindSessionCommands, log.SessionCommands{Actor: s.commandsActor, Commands: s.commands})
+	}
 	if c := s.opts.Model; err == nil && (c.Name != loop.ControlModel || s.effort != "") {
 		// A conversation opened on a chosen model, or asking for an effort,
 		// records the choice as a switch does, so resuming it talks to that
@@ -235,6 +247,11 @@ func resolveOptions(o Options) (Options, error) {
 	if o.Limits != nil {
 		if err := o.Limits.Limits.Validate(); err != nil {
 			return Options{}, err
+		}
+	}
+	if o.Commands != nil {
+		if err := config.CheckCommands(o.Commands.Mode); err != nil {
+			return Options{}, fmt.Errorf("commands %w", err)
 		}
 	}
 	// The choice is resolved once, here, so a refusal says what is wrong
@@ -625,7 +642,7 @@ func (s *Session) initialize() (err error) {
 	case o.Unattended:
 		confirmer = guard.DenyAll
 	default:
-		confirmer = s.personConfirmer()
+		confirmer = approvalConfirmer{s: s}
 	}
 	g.SetConfirmer(confirmer)
 	return nil

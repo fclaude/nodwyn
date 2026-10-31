@@ -146,6 +146,9 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if rec, found := lastLimits(choices); found {
 		s.taskLimits, s.limitsActor = rec.Task, rec.Actor
 	}
+	if rec, found := lastCommands(choices); found {
+		s.commands, s.commandsActor = rec.Commands, rec.Actor
+	}
 	if o.Managed != nil {
 		s.taskLimits, s.limitsActor = o.Limits.Limits, "managed"
 		s.judge, s.delegates = "", nil

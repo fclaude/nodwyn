@@ -12,7 +12,7 @@ import (
 
 // NewTaskChoices is what the console chose last for a new task, which the
 // next one starts with: the host it runs on, and for each host the model,
-// effort, judge, helpers and worktree picked there. A task's limits are not
+// effort, judge, who answers commands, helpers and worktree picked there. A task's limits are not
 // among them: a task starts with none (ADR 49, amended 2026-10-27), and a
 // file that still has no_limits loads without it. A browser keeps
 // what it stores for one origin, so the app's window, another browser or a
@@ -36,6 +36,10 @@ type NewTaskForHost struct {
 	Judge    *string          `toml:"judge,omitempty" json:"judge,omitempty"`
 	Helpers  []string         `toml:"helpers,omitempty" json:"helpers,omitempty"`
 	Worktree []WorktreeChoice `toml:"worktree,omitempty" json:"worktree,omitempty"`
+	// Commands is who answers the task's commands, one of
+	// approval.commands' values (ADR 35, amended 2026-10-30); empty is
+	// Settings'.
+	Commands string `toml:"commands,omitempty" json:"commands,omitempty"`
 }
 
 // WorktreeChoice is whether a new task in Folder starts in a worktree of it.
@@ -94,6 +98,11 @@ func CheckNewTask(c NewTaskChoices) error {
 		seen[h.Host] = true
 		if long(h.Host) || long(h.Model) || long(h.Effort) || h.Judge != nil && long(*h.Judge) {
 			return errors.New("new task: a name is too long")
+		}
+		if h.Commands != "" {
+			if err := CheckCommands(h.Commands); err != nil {
+				return fmt.Errorf("new task: commands %w", err)
+			}
 		}
 		if h.Effort != "" && h.Model == "" {
 			return errors.New("new task: an effort needs its model")
