@@ -1114,10 +1114,13 @@ there is a link): its General, Models and Judge tabs, read from that host and
 saved there over its socket, named as that host's. The limits, the
 default model and the models of its list change from here; its default
 judge is chosen among the host's own, as its default model is; its
-approvals and policy are shown and cannot be chosen, nor can what the
-judge sees, how sure it must be or its timeout, and its providers have no
-control, since those decide what its tasks may do unasked or where their
-content goes, and wait for a touch of your passkey that a link cannot give. They change only
+approvals (Writing files, Running commands, Don't ask) are chosen from
+here too, and a choice that lets a task do more unasked asks for a second
+click first (the check is this window's, to stop a misclick, not a stolen
+link's). The policy, what the judge sees, how sure it must be and its
+timeout are shown and cannot be chosen, and its providers have no control,
+since those decide where a task's content goes and wait for a touch of your
+passkey that a link cannot give. They change only
 when the link makes your choices there and the host lets it: a host whose
 console was started with `nodwyn ui --no-link-settings` (or `nodwyn app
 --no-link-settings`) refuses every link its settings. Otherwise the page

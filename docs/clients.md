@@ -204,8 +204,7 @@ needs. The console's column is this computer's, and that of a device signed
 in with the person's passkey after a touch of it (ADR 30, amended
 2026-10-17); a device paired by a plain invitation has none of it. Another
 nodwyn linked here with the person's passkey has the first row for a host's
-limits, models and default model, with no touch (not its approvals, policy,
-judge's tuning or providers, which wait for a touch; its default judge is chosen among the host's own), unless this computer's console was started with
+limits, models and default model, with no touch (its approvals, loosening ones after a second click in the window, and its default judge, chosen among the host's own; not its policy, the judge's tuning or providers, which wait for a touch), unless this computer's console was started with
 `--no-link-settings` (ADR 54, amended 2026-10-23), and none of the rest.
 
 | | Console | TUI | Line mode | CLI |

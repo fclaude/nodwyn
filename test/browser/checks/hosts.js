@@ -389,11 +389,20 @@ check(async () => {
   await shows(page, "main.settings-page h1", "workshop's settings");
   assert.strictEqual(await page.locator("#host-settings-refused").count(), 0, "workshop's Settings refuse the vouched link");
   assert.deepStrictEqual(await page.$$eval("main.settings-page [role=tab]", (tabs) => tabs.map((t) => t.textContent.trim())), ["General", "Models", "Judge"], "workshop's Settings tabs");
-  // What would widen what a task may do waits for the touch a link cannot
-  // give: the approvals are shown and cannot be chosen, and so is never asking
-  // about an upload.
-  assert.strictEqual(await page.locator("[id='set-approval.writes-ask']").isDisabled(), true, "a link can choose how workshop asks before writes");
-  assert.strictEqual(await page.locator("[id='set-approval.dont_ask-true']").isDisabled(), true, "a link can switch Don't ask on at workshop");
+  // The approvals are the link's to choose, and this window asks once more
+  // before it sends one that lets a task do more unasked; never asking about
+  // an upload to Google Docs still waits for the touch a link cannot give.
+  assert.strictEqual(await page.locator("[id='set-approval.writes-ask']").isDisabled(), false, "a link cannot choose how workshop asks before writes");
+  assert.strictEqual(await page.locator("[id='set-docs.google_upload-allow']").isDisabled(), true, "a link can allow uploads to Google Docs at workshop");
+  await page.click("[id='set-approval.commands-judge-auto']");
+  await page.click(".save-bar .btn.accent");
+  await shows(page, ".save-bar", "Let tasks on workshop run commands the judge allows");
+  assert.strictEqual(of(sent.workshop, "settings.write").length, 0, "a loosening was sent before it was confirmed");
+  await page.click(".save-bar .btn.accent");
+  await until("workshop's approval to be saved", () => of(sent.workshop, "settings.write").length === 1);
+  assert.deepStrictEqual(of(sent.workshop, "settings.write")[0], { set: { "approval.commands": "judge-auto" } }, "the approval went to workshop");
+  assert.strictEqual(of(sent.local, "settings.write").length, 0, "workshop's approval went to the laptop");
+  await until("the save bar gone", async () => await page.locator(".save-bar").isHidden());
   const configOf = (w) => fs.readFileSync(`${w.root}/config/nodwyn/config.toml`, "utf8");
   const laptopConfig = configOf(laptop);
   await page.click("#advanced > summary");
@@ -402,7 +411,7 @@ check(async () => {
   await page.screenshot({ path: `${out}/workshop-settings.png` });
   await page.click(".save-bar .btn.accent");
   await until("workshop's config.toml to wait 3 minutes for a command", () => /\[loop\][^[]*shell_timeout = "3m"/.test(configOf(workshop)));
-  assert.deepStrictEqual(of(sent.workshop, "settings.write"), [{ set: { "loop.shell_timeout": "3m" } }], "the setting went to workshop");
+  assert.deepStrictEqual(of(sent.workshop, "settings.write")[1], { set: { "loop.shell_timeout": "3m" } }, "the setting went to workshop");
   assert.strictEqual(of(sent.local, "settings.write").length, 0, "workshop's setting went to the laptop");
   assert.strictEqual(configOf(laptop), laptopConfig, "workshop's setting changed the laptop's config.toml");
   await until("the save bar gone", async () => await page.locator(".save-bar").isHidden());
@@ -435,7 +444,7 @@ check(async () => {
   assert.strictEqual(await page.locator("[id='set-judge.approve_threshold']").isDisabled(), true, "a link can change how sure workshop's judge must be");
   await page.click("main.settings-page [role=tab]:has-text('Models')");
   await page.waitForSelector("#settings-panel-models");
-  step("a link vouched for by the person's passkey changes workshop's settings and default model from this window, and not the laptop's, and cannot choose its approvals");
+  step("a link vouched for by the person's passkey changes workshop's settings and default model from this window, and not the laptop's, and its approvals after a second click");
 
   // The models of workshop's list are the link's to add, change and remove,
   // among the providers workshop has; the providers themselves are not.
@@ -492,7 +501,7 @@ check(async () => {
   await line(remoteUI, /(Browser view)/, "stderr");
   await page.waitForSelector("#host-settings-refused:has-text('workshop does not let other nodwyns change its settings')", { timeout: 30000 });
   assert.strictEqual(await page.locator("main.settings-page [role=tablist], main.settings-page .settings-panel input, main.settings-page .settings-panel button").count(), 0, "workshop's Settings show controls it refuses");
-  assert.strictEqual(of(sent.workshop, "settings.write").length, 1, "a refused link sent workshop a setting");
+  assert.strictEqual(of(sent.workshop, "settings.write").length, 2, "a refused link sent workshop a setting");
   await page.screenshot({ path: `${out}/workshop-settings-refused.png` });
   step("workshop started with --no-link-settings refuses the link its settings, and Settings say so");
 });

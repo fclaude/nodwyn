@@ -287,7 +287,7 @@ const hostTabs = tabs.filter((t) => ["general", "models", "judge"].includes(t.id
 // window change: what a task may do without asking, the policy and the
 // judge widen it, so they wait for a touch of the passkey at the host's own
 // console (the host's linkWidens refuses them).
-const hostLocked = (ctx, name) => !!ctx.host && name !== "judge.server" && /^(approval|policy|judge)\./.test(name);
+const hostLocked = (ctx, name) => !!ctx.host && name !== "judge.server" && /^(policy|judge)\./.test(name);
 // moved are tabs that held one rarely used section each and were folded into
 // General's Advanced fold; their addresses still open it.
 const moved = new Set(["context", "tools"]);
@@ -379,7 +379,7 @@ export function renderSettings(root, ctx) {
       h("h1", {}, host ? `${host}'s settings` : "Settings"),
       hostPicker(ctx),
       host
-        ? h("p", { class: "lede", id: "save-rule" }, `The settings tasks on ${host} start with, read from ${host} and saved there. A choice made here waits in the bar at the foot of the page and is saved with the others; a model is saved in its own form. What a task may do without asking (approvals, the policy, what the judge sees and how sure it must be), the providers, the keychain, credentials and devices are changed in ${host}'s own console, after a touch of your passkey.`)
+        ? h("p", { class: "lede", id: "save-rule" }, `The settings tasks on ${host} start with, read from ${host} and saved there. A choice made here waits in the bar at the foot of the page and is saved with the others; a model is saved in its own form. The policy, what the judge sees and how sure it must be, the providers, the keychain, credentials and devices are changed in ${host}'s own console, after a touch of your passkey.`)
         : h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys, the passphrase and starting at login act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
       refused ? hostRefusal(ctx) : null,
       !host && known && !editable(conn) ? h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
@@ -464,6 +464,19 @@ function passkeyAddress(address) {
   }
 }
 
+// loosening says which of the approvals waiting in the bar let a task do
+// more unasked than the host does now. A linked host has them saved without
+// the touch of a passkey, so this window asks once more before sending them;
+// the check is this console's and guards a misclick, not a stolen link.
+let confirming = false;
+function loosening(set) {
+  const out = [];
+  if (set["approval.writes"] === "allow") out.push("write files without asking");
+  if (["allow", "judge-auto"].includes(set["approval.commands"])) out.push(set["approval.commands"] === "allow" ? "run commands without asking" : "run commands the judge allows, with nobody asked");
+  if (set["approval.dont_ask"] === true) out.push("offer Don't ask in every task");
+  return out;
+}
+
 // drawBar shows the unsaved edits and saves them together. The config.toml
 // settings go in one settings.write, so changes that only make sense together
 // (a soft limit above the old hard one) are judged together; the default
@@ -475,13 +488,15 @@ function drawBar(bar, ctx, redraw) {
   bar.hidden = !editable(conn) || (count === 0 && errors.length === 0 && !saveError);
   if (bar.hidden) return;
   const now = "approval.dont_ask" in set ? ", but follow Don't ask at once" : "";
-  const message = saveError || errors[0] || `${count} unsaved change${count === 1 ? "" : "s"}. Tasks you start afterwards use them; open tasks keep theirs${now}.`;
+  const risky = ctx.host ? loosening(set) : [];
+  if (!risky.length) confirming = false;
+  const message = confirming ? `Let tasks on ${ctx.host} ${risky.join(", ")}? It is saved there now, with no touch of your passkey.` : saveError || errors[0] || `${count} unsaved change${count === 1 ? "" : "s"}. Tasks you start afterwards use them; open tasks keep theirs${now}.`;
   bar.replaceChildren(
     h("p", { class: saveError || errors.length ? "error" : "", role: saveError || errors.length ? "alert" : "status" }, message),
     h(
       "div",
       { class: "row-actions" },
-      h("button", { type: "button", class: "btn ghost", onclick: () => { edits.clear(); discardDefault(); saveError = ""; redraw(); } }, "Discard"),
+      h("button", { type: "button", class: "btn ghost", onclick: () => { edits.clear(); discardDefault(); saveError = ""; confirming = false; redraw(); } }, "Discard"),
       h(
         "button",
         {
@@ -489,6 +504,12 @@ function drawBar(bar, ctx, redraw) {
           class: "btn accent",
           disabled: saving || count === 0 || errors.length > 0,
           onclick: async () => {
+            if (risky.length && !confirming) {
+              confirming = true;
+              drawBar(bar, ctx, redraw);
+              return;
+            }
+            confirming = false;
             saving = true;
             saveError = "";
             drawBar(bar, ctx, redraw);
@@ -518,7 +539,7 @@ function drawBar(bar, ctx, redraw) {
             redraw();
           },
         },
-        saving ? "Saving…" : "Save",
+        saving ? "Saving…" : confirming ? "Yes, save" : "Save",
       ),
     ),
   );

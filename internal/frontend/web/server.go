@@ -971,11 +971,11 @@ var linkSettings = map[string]bool{
 	"settings.write": true, "settings.docs.write": true, "settings.control.write": true, "settings.model.write": true, "settings.model.remove": true, "models.test": true,
 }
 
-// widening is the part of Settings that decides what a task may do without
-// asking, or what the judge and the transport allow: a link's token is
+// widening is the part of Settings that decides what the judge and the
+// transport allow: a link's token is
 // kept on another computer, so it is not given these without the touch it
 // cannot give (ADR 54, amended 2026-10-23).
-var widening = []string{"approval.", "policy.", "judge."}
+var widening = []string{"policy.", "judge."}
 
 // linkMay are the settings under widening that a link may still change:
 // the default judge is chosen among the judges the host's own console set

@@ -246,12 +246,12 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	}
 	// What would widen what a task may do waits for a touch, which a link
 	// cannot give, even in a call that also holds a setting it may change.
-	for _, set := range []map[string]any{{"approval.dont_ask": true}, {"policy.allow_insecure_http": true}, {"judge.content": "full"}, {"judge.server": "local", "judge.timeout": "9s"}, {"loop.shell_timeout": "4m", "approval.writes": "ask"}} {
+	for _, set := range []map[string]any{{"policy.allow_insecure_http": true}, {"judge.content": "full"}, {"judge.server": "local", "judge.timeout": "9s"}, {"loop.shell_timeout": "4m", "policy.allow_insecure_http": true}} {
 		if err := call(conn, "settings.write", map[string]any{"set": set}, &settings); err == nil || !strings.Contains(err.Error(), "widens what this host's tasks may do") {
 			t.Errorf("the vouched link's settings.write of %v: %v", set, err)
 		}
 	}
-	if written, err := os.ReadFile(remotePaths.ConfigFile); err != nil || bytes.Contains(written, []byte("dont_ask")) || bytes.Contains(written, []byte(`"4m"`)) || bytes.Contains(written, []byte(`writes = "ask"`)) {
+	if written, err := os.ReadFile(remotePaths.ConfigFile); err != nil || bytes.Contains(written, []byte("allow_insecure_http")) || bytes.Contains(written, []byte(`"4m"`)) {
 		t.Fatalf("a refused write changed workshop's config.toml: %s %v", written, err)
 	}
 	if err := call(conn, "settings.docs.write", map[string]any{"google_upload": "allow"}, &settings); err == nil || !strings.Contains(err.Error(), "docs.google_upload") {
@@ -502,7 +502,7 @@ func TestALinkChangesTheHostsSettings(t *testing.T) {
 }
 
 // A link changes the settings that cannot widen what a task may do, and none
-// of the approvals, the policy or the judge's tuning (the default judge is
+// of the policy or the judge's tuning (the default judge is
 // chosen among the host's own, as its default model is), nor an upload to Google Docs
 // that is never asked about (ADR 54, amended 2026-10-23).
 func TestLinkWidens(t *testing.T) {
@@ -512,8 +512,8 @@ func TestLinkWidens(t *testing.T) {
 		{"a timeout", "settings.write", `{"set":{"loop.request_timeout":"20m","loop.shell_timeout":"2m"}}`, ""},
 		{"a notice", "settings.write", `{"set":{"notify.desktop":true,"mcp.runtime":null}}`, ""},
 		{"a window", "settings.write", `{"set":{"window.high_water":9000}}`, ""},
-		{"an approval", "settings.write", `{"set":{"approval.commands":"ask"}}`, "approval.commands"},
-		{"Don't ask taken away", "settings.write", `{"set":{"approval.dont_ask":null}}`, "approval.dont_ask"},
+		{"an approval", "settings.write", `{"set":{"approval.commands":"judge-auto"}}`, ""},
+		{"Don't ask offered", "settings.write", `{"set":{"approval.dont_ask":true}}`, ""},
 		{"the policy", "settings.write", `{"set":{"policy.allow_insecure_http":false}}`, "policy.allow_insecure_http"},
 		{"the judge", "settings.write", `{"set":{"notify.desktop":true,"judge.approve_threshold":0.5}}`, "judge.approve_threshold"},
 		{"the default judge", "settings.write", `{"set":{"judge.server":"jev"}}`, ""},

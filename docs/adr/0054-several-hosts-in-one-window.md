@@ -374,3 +374,24 @@ themselves are still set up in the host's own console.
 **Evidence.** `TestLinkWidens` and the vouched-link test in `hosts_test.go`;
 the `hosts` browser check sees the Judge tab on workshop with the default-judge
 picker enabled and what the judge sees and its threshold disabled.
+
+## Amendment 2026-10-30: a linked host's approvals are the link's to choose
+
+The person could not change how a linked host asks about writes and commands
+from this window, although the same window already chooses a task's model and
+judge on that host and its default judge. A link that is the person's now
+changes `approval.*` (`approval.writes`, `approval.commands`,
+`approval.dont_ask`) with no touch. This widens what a stolen link token can
+do: it could set the host to run commands without asking. The person chose
+that trade; what bounds it is the same as for the rest of a link's settings:
+the host's console started with `--no-link-settings` refuses all of it, the
+daemon still refuses `session.approve_all` turned on for a device, the
+policy (`policy.*`) and the judge's tuning still wait for the touch, and the
+console asks for a second click before sending a choice that lets a task do
+more unasked (writes without asking, commands to The judge alone or Without
+asking, offering Don't ask). That second click is this window's: it guards a
+misclick, not a stolen token.
+
+**Evidence.** `TestLinkWidens` no longer reports `approval.*`; the `hosts`
+browser check chooses The judge alone on workshop, sees the bar ask first with
+nothing sent, then one `settings.write` to workshop only.
