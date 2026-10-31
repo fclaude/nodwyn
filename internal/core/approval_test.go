@@ -196,17 +196,50 @@ func TestCommandsAllowedBySetting(t *testing.T) {
 	}
 }
 
-// approval.commands = "ask" asks the person even with a judge set up.
-func TestCommandsAskBySetting(t *testing.T) {
+// approval.commands = "ask" asks the person even with a judge set up, and
+// "allow" asks nobody; neither asks the judge anything, the plan gate's
+// question included, so a judge left chosen beside them costs nothing
+// (ADR 35, amended 2026-10-30).
+func TestCommandsWithoutAJudgeNeverAskIt(t *testing.T) {
+	t.Parallel()
+	for mode, prompts := range map[string]int{config.ApproveAsk: 1, config.ApproveAllow: 0} {
+		judge := newFakeJudge(t)
+		r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) {
+			o.NoConfirm = false
+			o.Config.Approval.Commands = mode
+		}, shellTurn("1", "true"), fake.Turn{Content: "done"})
+		if asked := r.asked("run it", "y"); len(asked) != prompts {
+			t.Fatalf("%s: prompts %+v", mode, asked)
+		}
+		if got := judge.asked(); len(got) != 0 {
+			t.Fatalf("%s: judge asked %v", mode, got)
+		}
+		if _, ok := r.s.JudgeOptions(); ok {
+			t.Fatalf("%s: the judge's primitives can still reach it", mode)
+		}
+		if r.s.Judge().Server == "" {
+			t.Fatalf("%s: the task's chosen judge was dropped", mode)
+		}
+	}
+}
+
+// Choosing the judge's answer again in a task that ran without one brings
+// its judge back: the next turn's plan question goes to it.
+func TestChoosingTheJudgeAgainAsksIt(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2))
 	r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) {
 		o.NoConfirm = false
-		o.Config.Approval.Commands = config.ApproveAsk
-	}, shellTurn("1", "true"), fake.Turn{Content: "done"})
-	if asked := r.asked("run it", "y"); len(asked) != 1 {
-		t.Fatalf("prompts %+v", asked)
+		o.Config.Approval.Commands = config.ApproveAllow
+	}, fake.Turn{Content: "first"}, fake.Turn{Content: "second"})
+	r.asked("say hello", "n")
+	if got := judge.asked(); len(got) != 0 {
+		t.Fatalf("judge asked %v while commands were allowed", got)
 	}
+	if err := r.s.SetCommands(config.ApproveJudge, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	r.asked("say it again", "n")
 	if got := strings.Join(judge.asked(), " "); got != "noul" {
 		t.Fatalf("judge asked %s", got)
 	}
@@ -244,7 +277,7 @@ func outsideTurn(id string) fake.Turn {
 // sessions 792638a8 and 34fd6421, where the person was asked about reads of
 // the module cache whichever answer they had chosen. With the judge, then
 // the person, the judge is asked first; alone, it decides; without asking,
-// nobody is asked; and asking asks.
+// nobody is asked; and asking asks. The last two ask the judge nothing.
 func TestCommandsAnswerSecurityConfirms(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -256,8 +289,8 @@ func TestCommandsAnswerSecurityConfirms(t *testing.T) {
 	}{
 		{config.ApproveJudgeAuto, 0, "noul choice", "yes", "judge"},
 		{config.ApproveJudge, 0, "noul choice", "yes", "judge"},
-		{config.ApproveAllow, 0, "noul", "yes", "setting"},
-		{config.ApproveAsk, 1, "noul", "no", ""},
+		{config.ApproveAllow, 0, "", "yes", "setting"},
+		{config.ApproveAsk, 1, "", "no", ""},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			t.Parallel()

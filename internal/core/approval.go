@@ -137,10 +137,11 @@ func (a approvalConfirmer) answer(ctx context.Context, p guard.Prompt) (guard.Ap
 }
 
 // judgeAvailable reports whether the judge can be asked: its primitives
-// are registered and the task has a judge whose key is stored (ADR 47).
+// are registered, the task has a judge whose key is stored (ADR 47), and
+// who answers its commands is not one that leaves the judge out.
 func (s *Session) judgeAvailable() bool {
 	_, ok := s.interp.Lookup("judge-choice")
-	return ok && s.judgeKey() != nil
+	return ok && !s.judgeBenched() && s.judgeKey() != nil
 }
 
 // judgeKey is the handle of the key of the task's judge, or nil when it

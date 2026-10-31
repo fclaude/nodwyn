@@ -93,7 +93,7 @@ it can see the thing but not change it.
 | Budget checkpoints (an older log's; no limit asks before it stops now) | yes | yes | yes | — |
 | Don't ask (`session.approve_all`) | yes, when Settings offers it; a paired device sees it while on and turns it off | not built | `--yolo` turns it on at start, when Settings offers it | `nodwyn run --yolo` answers a run's confirms itself |
 | A task's own limits (`limits`, `session.limits.set`, ADR 49 amended 2026-10-27) | yes: the task panel's **Limits**, add, change and remove; a paired device adds or lowers only; a CLI run's absent time and turn limits show as "no limit" on Home, with no maximum or expiry in its heading and sidebar | read: `:budget` shows them, "no limit" for each not set, and the conversation each change; not built: setting them | yes: `--max-tool-calls`, `--budget-tokens`, `--budget-actions`, `--budget-wall`, `--budget-cost` for the task opened, or in place of the resumed task's | `nodwyn run`: the same flags, `--turn-wall` for each turn's time, besides the run's optional `--budget-wall` and `--max-turns` |
-| Who answers a task's commands (`commands`, `session.commands.set`, ADR 35 amended 2026-10-30) | yes: New task's **Options** › **Commands**, kept for the next task, and the task picker's, beside the judge, at any time; a waiting question about a command is answered again by the new choice; a paired device sees it and cannot change it | not built: `[approval] commands`' | not built: `[approval] commands`' | — |
+| Who answers a task's commands (`commands`, `session.commands.set`, ADR 35 amended 2026-10-30) | yes: the picker's **Approvals**, beside the model on New task (kept for the next task) and in a task at any time; *Ask me* and *Allow all* ask no judge, its plan score included; a waiting question about a command is answered again by the new choice; a paired device sees it and cannot change it | not built: `[approval] commands`' | not built: `[approval] commands`' | — |
 | Edit `allow.toml` (`session.policy.write`) | yes, the policy editor | deliberate gap: `:bindings` reads only | — | — |
 
 ## Models (ADR 40, ADR 41)
@@ -140,7 +140,7 @@ an evaluation is never queued.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
-| See the task's judge, and the judges set up | yes, the picker's Judge select | yes, `:judge` | — | — |
+| See the task's judge, and the judges set up | yes, the picker's Judge select, beside an Approvals answer that asks a judge when there is one to choose | yes, `:judge` | — | — |
 | Choose a task's judge as it opens | yes, New task's picker | not built: `[judge]`'s; use `:judge` before the first message | `[judge]`'s | `nodwyn run`: `[judge]`'s |
 | Move a task to another judge, or none | yes, between turns | yes, `:judge NAME`, `:judge none` | not built | — |
 | Set a judge up: Jev's key, an OpenAI API key | Settings › Judge, in place | — | — | edit `config.toml`, `:eval (credential-register …)` |

@@ -110,6 +110,21 @@ func (s *Session) judgeSpec() (config.JudgeSpec, bool) {
 	return spec, err == nil
 }
 
+// judgeBenched reports whether the task's judge is asked nothing at all: a
+// task a person answers whose commands go to the person or to nobody (ask,
+// allow) has chosen no judge, so its plan is not scored either. Before
+// this, a task left on allow with Jev beside it paid Jev for a question
+// about every request and a score for every plan, and Jev answered none
+// of its commands (ADR 35, amended 2026-10-30). The judge stays chosen, so
+// picking a judge's answer again brings it back.
+func (s *Session) judgeBenched() bool {
+	if s.opts.NoConfirm || s.opts.unattended() {
+		return false
+	}
+	mode, _ := s.Commands()
+	return mode == config.ApproveAsk || mode == config.ApproveAllow
+}
+
 // judgeHandle is the stored key of spec's server, or why the judge cannot
 // send it.
 func (s *Session) judgeHandle(spec config.JudgeSpec) (*scheme.Handle, string) {
@@ -129,6 +144,9 @@ func (s *Session) judgeHandle(spec config.JudgeSpec) (*scheme.Handle, string) {
 // JudgeOptions are the task's judge now, as the judge's primitives ask it
 // on every call (prim.JudgeClient); false when it has none.
 func (s *Session) JudgeOptions() (prim.JudgeOptions, bool) {
+	if s.judgeBenched() {
+		return prim.JudgeOptions{}, false
+	}
 	spec, ok := s.judgeSpec()
 	if !ok {
 		return prim.JudgeOptions{}, false

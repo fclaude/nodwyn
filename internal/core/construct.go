@@ -401,7 +401,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	if s.keychain != nil && judgeContent(o.Config) != config.JudgeContentNone {
 		po.Judge = s
 		po.JudgeConfig, _ = s.JudgeOptions()
-		po.JudgeConfig.Tools = judgeContent(o.Config) == config.JudgeContentFull && s.judgeKey() != nil
+		po.JudgeConfig.Tools = judgeContent(o.Config) == config.JudgeContentFull && !s.judgeBenched() && s.judgeKey() != nil
 	}
 	// W5 documents: google-doc-upload is offered only when a credential of
 	// the configured class is stored now, since the tool list is fixed for

@@ -901,9 +901,6 @@ select.input { height: 34px; padding: 0 8px; }
 .dont-ask input { margin: 0; }
 .dont-ask.on { color: var(--warn-ink); }
 .dont-ask[hidden] { display: none; }
-.commands-choice { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
-.commands-choice .input { width: auto; }
-.option > .commands-choice + .hint { padding-left: 0; }
 .worktree-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
 .worktree-toggle input { margin: 0; }
 .branch { font-size: 12px; color: var(--muted); }
@@ -983,11 +980,15 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .mp-note a { color: inherit; text-decoration: underline; }
 .ask-bar .model-picker { margin-left: auto; }
 /* The New task controls sit quietly beside the folder and attachment buttons. */
+/* Each field shown is a column of one row: the others as wide as what they
+   say, the model the rest. The control grows with them: approvals beside the
+   model and effort, and the judge beside those when there is one to choose. */
 .ask-bar .mp-controls {
-  display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 0;
-  width: 320px; max-width: 100%; padding: 3px 0; border-radius: 10px; background: var(--bg);
+  display: grid; grid-auto-flow: column; grid-template-columns: minmax(0, 1fr); grid-auto-columns: auto; gap: 0;
+  width: 380px; max-width: 100%; padding: 3px 0; border-radius: 10px; background: var(--bg);
 }
-.ask-bar .mp-controls.no-effort { grid-template-columns: minmax(0, 1fr); }
+.ask-bar .mp-controls:has(> .mp-field:not([hidden]) ~ .mp-field:not([hidden]) ~ .mp-field:not([hidden])) { width: 470px; }
+.ask-bar .mp-controls:has(> .mp-field:not([hidden]) ~ .mp-field:not([hidden]) ~ .mp-field:not([hidden]) ~ .mp-field:not([hidden])) { width: 590px; }
 .ask-bar .mp-field { position: relative; gap: 0; padding: 0 10px; font-weight: 500; letter-spacing: normal; line-height: 12px; }
 .ask-bar .mp-field + .mp-field { border-left: 1px solid var(--line); }
 .ask-bar .mp-field::after {

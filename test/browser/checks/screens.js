@@ -56,8 +56,10 @@ check(async () => {
     });
     assert.ok(picker.height <= 46, `the Home picker is ${picker.height}px tall, not a slim paired control`);
     // A model that takes no effort has nothing to choose, so the picker is
-    // the model alone; two fields carry a divider.
-    assert.strictEqual(picker.fields, 1, "the effort field is offered for a model that takes none");
+    // the model and the approvals (ADR 35, amended 2026-10-30), on one row;
+    // two fields carry a divider.
+    assert.strictEqual(picker.fields, 2, "the picker is not the model and the approvals");
+    assert.strictEqual(picker.divider, "1px", "the approvals are not divided from the model");
     assert.ok(await page.$eval("#new-task-model-effort", (el) => el.closest(".mp-field").hidden), "the effort field is not hidden");
     // The composer's bar holds the files, the options, the model and Send:
     // the rare choices wait behind Options, which opens on its own.
@@ -65,6 +67,12 @@ check(async () => {
     assert.strictEqual(bar, 4, "the composer's bar holds more than the files, the options, the model and Send");
     assert.ok(!(await page.$eval("#new-task-options", (el) => el.open)), "Options starts open");
     assert.ok(picker.contained, "the dropdowns extend outside their paired control");
+    // With no judge set up, the judge alone refuses every command, and the
+    // picker says so; the default, the judge then the person, asks.
+    await page.selectOption("#new-task-model-commands", "judge-auto");
+    await shows(page, "#new-task-model .mp-notes", "No judge is set up, so every command is refused.");
+    await page.selectOption("#new-task-model-commands", "judge");
+    await page.waitForSelector("#new-task-model .mp-notes", { state: "hidden" });
     await page.focus("#new-task-model-model");
     const focus = await page.$eval("#new-task-model-model", (el) => ({ visible: el.matches(":focus-visible"), outline: getComputedStyle(el).outlineStyle }));
     assert.ok(focus.visible && focus.outline !== "none", "the model has no visible keyboard focus");

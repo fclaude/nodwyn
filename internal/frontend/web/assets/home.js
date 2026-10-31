@@ -9,7 +9,7 @@ import { keychainForm } from "./setup.js";
 import { firstModel } from "./models.js";
 import { Attachments, isImage } from "./attach.js";
 import { keepDraft } from "./task.js";
-import { ModelPicker, defaultSelection, choicesOf, blocked, defaultJudge, judgesOf, defaultCommands, commandsChoices } from "./modelpicker.js";
+import { ModelPicker, defaultSelection, choicesOf, blocked, defaultJudge, judgesOf, defaultCommands } from "./modelpicker.js";
 import { hostState } from "./hosts.js";
 
 // The folder the next task starts in, for this tab. A tab that has not
@@ -505,24 +505,10 @@ export function renderHome(root, ctx) {
     : null;
   const optionsCount = h("span", { class: "count", hidden: true });
   const count = () => {
-    const changed = (worktreeBox && !notGit && worktree() !== worktreeDefault() ? 1 : 0) + (canDelegate && helpersOf(desk, selection()?.name).length ? 1 : 0) + (canAnswer && commandsChoice() !== defaultCommands(desk) ? 1 : 0);
+    const changed = (worktreeBox && !notGit && worktree() !== worktreeDefault() ? 1 : 0) + (canDelegate && helpersOf(desk, selection()?.name).length ? 1 : 0);
     optionsCount.textContent = String(changed);
     optionsCount.hidden = !changed;
   };
-  // Who answers the task's commands waits behind Options too, so the
-  // composer's bar keeps its one slim control.
-  const commandsBox = canAnswer
-    ? h(
-        "label",
-        { class: "commands-choice" },
-        h("span", {}, "Commands"),
-        h(
-          "select",
-          { class: "input", id: "new-task-commands", onchange: (event) => { pickCommands(event.target.value, desk); count(); } },
-          commandsChoices.map(([value, text]) => h("option", { value, selected: value === commandsChoice() }, `${text}${value === defaultCommands(desk) ? " (default)" : ""}`)),
-        ),
-      )
-    : null;
   const option = (control, hint) => (control ? h("div", { class: "option" }, control, h("p", { class: "hint" }, hint)) : null);
   // The model and effort the task starts on. What is shown is what is sent.
   const picker = new ModelPicker("new-task-model");
@@ -550,22 +536,33 @@ export function renderHome(root, ctx) {
             },
           }
         : {}),
+      // Who answers its commands sits beside the judge it may ask, since
+      // the one says whether the other is asked at all (ADR 35, amended
+      // 2026-10-30).
+      ...(canAnswer
+        ? {
+            commands: commandsChoice(),
+            onCommands: (mode) => {
+              pickCommands(mode, desk);
+              drawPicker();
+            },
+          }
+        : {}),
     });
   };
   const options = h(
     "details",
     { class: "options", id: "new-task-options", open: optionsOpen, ontoggle: () => (optionsOpen = options.open), onkeydown: (event) => { if (event.key === "Escape") options.open = false; } },
-    h("summary", { class: "btn", title: "Worktree, helpers, commands and scheduling" }, "Options", optionsCount),
+    h("summary", { class: "btn", title: "Worktree, helpers and scheduling" }, "Options", optionsCount),
     h(
       "div",
       { class: "options-pop stack-md" },
       option(worktreeBox, notGit ? "Only a git repository can have worktrees, and this folder is not one." : "Work on a branch of its own, so nothing you or other tasks are editing is touched."),
       helpersSlot,
-      option(commandsBox, "Who answers this task's commands: the judge, then you; the judge alone; you; or nobody. Settings › General sets the default."),
       option(scheduleButton, "Run this task later, or on a repeat, instead of now."),
     ),
   );
-  options.hidden = !worktreeBox && !scheduleButton && !canDelegate && !commandsBox;
+  options.hidden = !worktreeBox && !scheduleButton && !canDelegate;
   count();
   // Runs on chooses the host the task starts on (ADR 54): the folders, the
   // models and the choices above follow it. A host that cannot be read now

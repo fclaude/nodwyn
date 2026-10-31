@@ -1274,19 +1274,26 @@ refuse more. When it refuses, you are asked, and told its answer.
 Who answers commands answers a security confirm about one too: a command
 naming a path outside the task's folder (say a read of the Go module cache),
 or built from what a tool returned. With `"judge"` the judge is asked first
-and you when it refuses; `"judge-auto"` (*The judge alone*) tells it nobody
+and you when it refuses; `"judge-auto"` (*Judge only*) tells it nobody
 is watching and takes what it does not allow, or having no judge, as a no;
-`"allow"` (*Without asking*) runs it; `"ask"` asks you. What nodwyn refuses
+`"allow"` (*Allow all*) runs it; `"ask"` asks you. What nodwyn refuses
 outright (a credential file, a send no binding allows, a key on a command
 line) stays refused whichever it is, and a write, a send out of the machine,
 a key's binding and an upload still ask you.
 
-**Each task's own.** `[approval] commands` is what a task starts with. New
-task's **Options** has a **Commands** select, kept for the next task as the
-judge is, and a task's own picker, beside its judge, changes it at any time, during a
-response too: from its next question, and a question about a command already
-waiting is answered again by the new choice, so choosing *The judge alone* or
-*Without asking* takes the card away. The choice is the task's: a resumed task
+`"ask"` and `"allow"` ask the judge nothing: no command, and no plan score
+either, so a judge left chosen costs nothing while one of them is the task's.
+Choosing `"judge"` or `"judge-auto"` again asks it from the next question.
+
+**Each task's own.** `[approval] commands` is what a task starts with. The
+picker beside the model has an **Approvals** select: *Judge + me*, *Judge
+only*, *Ask me* and *Allow all*. On New task it is kept
+for the next task; in a task it changes at any time, during a response too:
+from its next question, and a question about a command already waiting is
+answered again by the new choice, so choosing *Judge only* or *Allow all*
+takes the card away. The **Judge** select shows beside it only for an answer
+that asks a judge and only when there is one to choose; choosing such an
+answer for a task with no judge chooses one, the default first. The choice is the task's: a resumed task
 keeps it, whatever Settings says by then. Only this computer, or a device or
 another nodwyn signed in with your passkey, chooses it.
 

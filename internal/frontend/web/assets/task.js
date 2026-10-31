@@ -905,7 +905,7 @@ export class TaskView {
     try {
       const state = await this.conn.call("session.commands.set", { id: item.id, commands: mode });
       if (version === this.version && this.info) this.info.answering = state;
-      toast(`${commandsLabel(state.commands)} answers this task's commands from its next one.`);
+      toast(`Approvals: ${commandsLabel(state.commands).toLowerCase()}, from this task's next command.`);
     } catch (error) {
       toastError(`${error.message} Nothing was retried; the task keeps who answered its commands.`);
     } finally {

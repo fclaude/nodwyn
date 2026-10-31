@@ -709,7 +709,11 @@ included, goes to the judge through the same \code{judgeCall}; if the
 judge refuses, fails or is not set up, the person is asked, with the
 judge's answer added to the prompt's reasons. With \code{"judge-auto"}
 the judge's no is the answer, and with \code{"allow"} such a confirm is
-answered yes with the actor \code{setting}. Everything else, and
+answered yes with the actor \code{setting}. With \code{"ask"} or
+\code{"allow"} the task's judge is left out altogether
+(\code{judgeBenched} in \file{internal/core/judge\_choice.go}):
+\code{JudgeOptions} reports none, so the plan gate scores no plan and
+nothing reaches the judge. Everything else, and
 everything with \code{"ask"}, goes
 to the session, which implements it in \file{internal/core/confirm.go} as
 an event and a wait. Our \code{fs-edit} names a path, so it goes there:

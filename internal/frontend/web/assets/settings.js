@@ -71,9 +71,9 @@ function writesHint(writes) {
 }
 
 function commandsHint(commands, judge) {
-  if (commands === "ask") return "You answer each command that no allow list covers.";
+  if (commands === "ask") return "You answer each command that no allow list covers, and the judge is asked nothing, its plan score included.";
   if (commands === "judge-auto") return judge ? "The judge answers every command, one naming a path outside the task's folder or built from what a tool returned included, and what it does not allow is refused: you're never asked about a command. Writes, sending out and keys still ask you." : "No judge is set up, so every command is refused.";
-  if (commands === "allow") return "Commands, and tools that act, run without asking, one naming a path outside the task's folder or built from what a tool returned included: with writes also free, nobody is looking. What nodwyn refuses outright (credential files, unbound sending, a key on a command line) stays refused.";
+  if (commands === "allow") return "Commands, and tools that act, run without asking, one naming a path outside the task's folder or built from what a tool returned included: with writes also free, nobody is looking. What nodwyn refuses outright (credential files, unbound sending, a key on a command line) stays refused, and the judge is asked nothing, its plan score included.";
   return judge ? "The judge decides what it can, a command naming a path outside the task's folder included; you're asked about the rest, and told what it answered." : "No judge is set up, so you're asked.";
 }
 

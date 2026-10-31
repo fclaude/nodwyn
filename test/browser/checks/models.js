@@ -1166,77 +1166,48 @@ check(async () => {
   assert.ok(await page.locator("#default-model a[href='#/settings/judge'], #section-models a[href='#/settings/judge']").count(), "Models links to the Judge tab");
   step("Jev is added as a judge in place, its model and price known, and becomes the default; Models keeps it out");
 
-  // A new task and a conversation choose their judge beside their model:
-  // none here, so nothing asks typesafe.ai.
+  // A new task and a conversation choose their approvals beside their model
+  // (ADR 35, amended 2026-10-30): who answers commands says whether the
+  // judge is asked at all, so with one judge set up there is no judge to
+  // pick, and asking or allowing all asks it nothing: the tasks here start
+  // on "Allow all", so nothing asks typesafe.ai.
   await go("#/");
-  await page.waitForSelector("#new-task-model-judge");
-  assert.strictEqual(await page.inputValue("#new-task-model-judge"), "Jev", "a new task starts with the default judge");
-  await page.selectOption("#new-task-model-judge", "");
-  await page.fill("#task", "Say hello");
-  await page.click("button[aria-label='Start the task']");
-  await page.waitForSelector(".task[data-loaded]", { timeout: 20000 });
-  assert.strictEqual(sent.of("session.open").at(-1).judge, "", "the judge chosen was not sent");
-  const judged = sent.of("session.send").at(-1).id;
-  await idle();
-  await openPicker();
-  assert.strictEqual(await page.inputValue("#task-model-judge"), "", "the conversation's judge");
-  await page.selectOption("#task-model-judge", "Jev");
-  await page.waitForSelector(".toast >> text=Jev judges this task from its next question.", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("session.judge.set").at(-1), { id: judged, judge: "Jev" });
-  await page.waitForFunction(() => document.querySelector(".transcript").textContent.includes("Judge: Jev · jev-latest at api.typesafe.ai"), null, { timeout: 10000 });
-  await page.selectOption("#task-model-judge", "");
-  await page.waitForSelector(".toast >> text=This task has no judge now", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("session.judge.set").at(-1), { id: judged, judge: "" });
-  await shows("#task-model summary", "no judge");
-  step("a new task and a conversation choose their judge beside their model");
-
-  // Who answers commands is chosen beside the judge (ADR 35, amended
-  // 2026-10-30): for a task already open, from its next question, and for
-  // the next task, which keeps the choice made last.
-  assert.strictEqual(await page.inputValue("#task-model-commands"), "judge", "the conversation does not answer its commands as Settings does");
-  await page.selectOption("#task-model-commands", "judge-auto");
-  await page.waitForSelector(".toast >> text=The judge alone answers this task's commands from its next one.", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("session.commands.set").at(-1), { id: judged, commands: "judge-auto" });
-  await shows("#task-model summary", "the judge alone");
-  // On Home it waits behind Options, so the composer's bar keeps one slim
-  // control.
-  await go("#/");
-  await page.waitForSelector("#task");
-  assert.strictEqual(await page.locator("#new-task-model-commands").isVisible(), false, "Home's picker has a Commands select");
-  await openOptions(page);
-  assert.strictEqual(await page.inputValue("#new-task-commands"), "judge", "a new task does not start as Settings answers commands");
-  await page.selectOption("#new-task-commands", "allow");
-  await shows("#new-task-options summary", "1");
+  await page.waitForSelector("#new-task-model-commands");
+  assert.strictEqual(await page.inputValue("#new-task-model-commands"), "judge", "a new task does not start as Settings answers commands");
+  assert.strictEqual(await page.locator("#new-task-model-judge").isVisible(), false, "a judge is offered to pick with only one set up");
+  assert.strictEqual(await page.locator("#new-task-commands").count(), 0, "Options still has a Commands select");
+  await page.selectOption("#new-task-model-commands", "allow");
   await until("the choice kept for the next task", () => sent.of("newtask.last").at(-1)?.choices?.hosts?.some((e) => e.host === "" && e.commands === "allow"));
   await page.fill("#task", "Say hello");
   await page.click("button[aria-label='Start the task']");
   await page.waitForSelector(".task[data-loaded]", { timeout: 20000 });
   assert.strictEqual(sent.of("session.open").at(-1).commands, "allow", "who answers commands was not sent");
+  const judged = sent.of("session.send").at(-1).id;
   await idle();
   await openPicker();
   assert.strictEqual(await page.inputValue("#task-model-commands"), "allow", "the task does not answer its commands as it was opened to");
-  await go("#/");
-  await page.waitForSelector("#task");
-  await openOptions(page);
-  assert.strictEqual(await page.inputValue("#new-task-commands"), "allow", "the next task does not start with the choice made last");
-  await page.selectOption("#new-task-commands", "judge");
-  await until("the default kept for the next task", () => !sent.of("newtask.last").at(-1)?.choices?.hosts?.some((e) => e.commands));
-  step("a new task and a conversation choose who answers their commands beside their judge, and the next task starts with the last choice");
+  assert.strictEqual(await page.locator("#task-model-judge").isVisible(), false, "a judge is offered beside Allow all");
+  await shows("#task-model summary", "allow all");
+  await page.selectOption("#task-model-commands", "judge-auto");
+  await page.waitForSelector(".toast >> text=Approvals: judge only, from this task's next command.", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("session.commands.set").at(-1), { id: judged, commands: "judge-auto" });
+  assert.strictEqual(sent.of("session.judge.set").length, 0, "the task's judge was chosen again though it had one");
+  await shows("#task-model summary", "judge only · judged by Jev");
+  step("a new task and a conversation choose their approvals beside their model, and the judge only beside the answers that ask it");
 
-  // A judge model config.toml names that its API does not answer to (the
-  // name of its server, say) fails every question and prices none: Settings
-  // says so, and puts it right in one click.
+  // The next task starts with the choice made last, after an app restart
+  // too.
   app.kill("SIGTERM");
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
   fs.writeFileSync(configFile, config().replace('[judge]\nserver = "Jev"\n', '[judge]\nserver = "Jev"\nmodel = "Jev"\n'));
   ({ app, url } = await startApp());
   await reopen(url);
   await page.waitForSelector("#task", { timeout: 15000 });
-  // No judge, chosen for the task before, is the next task's too, after the
-  // restart as well.
-  await page.waitForSelector("#new-task-model-judge", { timeout: 15000 });
-  assert.strictEqual(await page.inputValue("#new-task-model-judge"), "", "the next task did not start with the judge chosen last");
-  step("the judge chosen last is the next task's, after an app restart too");
+  await page.waitForSelector("#new-task-model-commands", { timeout: 15000 });
+  assert.strictEqual(await page.inputValue("#new-task-model-commands"), "allow", "the next task did not start with the approvals chosen last");
+  await page.selectOption("#new-task-model-commands", "judge");
+  await until("the default kept for the next task", () => !sent.of("newtask.last").at(-1)?.choices?.hosts?.some((e) => e.commands));
+  step("the approvals chosen last are the next task's, after an app restart too");
   await go("#/settings/judge");
   await page.waitForSelector("#judge-model-warning", { timeout: 10000 });
   await shows("#judge-model-warning", "config.toml asks Jev for the model “Jev”", "Jev answers to jev-latest");
@@ -1267,6 +1238,24 @@ check(async () => {
   assert.ok(!/^server = "Jev"/m.test(config()), "the judge still names Jev:\n" + config());
   await page.waitForSelector("#section-judge >> text=New tasks start with no judge", { timeout: 10000 });
   step("a price for the default judge overrides the published one, and the default is put back to none");
+
+  // With no default judge, an answer that asks one says a judge is still to
+  // be chosen, and choosing such an answer chooses the judge that can be
+  // asked, so the answer picked is the one the task gets.
+  await go("#/");
+  await page.waitForSelector("#new-task-model-commands");
+  assert.strictEqual(await page.inputValue("#new-task-model-commands"), "judge", "the approvals Settings starts tasks with");
+  await page.waitForSelector("#new-task-model-judge", { state: "visible" });
+  assert.strictEqual(await page.inputValue("#new-task-model-judge"), "", "a judge is shown as chosen with no default");
+  await page.selectOption("#new-task-model-commands", "judge-auto");
+  await until("the judge kept with the approvals", () => sent.of("newtask.last").at(-1)?.choices?.hosts?.some((e) => e.host === "" && e.commands === "judge-auto" && e.judge === "Jev"));
+  // Jev's key is locked since the restart: it is chosen all the same, and
+  // the picker says it cannot be asked yet.
+  await shows("#new-task-model .mp-notes", "Until it can be asked, you answer the commands.");
+  await page.selectOption("#new-task-model-commands", "allow");
+  await page.waitForFunction(() => !document.querySelector("#new-task-model .mp-notes").textContent.includes("you answer the commands"), null, { timeout: 10000 });
+  await page.selectOption("#new-task-model-commands", "judge");
+  step("an answer that asks a judge, chosen with none, chooses one, and says when it cannot be asked yet");
 
   // The ChatGPT setup UI uses synthetic RPC consent and account replies;
   // provider persistence and binding are checked by the RPC integration test.

@@ -108,9 +108,14 @@ export function judgeProblem(desk, name) {
 }
 
 // Who answers a task's commands (ADR 35, amended 2026-10-30) is chosen beside
-// its judge: approval.commands is what a task starts with, and each task may
-// have its own, as it opens or since.
-export const commandsChoices = [["judge", "The judge, then me"], ["judge-auto", "The judge alone"], ["ask", "Ask me"], ["allow", "Without asking"]];
+// its model: approval.commands is what a task starts with, and each task may
+// have its own, as it opens or since. It also says whether the judge is
+// asked at all: asking the person and allowing all ask it nothing, its plan
+// score included.
+export const commandsChoices = [["judge", "Judge + me"], ["judge-auto", "Judge only"], ["ask", "Ask me"], ["allow", "Allow all"]];
+// commandsWords says what each answer does, for the select's title.
+const commandsWords = { judge: "The judge answers each command; you answer what it refuses.", "judge-auto": "The judge answers each command; what it refuses is refused.", ask: "You answer each command. No judge is asked.", allow: "Commands run without asking anyone. No judge is asked." };
+export const judged = (mode) => mode === "judge" || mode === "judge-auto";
 export const commandsLabel = (mode) => commandsChoices.find(([value]) => value === mode)?.[1] || mode;
 // defaultCommands is approval.commands as Settings has it.
 export const defaultCommands = (desk) => desk.settings?.values?.["approval.commands"]?.value || "judge";
@@ -128,11 +133,11 @@ export class ModelPicker {
     this.effortField = label("Effort", this.effort);
     this.judgeField = label("Judge", this.judge);
     this.judgeField.hidden = true;
-    this.commands = h("select", { class: "mp-select", id: `${id}-commands`, "aria-label": "Commands", onchange: () => this.props?.onCommands?.(this.commands.value) });
-    this.commandsField = label("Commands", this.commands);
+    this.commands = h("select", { class: "mp-select", id: `${id}-commands`, "aria-label": "Approvals", onchange: () => this.pickCommands() });
+    this.commandsField = label("Approvals", this.commands);
     this.commandsField.hidden = true;
     this.note = h("div", { class: "mp-notes" });
-    const controls = (this.controls = h("div", { class: "mp-controls" }, label("Model", this.model), this.effortField, this.judgeField, this.commandsField));
+    const controls = (this.controls = h("div", { class: "mp-controls" }, label("Model", this.model), this.effortField, this.commandsField, this.judgeField));
     if (compact) {
       this.summaryModel = h("span", { class: "mp-summary-model" });
       this.summaryEffort = h("span", { class: "mp-summary-effort" });
@@ -165,7 +170,9 @@ export class ModelPicker {
     const states = choices.map((c) => statusOf(desk, c.name)?.state || "");
     const found = unavailable ? null : problem(desk, selection, extra);
     const judges = judge === undefined ? null : judgesOf(desk);
-    const judgeFound = judge === undefined ? null : judgeProblem(desk, judge);
+    // Beside an answer that asks no judge, the judge is not asked, so what
+    // is wrong with it does not matter.
+    const judgeFound = judge === undefined || (commands !== undefined && !judged(commands)) ? null : judgeProblem(desk, judge);
     const sig = JSON.stringify([choices, states, selection, extra, disabled, notes, found, unavailable, judges, judge, judgeDisabled, judgeHint, commands, commandsDisabled, defaultCommands(desk)]);
     if (sig === this.sig) return;
     this.sig = sig;
@@ -176,11 +183,12 @@ export class ModelPicker {
       this.summaryModel.textContent = model;
       this.summaryEffort.textContent = effort;
       this.summaryEffort.hidden = !effort;
-      const judged = [judge === undefined ? "" : judge ? `judged by ${judge}` : "no judge", commands === undefined ? "" : commandsLabel(commands).toLowerCase()].filter(Boolean).join(" · ");
-      this.summaryJudge.textContent = judged;
-      this.summaryJudge.hidden = !judged;
-      this.summary.title = judged ? "Change model, effort and judge" : "Change model and effort";
-      this.summary.setAttribute("aria-label", `Model: ${model}${effort ? `, effort: ${effort}` : ""}${judged ? `, ${judged}` : ""}. ${this.summary.title}`);
+      const judgeWords = judge === undefined || (commands !== undefined && !judged(commands)) ? "" : judge ? `judged by ${judge}` : "no judge";
+      const said = [commands === undefined ? "" : commandsLabel(commands).toLowerCase(), judgeWords].filter(Boolean).join(" · ");
+      this.summaryJudge.textContent = said;
+      this.summaryJudge.hidden = !said;
+      this.summary.title = said ? "Change model, effort and approvals" : "Change model and effort";
+      this.summary.setAttribute("aria-label", `Model: ${model}${effort ? `, effort: ${effort}` : ""}${said ? `, ${said}` : ""}. ${this.summary.title}`);
       // A task that cannot run should offer the choice, rather than hide its remedy.
       if (unavailable) this.details.open = true;
     }
@@ -225,13 +233,16 @@ export class ModelPicker {
     }
 
     this.effortField.hidden = !!selection && !efforts.length;
-    this.controls.classList.toggle("no-effort", this.effortField.hidden);
     // The judge's select lists no judge, then each judge the daemon lists,
     // and a chosen one it no longer lists as it is, so what is shown is
-    // what the task has.
-    this.judgeField.hidden = judges === null;
+    // what the task has. Beside approvals, it shows only when they ask a
+    // judge and there is a choice of one to make, and "no judge" is said by
+    // the approvals rather than offered twice.
+    const pickable = commands === undefined || (judged(commands) && judges !== null && (judges.length > 1 || !judges.some((j) => j.name === judge)));
+    this.judgeField.hidden = judges === null || !pickable;
     if (judges !== null) {
-      const opts = [h("option", { value: "" }, "No judge"), ...judges.map((j) => h("option", { value: j.name }, `${judgeLabel(j)}${j.default ? " (default)" : ""}${j.state !== "ready" ? ` — ${judgeStateWords[j.state] || j.state}` : ""}`))];
+      const none = commands === undefined ? "No judge" : "Choose a judge…";
+      const opts = [...(commands === undefined || !judge ? [h("option", { value: "" }, none)] : []), ...judges.map((j) => h("option", { value: j.name }, `${judgeLabel(j)}${j.default ? " (default)" : ""}${j.state !== "ready" ? ` — ${judgeStateWords[j.state] || j.state}` : ""}`))];
       if (judge && !judges.some((j) => j.name === judge)) opts.push(h("option", { value: judge }, `${judge} (no longer set up)`));
       this.judge.replaceChildren(...opts);
       this.judge.value = judge || "";
@@ -247,9 +258,14 @@ export class ModelPicker {
       this.commands.replaceChildren(...commandsChoices.map(([value, text]) => h("option", { value }, `${text}${value === fallback ? " (default)" : ""}`)));
       this.commands.value = commands;
       this.commands.disabled = disabled || commandsDisabled;
+      this.commands.title = commandsWords[commands] || "";
     }
 
-    const lines = [...(found ? [{ kind: found.kind, text: found.text, fix: found.fix }] : []), ...(judgeFound ? [judgeFound] : []), ...notes];
+    // The judge alone, with none set up, refuses every command, so it says
+    // so; the judge then the person, the default, asks the person, which is
+    // what they expect, so it does not.
+    const noJudge = commands === "judge-auto" && !judgesOf(desk).length ? { kind: "warn", text: "No judge is set up, so every command is refused.", fix: "Settings › Judge" } : null;
+    const lines = [...(found ? [{ kind: found.kind, text: found.text, fix: found.fix }] : []), ...(judgeFound ? [judgeFound] : []), ...(noJudge ? [noJudge] : []), ...notes];
     this.note.replaceChildren(
       ...lines.map((line) =>
         h(
@@ -261,6 +277,21 @@ export class ModelPicker {
       ),
     );
     this.note.hidden = !lines.length;
+  }
+
+  // pickCommands chooses who answers the task's commands. Choosing one that
+  // asks a judge for a task with none chooses a judge too: one that can be
+  // asked, the default first, else one that cannot yet, whose note then says
+  // why, so the answer picked is the one the task gets once it can.
+  pickCommands() {
+    const { desk, judge, onCommands, onJudge } = this.props || {};
+    const mode = this.commands.value;
+    onCommands?.(mode);
+    if (!judged(mode) || judge !== "" || !onJudge) return;
+    const judges = judgesOf(desk);
+    const ready = judges.filter((j) => j.state === "ready");
+    const pick = ready.find((j) => j.default) || ready[0] || judges.find((j) => j.default) || judges[0];
+    if (pick) onJudge(pick.name);
   }
 
   pickModel() {

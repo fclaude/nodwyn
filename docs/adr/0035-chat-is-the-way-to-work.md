@@ -292,3 +292,44 @@ outside the repository), `TestJudgeThenPersonAsksAboutARefusedSecurityConfirm`,
 `TestTaskCommandsOutliveResume` and the RPC's
 `TestTasksChooseWhoAnswersTheirCommands`; the `models` browser check chooses
 it on an open task, on a new one, and sees it kept for the next.
+
+## Amendment 2026-10-30: asking the person or allowing all asks no judge
+
+On tarro, a task opened with approval.commands at `allow` and Jev beside it
+in the composer was billed for Jev on every message: the plan gate asked
+the judge whether a plan was needed and scored each draft whenever the task
+had a judge, whatever answered its commands, and with `allow` Jev answered
+none of them. The composer offered the judge beside the model and who
+answers commands behind Options, eight combinations of which several made
+no sense (the judge alone with no judge refuses every command; allowing all
+with a judge pays for one nobody listens to). The person asked for four
+answers, one control: the judge, then them; the judge alone; them, with no
+judge; nobody, with no judge and no tokens spent on one.
+
+- In a session a person answers, `ask` and `allow` leave the judge out:
+  `JudgeOptions` reports none, so the judge's primitives, the plan gate's
+  `judge-available?` and the `judge-*` tools at `"full"` all see no judge,
+  and nothing is sent to it. The task's chosen judge is kept, so choosing
+  `judge` or `judge-auto` again brings it back from the next question. A
+  run (`--judge`, `--yolo`, unattended) and `--no-confirm` are unchanged.
+- The console's picker has one **Approvals** select beside the model, with
+  *Judge + me*, *Judge only*, *Ask me* and *Allow all*, each said in full in
+  its title; Options no longer has a Commands select, and the composer's
+  control grows a column for it rather than a row. The Judge select shows
+  only beside the two answers that ask a judge, and only when there is a
+  choice to make (more than one judge, or none chosen); choosing such an
+  answer for a task with no judge chooses one, a ready one and the default
+  first. With no judge set up, *Judge only* says under the picker that every
+  command is refused; *Judge + me*, the default, asks the person then, as
+  they expect, and says nothing, so a fresh install's bar stays one row.
+- What `allow` does not wave through is unchanged: the guard's denials, and
+  a write to a protected path, an egress, a binding proposal and an upload,
+  which still ask the person.
+
+**Evidence.** `TestCommandsWithoutAJudgeNeverAskIt` (a fake judge asked
+nothing under `ask` or `allow`, the plan question included; it asked one
+before), `TestChoosingTheJudgeAgainAsksIt`, `TestCommandsAnswerSecurityConfirms`
+(now expecting no judge question for `allow` and `ask`); the `models` browser
+check picks *Allow all* on Home and in a task, sees no Judge select beside
+it, picks *Judge only* and sees the judge come back, and with no default
+judge sees one chosen and its locked key said.
