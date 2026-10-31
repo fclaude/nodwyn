@@ -656,18 +656,20 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
 .diff-line.del .t { color: var(--del-ink); }
 .diff-line.hunk .t { color: var(--faint); }
 
+/* The text takes the box's whole width and the controls share the row under
+   it: beside them, Queue and Steer left the text a third of the box. */
 .reply {
-  position: relative; display: flex; align-items: flex-end; gap: 8px; margin: 0 48px 24px;
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 48px 24px;
   padding: 10px 10px 10px 16px; background: var(--surface); border: 1px solid var(--line-input); border-radius: 14px;
 }
 .reply textarea {
-  flex-grow: 1; border: none; outline: none; resize: none; background: transparent;
+  border: none; outline: none; resize: none; background: transparent; overflow-y: hidden;
   font-size: 15px; line-height: 1.5; color: var(--ink); padding: 6px 0; max-height: 240px;
 }
 .reply .send-round { width: 36px; height: 36px; background: var(--invert-bg); color: var(--invert-fg); }
 /* Queue and Steer, beside Send while a response runs; what they sent shows
    above the reply box, dashed and dimmed, until it starts. */
-.reply-later { display: flex; gap: 6px; align-self: flex-end; margin-bottom: 2px; }
+.reply-later { display: flex; gap: 6px; }
 .queued-list { display: flex; flex-direction: column; gap: 6px; margin: 0 48px 10px; max-height: 30vh; overflow-y: auto; }
 .queued-item { display: flex; flex-direction: column; gap: 4px; opacity: 0.75; }
 .queued-item .you-text { padding: 8px 12px; font-size: 14px; background: transparent; border: 1px dashed var(--line-input); }
@@ -892,7 +894,9 @@ select.input { height: 34px; padding: 0 8px; }
 .attach-chip .name { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attach-chip .size { color: var(--faint); white-space: nowrap; }
 .attach-chip .icon-btn { width: 22px; height: 22px; }
-.reply-body { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.reply-body { display: contents; }
+.reply-body > .attach-list, .reply-body > textarea { flex: 1 0 100%; }
+.reply-body > .reply-opts { flex: 1 1 0; min-width: 0; }
 .dont-ask { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--faint); cursor: pointer; user-select: none; width: fit-content; }
 .dont-ask input { margin: 0; }
 .dont-ask.on { color: var(--warn-ink); }
@@ -903,7 +907,6 @@ select.input { height: 34px; padding: 0 8px; }
 .worktree-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
 .worktree-toggle input { margin: 0; }
 .branch { font-size: 12px; color: var(--muted); }
-.reply-body textarea { width: 100%; }
 .turn.user .attach-list { justify-content: flex-start; }
 
 /* connections */

@@ -368,6 +368,59 @@ check(async () => {
     await shoot(`review-${theme}`, { width: 1440, height: 1080 }, theme, review(`review-${theme}`));
     await shoot(`review-phone-${theme}`, { width: 390, height: 844 }, theme, review(`review-phone-${theme}`));
   }
+  // While a response runs, Queue and Steer join the reply box's controls: the
+  // text still takes the box's whole width, the placeholder that says what
+  // they do shows whole without a scrollbar, and the box grows with what is
+  // typed up to its cap, where it scrolls, and shrinks once it is cleared.
+  const working = (name) => async (page) => {
+    await task(page);
+    await page.evaluate(async () => {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const conn = {
+        live: true,
+        has(method) { return method === "session.send"; },
+        onEvent() { return () => {}; },
+        onResult() { return () => {}; },
+        async call(method) {
+          if (method === "session.subscribe") return { page: { events: [{ seq: 1, kind: "user.msg", payload: { text: "Keep going" } }], through: 1 }, busy: true };
+          return {};
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("reply-working", { id: "reply-working", title: "Reply while working", repo: "/tmp/reply-working", open: true, busy: true });
+      const view = new TaskView(conn, desk, () => {});
+      document.querySelector("#view").replaceChildren(view.root);
+      await view.open("reply-working");
+    });
+    await page.waitForSelector("#reply-queue:visible");
+    const measure = () => page.evaluate(() => {
+      const form = document.querySelector("form.reply");
+      const reply = document.querySelector("#reply");
+      const style = getComputedStyle(form);
+      return {
+        placeholder: reply.placeholder,
+        text: reply.getBoundingClientRect().width,
+        room: form.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        height: reply.clientHeight,
+        overflow: reply.scrollHeight - reply.clientHeight,
+        scrolls: getComputedStyle(reply).overflowY,
+      };
+    });
+    const idle = await measure();
+    assert.ok(idle.placeholder.startsWith("Working"), `${name}: not the working placeholder: ${idle.placeholder}`);
+    assert.ok(idle.text >= idle.room - 1, `${name}: the reply text is ${idle.text} px of the box's ${idle.room}`);
+    assert.ok(idle.overflow <= 0 && idle.scrolls === "hidden", `${name}: the placeholder scrolls: ${JSON.stringify(idle)}`);
+    await page.screenshot({ path: `${out}/${name}.png` });
+    await page.fill("#reply", Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n"));
+    const full = await measure();
+    assert.ok(full.height <= 240 && full.overflow > 0 && full.scrolls === "auto", `${name}: a long reply does not stop at its cap and scroll: ${JSON.stringify(full)}`);
+    await page.fill("#reply", "");
+    const cleared = await measure();
+    assert.strictEqual(cleared.height, idle.height, `${name}: the cleared box kept the long reply's height`);
+  };
+  await shoot("reply-working", { width: 1280, height: 800 }, "light", working("reply-working"));
+  await shoot("reply-working-phone", { width: 390, height: 844 }, "dark", working("reply-working-phone"));
   await shoot("settings", { width: 1280, height: 800 }, "light", async (page) => {
     // Settings opens on its first tab; the others are a click, and an
     // address, away.

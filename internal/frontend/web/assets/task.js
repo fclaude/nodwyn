@@ -17,6 +17,18 @@ const drafts = new Map(); // per task, this tab only
 const openSteps = new Map(); // per task, the plan steps the reader unfolded, this tab only
 const views = new Set(); // every view not disposed, for keepDraft
 
+// fitReply sizes the reply box to what it holds, or to its placeholder when
+// empty, up to 240px: a box of one row showed a scrollbar for a placeholder
+// that wraps, and kept a draft's height after it was sent or replaced.
+function fitReply(reply) {
+  // A hidden box measures nothing: it keeps its rows until it is drawn.
+  if (!reply.getClientRects().length) return void (reply.style.height = "");
+  reply.style.height = "auto";
+  const full = reply.scrollHeight;
+  reply.style.height = Math.min(240, full) + "px";
+  reply.style.overflowY = full > 240 ? "auto" : "hidden";
+}
+
 // keepDraft puts a message that was not sent into task id's reply box: at
 // once in a view that has the task, else when one opens it.
 export function keepDraft(id, text) {
@@ -693,8 +705,7 @@ export class TaskView {
       rows: 1,
       placeholder: "Steer it, or answer in words…",
       oninput: () => {
-        reply.style.height = "auto";
-        reply.style.height = Math.min(240, reply.scrollHeight) + "px";
+        fitReply(reply);
         drafts.set(this.item.id, reply.value);
         this.controls();
       },
@@ -790,6 +801,7 @@ export class TaskView {
         : this.busy
           ? "Working… queue a message for after it, or steer to stop it and send this next."
           : "Steer it, or answer in words…";
+    fitReply(this.el.reply);
     this.el.send.disabled = !canSend || this.busy || prompt || !this.el.reply.value.trim();
     // Queue and Steer are for a response that runs, and only where a plain
     // send would be refused for that reason alone: a run's turns are not
@@ -1077,7 +1089,7 @@ export class TaskView {
       if (drafts.get(item.id) === text) drafts.delete(item.id);
       if (version === this.version && this.el.reply.value === text) {
         this.el.reply.value = "";
-        this.el.reply.style.height = "auto";
+        fitReply(this.el.reply);
       }
     } catch (error) {
       if (version === this.version) this.releaseHeld(text);
@@ -1133,7 +1145,7 @@ export class TaskView {
       if (drafts.get(item.id) === text) drafts.delete(item.id);
       if (version === this.version && this.el.reply.value === text) {
         this.el.reply.value = "";
-        this.el.reply.style.height = "auto";
+        fitReply(this.el.reply);
       }
     } catch (error) {
       // A failed reply is not evidence of failed delivery: reload first.
