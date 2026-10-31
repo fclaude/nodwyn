@@ -177,9 +177,11 @@ start at login instead, which the app then uses and leaves running.
 
 ## Application icon and Linux shortcuts
 
-The native window carries the console's cream **n** and blue dot on a dark
-background. The macOS bundle includes `Nodwyn.icns`; move `Nodwyn.app` to
-Applications and pin that bundle in the Dock.
+The native window carries the bundle's icon, a dark **n** and blue dot on a
+cream rounded tile drawn to the macOS icon grid; the Dock shows it while the
+app runs, whether started from `Nodwyn.app` or from `nodwyn app`. The macOS
+bundle includes `Nodwyn.icns`; move `Nodwyn.app` to Applications and pin that
+bundle in the Dock.
 
 On Linux, after building or installing nodwyn, install its application-menu
 entry and hicolor icons for your account:

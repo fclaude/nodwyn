@@ -63,3 +63,13 @@ bundle's executable after signing it, so a bundle that does not start fails
 the job; it does not open the window, which still needs a desktop session.
 Homebrew installs the release's bundle as a cask, in place of a formula that
 wrapped the portable binary in a script without an icon.
+
+## Amendment 2026-10-31: The native window uses the bundle's icon
+
+The console PNG embedded on 2026-10-27 is a full-bleed dark square. Wails
+sets it as the application's icon when the app starts, so on macOS it
+replaced the bundle's icon in the Dock with a square larger than its
+neighbours, without the margin and rounded corners of the macOS grid. The
+embedded `cmd/nodwyn/icon.png` is now the 512-point image of
+`packaging/macos/Nodwyn.icns`, so the running app shows the bundle's icon.
+The Linux launcher keeps installing the console's icons.
