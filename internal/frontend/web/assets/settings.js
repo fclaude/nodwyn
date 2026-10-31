@@ -463,16 +463,18 @@ function passkeyAddress(address) {
   }
 }
 
-// loosening says which of the approvals waiting in the bar let a task do
-// more unasked than the host does now. A linked host has them saved without
-// the touch of a passkey, so this window asks once more before sending them;
-// the check is this console's and guards a misclick, not a stolen link.
+// loosening says which of the approvals and the upload answer waiting in the
+// bar let a task do more unasked than the host does now. A linked host has
+// them saved without the touch of a passkey, so this window asks once more
+// before sending them; the check is this console's and guards a misclick, not
+// a stolen link.
 let confirming = false;
-function loosening(set) {
+function loosening(set, docs) {
   const out = [];
   if (set["approval.writes"] === "allow") out.push("write files without asking");
   if (["allow", "judge-auto"].includes(set["approval.commands"])) out.push(set["approval.commands"] === "allow" ? "run commands without asking" : "run commands the judge allows, with nobody asked");
   if (set["approval.dont_ask"] === true) out.push("offer Don't ask in every task");
+  if (docs === "allow") out.push("upload to Google Docs without asking");
   return out;
 }
 
@@ -487,9 +489,10 @@ function drawBar(bar, ctx, redraw) {
   bar.hidden = !editable(conn) || (count === 0 && errors.length === 0 && !saveError);
   if (bar.hidden) return;
   const now = "approval.dont_ask" in set ? ", but follow Don't ask at once" : "";
-  const risky = ctx.host ? loosening(set) : [];
+  const risky = ctx.host ? loosening(set, docs) : [];
   if (!risky.length) confirming = false;
-  const message = confirming ? `Let tasks on ${ctx.host} ${risky.join(", ")}? It is saved there now, with no touch of your passkey.` : saveError || errors[0] || `${count} unsaved change${count === 1 ? "" : "s"}. Tasks you start afterwards use them; open tasks keep theirs${now}.`;
+  const asked = risky.length > 1 ? `${risky.slice(0, -1).join(", ")}, and ${risky.at(-1)}` : risky[0];
+  const message = confirming ? `Let tasks on ${ctx.host} ${asked}? It is saved there now, with no touch of your passkey.` : saveError || errors[0] || `${count} unsaved change${count === 1 ? "" : "s"}. Tasks you start afterwards use them; open tasks keep theirs${now}.`;
   bar.replaceChildren(
     h("p", { class: saveError || errors.length ? "error" : "", role: saveError || errors.length ? "alert" : "status" }, message),
     h(
@@ -580,9 +583,9 @@ function docsRow(ctx, redraw) {
         class: "chip",
         id: `set-${docsUpload}-${value}`,
         "aria-pressed": String(current === value),
-        // Never asking is what a linked host does not let this window choose.
-        disabled: !editableDocs || (value === "allow" && !!ctx.host),
-        title: value === "allow" && ctx.host ? `Changed in ${ctx.host}'s own console` : null,
+        // On a linked host never asking is chosen here too, after the save
+        // bar's second click (loosening).
+        disabled: !editableDocs,
         onclick: () => {
           edits.set(docsUpload, value);
           saveError = "";

@@ -395,3 +395,21 @@ misclick, not a stolen token.
 **Evidence.** `TestLinkWidens` no longer reports `approval.*`; the `hosts`
 browser check chooses The judge alone on workshop, sees the bar ask first with
 nothing sent, then one `settings.write` to workshop only.
+
+## Amendment 2026-10-30: a linked host's Google Docs uploads are the link's to choose
+
+After the approvals became the link's, the answer to an upload to Google Docs
+stayed half of it: a link could set a host to ask or to refuse, never to stop
+asking, so **Always allow** was greyed out on a linked host's General tab
+while running commands without asking, which lets a task do far more, was
+offered there. The bridge no longer refuses a link `settings.docs.write` of
+`allow` (`linkWidens` reads `settings.write` only), and the console asks for
+the same second click before sending it as for the approvals that loosen. An
+upload still needs the host's own Google credential, which a link cannot add,
+and its binding table; `--no-link-settings` still refuses all of it.
+
+**Evidence.** `TestLinkWidens` no longer reports `google_upload: "allow"`, and
+`TestALinkedHostIsReachedThroughThisComputersDaemon` saves it on workshop and
+not on the laptop; the `hosts` browser check chooses Always allow with The
+judge alone, sees the bar ask about both with nothing sent, then one
+`settings.docs.write` and one `settings.write` to workshop only.

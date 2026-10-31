@@ -966,8 +966,11 @@ var settingsMethods = map[string]bool{
 // already configured, with no address or key, as the link already chooses
 // a task's model (session.model.set); so is the default judge (linkMay).
 // A provider's address and key
-// (settings.provider.write, .remove) are not, and settings.write and
-// settings.docs.write are limited by linkWidens.
+// (settings.provider.write, .remove) are not, and settings.write is limited
+// by linkWidens. The answer to an upload to Google Docs (settings.docs.write)
+// is the link's, never asking included, as the approvals are (ADR 54,
+// amended 2026-10-30): an upload still needs the host's own credential and
+// its binding table.
 var linkSettings = map[string]bool{
 	"settings.write": true, "settings.docs.write": true, "settings.control.write": true, "settings.model.write": true, "settings.model.remove": true, "models.test": true,
 }
@@ -988,30 +991,18 @@ var linkMay = []string{"judge.server"}
 // linkWidens says why a call a link makes would widen what the host's tasks
 // may do, "" when it would not. A call it cannot read is refused too.
 func linkWidens(method string, params json.RawMessage) string {
-	switch method {
-	case "settings.write":
-		var p struct {
-			Set map[string]json.RawMessage `json:"set"`
-		}
-		if json.Unmarshal(params, &p) != nil {
-			return "its settings could not be read"
-		}
-		for _, name := range slices.Sorted(maps.Keys(p.Set)) {
-			if !slices.Contains(linkMay, name) && slices.ContainsFunc(widening, func(prefix string) bool { return strings.HasPrefix(name, prefix) }) {
-				return name
-			}
-		}
-	case "settings.docs.write":
-		var p struct {
-			GoogleUpload string `json:"google_upload"`
-		}
-		if json.Unmarshal(params, &p) != nil {
-			return "its settings could not be read"
-		}
-		// Never asking about an upload to Google Docs is the widening one:
-		// asking and refusing narrow.
-		if p.GoogleUpload == "allow" {
-			return "docs.google_upload"
+	if method != "settings.write" {
+		return ""
+	}
+	var p struct {
+		Set map[string]json.RawMessage `json:"set"`
+	}
+	if json.Unmarshal(params, &p) != nil {
+		return "its settings could not be read"
+	}
+	for _, name := range slices.Sorted(maps.Keys(p.Set)) {
+		if !slices.Contains(linkMay, name) && slices.ContainsFunc(widening, func(prefix string) bool { return strings.HasPrefix(name, prefix) }) {
+			return name
 		}
 	}
 	return ""

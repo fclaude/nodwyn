@@ -254,8 +254,16 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	if written, err := os.ReadFile(remotePaths.ConfigFile); err != nil || bytes.Contains(written, []byte("allow_insecure_http")) || bytes.Contains(written, []byte(`"4m"`)) {
 		t.Fatalf("a refused write changed workshop's config.toml: %s %v", written, err)
 	}
-	if err := call(conn, "settings.docs.write", map[string]any{"google_upload": "allow"}, &settings); err == nil || !strings.Contains(err.Error(), "docs.google_upload") {
+	// Never asking about an upload to Google Docs is the link's to choose, as
+	// the approvals are, and is saved on workshop.
+	if err := call(conn, "settings.docs.write", map[string]any{"google_upload": "allow"}, &settings); err != nil {
 		t.Errorf("the vouched link's settings.docs.write allow: %v", err)
+	}
+	if written, err := os.ReadFile(remotePaths.ConfigFile); err != nil || !bytes.Contains(written, []byte(`google_upload = "allow"`)) {
+		t.Errorf("workshop's config.toml after the link allowed uploads: %s %v", written, err)
+	}
+	if mine, err := os.ReadFile(paths.ConfigFile); err == nil && bytes.Contains(mine, []byte("google_upload")) {
+		t.Errorf("the link's upload answer changed the laptop's config.toml: %s", mine)
 	}
 	if err := call(conn, "settings.provider.write", map[string]any{"provider": "ollama", "url": "http://127.0.0.1:1"}, &settings); err == nil {
 		t.Error("the vouched link wrote a provider")
@@ -503,8 +511,9 @@ func TestALinkChangesTheHostsSettings(t *testing.T) {
 
 // A link changes the settings that cannot widen what a task may do, and none
 // of the policy or the judge's tuning (the default judge is
-// chosen among the host's own, as its default model is), nor an upload to Google Docs
-// that is never asked about (ADR 54, amended 2026-10-23).
+// chosen among the host's own, as its default model is). The answer to an
+// upload to Google Docs is the link's, never asking included (ADR 54, amended
+// 2026-10-23 and 2026-10-30).
 func TestLinkWidens(t *testing.T) {
 	for _, tt := range []struct {
 		name, method, params, want string
@@ -522,7 +531,7 @@ func TestLinkWidens(t *testing.T) {
 		{"unreadable", "settings.write", `[]`, "its settings could not be read"},
 		{"uploads asked", "settings.docs.write", `{"google_upload":"ask"}`, ""},
 		{"uploads refused", "settings.docs.write", `{"google_upload":"deny"}`, ""},
-		{"uploads allowed", "settings.docs.write", `{"google_upload":"allow"}`, "docs.google_upload"},
+		{"uploads allowed", "settings.docs.write", `{"google_upload":"allow"}`, ""},
 		{"a model", "settings.model.write", `{"server":"p","model":"m"}`, ""},
 	} {
 		if got := linkWidens(tt.method, json.RawMessage(tt.params)); got != tt.want {

@@ -3199,8 +3199,9 @@ saved on the server. Its limits, its default model, its default judge
 list change there: on the Models tab **Add a model on NAME** (on a provider
 the server already has), **Edit** and **Remove** act on the server's list,
 except that its default model has no Remove. Providers (their addresses and
-keys) are shown but have no Add, Edit or Remove there. Its approvals change
-there too (a choice that lets tasks do more unasked asks for a second
+keys) are shown but have no Add, Edit or Remove there. Its approvals and its
+answer to Google Docs uploads change there too (a choice that lets tasks do
+more unasked, **Always allow** for uploads among them, asks for a second
 click first). The
 policy, what the judge sees and how sure it must be, and where their content goes (providers) are shown or
 left out and

@@ -971,11 +971,11 @@ passkey touch, which it cannot give, but for `settings.write`,
 `settings.model.remove` and `models.test`, which it is granted with no
 touch when it is the person's,
 unless the host's console was started with `--no-link-settings`. A
-`settings.write` that names an `approval.*`, `policy.*` or `judge.*`
-setting, and a `settings.docs.write` of `"allow"`, are refused it with an
-error saying so, and `settings.provider.write` and
-`settings.provider.remove` are not offered it in `hello` (ADR 54, amended
-2026-10-23). It never holds a touch, whatever it has changed; and any
+`settings.write` that names a `policy.*` or `judge.*` setting other than
+`judge.server` is refused it with an error saying so, and
+`settings.provider.write` and `settings.provider.remove` are not offered it
+in `hello` (ADR 54, amended 2026-10-23 and 2026-10-30: the approvals and a
+`settings.docs.write` of `"allow"` are the link's). It never holds a touch, whatever it has changed; and any
 device may ask `devices.leave
 {}` to be revoked itself. Whether it makes the person's choices there is
 decided by the invitation it used: one made by a device of the person's that

@@ -389,21 +389,26 @@ check(async () => {
   await shows(page, "main.settings-page h1", "workshop's settings");
   assert.strictEqual(await page.locator("#host-settings-refused").count(), 0, "workshop's Settings refuse the vouched link");
   assert.deepStrictEqual(await page.$$eval("main.settings-page [role=tab]", (tabs) => tabs.map((t) => t.textContent.trim())), ["General", "Models", "Judge"], "workshop's Settings tabs");
-  // The approvals are the link's to choose, and this window asks once more
-  // before it sends one that lets a task do more unasked; never asking about
-  // an upload to Google Docs still waits for the touch a link cannot give.
+  // The approvals and the answer to an upload to Google Docs are the link's
+  // to choose, and this window asks once more before it sends one that lets
+  // a task do more unasked.
   assert.strictEqual(await page.locator("[id='set-approval.writes-ask']").isDisabled(), false, "a link cannot choose how workshop asks before writes");
-  assert.strictEqual(await page.locator("[id='set-docs.google_upload-allow']").isDisabled(), true, "a link can allow uploads to Google Docs at workshop");
+  assert.strictEqual(await page.locator("[id='set-docs.google_upload-allow']").isDisabled(), false, "a link cannot allow uploads to Google Docs at workshop");
   await page.click("[id='set-approval.commands-judge-auto']");
+  await page.click("[id='set-docs.google_upload-allow']");
   await page.click(".save-bar .btn.accent");
-  await shows(page, ".save-bar", "Let tasks on workshop run commands the judge allows");
-  assert.strictEqual(of(sent.workshop, "settings.write").length, 0, "a loosening was sent before it was confirmed");
+  await shows(page, ".save-bar", "Let tasks on workshop run commands the judge allows, with nobody asked, and upload to Google Docs without asking?");
+  assert.strictEqual(of(sent.workshop, "settings.write").length + of(sent.workshop, "settings.docs.write").length, 0, "a loosening was sent before it was confirmed");
   await page.click(".save-bar .btn.accent");
   await until("workshop's approval to be saved", () => of(sent.workshop, "settings.write").length === 1);
   assert.deepStrictEqual(of(sent.workshop, "settings.write")[0], { set: { "approval.commands": "judge-auto" } }, "the approval went to workshop");
-  assert.strictEqual(of(sent.local, "settings.write").length, 0, "workshop's approval went to the laptop");
+  assert.deepStrictEqual(of(sent.workshop, "settings.docs.write"), [{ google_upload: "allow" }], "the upload answer went to workshop");
+  assert.strictEqual(of(sent.local, "settings.write").length + of(sent.local, "settings.docs.write").length, 0, "workshop's approvals went to the laptop");
   await until("the save bar gone", async () => await page.locator(".save-bar").isHidden());
   const configOf = (w) => fs.readFileSync(`${w.root}/config/nodwyn/config.toml`, "utf8");
+  assert.match(configOf(workshop), /\[docs\][^[]*google_upload = "allow"/, "workshop's config.toml does not upload without asking");
+  assert.doesNotMatch(configOf(laptop), /google_upload/, "workshop's upload answer changed the laptop's config.toml");
+  await page.waitForSelector("[id='set-docs.google_upload-allow'][aria-pressed=true]");
   const laptopConfig = configOf(laptop);
   await page.click("#advanced > summary");
   await page.fill("[id='set-loop.shell_timeout']", "3m");
