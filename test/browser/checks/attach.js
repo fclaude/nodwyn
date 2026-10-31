@@ -6,7 +6,7 @@
 // and the model then counts the image it was sent.
 const assert = require("assert");
 const fs = require("fs");
-const { out, tempDir, until, step, ready, desk, check } = require("../lib");
+const { out, tempDir, until, step, ready, desk, openOptions, check } = require("../lib");
 
 check(async () => {
   const { url, repo, page } = await desk();
@@ -51,6 +51,17 @@ check(async () => {
   await until("the image chip after the folder redraw", async () => (await chips()).includes("shot.png"));
   assert.ok(await page.$(".ask input[type=file]"), "the attach input vanished with the redraw");
   step("chip survives a full redraw");
+
+  // Options, once opened, stays open through a full redraw of Home (here a
+  // route away and back), as a fold does: it closed under the person, and
+  // the choice they were about to make with it.
+  await openOptions(page);
+  await page.evaluate(() => (document.querySelector("#new-task-options").dataset.mark = "old"));
+  await page.evaluate(() => { location.hash = "#/workspaces"; location.hash = "#/"; });
+  await until("Home drawn again", async () => page.evaluate(() => !!document.querySelector("#new-task-options:not([data-mark])")));
+  assert.ok(await page.$eval("#new-task-options", (el) => el.open), "a full redraw closed Options");
+  await page.click("#new-task-options > summary");
+  step("Options stays open through a full redraw");
 
   // A second file shows, and its chip can be removed before the task starts.
   await page.setInputFiles(".ask input[type=file]", notes);

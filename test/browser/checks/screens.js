@@ -135,6 +135,7 @@ check(async () => {
   // behind Options, which counts those off their defaults, and scheduling
   // opens its own dialog that asks for the message, so it does nothing
   // silently when the box is empty.
+  let homeOptions;
   await shoot("home-options", { width: 1280, height: 800 }, "light", async (page) => {
     await page.click("#new-task-options > summary");
     assert.ok(await page.isVisible("#new-task-schedule"), "Options did not open");
@@ -149,6 +150,9 @@ check(async () => {
     assert.strictEqual(await page.textContent("#new-task-options .count"), "1", "the count does not say the worktree choice changed");
     await page.setChecked(worktree, before);
     assert.ok(await page.$eval("#new-task-options .count", (el) => el.hidden), "the count stayed after the worktree choice went back");
+    // The choice put back is kept for the next task before the page goes:
+    // the next shot's page would otherwise start in a worktree.
+    await until("the worktree choice kept", async () => homeOptions.of("newtask.last").length >= 2 && homeOptions.settled("newtask.last"));
     await page.screenshot({ path: `${out}/home-options-open.png` });
     assert.ok(await page.isEnabled("#new-task-schedule"), "Schedule is off with an empty box");
     await page.click("#new-task-schedule");
@@ -157,7 +161,7 @@ check(async () => {
     await shows(page, "dialog.schedule-dialog", "Schedule");
     await page.screenshot({ path: `${out}/home-schedule-dialog.png` });
     await page.click('button[aria-label="Close schedule"]');
-  });
+  }, "light", async (page) => { homeOptions = requests(page); });
   await shoot("home-options-phone", { width: 390, height: 844 }, "light", async (page) => {
     await page.click("#new-task-options > summary");
     const pop = await page.$eval(".options-pop", (el) => { const r = el.getBoundingClientRect(); return [r.left, r.right, innerWidth]; });
@@ -179,10 +183,10 @@ check(async () => {
   }, "light", async (page) => { enter = requests(page); });
   // On a phone only what waits for an answer comes before the composer.
   await shoot("home-phone-order", { width: 390, height: 844 }, "light", async (page) => {
-    const top = (sel) => page.$eval(sel, (el) => el.getBoundingClientRect().top);
-    const needs = await top(".home-needs");
-    const composer = await top("#task");
-    const finished = await top("#done");
+    // Read in one step in the page: Home is drawn again at each change of
+    // the desk, and an element found in one step and read in the next (as
+    // $eval does) may have been taken out of it, reading 0.
+    const [needs, composer, finished] = await page.evaluate(() => [".home-needs", "#task", "#done"].map((sel) => document.querySelector(sel).getBoundingClientRect().top));
     assert.ok(needs < composer && composer < finished, `the phone's order is not Needs you, composer, the rest: ${needs} ${composer} ${finished}`);
     await page.screenshot({ path: `${out}/home-phone-order.png` });
   });
@@ -223,10 +227,36 @@ check(async () => {
     assert.ok(layout.stop, "Stop is not offered while the task waits for an answer");
     assert.ok(layout.cardBottom <= layout.height, `the request card runs off the phone: ${JSON.stringify(layout)}`);
   });
+  // The page's socket, so a change of the task list can be made to arrive
+  // between a Tab to a change and its Enter, as an event may at any time.
+  let wire = null;
+  const listened = async (page) => {
+    wire = { lists: new Set(), answered: false };
+    await page.routeWebSocket("**/socket", async (ws) => {
+      const server = await ws.connectToServer();
+      wire.ws = ws;
+      ws.onMessage((message) => {
+        const frame = JSON.parse(message);
+        if (frame.method === "session.list") wire.lists.add(frame.id);
+        server.send(message);
+      });
+      server.onMessage((message) => {
+        if (wire.lists.has(JSON.parse(message).id)) wire.answered = true;
+        ws.send(message);
+      });
+    });
+  };
   const inspector = async (page) => {
     await task(page);
     await page.click(".task-aside [role=tab]:has-text('Changes')");
     await page.focus(".change-toggle");
+    // The list read again redraws the task's side panel: the change's
+    // toggle keeps the focus through it, so the Enter still opens it.
+    wire.answered = false;
+    wire.ws.send(JSON.stringify({ jsonrpc: "2.0", method: "session.event", params: { kind: "session.state", payload: { id: "20990101T000000Z-elsewhere", open: true, busy: false, revision: 1 } } }));
+    await until("the list read again", async () => wire.answered);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    assert.strictEqual(await page.evaluate(() => document.activeElement?.classList.contains("change-toggle")), true, "the change's toggle lost the focus when the side panel was drawn again");
     await page.keyboard.press("Enter");
     await shows(page, ".change-inspector", "Approved preview—not proof of a successful write");
     assert.ok(await page.locator(".change-inspector .diff-line.add").count(), "preview additions missing");
@@ -243,8 +273,8 @@ check(async () => {
     await page.evaluate(() => document.querySelector(".change-inspector").scrollIntoView({ block: "center" }));
   };
   for (const theme of ["light", "dark"]) {
-    await shoot(`changes-${theme}`, { width: 1440, height: 1080 }, theme, inspector);
-    await shoot(`changes-phone-${theme}`, { width: 390, height: 844 }, theme, inspector);
+    await shoot(`changes-${theme}`, { width: 1440, height: 1080 }, theme, inspector, "light", listened);
+    await shoot(`changes-phone-${theme}`, { width: 390, height: 844 }, theme, inspector, "light", listened);
   }
   // Real layout and controls, with bounded synthetic diff data: approvals
   // above keep their own renderer and their existing narrow-pane behaviour.
@@ -404,6 +434,12 @@ check(async () => {
   let failLoad = true;
   let release;
   const held = new Promise((resolve) => (release = resolve));
+  // What the page's socket is sent, and the loads it asked for: a failed
+  // load is read again on Retry, not at every change of the task list.
+  let socket = null;
+  let loads = 0;
+  const lists = new Set();
+  let listed = false;
   await shoot("task-load-failed", { width: 1280, height: 800 }, "light", async (page) => {
     await page.click('#sidebar .nav-task:has-text("Summarize what is in this folder")');
     await page.waitForSelector(".task .transcript");
@@ -416,6 +452,15 @@ check(async () => {
     assert.ok(await page.isDisabled("#reply"), "the reply box is enabled after a failed load");
     assert.ok((await page.getAttribute("#reply", "placeholder")).includes("Retry"), await page.getAttribute("#reply", "placeholder"));
     await page.screenshot({ path: `${out}/task-load-failed-panel.png` });
+    // Another task opening changes the list, which the page reads again;
+    // the failed conversation stays failed, waiting for its Retry.
+    const before = loads;
+    listed = false;
+    socket.send(JSON.stringify({ jsonrpc: "2.0", method: "session.event", params: { kind: "session.state", payload: { id: "20990101T000000Z-elsewhere", open: true, busy: false, revision: 1 } } }));
+    await until("the list read again", async () => listed);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    assert.strictEqual(loads, before, "the failed conversation was read again when the list changed");
+    assert.ok(await page.locator(".load-failed").count(), "the failure went when the list changed");
     failLoad = false;
     await page.click(".load-failed button:text-is('Retry')");
     await page.waitForSelector(".task[data-loaded]");
@@ -424,15 +469,21 @@ check(async () => {
   }, "light", async (page) => {
     await page.routeWebSocket("**/socket", async (ws) => {
       const server = await ws.connectToServer();
+      socket = ws;
       ws.onMessage(async (message) => {
         const frame = JSON.parse(message);
+        if (frame.method === "session.list") lists.add(frame.id);
         if (failLoad && (frame.method === "session.subscribe" || frame.method === "log.read")) {
+          loads++;
           await held;
           return ws.send(JSON.stringify({ jsonrpc: "2.0", id: frame.id, error: { code: -32000, message: "simulated load failure" } }));
         }
         server.send(message);
       });
-      server.onMessage((message) => ws.send(message));
+      server.onMessage((message) => {
+        if (lists.has(JSON.parse(message).id)) listed = true;
+        ws.send(message);
+      });
     });
   });
   // A page that throws while it is drawn is replaced by its failure, with a

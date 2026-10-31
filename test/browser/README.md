@@ -58,7 +58,20 @@ provokes on purpose, such as a request the console must refuse, it names with
 `expectError` first, once for each time it provokes it. Warnings are printed
 and do not fail it.
 
-A check waits for conditions, never for a time. The console marks what the
+A check waits for conditions, never for a time. The console draws a page
+again whenever what it shows changes, so a condition is read as one step in
+the page: `until` takes a condition that throws (its element missing for a
+moment) as not met yet, `shows` reads its text again for a few seconds, and
+a measure of several elements, or of one that a redraw may take away, is one
+`page.evaluate`, since `page.$eval` finds the element in one step and reads
+it in the next. A check that sends a message waits for the turn before it to
+end, as a person does: Send is off while a response runs. A check that
+changes what the daemon keeps waits for the answer before its page closes
+(`requests(page).settled(method)`), since a request in flight when a page
+closes is lost, and the next page finds the choice before it. A change that may
+race is run many at once before it is trusted (several copies of a check
+started together, each with its own output folder), since the CI runner,
+running every check together on fewer cores, is slower than a laptop. The console marks what the
 checks wait for: `<html data-ready>` once the desk's first refresh is drawn
 and the models have answered, and `.task[data-loaded]` once a task's
 conversation, details and notes are. `demo -seed` prints its URL only once

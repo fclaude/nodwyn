@@ -251,6 +251,11 @@ const connectionsTabs = [
 // manage: their addresses go to those pages.
 const connectionsMoved = { workspaces: "#/workspaces", models: "#/settings/models" };
 
+// connectionsDraws counts the page's draws: the page follows the desk, so a
+// draw can start while another still waits for its lists, and only the latest
+// is shown.
+let connectionsDraws = 0;
+
 export async function renderConnections(root, ctx) {
   const { conn } = ctx;
   if (connectionsMoved[ctx.tab]) {
@@ -259,26 +264,35 @@ export async function renderConnections(root, ctx) {
   }
   const tab = connectionsTabs.some((t) => t.id === ctx.tab) ? ctx.tab : "tools";
   const body = h("div", { style: "display:flex;flex-direction:column;gap:24px" });
-  root.replaceChildren(
+  // The page is drawn again at every change of the desk. Such a redraw of the
+  // tab on screen keeps it there until the new one has read its lists and is
+  // swapped in, so the page never stands empty under its tabs while they are
+  // read (on a slow machine it did, between any two changes). A first draw,
+  // and one asked for by what the person did on the page (own), shows the
+  // new page at once, its lists following: the old one, left clickable while
+  // they were read, could take a confirm twice.
+  const draw = ++connectionsDraws;
+  const shown = ctx.own ? null : root.querySelector(`:scope > main.connections-page[data-tab="${tab}"]`);
+  const current = () => draw === connectionsDraws && (shown ? root.contains(shown) : body.isConnected);
+  const page = h(
+    "main",
+    { class: "page connections-page", dataset: { tab } },
     h(
-      "main",
-      { class: "page" },
-      h(
-        "div",
-        { class: "page-col" },
-        h("h1", {}, "Connections"),
-        h("p", { class: "lede" }, "What nodwyn can reach and what it may do there: MCP servers, whose tools cross the same guard as the built-in ones, and the credentials it may send. Models are under ", h("a", { href: "#/settings/models" }, "Settings › Models"), ", folders under ", h("a", { href: "#/workspaces" }, "Workspaces"), "."),
-        tablist({ label: "Connections", prefix: "connections", tabs: connectionsTabs, current: tab, href: (id) => `#/connections/${id}` }),
-        body,
-      ),
+      "div",
+      { class: "page-col" },
+      h("h1", {}, "Connections"),
+      h("p", { class: "lede" }, "What nodwyn can reach and what it may do there: MCP servers, whose tools cross the same guard as the built-in ones, and the credentials it may send. Models are under ", h("a", { href: "#/settings/models" }, "Settings › Models"), ", folders under ", h("a", { href: "#/workspaces" }, "Workspaces"), "."),
+      tablist({ label: "Connections", prefix: "connections", tabs: connectionsTabs, current: tab, href: (id) => `#/connections/${id}` }),
+      body,
     ),
   );
+  if (!shown) root.replaceChildren(page);
+  const redraw = () => renderConnections(root, { ...ctx, own: true });
   if (tab === "credentials") {
-    if (conn.has("credentials.list")) return renderCredentials(body, ctx, () => renderConnections(root, ctx));
-    body.append(h("div", { class: "callout plain" }, "Credentials are listed by the computer nodwyn runs on."));
-    return;
-  }
-  return tools(body, ctx, () => renderConnections(root, ctx));
+    if (conn.has("credentials.list")) await renderCredentials(body, { ...ctx, current }, redraw);
+    else body.append(h("div", { class: "callout plain" }, "Credentials are listed by the computer nodwyn runs on."));
+  } else await tools(body, ctx, redraw);
+  if (shown && current()) root.replaceChildren(page);
 }
 
 async function tools(body, ctx, redraw) {

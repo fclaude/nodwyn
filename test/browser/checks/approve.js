@@ -57,6 +57,16 @@ check(async () => {
     });
   });
   const transcript = () => page.innerText(".transcript");
+  // say sends a message as a person does: once the turn before it has
+  // ended, since Send is off while a response runs (Queue and Steer are
+  // offered instead), and a reply's last words arrive before its turn ends,
+  // so a message typed on seeing them was not sent on a slow machine.
+  const say = async (text) => {
+    await until(`the turn's end before "${text}"`, async () => (await page.textContent(".task-head .pill")) === "Idle");
+    await page.fill("#reply", text);
+    await page.keyboard.press("Enter");
+    await until(`"${text}" sent`, async () => sent.of("session.send").some((s) => s.text === text));
+  };
   await page.goto(url);
   await ready(page);
   await page.click(".nav-task.dotted");
@@ -332,8 +342,7 @@ check(async () => {
   await page.screenshot({ path: `${out}/after.png` });
 
   // A follow-up in the same task.
-  await page.fill("#reply", "Thanks");
-  await page.keyboard.press("Enter");
+  await say("Thanks");
   await until("the follow-up's answer", async () => (await transcript()).includes("Glad that helps"));
   assert.deepStrictEqual(sent.of("session.send"), [{ id, text: "Thanks" }]);
   step("follow-up answered");
@@ -342,12 +351,10 @@ check(async () => {
   // goes on from the step it marked: the model's plan-write was recorded
   // (its plan has every kind), carried, and the steps "continue" marked
   // are counted.
-  await page.fill("#reply", "Tidy the notes");
-  await page.keyboard.press("Enter");
+  await say("Tidy the notes");
   await until("rate limit", async () => (await transcript()).includes("Stopped by an error"));
   step("rate limited");
-  await page.fill("#reply", "continue");
-  await page.keyboard.press("Enter");
+  await say("continue");
   const carried = async () => ({
     went: await page.evaluate(() => [...document.querySelectorAll(".transcript *")].some((e) => e.children.length === 0 && /Went on with the plan · 1 of 4 steps marked/.test(e.textContent))),
     answer: (await transcript()).includes("Tidied"),
@@ -377,8 +384,7 @@ check(async () => {
   // before the answer, and after it the file holds both.
   const makefile = `${repo}/Makefile`;
   const original = "build:\n\tgo build ./...\n\ntest:\n\tgo test ./...\n";
-  await page.fill("#reply", "Quiet the build");
-  await page.keyboard.press("Enter");
+  await say("Quiet the build");
   await page.waitForSelector(".ask-card .diff", { timeout: 15000 });
   const card = await page.evaluate(() => ({
     title: document.querySelector(".ask-card h2")?.textContent,

@@ -18,6 +18,12 @@ import { hostState } from "./hosts.js";
 // on a new loopback port and this browser remembers nothing (ADR 30).
 const LAST_KEY = "nodwyn-last-folder";
 let draft = "";
+// Whether New task's Options and its Helpers fold are open. Home is drawn
+// again whole at some changes (a reconnection, a model's state), and a fold
+// the person had opened closed under them: the checkbox they were about to
+// tick was gone. Starting a task closes them for the next.
+let optionsOpen = false;
+let helpersOpen = false;
 let current = null;
 let files = null; // the files chosen for the next task, kept across redraws
 let starting = false; // a start is in flight: one task per ask
@@ -168,7 +174,7 @@ function helpersBox(desk, driving, changed) {
   const chosen = new Set(helpersOf(desk, driving));
   return h(
     "details",
-    { class: "helpers", id: "new-task-helpers" },
+    { class: "helpers", id: "new-task-helpers", open: helpersOpen, ontoggle: (event) => (helpersOpen = event.target.open) },
     h("summary", { title: "Other models this task's model may hand pieces of work to" }, count),
     h(
       "div",
@@ -548,7 +554,7 @@ export function renderHome(root, ctx) {
   };
   const options = h(
     "details",
-    { class: "options", id: "new-task-options", onkeydown: (event) => { if (event.key === "Escape") options.open = false; } },
+    { class: "options", id: "new-task-options", open: optionsOpen, ontoggle: () => (optionsOpen = options.open), onkeydown: (event) => { if (event.key === "Escape") options.open = false; } },
     h("summary", { class: "btn", title: "Worktree, helpers, commands and scheduling" }, "Options", optionsCount),
     h(
       "div",
@@ -629,6 +635,7 @@ export function renderHome(root, ctx) {
           if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling });
           else await conn.call("session.send", { id: info.id, text });
           draft = "";
+          optionsOpen = helpersOpen = false;
           // What was chosen stays for the next task (ADR 41, amended
           // 2026-10-27).
           await desk.refresh();

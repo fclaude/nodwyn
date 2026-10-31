@@ -152,17 +152,36 @@ function expectError(re) {
 // order, as {method, params}.
 function requests(page) {
   const sent = [];
-  page.on("websocket", (socket) =>
+  // The ids of the requests sent and of the answers come back, so a check
+  // can wait for what it changed to be done before it leaves: a page closed
+  // with a request in flight loses it, and the next page found the daemon
+  // keeping the choice before it.
+  const asked = new Map();
+  const answered = new Set();
+  page.on("websocket", (socket) => {
     socket.on("framesent", ({ payload }) => {
       try {
         const frame = JSON.parse(payload);
-        if (frame.method) sent.push({ method: frame.method, params: frame.params });
+        if (frame.method) {
+          sent.push({ method: frame.method, params: frame.params });
+          if (frame.id !== undefined) asked.set(frame.id, frame.method);
+        }
       } catch {
         /* not JSON-RPC */
       }
-    }),
-  );
+    });
+    socket.on("framereceived", ({ payload }) => {
+      try {
+        const frame = JSON.parse(payload);
+        if (frame.id !== undefined && !frame.method) answered.add(frame.id);
+      } catch {
+        /* not JSON-RPC */
+      }
+    });
+  });
   sent.of = (method) => sent.filter((r) => r.method === method).map((r) => r.params);
+  // settled is whether every request of method sent so far was answered.
+  sent.settled = (method) => [...asked].every(([id, m]) => m !== method || answered.has(id));
   return sent;
 }
 
@@ -192,7 +211,14 @@ async function desk({ args = ["-seed", "-pace=0"], repo = "REPO", viewport = { w
 
 // shows fails unless the element at selector shows each of texts.
 async function shows(page, selector, ...texts) {
-  const text = await page.innerText(selector);
+  // A page drawn again at a change of what it shows is, for a moment, the
+  // part already drawn (Connections' tabs before its list), so the text is
+  // read again for a few seconds before what is missing is said.
+  let text = "";
+  for (const end = Date.now() + 5000; ; await new Promise((r) => setTimeout(r, 50))) {
+    text = await page.innerText(selector).catch(() => "");
+    if (texts.every((want) => text.includes(want)) || Date.now() > end) break;
+  }
   for (const want of texts) if (!text.includes(want)) throw new Error(`${selector} does not show ${JSON.stringify(want)}; it shows:\n${text.slice(0, 1500)}`);
 }
 
@@ -219,12 +245,24 @@ async function taskMenu(page, label) {
 // returns then, which is what the page showed instead.
 async function until(what, ready, limit = 10000, describe = null) {
   if (typeof limit === "function") [limit, describe] = [10000, limit];
+  // A condition that throws is not met yet: the console draws a page again
+  // at each change of what it shows, so an element a condition reads can be
+  // missing, or taken out of the page between Playwright's finding it and
+  // reading it, for a moment. Thrown on the first try, it ended the wait
+  // there, on a slow machine only; the last error is said if the wait runs
+  // out.
+  let failed = null;
   for (const end = Date.now() + limit; ; await new Promise((r) => setTimeout(r, 50))) {
-    const got = await ready();
-    if (got) return got;
+    try {
+      const got = await ready();
+      if (got) return got;
+      failed = null;
+    } catch (error) {
+      failed = error;
+    }
     if (Date.now() > end) {
       const shown = describe ? `: ${JSON.stringify(await describe())}` : "";
-      throw new Error(`no ${what} after ${limit} ms${shown}`);
+      throw new Error(`no ${what} after ${limit} ms${shown}${failed ? ` (last: ${failed.message})` : ""}`);
     }
   }
 }

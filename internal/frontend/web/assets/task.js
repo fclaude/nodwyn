@@ -134,6 +134,10 @@ export class TaskView {
       return;
     }
     this.item = item;
+    // Whether the task was open when its conversation was read: a load that
+    // failed is read again when the task opens since (app.js), not at every
+    // change of the list.
+    this.loadedOpen = !!item.open;
     this.loading = true;
     this.subscribed = false;
     this.asideScroll.clear();
@@ -1413,6 +1417,10 @@ export class TaskView {
     // the notes field keeps its caret; so does a control of the limits, the
     // limit being typed with its caret.
     const focusing = side.querySelector("[role=tab]:focus");
+    // So does any control that names itself to be kept (data-keep): a
+    // change's toggle, opened from the keyboard, lost the focus to an event
+    // arriving between the Tab and the Enter, and the Enter went nowhere.
+    const keeping = side.contains(document.activeElement) ? document.activeElement.dataset?.keep : undefined;
     const limitFocus = side.contains(document.activeElement) ? document.activeElement.dataset?.limitFocus : undefined;
     const limitCaret = limitFocus === "input" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
     const tabs = this.asideTabs();
@@ -1467,6 +1475,7 @@ export class TaskView {
     if (reviewFocused) review?.focus({ preventScroll: true });
     body.scrollTop = this.asideScroll.get(tabs[at].id) || 0;
     if (focusing) side.querySelector(`#${focusing.id}`)?.focus();
+    if (keeping) [...side.querySelectorAll("[data-keep]")].find((node) => node.dataset.keep === keeping)?.focus({ preventScroll: true });
     const area = caret && side.querySelector(`textarea[data-notes="${typing.dataset.notes}"]`);
     if (area) {
       area.focus({ preventScroll: true });
@@ -1881,7 +1890,7 @@ export class TaskView {
           "div",
           { class: "file-row" },
           icon("file", 15),
-          h("button", { type: "button", class: "btn small ghost change-toggle mono", title: path, "aria-expanded": String(this.changeOpen.has(path)), onclick: () => { this.changeOpen.has(path) ? this.changeOpen.delete(path) : this.changeOpen.add(path); this.aside(); } }, path),
+          h("button", { type: "button", class: "btn small ghost change-toggle mono", title: path, dataset: { keep: `change ${path}` }, "aria-expanded": String(this.changeOpen.has(path)), onclick: () => { this.changeOpen.has(path) ? this.changeOpen.delete(path) : this.changeOpen.add(path); this.aside(); } }, path),
           h("span", { class: "badge plain" }, "approved"),
           // In git too: a file git cannot give back keeps a version (ADR 35).
           this.info && this.conn.has("versions.list")

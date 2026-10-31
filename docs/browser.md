@@ -446,8 +446,9 @@ picked, it starts in the first one on the list. The **Work in** chips are
 the one folder control. The bar holds what every task needs: **Attach**,
 **Options**, the model (its Effort select is left out for a model that takes
 none) and Send. **Options** holds the rare choices, **In a worktree**,
-the helpers and **Schedule…**, and says how many differ from
-their defaults; Escape closes it. **Enter** starts the task and
+the helpers, **Commands** and **Schedule…**, and says how many differ from
+their defaults; Escape closes it. It and its Helpers fold stay as they were
+left through any redraw of Home, until a task starts. **Enter** starts the task and
 **Shift+Enter** breaks the line, as in a task's reply box (Cmd or Ctrl+Enter
 starts it too), and a line under the box says so. **Schedule…** opens the
 schedule with the message typed so far; the schedule is saved with the
@@ -585,7 +586,9 @@ was, without reading the conversation again. The eight most recently
 shown are kept; a saved task's page, or one past those, is read from its
 log when it is opened. The page says "Loading the conversation…" until its
 first event is drawn; a load that fails says so where the conversation would
-be, with the message and **Retry**, and the reply box says why it is off. A
+be, with the message and **Retry**, and the reply box says why it is off; it
+is read again on Retry, or when the task is opened again (a scheduled run),
+never on its own while other tasks change the list. A
 saved task's reply box is not dead: **Send** resumes the task and then sends
 the message (nothing is sent if resuming fails, and the text stays in the
 box), and **Resume** in the heading stays too. A key typed into a request card is cleared when you
@@ -631,7 +634,8 @@ to the host you allowed, never to the judge.
 its previous content before changing it, so a write that went ahead without
 asking can be taken back. A task's **Changes** list shows the latest recorded
 approval per file, newest first (up to twelve). Click the filename, or focus
-it and press Enter or Space, to expand its recorded preview with line numbers
+it and press Enter or Space (the focus stays on it while events redraw the
+panel), to expand its recorded preview with line numbers
 and addition/deletion counts; long lines wrap, since the side pane is too
 narrow to scroll them. **Approved preview—not proof of a successful
 write** means the guard approved before execution: check the tool result for

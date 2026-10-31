@@ -321,7 +321,11 @@ function draw(routeChanged, what) {
         if (!fresh.open) task.subscribed = false;
         // A scheduled run can reopen a task while its closed transcript is
         // on screen. Its new stream needs a subscription and fixed snapshot.
-        if (fresh.open && !task.subscribed && (!task.loading || task.failed)) task.open(fresh.id);
+        // A load that failed is tried again then too, and otherwise only by
+        // its Retry: tried again at every change of the list, it went back
+        // to "Loading the conversation…" and failed again over and over,
+        // under the person's eyes, wherever other tasks were working.
+        if (fresh.open && !task.subscribed && (task.failed ? !task.loadedOpen : !task.loading)) task.open(fresh.id);
         else task.refreshAll();
       }
     }

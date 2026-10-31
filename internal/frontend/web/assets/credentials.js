@@ -34,7 +34,8 @@ export async function renderCredentials(body, ctx, redraw) {
     body.append(h("p", { class: "error" }, error.message));
     return;
   }
-  if (!body.isConnected) return;
+  // The page was left, or drawn again, while the list was read.
+  if (!ctx.current()) return;
   const canEdit = conn.has("credentials.add");
   const keychain = list.keychain;
   ctx.desk.keychain = keychain;

@@ -261,7 +261,13 @@ check(async () => {
   await page.click(".task-limits .limit-add");
   await page.screenshot({ path: `${out}/tasks-limits-set.png` });
   // The panel fits the column beside the conversation, chips and all.
-  const fits = () => page.$eval(".task-limits", (el) => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= el.closest(".task-aside").getBoundingClientRect().right);
+  // Measured in one step in the page: $eval finds the element first and
+  // reads it in a second step, between which a redraw of the panel (its
+  // details arriving) can take it out of the page.
+  const fits = () => page.evaluate(() => {
+    const el = document.querySelector(".task-aside .task-limits");
+    return el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= el.closest(".task-aside").getBoundingClientRect().right;
+  });
   assert.ok(await fits(), "the limits panel is wider than its column");
   // A change from its chip: what is not a number is said and not sent, and
   // Escape leaves the limit as it was.
@@ -428,6 +434,9 @@ check(async () => {
   assert.deepStrictEqual(sent.slice(mark).map((r) => r.method).filter((m) => m === "session.resume" || m === "session.send"), ["session.resume", "session.send"], "the message did not follow the resume");
   assert.strictEqual(sent.slice(mark).find((r) => r.method === "session.send").params.text, "One more thing");
   await until("the resumed task answered", async () => (await page.locator(".transcript > .turn.user .you-text").count()) === 3);
+  // The policy files are edited in an idle task: the reply arrives before
+  // its turn ends, and an edit asked for meanwhile is refused.
+  await idle();
   await page.screenshot({ path: `${out}/tasks-saved-reply.png` });
   step("a saved task is answered from its own reply box");
 
