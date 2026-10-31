@@ -205,12 +205,12 @@ in with the person's passkey after a touch of it (ADR 30, amended
 2026-10-17); a device paired by a plain invitation has none of it. Another
 nodwyn linked here with the person's passkey has the first row for a host's
 limits, models and default model, with no touch (not its approvals, policy,
-judge or providers, which wait for a touch), unless this computer's console was started with
+judge's tuning or providers, which wait for a touch; its default judge is chosen among the host's own), unless this computer's console was started with
 `--no-link-settings` (ADR 54, amended 2026-10-23), and none of the rest.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
-| Providers, models, efforts, judges, limits, timeouts | Settings: Models, Judge, and General (limits, timeouts and the context window under Advanced); one Save bar for the settings; a linked host's, at `#/host/NAME/settings`, when it lets the link change them (General and Models: add, change and remove a model among the host's providers, never a provider) | — | — | edit `config.toml` |
+| Providers, models, efforts, judges, limits, timeouts | Settings: Models, Judge, and General (limits, timeouts and the context window under Advanced); one Save bar for the settings; a linked host's, at `#/host/NAME/settings`, when it lets the link change them (General, Models and the default judge on Judge: add, change and remove a model among the host's providers, never a provider) | — | — | edit `config.toml` |
 | MCP servers: add, inspect, approve, pull | Connections › Tools | — | — | `nodwyn mcp` |
 | Credentials: add, replace, allow a host, take a host back, remove; OAuth2 sign-in | Connections › Credentials (a ChatGPT plan is connected on its provider, Settings › Models); a sign-in whose browser is on another computer finishes from the address it ended on, pasted into the card (`credentials.authorize.finish`, ADR 24 amended 2026-10-17) | — | — | `nodwyn credential` (taking a host back is an edit of `bindings.toml`) |
 | Keychain: create, unlock, passphrase | Settings › Keys & devices, and beside a provider form that needs it | unlocks the daemon's at start, over the socket (`keychain.unlock`); an empty answer or `--no-keychain` leaves it locked | the same; under a script, only with `--keychain-tty`, which asks the controlling terminal | `nodwyn keychain` |

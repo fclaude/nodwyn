@@ -963,7 +963,8 @@ var settingsMethods = map[string]bool{
 // what a task may do or where its content goes. The default model
 // (settings.control.write) is here: it is chosen among the providers
 // already configured, with no address or key, as the link already chooses
-// a task's model (session.model.set). A provider's address and key
+// a task's model (session.model.set); so is the default judge (linkMay).
+// A provider's address and key
 // (settings.provider.write, .remove) are not, and settings.write and
 // settings.docs.write are limited by linkWidens.
 var linkSettings = map[string]bool{
@@ -975,6 +976,13 @@ var linkSettings = map[string]bool{
 // kept on another computer, so it is not given these without the touch it
 // cannot give (ADR 54, amended 2026-10-23).
 var widening = []string{"approval.", "policy.", "judge."}
+
+// linkMay are the settings under widening that a link may still change:
+// the default judge is chosen among the judges the host's own console set
+// up, with no address or key, as the default model is, and a link already
+// chooses a task's judge (session.judge.set). What the judge sees, how sure
+// it must be and its timeout stay behind the touch.
+var linkMay = []string{"judge.server"}
 
 // linkWidens says why a call a link makes would widen what the host's tasks
 // may do, "" when it would not. A call it cannot read is refused too.
@@ -988,7 +996,7 @@ func linkWidens(method string, params json.RawMessage) string {
 			return "its settings could not be read"
 		}
 		for _, name := range slices.Sorted(maps.Keys(p.Set)) {
-			if slices.ContainsFunc(widening, func(prefix string) bool { return strings.HasPrefix(name, prefix) }) {
+			if !slices.Contains(linkMay, name) && slices.ContainsFunc(widening, func(prefix string) bool { return strings.HasPrefix(name, prefix) }) {
 				return name
 			}
 		}

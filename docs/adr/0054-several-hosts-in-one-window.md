@@ -355,3 +355,22 @@ folded, and Needs you is unchanged, so a task that asks is still in view.
 sight, with no folders under them; opens workshop without opening this computer;
 sees workshop still open after a reload; and folds it again. It fails on the
 sidebar before this change ("workshop starts open").
+
+## Amendment 2026-10-30: a linked host's default judge is the link's to choose
+
+A linked host's Settings had a General and a Models tab; the judge, all of it,
+waited for a touch, so the person could pick a task's judge on a host
+(`session.judge.set`) but not the judge new tasks start with. `judge.server`
+names one of the judges the host's own console set up, with no address or key,
+exactly as `settings.control.write` names one of its models, so a stolen link
+token gains no new destination from it, and "No judge" only makes the host ask
+the person more. `linkWidens` now lets `judge.server` through; what the judge
+sees (`judge.content`), how sure it must be (`judge.approve_threshold`), its
+timeout, model and prices stay behind the touch, and so does a call that mixes
+`judge.server` with one of them. The host's Settings gain a Judge tab with the
+picker enabled and the rest shown and disabled; a judge's key and the judges
+themselves are still set up in the host's own console.
+
+**Evidence.** `TestLinkWidens` and the vouched-link test in `hosts_test.go`;
+the `hosts` browser check sees the Judge tab on workshop with the default-judge
+picker enabled and what the judge sees and its threshold disabled.

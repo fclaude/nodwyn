@@ -3182,14 +3182,15 @@ answers as the laptop's. A notice of the server's task opens it there.
 The server decides what the laptop may do. A laptop linked with an
 invitation from your passkey's device changes the server's settings from
 its own window: **Settings** on the server's card in Hosts, or the server's
-chip at the top of Settings, opens its General and Models tabs, which are
-saved on the server. Its limits, its default model and the models of its
+chip at the top of Settings, opens its General, Models and Judge tabs, which are
+saved on the server. Its limits, its default model, its default judge
+(among the judges the server already has) and the models of its
 list change there: on the Models tab **Add a model on NAME** (on a provider
 the server already has), **Edit** and **Remove** act on the server's list,
 except that its default model has no Remove. Providers (their addresses and
 keys) are shown but have no Add, Edit or Remove there. What its tasks may do
 without asking (approvals, the
-policy, the judge) and where their content goes (providers) are shown or
+policy, what the judge sees and how sure it must be) and where their content goes (providers) are shown or
 left out and
 are changed in its own console, after a touch of your passkey. To refuse
 the rest, start the server's console

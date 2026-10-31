@@ -388,7 +388,7 @@ check(async () => {
   await page.waitForSelector("main.settings-page [role=tablist]");
   await shows(page, "main.settings-page h1", "workshop's settings");
   assert.strictEqual(await page.locator("#host-settings-refused").count(), 0, "workshop's Settings refuse the vouched link");
-  assert.deepStrictEqual(await page.$$eval("main.settings-page [role=tab]", (tabs) => tabs.map((t) => t.textContent.trim())), ["General", "Models"], "workshop's Settings tabs");
+  assert.deepStrictEqual(await page.$$eval("main.settings-page [role=tab]", (tabs) => tabs.map((t) => t.textContent.trim())), ["General", "Models", "Judge"], "workshop's Settings tabs");
   // What would widen what a task may do waits for the touch a link cannot
   // give: the approvals are shown and cannot be chosen, and so is never asking
   // about an upload.
@@ -425,6 +425,16 @@ check(async () => {
   assert.strictEqual(of(sent.local, "settings.control.write").length, 0, "workshop's default model went to the laptop");
   await until("workshop's config.toml to change its [control]", () => configOf(workshop) !== remoteBefore);
   assert.strictEqual(configOf(laptop), laptopConfig, "workshop's default model changed the laptop's config.toml");
+  // The default judge is chosen among workshop's own, as the model is; what
+  // the judge sees and how sure it must be widen, and wait for the touch.
+  await page.click("main.settings-page [role=tab]:has-text('Judge')");
+  await page.waitForSelector("#settings-panel-judge");
+  assert.strictEqual(await page.locator("[id='set-judge.server-default']").isDisabled(), false, "a link cannot choose workshop's default judge");
+  assert.strictEqual(await page.locator("[id='set-judge.content-full']").isDisabled(), true, "a link can choose what workshop's judge sees");
+  await page.click("#judge-tuning > summary");
+  assert.strictEqual(await page.locator("[id='set-judge.approve_threshold']").isDisabled(), true, "a link can change how sure workshop's judge must be");
+  await page.click("main.settings-page [role=tab]:has-text('Models')");
+  await page.waitForSelector("#settings-panel-models");
   step("a link vouched for by the person's passkey changes workshop's settings and default model from this window, and not the laptop's, and cannot choose its approvals");
 
   // The models of workshop's list are the link's to add, change and remove,
