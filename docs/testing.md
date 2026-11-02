@@ -65,6 +65,58 @@ private temporary directory whose path is printed. Failures retain those logs.
 The supervisor cleans up only processes it started, checking identity before
 signalling them.
 
+## Automatic macOS RAM workspace
+
+The normal full `make test` and `make test-race` commands now create one private
+2 GiB HFS+ RAM image per invocation on macOS, with at least 6 GiB of free or
+reclaimable memory. Fixtures, Go build scratch and compiled test binaries use
+that image. The checkout, durable module/compiler caches, verbose logs,
+inventories and cleanup receipts remain outside it. Reported suite time
+includes image setup and teardown. Linux/WSL use their existing temporary
+filesystem; no image or new mount is created there.
+
+The native macOS tools need no sudo or machine-wide configuration. Before
+initialising the newly attached device, the runner verifies the RAM URI,
+current user, whole virtual-disk identity, expected size and image-helper PID.
+Each invocation has a random volume name and independent device receipt.
+Its host parent uses a short `/private/tmp/nw-*` path, avoiding fixture path
+truncation and local-socket path limits.
+Because a new HFS+ image can ignore ownership, it is remounted **beneath the
+runner's short mode-0700 host directory** before fixtures or binaries are written.
+Access is therefore enforced by the host filesystem outside the image.
+
+Workers finish or are cleaned up before the image is detached. SIGINT,
+SIGTERM and SIGHUP unwind through cleanup; signals during a bounded image
+operation are deferred until ownership has been recorded. Native commands have
+30-second deadlines; transient busy detaches get at most five identity-checked
+attempts, without force-unmounting. Cleanup rechecks image identity rather than detaching a
+possibly reused device ID, checks the helper's identity/exit, and removes the
+empty private mount point and host directory. A cleanup failure fails the command. The final
+success line appears only after teardown.
+
+Insufficient memory or an unavailable tool/setup operation falls back visibly
+to disk after any known image has been cleaned up. An ambiguous device identity
+or uncertain attachment does not silently pass. `workspace.json` retains the
+image/device/helper details, tool PIDs/exits and cleanup status;
+`workspace-tools.log` retains native-tool errors beside the normal test logs.
+A full RAM volume is a test failure, not a reason to discard an attempt and
+silently rerun it. No test, timeout, assertion or skip changes.
+
+For disk-backed diagnosis while retaining normal sharding:
+
+```sh
+NODWYN_TEST_RAM=off make test
+NODWYN_TEST_RAM=off make test-race
+```
+
+Filtered/explicit Go commands and the unsharded diagnostic commands continue
+to use ordinary Go without allocating an image. In automatic RAM mode the
+runner scopes TMPDIR/GOTMPDIR to its own children; the disk opt-out preserves
+caller-supplied temporary paths. A hard kill or host crash cannot execute
+cleanup: use the retained receipt and `hdiutil info -plist` to verify the
+recorded image identity before detaching a surviving image. Normal completion,
+test failure and handled interruptions remove it automatically.
+
 ## Filters and explicit Go options
 
 Existing `GO_TEST_FLAGS` calls still work:
@@ -122,18 +174,33 @@ SSD path remained slow. Tarro stayed near 12 seconds with either RAM or SSD
 scratch space. No application source, test assertion, worker default or GC
 setting changed. See the [profiling report and resource evidence](http://kitten:3000/fc/nodwyn-evals/src/branch/main/benchmarks/analysis/workstation-tests-2026-11-02/remaining-gap.md).
 
-For repeated full-suite iteration, a previously prepared private RAM volume
-can supply scoped temporary directories:
+The manual workspace used in that experiment has now been integrated into the
+normal full commands, with private mounting, retained diagnostics and cleanup
+as described above. HFS+ was chosen for the disposable image because it has a
+simple whole-device lifecycle; both HFS+ and APFS RAM controls passed the full
+suite. Higher concurrency and GOGC=25 gave little additional benefit and were
+not made defaults.
 
-```sh
-TMPDIR=/Volumes/NodwynProfileAPFS/tmp \
-GOTMPDIR=/Volumes/NodwynProfileAPFS/go \
-make test
-```
+### X1 storage control
 
-The named directories must exist on the RAM volume; the runner does not create
-or mount it. The experiment's volumes were temporary and removed afterwards.
-The checkout and durable build/module caches remain on SSD. Keep ordinary disk
-runs when investigating storage semantics. The race command remains the
-acceptance gate. Higher concurrency and GOGC=25 gave little additional benefit
-in these controls and were not made defaults.
+X1 already uses a 16 GiB tmpfs for `/tmp`. Three alternating warm non-race runs
+on balanced power, using the same source and Go 1.27.3, passed all 58 packages:
+
+| Scratch filesystem | Samples (seconds) | Median |
+| --- | --- | ---: |
+| Existing RAM-backed `/tmp` | 18.408, 19.662, 19.912 | 19.662 |
+| SSD-backed Btrfs `/var/tmp` | 19.654, 21.230, 21.002 | 21.002 |
+
+RAM was about 6% faster in this control, not the Mac's 2x improvement. X1's
+normal command already gets the RAM-backed environment; this macOS integration
+does not add another RAM allocation or change Linux's worker settings.
+
+The integrated short private mount passed the full non-race Mac command in
+23.615 seconds end to end, including allocation and teardown. Native checks
+also verified cleanup after a failed fixture test and SIGTERM, and that two
+concurrent images remain independently owned. The runner's 31 fixture tests
+cover setup/fallback, signal handling, reused device IDs, bounded busy retries
+and cleanup failure. A long-path prototype exposed the existing guard-log
+summary limit; shortening the host mount parent fixed the environment without
+changing that assertion. The current command retains logs after the image is
+removed.

@@ -57,3 +57,43 @@ assumptions in existing tests. An observed failure is reported and investigated,
 not excluded to obtain a timing result.
 
 See [testing](../testing.md) for commands, overrides and platform selection.
+
+## Amendment 2026-11-02: Automatic private RAM scratch on macOS
+
+The subsequent storage controls reduced the Mac's full non-race loop from
+41.42 seconds on ordinary SSD scratch to 19.99/19.60 seconds on APFS RAM
+scratch. HFS+ RAM was similarly fast; a shorter SSD path was not. Source,
+assertions, GC and worker budgets were unchanged. The owner requested that
+agents receive this environment automatically through the normal commands.
+
+- Full sharded macOS commands allocate a per-invocation 2 GiB HFS+ RAM image
+  when at least 6 GiB of free/reclaimable memory is available. HFS+ uses a
+  simple whole-device lifecycle; both measured RAM filesystem types passed.
+- Only fixtures, Go build scratch and compiled test binaries move. Retained
+  logs/results/receipts and durable caches stay outside the image.
+- A native attachment receipt, RAM-image metadata, current UID, whole virtual
+  device/size and helper PID establish ownership before initialisation. A
+  random volume label and helper identity distinguish concurrent invocations
+  and reused device IDs. Repository contributors maintain this trusted runner
+  with the same authority as the Makefile; timing data cannot name devices.
+- Mount the image below a short mode-0700 host directory before writing test data.
+  Newly formatted HFS+ images may ignore ownership; a protected ancestor on
+  the host filesystem enforces privacy without privileged policy changes.
+- Each native operation has a 30-second deadline and a recorded PID/exit.
+  Image operations defer handled signals until ownership/cleanup is safe.
+  Worker cleanup precedes detach; helper identity/exit and mount removal are
+  checked before reporting success. Transient busy detach results get at most
+  five identity-checked attempts without force. Cleanup failure fails the command.
+- Low memory or unavailable setup falls back visibly to the disk runner only
+  after known resources are removed. An uncertain attachment/identity is an
+  error. A hard kill/crash cannot run cleanup; retained receipts support
+  identity-checked operator recovery.
+- `NODWYN_TEST_RAM=off` keeps disk scratch with the same sharding. Explicit
+  Go options/filters and unsharded diagnostics retain ordinary Go execution
+  without image setup overhead. Race acceptance is unchanged.
+- Linux/WSL use existing temporary storage. X1 already has RAM-backed `/tmp`;
+  its alternating RAM/SSD control showed only a 6% median difference.
+
+This adds ephemeral OS resources, not a daemon or persistent workstation policy.
+The measured integration includes allocation and cleanup time; it does not
+claim the earlier pre-mounted RAM timings as automatic-command timings.

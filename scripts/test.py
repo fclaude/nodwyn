@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""Run the complete race suite with small, independent test processes."""
+"""Run the complete test suite with small, independent test processes."""
+import contextlib
 import hashlib
 import json
 import math
 import os
 from pathlib import Path
 import platform
+import plistlib
 import re
 import signal
 import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
 HOT = {"internal/core": 16, "internal/prim": 8,
@@ -76,6 +79,210 @@ def check_worker(names, text):
             for status in ("PASS", "SKIP", "FAIL")}
 
 
+class MacRamWorkspace:
+    """Own one disposable RAM image; retain diagnostics outside its lifetime."""
+    size = 2 * 1024**3
+
+    def __init__(self, directory):
+        self.directory = directory
+        if directory.stat().st_uid != os.getuid():
+            raise ValueError("workspace diagnostics directory must belong to this user")
+        directory.chmod(0o700)
+        self.label = "nodwyn-" + uuid.uuid4().hex[:16]
+        self.device = None
+        self.helper = None
+        self.helper_identity = None
+        self.mount = None
+        self.holder = None
+        self.commands = []
+        self.state = {"mode": "disk", "size_bytes": self.size}
+        self.receipt()
+
+    def receipt(self):
+        self.state.update(device=self.device, helper_pid=self.helper, helper_identity=self.helper_identity,
+                          commands=self.commands)
+        (self.directory / "workspace.json").write_text(json.dumps(self.state, indent=2) + "\n")
+
+    @contextlib.contextmanager
+    def deferred_signals(self):
+        # Finish the bounded image operation and register ownership before an
+        # interruption unwinds into cleanup. SIGKILL cannot run any cleanup.
+        pending = []
+        previous = {}
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            previous[sig] = signal.signal(sig, lambda number, _: pending.append(number))
+        try:
+            yield
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+            if pending:
+                raise SystemExit(128 + pending[0])
+
+    def tool(self, command):
+        with (self.directory / "workspace-tools.log").open("ab") as errors:
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors,
+                                       start_new_session=True)
+            record = {"command": command, "pid": process.pid, "exit": None}
+            self.commands.append(record)
+            self.receipt()
+            try:
+                output, _ = process.communicate(timeout=30)
+            except subprocess.TimeoutExpired as error:
+                # The unreaped child still owns its PID and process group.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    record["signal"] = "process group already exited"
+                output, _ = process.communicate()
+                record.update(exit=process.returncode, timeout=True)
+                self.receipt()
+                raise subprocess.TimeoutExpired(command, 30, output=output) from error
+            record["exit"] = process.returncode
+            self.receipt()
+            if process.returncode:
+                raise subprocess.CalledProcessError(process.returncode, command, output)
+            return output
+
+    def images(self):
+        return plistlib.loads(self.tool(["/usr/bin/hdiutil", "info", "-plist"]))["images"]
+
+    def owned_image(self):
+        for image in self.images():
+            entities = image.get("system-entities", [])
+            if (image.get("image-path") == "ram://" + str(self.size // 512)
+                    and image.get("owner-uid") == os.getuid()
+                    and any(entity.get("dev-entry") == self.device for entity in entities)
+                    and (self.helper is None or image.get("hdid-pid") == self.helper)):
+                return image
+        return None
+
+    def activate(self, env):
+        mode = env.get("NODWYN_TEST_RAM", "auto")
+        if mode not in ("auto", "off"):
+            raise ValueError("NODWYN_TEST_RAM must be auto or off")
+        if platform.system() != "Darwin" or mode == "off":
+            self.state["reason"] = "disabled" if mode == "off" else "not macOS"
+            self.receipt()
+            return None
+        with self.deferred_signals():
+            try:
+                stats = self.tool(["/usr/bin/vm_stat"]).decode()
+                page_size = re.search(r"page size of (\d+) bytes", stats)
+                counts = [re.search(r"^Pages " + kind + r":\s+(\d+)", stats, re.M)
+                          for kind in ("free", "inactive", "speculative")]
+                if not page_size or not all(counts):
+                    raise ValueError("unrecognised vm_stat output")
+                pages = sum(int(count[1]) for count in counts)
+                page_size = int(page_size[1])
+                if pages * page_size < self.size + 4 * 1024**3:
+                    raise ValueError("less than 6 GiB of free/reclaimable memory")
+                command = ["/usr/bin/hdiutil", "attach", "-nomount", "ram://" + str(self.size // 512)]
+                try:
+                    output = self.tool(command)
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                    output = error.output or b""
+                    self.remember_device(output)
+                    if self.device is None:
+                        raise RuntimeError("RAM attachment failed without a device receipt; inspect workspace-tools.log and hdiutil info") from error
+                    raise
+                self.remember_device(output)
+                if self.device is None:
+                    raise RuntimeError("RAM attachment returned no device receipt; inspect hdiutil info")
+                image = self.owned_image()
+                info = plistlib.loads(self.tool(["/usr/sbin/diskutil", "info", "-plist", self.device]))
+                if not image or not (info.get("WholeDisk") is True
+                        and info.get("VirtualOrPhysical") == "Virtual"
+                        and info.get("BusProtocol") == "Disk Image"
+                        and info.get("TotalSize") == self.size
+                        and info.get("DeviceNode") == self.device):
+                    raise RuntimeError("refusing to initialise an unverified RAM device: " + self.device)
+                self.helper = image["hdid-pid"]
+                row = process_table().get(self.helper)
+                self.helper_identity = row[2:] if row else None
+                self.receipt()
+                self.tool(["/usr/sbin/diskutil", "eraseVolume", "HFS+", self.label, self.device])
+                self.tool(["/usr/sbin/diskutil", "unmount", self.device])
+                # HFS images may ignore ownership. Mount below a private host
+                # directory so access is enforced before entering that volume.
+                self.holder = Path(tempfile.mkdtemp(prefix="nw-", dir="/private/tmp")).resolve()
+                self.state["host_directory"] = str(self.holder)
+                self.receipt()
+                mount = self.holder / "ram"
+                mount.mkdir(mode=0o700)
+                self.mount = mount
+                self.tool(["/usr/sbin/diskutil", "mount", "-mountPoint", str(mount), self.device])
+                info = plistlib.loads(self.tool(["/usr/sbin/diskutil", "info", "-plist", self.device]))
+                if (info.get("VolumeName") != self.label or not info.get("MountPoint")
+                        or Path(info["MountPoint"]).resolve() != mount
+                        or not os.path.ismount(mount)):
+                    raise ValueError("new RAM volume did not mount at its private path")
+                mount.chmod(0o700)
+                scratch = mount / "workspace"
+                scratch.mkdir(mode=0o700)
+                for name in ("tmp", "go"):
+                    (scratch / name).mkdir(mode=0o700)
+                env.update(TMPDIR=str(scratch / "tmp"), GOTMPDIR=str(scratch / "go"))
+                self.state.update(mode="ram", mount=str(mount), active=True)
+                self.receipt()
+                print("make test: private 2 GiB RAM workspace; diagnostics: " + str(self.directory), flush=True)
+                return scratch
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                self.state["reason"] = str(error)
+                self.close()
+                print("make test: RAM workspace unavailable; using disk (" + str(error) + ")", flush=True)
+                return None
+
+    def remember_device(self, output):
+        devices = re.findall(rb"(?m)^(/dev/disk\d+)\s*$", output)
+        if len(devices) == 1:
+            self.device = devices[0].decode()
+            self.state["attached_device"] = self.device
+            self.receipt()
+
+    def close(self):
+        with self.deferred_signals():
+            if self.device:
+                image = self.owned_image()
+                if image:
+                    # Recheck the image identity; a reused /dev/diskN is not ours.
+                    for attempt in range(5):
+                        if attempt and not self.owned_image():
+                            break
+                        try:
+                            self.tool(["/usr/bin/hdiutil", "detach", self.device])
+                            break
+                        except subprocess.SubprocessError as error:
+                            if (isinstance(error, subprocess.CalledProcessError)
+                                    and error.returncode == 16 and attempt < 4):
+                                time.sleep(.2)
+                                continue
+                            self.state["cleanup_error"] = str(error)
+                            self.receipt()
+                            raise RuntimeError("RAM cleanup failed for " + self.device + "; inspect " + str(self.directory / "workspace.json")) from error
+                    if self.owned_image():
+                        raise RuntimeError("RAM image remains attached: " + self.device)
+                    if self.helper_identity:
+                        for _ in range(30):
+                            row = process_table().get(self.helper)
+                            if not row or row[2:] != self.helper_identity:
+                                break
+                            time.sleep(.1)
+                        else:
+                            self.state["cleanup_error"] = "image helper still running: " + str(self.helper)
+                            self.receipt()
+                            raise RuntimeError(self.state["cleanup_error"])
+                self.device = None
+            if self.mount and self.mount.exists():
+                if os.path.ismount(self.mount):
+                    raise RuntimeError("workspace mount is still in use: " + str(self.mount))
+                self.mount.rmdir()
+            if self.holder and self.holder.exists():
+                self.holder.rmdir()
+            self.state.update(active=False, cleaned=True)
+            self.receipt()
+
+
 def process_table():
     rows = {}
     text = subprocess.check_output(["ps", "-axo", "pid=,ppid=,pgid=,lstart=,command="], text=True)
@@ -89,6 +296,7 @@ def process_table():
 class Supervisor:
     def __init__(self, directory, limit=900):
         self.directory = directory
+        self.scratch = directory
         self.limit = limit
         self.started = time.monotonic()
         self.jobs = []
@@ -206,7 +414,7 @@ def run_suite(root, supervisor, env, profile, cpu_count, weights, race=False):
     jobs = []
     if others:
         jobs.append((supervisor.start("other-packages", ["go", "test", *race_flags, "-count=1", "-timeout=5m", "-json", *others], root, env), None))
-    binaries = supervisor.directory / "bin"
+    binaries = supervisor.scratch / "bin"
     binaries.mkdir()
     if hot:
         build = supervisor.start("compile", ["go", "test", *race_flags, "-c", "-o", str(binaries) + os.sep,
@@ -268,21 +476,29 @@ def main(arguments):
     env = dict(os.environ)
     env.setdefault("GOMEMLIMIT", "off")
     supervisor = Supervisor(directory)
+    workspace = MacRamWorkspace(directory)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    signal.signal(signal.SIGHUP, lambda *_: sys.exit(129))
+    code = 1
     try:
         detected = supervisor.start("go-environment", ["go", "env", "-json", "GOOS", "GOARCH"], ROOT, env, capture=True)
         profile = profile_name(json.loads(supervisor.wait(detected)))
         weights = load_weights(Path(__file__).with_name("test-weights"), profile)
+        supervisor.scratch = workspace.activate(env) or directory
         print("make test: sharded " + ("race" if race else "non-race") + " suite; " + profile + "; logs: " + str(directory), flush=True)
         tests, packages = run_suite(ROOT, supervisor, env, profile, cpus, weights, race)
-        print("PASS make test: " + str(tests) + " sharded tests; all " + str(packages) + " packages; "
-              + format(time.monotonic() - supervisor.started, ".2f") + "s", flush=True)
-        return 0
+        code = 0
     except (OSError, ValueError, RuntimeError, TimeoutError) as error:
         print("FAIL make test: " + str(error) + "; logs: " + str(directory), file=sys.stderr)
-        return 1
     finally:
-        supervisor.close()
+        try:
+            supervisor.close()
+        finally:
+            workspace.close()
+    if code == 0:
+        print("PASS make test: " + str(tests) + " sharded tests; all " + str(packages) + " packages; "
+              + format(time.monotonic() - supervisor.started, ".2f") + "s", flush=True)
+    return code
 
 
 if __name__ == "__main__":

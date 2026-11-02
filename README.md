@@ -63,7 +63,8 @@ dependency.
 `make test-race` adds the race detector; `make accept`, `make validate` and
 promotion keep that gate. Both test commands automatically split slow packages
 into independent processes and load platform timing weights, including Apple
-silicon macOS. Python 3.9+ and Go are required. See [testing](docs/testing.md)
+silicon macOS. On macOS they also create and clean up a private RAM workspace
+when memory permits; `NODWYN_TEST_RAM=off` keeps disk scratch. Python 3.9+ and Go are required. See [testing](docs/testing.md)
 for flags, logs and the ordinary unsharded commands.
 
 ## First run

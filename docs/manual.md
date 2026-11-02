@@ -2995,7 +2995,9 @@ or write the text `[REDACTED anthropic-key]` over one.
 4. When it gets in the way, hand-edit, and add one line to
    [docs/friction.md](friction.md). That file decides what gets built next.
 5. `make test` while iterating; `make validate` before a push, which retains
-   `make accept` and its `make test-race` gate; you commit — there is no commit
+   `make accept` and its `make test-race` gate. On macOS the full test commands
+   manage a private RAM workspace automatically; see [testing](testing.md) for
+   the disk opt-out and cleanup receipts. You commit — there is no commit
    tool. [Testing](testing.md) describes platform weights and the unsharded
    diagnostic commands.
 6. `make promote` when a phase's acceptance is green.

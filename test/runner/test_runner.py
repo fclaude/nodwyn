@@ -86,7 +86,8 @@ class RunnerTests(unittest.TestCase):
         go.chmod(0o755)
         self.events = self.root/"events.jsonl"
         self.env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ["PATH"],
-                        FAKE_ROOT=str(self.repo), FAKE_EVENTS=str(self.events), TMPDIR=str(self.root))
+                        FAKE_ROOT=str(self.repo), FAKE_EVENTS=str(self.events), TMPDIR=str(self.root),
+                        NODWYN_TEST_RAM="off")
         for key in ["GOFLAGS", "GOMAXPROCS", "GOOS", "GOARCH", "NODWYN_TEST_MODE"]:
             self.env.pop(key, None)
 
@@ -207,6 +208,42 @@ class RunnerTests(unittest.TestCase):
                     os.killpg(p.pid, signal.SIGKILL)
                     p.wait(timeout=5)
                 self.clean_fixture_children()
+
+    def test_full_suite_closes_workspace_before_success_and_after_failure(self):
+        for mode in ("", "fail-test"):
+            with self.subTest(mode=mode):
+                label = "failed" if mode else "passed"
+                logs = self.root / (label + "-logs")
+                scratch = self.root / (label + "-scratch")
+                logs.mkdir()
+                scratch.mkdir()
+                events = []
+                def activate(env):
+                    events.append("activated")
+                    env["TMPDIR"] = str(scratch)
+                    return scratch
+                workspace = SimpleNamespace(activate=activate, close=lambda: events.append("closed"))
+                previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGHUP)}
+                try:
+                    with patch.object(runner, "ROOT", self.repo), \
+                            patch.object(runner, "MacRamWorkspace", return_value=workspace, create=True), \
+                            patch.object(runner.tempfile, "mkdtemp", return_value=str(logs)), \
+                            patch.dict(os.environ, dict(self.env, FAKE_MODE=mode), clear=True), \
+                            patch.object(runner, "print", side_effect=lambda message, **_: events.append(message), create=True):
+                        code = runner.main([])
+                finally:
+                    for sig, handler in previous.items():
+                        signal.signal(sig, handler)
+                    self.clean_fixture_children()
+                self.assertEqual(code, 1 if mode else 0)
+                self.assertEqual(events.count("activated"), 1)
+                self.assertEqual(events.count("closed"), 1)
+                success = [i for i, event in enumerate(events) if event.startswith("PASS make test:")]
+                if mode:
+                    self.assertEqual(success, [])
+                else:
+                    self.assertGreater(success[0], events.index("closed"))
+                self.assertEqual(json.loads((logs / "cleanup.json").read_text())["remaining"], [])
 
     def test_platform_selects_the_macos_weights(self):
         with patch.object(runner.platform, "system", return_value="Darwin"), patch.object(runner.platform, "machine", return_value="arm64"):

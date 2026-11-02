@@ -36,7 +36,10 @@ complete non-race suite with automatic
 platform sharding and timing weights. `make test-race` runs the same suite
 with the race detector. Before a push, run `make validate`; acceptance and
 promotion retain the race gate. An iteration-only pass is not push acceptance.
-See `docs/testing.md` for flags and unsharded diagnostic commands. The commands
+On macOS, those full commands automatically create and clean up a private RAM
+workspace; `NODWYN_TEST_RAM=off` retains disk scratch for diagnosis. Logs and
+cleanup receipts survive outside the RAM image. See `docs/testing.md` for flags
+and unsharded diagnostic commands. The commands
 below are faster for a focused change.
 
 - **Every Go change:** `go build ./...`, `gofmt -l internal cmd test` (prints
