@@ -111,3 +111,29 @@ The filesystem edit assertion depends on the application's 400 ms sibling
 search deadline. These failures were not skipped or rewritten; the bounded
 worker configuration passed the complete suites. Retain failures and use the
 unsharded commands when investigating scheduling-dependent results.
+
+## macOS temporary storage follow-up (2026-11-02)
+
+On mbpro, the normal non-race command took 41.42 seconds with its ordinary
+SSD temporary directory, versus 19.99 and 19.60 seconds with temporary fixtures
+and Go build work on a disposable APFS RAM volume. These are individual warm
+runs, not three-run medians. An HFS+ RAM control was similarly fast; a shorter
+SSD path remained slow. Tarro stayed near 12 seconds with either RAM or SSD
+scratch space. No application source, test assertion, worker default or GC
+setting changed. See the [profiling report and resource evidence](http://kitten:3000/fc/nodwyn-evals/src/branch/main/benchmarks/analysis/workstation-tests-2026-11-02/remaining-gap.md).
+
+For repeated full-suite iteration, a previously prepared private RAM volume
+can supply scoped temporary directories:
+
+```sh
+TMPDIR=/Volumes/NodwynProfileAPFS/tmp \
+GOTMPDIR=/Volumes/NodwynProfileAPFS/go \
+make test
+```
+
+The named directories must exist on the RAM volume; the runner does not create
+or mount it. The experiment's volumes were temporary and removed afterwards.
+The checkout and durable build/module caches remain on SSD. Keep ordinary disk
+runs when investigating storage semantics. The race command remains the
+acceptance gate. Higher concurrency and GOGC=25 gave little additional benefit
+in these controls and were not made defaults.
