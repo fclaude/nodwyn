@@ -717,11 +717,10 @@ export class TaskView {
       },
     });
     const send = h("button", { type: "submit", class: "send-round", "aria-label": "Send" }, icon("up", 16, 2));
-    // While a response runs Send is off; these two send the reply anyway, to
-    // wait for the response's end or to stop it and go next.
+    // Sending while a response runs steers it; Queue explicitly waits for
+    // the response to finish instead.
     const queue = h("button", { type: "button", id: "reply-queue", class: "btn small", title: "Send this when the response ends", onclick: () => this.sendLater("queue") }, "Queue");
-    const steer = h("button", { type: "button", id: "reply-steer", class: "btn small", title: "Stop the response and send this next", onclick: () => this.sendLater("steer") }, "Steer");
-    const later = h("div", { class: "reply-later", hidden: true }, queue, steer);
+    const later = h("div", { class: "reply-later", hidden: true }, queue);
     // What was queued or steered and has not started yet.
     const held = h("div", { class: "queued-list", id: "queued-list", hidden: true, "aria-label": "Queued messages" });
     // Files chosen but not yet sent survive a reload of the same task.
@@ -763,7 +762,7 @@ export class TaskView {
     const head = h("header", { class: "task-head" });
     this.root.replaceChildren(head, h("div", { class: "task-body" }, main, side));
     this.picker = picker;
-    this.el = { head, transcript, reply, send, queue, steer, later, held, form, side, inspector, main, dontAsk, helpers };
+    this.el = { head, transcript, reply, send, queue, later, held, form, side, inspector, main, dontAsk, helpers };
     this.transcript = new Transcript(transcript);
   }
   controls() {
@@ -779,7 +778,7 @@ export class TaskView {
     this.el.helpers.textContent = delegates.length ? `May hand work to: ${delegates.join(", ")}` : "";
     // A saved task can be answered: sending resumes it first.
     const resumable = !open && this.conn.has("session.resume") && !this.desk.keysLocked;
-    const canSend = this.conn.has("session.send") && (open || resumable) && !this.loading && !this.acting && !this.uploading && !lost;
+    const canSend = this.conn.live && this.conn.has("session.send") && (open || resumable) && !this.loading && !this.acting && !this.uploading && !lost;
     this.el.form.hidden = !this.conn.has("session.send") || !!this.inspecting;
     // While a message or an answer is on its way the reply box is read-only,
     // not disabled: disabling the field being typed in drops the focus to the
@@ -799,16 +798,17 @@ export class TaskView {
       : prompt
         ? "Answer the request above first."
         : this.busy
-          ? "Working… queue a message for after it, or steer to stop it and send this next."
+          ? "Working… send to steer, or queue for after this response."
           : "Steer it, or answer in words…";
     fitReply(this.el.reply);
-    this.el.send.disabled = !canSend || this.busy || prompt || !this.el.reply.value.trim();
-    // Queue and Steer are for a response that runs, and only where a plain
-    // send would be refused for that reason alone: a run's turns are not
-    // interleaved with the person's.
-    const later = this.busy && this.item?.run?.status !== "running";
+    // A run owns its turns; ordinary responses can be steered by Send or
+    // Enter. Pending requests still need their own answer first.
+    const running = this.item?.run?.status === "running";
+    const later = this.busy && !running;
+    this.el.send.disabled = !canSend || this.queuing || running || prompt || !this.el.reply.value.trim();
+    this.el.send.title = later ? "Stop the response and send this next" : "Send message";
     this.el.later.hidden = !later;
-    for (const b of [this.el.queue, this.el.steer]) b.disabled = !later || !canSend || this.queuing || prompt || !this.el.reply.value.trim();
+    this.el.queue.disabled = !later || this.el.send.disabled;
     for (const b of this.el.form.querySelectorAll("[aria-label='Attach a file']")) b.disabled = !canSend || !open || this.busy || prompt;
     for (const control of this.el.transcript.querySelectorAll(".ask-card button, .ask-card input")) control.disabled = this.acting || !this.conn.live;
     // A run that answers its own confirms has no questions to stop asking,
@@ -1076,7 +1076,7 @@ export class TaskView {
   // user.msg can arrive before the call returns; a failure unlists it and
   // keeps the draft.
   async sendLater(mode) {
-    if (this.el[mode].disabled) return;
+    if ((mode === "queue" ? this.el.queue : this.el.send).disabled) return;
     const item = this.item,
       text = this.el.reply.value,
       version = this.version;
@@ -1114,6 +1114,7 @@ export class TaskView {
   }
   async send() {
     if (this.el.send.disabled) return;
+    if (this.busy) return this.sendLater("steer");
     const item = this.item,
       text = this.el.reply.value,
       version = this.version;

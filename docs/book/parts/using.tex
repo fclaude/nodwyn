@@ -35,6 +35,18 @@ ordinary RPC bridge. \code{make app} also creates
 \file{bin/Nodwyn-macos-universal.zip}. Native Windows host support and
 desktop release builds are not supplied by this shell migration.
 
+\section{Windows through WSL 2}
+
+The chosen Windows route is the Linux build inside WSL~2 and the console
+in a Windows browser. Keep repositories and private state in the Linux
+filesystem. There is no native Windows executable or WebView2 app, and
+this route has not yet passed end-to-end WSL acceptance. The setup, limits
+and required tests are recorded in \file{docs/windows.md} (\adr{60}).
+
+In the console, Send and Enter steer a running response: they stop it and
+send the correction next. Queue waits for the response to finish instead.
+An approval request must still be answered before sending another message.
+
 \section{Build locally}
 
 \begin{sh}

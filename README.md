@@ -24,7 +24,8 @@ belongs to is fine, and the same bytes going anywhere else get refused.
 It talks to Ollama, Anthropic and anything that speaks the OpenAI
 chat-completions API. You can use it from a browser console, a native window, a
 terminal UI, a plain line-mode chat, or scripts. It runs on Linux and macOS;
-there's no Windows build yet. MCP servers can run in containers, which needs
+Windows users can follow the [WSL 2 route](docs/windows.md), which still
+needs end-to-end Windows acceptance testing; there is no native Windows build. MCP servers can run in containers, which needs
 podman or docker.
 
 It's pre-1.0 and I use it every day, so expect rough edges. It isn't a sandbox:

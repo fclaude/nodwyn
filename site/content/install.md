@@ -1,6 +1,6 @@
 # Install
 
-nodwyn runs on Linux and macOS. The host is written in Go, and the agent's loop and prompts are Scheme. There's no Windows build yet.
+nodwyn runs on Linux and macOS. The host is written in Go, and the agent's loop and prompts are Scheme. On Windows, the intended route is the Linux build inside WSL 2, with the console in your Windows browser. This route is documented but not yet verified end to end on Windows; there is no native Windows build. See [Windows through WSL 2](../reference/windows.html) for setup and the remaining acceptance checks.
 
 ## From a release
 

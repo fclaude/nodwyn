@@ -123,7 +123,9 @@ On Linux it needs cgo and WebKitGTK (`libwebkit2gtk-4.1-dev` on Debian and
 Ubuntu, `webkit2gtk4.1-devel` on Fedora), or GTK4 with WebKitGTK 6.0.
 Wails supports WebView2 on Windows, but Nodwyn's host still requires a Windows
 port of its Unix process, locking and local IPC code; no Windows package is
-published yet.
+published. The chosen Windows route is the Linux host inside WSL 2 and the
+console in a Windows browser, pending WSL acceptance testing; see
+[Windows through WSL 2](windows.md).
 Without the tag, `nodwyn app` opens the default browser instead and works the
 same; started from a desktop launcher, with no terminal for its messages, it
 has no window of its own and is easy to take for an app that did not start.

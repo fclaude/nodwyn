@@ -33,6 +33,10 @@ replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
 saying where that is recorded, or **deliberate**, saying why.
 
+Windows is planned through WSL 2 using the Linux host and a Windows browser;
+that flow is not yet verified. The [Windows guide](windows.md) records its
+limits and acceptance gate; the tables do not claim native Windows support.
+
 In the tables, **yes** means built and tested. **—** means absent: the
 notes say whether that is deliberate or simply not built. **read** means
 it can see the thing but not change it.
@@ -69,7 +73,7 @@ it can see the thing but not change it.
 | Jump from a search match to bounded, read-only turn history (`log.context`) | yes; load earlier/later within that turn, or open the live task | deliberate gap: replays whole history | replays whole | `memory recall` reads an event and the turn’s card |
 | Open at the latest run; page back through collapsed earlier runs (ADR 49) | yes; earlier contents load on expansion | deliberate gap: replays the conversation whole | replays whole | `replay` reads whole |
 | Send a message, abort a turn | yes | yes; Ctrl+C aborts, and clears an unsent draft before it quits | yes | — |
-| Queue a message behind a running turn, or steer with it (stop the turn and send it next) | yes; Queue and Steer beside Send while a turn runs, the message shown as queued until it starts | yes; Ctrl+O queues the draft, Ctrl+S steers with it, shown as `queued>` until it starts | — (line mode reads no line while a turn runs) | — |
+| Queue a message behind a running turn, or steer with it (stop the turn and send it next) | yes; Send or Enter steers a running response; Queue waits; listed as queued until it starts | yes; Ctrl+O queues the draft, Ctrl+S steers with it, shown as `queued>` until it starts | — (line mode reads no line while a turn runs) | — |
 | A turn another client or the schedule started | live | live | shown when line mode next reads a line, with its message | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |
 | Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` (recorded as `eval.req` and `eval.result`, as in the TUI) | `nodwyn eval`, `nodwyn repl` |

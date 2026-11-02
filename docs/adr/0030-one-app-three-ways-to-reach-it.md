@@ -770,3 +770,20 @@ GitHub's macOS runners have Gatekeeper switched off, so the release and
 package checks that start the app do not see this. The app guide, the release
 guide, the install page, the manual and the release notes say Open Anyway
 now. Notarising, which would remove the step, is still not done.
+
+## Amendment 2026-11-02: Send steers a running console response
+
+The console offered Queue and Steer beside a disabled Send button while a
+response ran. People read the disabled primary action as being unable to
+send a correction. Send and Enter now steer an ordinary running response:
+they stop it and send the correction next, using the existing
+`session.send` mode `steer`. Queue remains the explicit way to wait for the
+response's end; the separate Steer button is removed. Empty replies,
+pending approvals, calls still being sent and unattended runs still hold
+the composer. The TUI's Ctrl+O and Ctrl+S remain its explicit shortcuts.
+The browser check performs Queue, Send and Enter against the fake model
+and checks the requests, the transcript order and the queue after delivery.
+
+The earlier reference to WebView2 describes the window library's backend,
+not a Windows port of the host. Windows is the WSL 2 route in ADR 60,
+pending its acceptance gate; native Windows support is not supplied.

@@ -657,7 +657,7 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
 .diff-line.hunk .t { color: var(--faint); }
 
 /* The text takes the box's whole width and the controls share the row under
-   it: beside them, Queue and Steer left the text a third of the box. */
+   it: beside them, extra buttons left the text a third of the box. */
 .reply {
   position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 48px 24px;
   padding: 10px 10px 10px 16px; background: var(--surface); border: 1px solid var(--line-input); border-radius: 14px;
@@ -667,7 +667,7 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
   font-size: 15px; line-height: 1.5; color: var(--ink); padding: 6px 0; max-height: 240px;
 }
 .reply .send-round { width: 36px; height: 36px; background: var(--invert-bg); color: var(--invert-fg); }
-/* Queue and Steer, beside Send while a response runs; what they sent shows
+/* Queue, beside Send while a response runs; what was sent shows
    above the reply box, dashed and dimmed, until it starts. */
 .reply-later { display: flex; gap: 6px; }
 .queued-list { display: flex; flex-direction: column; gap: 6px; margin: 0 48px 10px; max-height: 30vh; overflow-y: auto; }

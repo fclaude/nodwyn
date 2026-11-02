@@ -68,3 +68,4 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0057](./0057-read-only-calls-run-together.md) — A batch of read-only calls (`fs-read`, `fs-list`, `fs-find`, `index-grep`, `outline`, the git tools) runs concurrently, its budget reserved and its results recorded in the order of the calls; any other batch runs in order (amends 18 and 38)
 - [0058](./0058-apache-licence-and-public-repository.md) — Apache 2.0, and a public repository on GitHub
 - [0059](./0059-website-on-github-pages.md) — A website on GitHub Pages, built from the docs: a guide for the console, standalone and server use, and the repository's docs as the reference
+- [0060](./0060-windows-through-wsl2.md) — Windows through WSL 2 and a Windows browser; route documented, native port deferred, WSL acceptance gate and integration not built

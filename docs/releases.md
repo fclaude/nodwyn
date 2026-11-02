@@ -43,6 +43,11 @@ release build also runs the fake-model selfcheck on Linux amd64. The egress prox
 the MCP server's Linux container, so use a container image with the same
 architecture as the archive.
 
+Windows has no separate archive. The intended [WSL 2 route](windows.md)
+uses the Linux archive matching the distribution's architecture. WSL
+acceptance has not run yet, so a Linux release passing its checks is not
+evidence that the Windows-browser flow has passed.
+
 ## How a release is made
 
 `ci.yml` runs on every push to `main` and every pull request: the acceptance

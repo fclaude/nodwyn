@@ -52,6 +52,7 @@ REFERENCE = [
     ("docs/manual.md", "Manual", "Manual"),
     ("docs/browser.md", "Manual", "The console, in detail"),
     ("docs/app.md", "Manual", "The app and its window"),
+    ("docs/windows.md", "Manual", "Windows through WSL 2"),
     ("docs/tui.md", "Manual", "The terminal client"),
     ("docs/clients.md", "Manual", "What each client does"),
     ("docs/runs.md", "Manual", "Supervised runs"),

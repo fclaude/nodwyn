@@ -299,20 +299,22 @@ the TUI, the console and a paired phone):
 | `/compact [what to keep]` | compact the conversation now, whatever its size: the model writes a handover note for your latest request, and your next message goes on from the note instead of the whole conversation. Words after it are what the note must keep (`/compact the failing test names`). The log keeps everything |
 | `/optimize [n \| ids] [focus]` | learn from this repository's past sessions and improve `.nodwyn/init.scm` ("Changing the loop" below) |
 
-**Sending while a turn runs.** A message sent while a turn runs is refused,
-and the TUI and the console keep your draft; line mode reads no line then.
-The console and the TUI have two ways to send it anyway. *Queue* (the
-console's **Queue** button, Ctrl+O in the TUI) holds the message and runs it
-as the next turn when the running one ends, after any queued before it; the
-conversation shows it as queued until it starts. *Steer* (**Steer**, Ctrl+S)
-stops the running turn, as Stop does, and sends the message next, ahead of
-the queued ones; a stopped turn keeps its plan, so the message can be a
-correction. Stop (**Stop**, Ctrl+C) discards the queue along with the turn. A
-model chosen while the turn ran is applied before a queued message runs, so
-the model you chose answers it. Nothing is queued while a file is being
-attached, a model switch is under way or a run drives the task, and an
-`:eval` is never queued. On the wire it is `session.send` with `mode` `queue`
-or `steer` ([protocol](protocol.md)).
+**Sending while a turn runs.** In the console, **Send** and Enter steer:
+they stop the running response and send your message next, ahead of any
+queued messages. There is no separate Steer button. A stopped turn keeps
+its plan, so the message can be a correction. **Queue** holds the message
+until the running response and any messages already queued have finished;
+the conversation lists it as queued until it starts. An empty reply cannot
+be sent, and a pending approval must be answered first.
+
+The TUI keeps its explicit shortcuts: Ctrl+O queues, Ctrl+S steers, and an
+ordinary send while busy is refused with the draft kept. Line mode reads
+no line while the turn runs. Stop (**Stop**, Ctrl+C) discards the queue
+along with the turn. A model chosen while the turn ran is applied before
+a queued message runs, so the model you chose answers it. Nothing is
+queued while a file is being attached, a model switch is under way or a
+run drives the task, and an `:eval` is never queued. On the wire it is
+`session.send` with `mode` `queue` or `steer` ([protocol](protocol.md)).
 
 Flags go before the command (`nodwyn --show-thinking replay ID`); a command
 refuses the ones it does not read, and a command with flags of its own, such
@@ -3315,6 +3317,15 @@ Safari shows notifications only to an app on the Home Screen, and Settings
 says so on an iPhone. Over plain http to another address the console works
 in a phone's browser but neither installs as an app nor notifies.
 
+## Windows through WSL 2
+
+The chosen Windows route is the Linux build inside WSL 2, with its console
+opened in a Windows browser. Keep the repository, nodwyn's private state
+and its runtime socket in the Linux filesystem. This is a documented route,
+not a completed Windows acceptance run; native Windows executables and a
+WebView2 app are not supplied. [Windows through WSL 2](windows.md) gives the
+setup, limits and tests required before calling it supported.
+
 ## The Wails desktop window
 
 `make build-webview` builds the Wails native window on Linux or macOS;
@@ -3324,8 +3335,8 @@ The console, model setup, keychain and tasks behave as in the browser; folder
 selection uses Wails' native dialog. Closing the window stops tasks only when
 this app owns their daemon. Wails v3 is pinned to a beta release; see
 [the desktop build guide](app.md) for dependencies and its native test.
-Portable archives continue to open a browser. A Windows host port and
-native desktop release runners are still needed before publishing those apps.
+Portable archives continue to open a browser. Windows uses the WSL 2 route
+above; a native Windows host port and desktop release runner are not built.
 
 ### Project paths and existing data
 

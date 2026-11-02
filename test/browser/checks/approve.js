@@ -58,9 +58,8 @@ check(async () => {
   });
   const transcript = () => page.innerText(".transcript");
   // say sends a message as a person does: once the turn before it has
-  // ended, since Send is off while a response runs (Queue and Steer are
-  // offered instead), and a reply's last words arrive before its turn ends,
-  // so a message typed on seeing them was not sent on a slow machine.
+  // ended. Send steers while a response runs, and these follow-ups exercise
+  // ordinary idle turns rather than interrupting the previous response.
   const say = async (text) => {
     await until(`the turn's end before "${text}"`, async () => (await page.textContent(".task-head .pill")) === "Idle");
     await page.fill("#reply", text);

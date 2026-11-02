@@ -671,8 +671,8 @@ check(async () => {
   step("a choice made while a response ran waited for it: the provider saw the old effort, then the new");
 
   // ---------- a message queued or steered while a response is held ----------
-  // Send is off while a response runs. Queue sends the reply to wait for the
-  // response's end, and Steer stops the response and sends it next; each is
+  // Send steers while a response runs. Queue sends the reply to wait for the
+  // response's end, while Send stops the response and sends it next; each is
   // one session.send with its mode, and the text shows as queued until its
   // own user.msg arrives.
   const userTexts = () => page.$$eval(".transcript .turn.user .you-text", (els) => els.map((e) => e.textContent));
@@ -685,11 +685,12 @@ check(async () => {
   await until("the request to be held", async () => (await waiting()) === 1);
   await page.waitForSelector("#reply-queue", { state: "visible" });
   assert.strictEqual(await page.isDisabled("#reply-queue"), true, "Queue is on with nothing to send");
-  assert.strictEqual(await page.isDisabled("#reply-steer"), true, "Steer is on with nothing to send");
+  assert.strictEqual(await page.isDisabled("button[aria-label='Send']"), true, "Steer is on with nothing to send");
+  assert.strictEqual(await page.locator("#reply-steer").count(), 0, "Steer is still a separate button");
   await page.fill("#reply", "next");
-  assert.strictEqual(await page.isDisabled("button[aria-label='Send']"), true, "Send is on while a response runs");
+  assert.strictEqual(await page.isDisabled("button[aria-label='Send']"), false, "Send is off while a response runs");
   assert.strictEqual(await page.isDisabled("#reply-queue"), false, "Queue is off with a message to send");
-  assert.strictEqual(await page.isDisabled("#reply-steer"), false, "Steer is off with a message to send");
+  assert.strictEqual(await page.isDisabled("button[aria-label='Send']"), false, "Steer is off with a message to send");
   assert.match(await page.getAttribute("#reply", "placeholder"), /queue/i, "the reply box does not say a message can be queued");
   const calls = sent.of("session.send").length;
   await page.click("#reply-queue");
@@ -698,10 +699,10 @@ check(async () => {
   await until("the reply box to empty", async () => (await page.inputValue("#reply")) === "");
   assert.deepStrictEqual(await queuedTexts(), ["next"], "the queued message is not listed");
   assert.ok(!(await userTexts()).includes("next"), "a queued message ran while the response did");
-  assert.strictEqual(await page.isDisabled("#reply-steer"), true, "Steer is on after its message was sent");
+  assert.strictEqual(await page.isDisabled("button[aria-label='Send']"), true, "Steer is on after its message was sent");
   await page.screenshot({ path: `${out}/models-conversation-queued-message.png` });
   await page.fill("#reply", "then");
-  await page.click("#reply-steer");
+  await page.click("button[aria-label='Send']");
   await until("the steer call", async () => sent.of("session.send").length === calls + 2);
   assert.deepStrictEqual(sent.of("session.send").at(-1), { id, text: "then", mode: "steer" });
   // The response held is stopped and the steering message is the next turn,
@@ -713,7 +714,18 @@ check(async () => {
   assert.deepStrictEqual((await userTexts()).slice(-3), ["Hold on", "then", "next"], "the messages did not run in the order steer, queue");
   assert.deepStrictEqual(await queuedTexts(), [], "a message that ran is still listed as queued");
   assert.strictEqual(await page.isVisible("#reply-queue"), false, "Queue shows while the task is idle");
-  step("a message queued while a response runs waits for it, and a steering one stops it and goes first");
+  await fetch(`${chatBase}/_fake/hold`, { method: "POST" });
+  await page.fill("#reply", "Hold again");
+  await page.press("#reply", "Enter");
+  await until("the second request to be held", async () => (await waiting()) === 1);
+  await page.fill("#reply", "steer with Enter");
+  const beforeEnter = sent.of("session.send").length;
+  await page.press("#reply", "Enter");
+  await until("Enter to steer", async () => sent.of("session.send").length === beforeEnter + 1);
+  assert.deepStrictEqual(sent.of("session.send").at(-1), { id, text: "steer with Enter", mode: "steer" });
+  await fetch(`${chatBase}/_fake/release`, { method: "POST" });
+  await until("the Enter message to finish", async () => (await userTexts()).includes("steer with Enter") && (await page.$eval(".task-head .pill", (p) => p.textContent)) === "Idle");
+  step("Queue waits; Send and Enter steer a running response");
 
   // Reloaded, the conversation shows what it has, from the daemon and its log.
   await page.reload();

@@ -376,7 +376,7 @@ check(async () => {
     await shoot(`review-${theme}`, { width: 1440, height: 1080 }, theme, review(`review-${theme}`));
     await shoot(`review-phone-${theme}`, { width: 390, height: 844 }, theme, review(`review-phone-${theme}`));
   }
-  // While a response runs, Queue and Steer join the reply box's controls: the
+  // While a response runs, Send steers and Queue waits: the
   // text still takes the box's whole width, the placeholder that says what
   // they do shows whole without a scrollbar, and the box grows with what is
   // typed up to its cap, where it scrolls, and shrinks once it is cleared.
@@ -390,8 +390,13 @@ check(async () => {
         has(method) { return method === "session.send"; },
         onEvent() { return () => {}; },
         onResult() { return () => {}; },
-        async call(method) {
+        async call(method, params) {
           if (method === "session.subscribe") return { page: { events: [{ seq: 1, kind: "user.msg", payload: { text: "Keep going" } }], through: 1 }, busy: true };
+          if (method === "session.send") {
+            window.workingComposer.calls.push(params);
+            if (window.workingComposer.refuse) throw new Error("simulated send refusal");
+            return new Promise((resolve) => { window.workingComposer.release = resolve; });
+          }
           return {};
         },
       };
@@ -400,6 +405,7 @@ check(async () => {
       const view = new TaskView(conn, desk, () => {});
       document.querySelector("#view").replaceChildren(view.root);
       await view.open("reply-working");
+      window.workingComposer = { view, conn, calls: [] };
     });
     await page.waitForSelector("#reply-queue:visible");
     const measure = () => page.evaluate(() => {
@@ -426,6 +432,43 @@ check(async () => {
     await page.fill("#reply", "");
     const cleared = await measure();
     assert.strictEqual(cleared.height, idle.height, `${name}: the cleared box kept the long reply's height`);
+    const send = page.getByRole("button", { name: "Send", exact: true });
+    assert.ok(await send.isDisabled(), `${name}: an empty reply could be sent`);
+    await page.fill("#reply", "   ");
+    assert.ok(await send.isDisabled(), `${name}: whitespace could be sent`);
+    await page.fill("#reply", "A correction");
+    assert.ok(await send.isEnabled(), `${name}: Send is disabled during a response`);
+    assert.strictEqual(await page.locator("#reply-steer").count(), 0, `${name}: Steer is a separate button`);
+    const guards = await page.evaluate(async () => {
+      const { view, conn, calls } = window.workingComposer;
+      const blocked = async () => { view.controls(); await view.send(); return view.el.send.disabled && calls.length === 0; };
+      view.item.run = { status: "running" };
+      const run = await blocked();
+      delete view.item.run;
+      view.prompts.set("pending", { payload: { ID: "pending" } });
+      const prompt = await blocked();
+      view.prompts.clear();
+      conn.live = false;
+      const disconnected = await blocked();
+      conn.live = true;
+      view.controls();
+      return { run, prompt, disconnected };
+    });
+    assert.deepStrictEqual(guards, { run: true, prompt: true, disconnected: true }, `${name}: a blocked composer sent a correction`);
+    await page.press("#reply", "Enter");
+    assert.ok(await send.isDisabled(), `${name}: Send stayed on while its call was pending`);
+    assert.ok(await page.locator("#reply-queue").isDisabled(), `${name}: Queue stayed on while Send was pending`);
+    await page.press("#reply", "Enter");
+    assert.deepStrictEqual(await page.evaluate(() => window.workingComposer.calls), [{ id: "reply-working", text: "A correction", mode: "steer" }], `${name}: Enter duplicated the pending send`);
+    await page.evaluate(() => window.workingComposer.release({}));
+    await until(`${name}: the sent draft clears`, async () => await page.inputValue("#reply") === "");
+    assert.ok(await send.isDisabled(), `${name}: an empty sent draft stayed enabled`);
+    await page.evaluate(() => { window.workingComposer.refuse = true; });
+    await page.fill("#reply", "Keep this draft");
+    await send.click();
+    await until(`${name}: the refused draft is usable`, async () => await send.isEnabled());
+    assert.strictEqual(await page.inputValue("#reply"), "Keep this draft", `${name}: a refused correction lost the draft`);
+    assert.deepStrictEqual(await page.evaluate(() => window.workingComposer.calls.at(-1)), { id: "reply-working", text: "Keep this draft", mode: "steer" });
   };
   await shoot("reply-working", { width: 1280, height: 800 }, "light", working("reply-working"));
   await shoot("reply-working-phone", { width: 390, height: 844 }, "dark", working("reply-working-phone"));

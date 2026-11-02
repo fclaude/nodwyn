@@ -49,6 +49,36 @@ check(async () => {
     await shot("task-activity");
     await page.setViewportSize({ width: 1440, height: 900 });
 
+    // The busy composer is synthetic too: no model timing decides whether
+    // Send and the optional Queue control are present in the published shot.
+    await page.evaluate(async () => {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const conn = {
+        live: true,
+        has: (method) => method === "session.send",
+        onEvent: () => () => {},
+        onResult: () => () => {},
+        async call(method) {
+          if (method === "session.subscribe") return { page: { events: [
+            { seq: 1, kind: "user.msg", payload: { text: "Fix the failing test and run the suite." } },
+            { seq: 2, kind: "stream.text", payload: { Text: "I found the failing case and am updating its regression test." } },
+          ], through: 2 }, busy: true };
+          return {};
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("reply-working", { id: "reply-working", title: "Fix the failing test", repo: "/home/demo/calculator", open: true, busy: true });
+      const view = new TaskView(conn, desk, () => {});
+      document.querySelector("#view").replaceChildren(view.root);
+      await view.open("reply-working");
+      view.el.reply.value = "Please keep the public API unchanged.";
+      view.controls();
+      window.screenshotComposer = view;
+    });
+    await shot("reply-working");
+    await page.evaluate(() => window.screenshotComposer.dispose());
+
     await go("#/settings/general");
     await shot("settings-general");
     await go("#/settings/models");
