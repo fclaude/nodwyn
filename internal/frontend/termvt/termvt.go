@@ -7,6 +7,7 @@ package termvt
 
 import (
 	"io"
+	"sync"
 
 	"github.com/charmbracelet/x/vt"
 
@@ -21,7 +22,18 @@ func init() {
 	})
 }
 
-type emulator struct{ *vt.SafeEmulator }
+type emulator struct {
+	*vt.SafeEmulator
+	// SafeEmulator returns cell pointers after unlocking. Keep output out
+	// until Cell and HistoryCell have copied the text those pointers hold.
+	cells sync.RWMutex
+}
+
+func (e *emulator) Write(p []byte) (int, error) {
+	e.cells.Lock()
+	defer e.cells.Unlock()
+	return e.SafeEmulator.Write(p)
+}
 
 // keyCodes are the emulator's codes for the canonical names of termemu.
 var keyCodes = map[string]rune{
@@ -72,6 +84,8 @@ func (e *emulator) CloseInput() {
 }
 
 func (e *emulator) Cell(x, y int) (string, bool) {
+	e.cells.RLock()
+	defer e.cells.RUnlock()
 	c := e.CellAt(x, y)
 	if c == nil {
 		return "", false
@@ -82,6 +96,8 @@ func (e *emulator) Cell(x, y int) (string, bool) {
 func (e *emulator) HistoryLen() int { return e.ScrollbackLen() }
 
 func (e *emulator) HistoryCell(x, line int) (string, bool) {
+	e.cells.RLock()
+	defer e.cells.RUnlock()
 	c := e.ScrollbackCellAt(x, line)
 	if c == nil {
 		return "", false
