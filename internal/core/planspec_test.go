@@ -52,21 +52,23 @@ func TestAPlanAsDataKeepsTheRequestsNames(t *testing.T) {
 // happened: a name the plan says the change produces and the change does
 // not contain is said, once, and the steps that have their evidence (the
 // file changed, the test is in its file and ran after the last edit, the
-// check passed after it) are marked by the harness, not the model.
+// check passed after it) are marked by the harness, not the model. The
+// fixture runs a real test that fails before the change, using Python's
+// standard library so installed pytest packages do not change the result.
 func TestAPlansEvidenceIsCheckedBeforeTheTurnEnds(t *testing.T) {
 	t.Parallel()
 	repo := codeRepo(t)
 	plan := `(change "calc.py" "one" "return 10")
-(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "python3 -m pytest calc_test.py"))
+(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "python3 -m unittest calc_test"))
 (none docs "no document describes calc")
 (names "answer_ten")
 (check "grep -q 'return 10' calc.py")`
 	r := unattendedRigIn(t, repo,
 		fake.Turn{Content: "calc.py defines one()."}, // the explorer
 		fake.Turn{Content: plan},                     // the planner
-		write("t", "calc_test.py", "def test_one():\n    pass\n"),
+		write("t", "calc_test.py", "import unittest\nfrom calc import one\n\nclass CalcTest(unittest.TestCase):\n    def test_one(self):\n        self.assertEqual(one(), 10)\n"),
 		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
-		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py && echo ok # python3 -m pytest calc_test.py"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py && python3 -m unittest calc_test"),
 		fake.Turn{Content: "done"}, // told the change lacks answer_ten
 		fake.Turn{Content: "answer_ten turned out not to be needed: one() returns 10 always."},
 	)
