@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -32,7 +34,7 @@ func desktopScript(origin, token string) string {
 
 // openWindow keeps the console on its authenticated loopback origin. Only the
 // three desktop conveniences use Wails; tasks still use the existing RPC bridge.
-func openWindow(ctx context.Context, address string, forceBrowser bool) error {
+func openWindow(ctx context.Context, address string, forceBrowser bool, instance string) error {
 	if forceBrowser {
 		if err := openBrowser(ctx, address); err != nil {
 			fmt.Fprintln(os.Stderr, "app: open this address in your browser:", address)
@@ -50,7 +52,19 @@ func openWindow(ctx context.Context, address string, forceBrowser bool) error {
 		return err
 	}
 	bridge := desktopBridge{origin: origin, token: hex.EncodeToString(capability[:])}
+	// Scope activation to the account and daemon socket, never a web port.
+	key := sha256.Sum256([]byte(fmt.Sprintf("%d:%s", os.Geteuid(), instance)))
+	var activeWindow atomic.Pointer[application.WebviewWindow]
 	app = application.New(application.Options{
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: fmt.Sprintf("com.nodwyn.app.s%x", key[:16]),
+			OnSecondInstanceLaunch: func(_ application.SecondInstanceData) {
+				if window := activeWindow.Load(); window != nil {
+					window.Show()
+					window.Focus()
+				}
+			},
+		},
 		Name:  "nodwyn",
 		Icon:  desktopIcon,
 		Linux: application.LinuxOptions{ApplicationID: "com.nodwyn.app"},
@@ -66,6 +80,7 @@ func openWindow(ctx context.Context, address string, forceBrowser bool) error {
 		Name: "nodwyn", Title: "nodwyn", Width: 1280, Height: 860, MinWidth: 760, MinHeight: 560,
 		URL: address, JS: desktopScript(origin, bridge.token),
 	})
+	activeWindow.Store(window)
 	bridge.pickFolder = func() (string, error) {
 		return app.Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).
 			SetTitle("Choose a folder for nodwyn to work in").AttachToWindow(window).PromptForSingleSelection()

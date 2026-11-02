@@ -13,6 +13,8 @@ digest with its checksum entry, extract it, and keep \code{nodwyn} beside
 with the archive's architecture. Only Linux amd64 is executed in CI; the
 other targets are cross-compiled. macOS builds are unsigned and not notarised.
 
+The Linux desktop archive, \file{nodwyn-linux-amd64-desktop.tar.gz},
+uses GTK3 and WebKitGTK 4.1 on Ubuntu 24.04 or newer and Arch.
 Portable builds omit the native webview, so \code{nodwyn app} opens a
 browser. The macOS app, \file{Nodwyn-macos-universal.zip}, has the window
 and the icon: a macOS runner builds it from the same commit and starts its
@@ -1110,3 +1112,6 @@ On Linux, \code{python3 scripts/install-desktop.py /absolute/path/to/nodwyn}
 installs an application-menu shortcut and the console's icon for your
 account. Pin nodwyn from that menu. The native window and launcher share
 \code{com.nodwyn.app}; macOS uses the icon in \file{Nodwyn.app}.
+
+The console header names the connected daemon and the execution daemon as
+account@host, from the daemon handshake rather than the browser address.

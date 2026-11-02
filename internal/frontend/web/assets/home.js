@@ -582,7 +582,11 @@ export function renderHome(root, ctx) {
               root.querySelector("#runs-on")?.focus();
             },
           },
-          entries.map((e) => h("option", { value: e.name, selected: e === target }, e.name ? `${e.name}${e.conn.live ? "" : ` (${hostState(e)[1]})`}` : "This computer")),
+          entries.map((e) => {
+            const hello = e.conn.live && e.conn.hello;
+            const identity = hello?.account && hello?.host ? `${hello.account}@${hello.host}` : "identity unavailable";
+            return h("option", { value: e.name, selected: e === target }, `${e.name || "This computer"} · ${identity}${e.conn.live ? "" : ` (${hostState(e)[1]})`}`);
+          }),
         ),
       )
     : null;

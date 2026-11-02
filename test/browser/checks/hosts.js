@@ -168,6 +168,7 @@ check(async () => {
   await page.evaluate(() => (window.hiddenForCheck = true));
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => /^#\/host\/workshop\/task\//.test(location.hash), null, { timeout: 20000 });
+  await shows(page, "#daemon-identity", `Connected to ${require("os").userInfo().username}@${require("os").hostname()}`, `Runs on ${require("os").userInfo().username}@${require("os").hostname()} (workshop)`);
   const remoteTask = decodeURIComponent((await page.evaluate(() => location.hash)).replace(/^#\/host\/workshop\/task\//, ""));
   assert.deepStrictEqual(of(sent.workshop, "session.open"), [{ repo: `${workshop.root}/work` }], "the task opened on workshop, in its folder");
   assert.strictEqual(of(sent.local, "session.open").length, 0, "the task opened on the laptop");

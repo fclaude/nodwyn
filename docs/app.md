@@ -209,3 +209,8 @@ in `share/applications`, and the console's `icons/icon.svg` and
 `share/icons/hicolor/scalable/apps` and `share/icons/hicolor/512x512/apps`.
 The native GTK application id and launcher id are both `com.nodwyn.app`, so
 Wayland can associate the window with the shortcut's icon.
+
+The console header names the connected daemon as `account@host` and separately
+names the execution daemon when a linked host is selected. These names come
+from the daemon handshake, independently of the browser address. Native Linux
+release and package instructions are in [the Linux desktop contract](../packaging/linux/README.md).

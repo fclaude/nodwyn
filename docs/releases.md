@@ -5,11 +5,12 @@ versioned releases, starting with `v0.1.0`. A release is made by hand: nothing
 a push does publishes one. Each release names the full commit it was built
 from.
 
-Every release has nine files:
+Every release has ten files:
 
 | File | What's in it |
 | --- | --- |
 | `Nodwyn-macos-universal.zip` | The macOS app, `Nodwyn.app`: Apple Silicon and Intel in one bundle, with its own window and icon, and the Linux egress proxies |
+| `nodwyn-linux-amd64-desktop.tar.gz` | The native GTK3/WebKitGTK 4.1 Linux x86-64 executable, egress proxy, desktop entry, hicolor icons and installation contract |
 | `nodwyn-linux-amd64.tar.gz` | The Linux x86-64 executable and its egress proxy, with `LICENSE` and `NOTICE` |
 | `nodwyn-linux-arm64.tar.gz` | The same for Linux ARM64 |
 | `nodwyn-darwin-amd64.tar.gz` | The macOS Intel executable, and a Linux x86-64 egress proxy |
@@ -17,7 +18,7 @@ Every release has nine files:
 | `nodwyn.pdf` | The design book, built from the release's source |
 | `expert.pdf` | The expert guide, built from the same source |
 | `SOURCE.json` | The full commit, the Go version, the targets and what the build leaves out |
-| `SHA256SUMS` | SHA-256 digests of the other eight files |
+| `SHA256SUMS` | SHA-256 digests of the other nine files |
 
 Download the archive for your computer and `SHA256SUMS`. Check the digest with
 `sha256sum nodwyn-linux-amd64.tar.gz` on Linux, or
@@ -69,7 +70,7 @@ builds both books from their LaTeX sources. Archive ownership and timestamps are
 fixed, and `SOURCE_DATE_EPOCH` comes from the commit. That doesn't promise
 identical output across Go or TeX versions.
 
-The workflow uploads the nine files to a draft release, downloads them again,
+The workflow uploads the ten files to a draft release, downloads them again,
 and runs `scripts/release.py verify`: the draft has those files and no others,
 each matches `SHA256SUMS`, `SOURCE.json` names this commit and this version,
 and the app passes the same check as at build.
@@ -87,6 +88,11 @@ python3 scripts/release.py build /tmp/nodwyn-release-assets --version v0.1.0 \
   --app bin/Nodwyn-macos-universal.zip
 ```
 
+You also need the GTK3 and WebKitGTK 4.1 development dependencies listed in
+[the Linux desktop contract](../packaging/linux/README.md). The desktop archive
+is built on Ubuntu 24.04 amd64 and its command-line selfcheck runs there; the
+release runner does not exercise its native window.
+
 You need Go 1.26, Python 3.12 or newer, bash, make, latexmk and the TeX packages
 both books use (including Latin Modern, Libertine and Inconsolata). The release
 workflow installs `lmodern` explicitly so the design book's `lmodern.sty` is
@@ -101,3 +107,8 @@ PDFs are ignored. Download `nodwyn.pdf` and `expert.pdf` from a release, or run
 `python3 docs/book/source/generate.py` and commit the new catalogue; the release
 builder's `--check` refuses a stale file inventory or line count, and
 `make validate` refuses it first, counting new files git doesn't track yet.
+
+The console header names the connected daemon as `account@host` and separately
+names the execution daemon when a linked host is selected. These names come
+from the daemon handshake, independently of the browser address. Native Linux
+release and package instructions are in [the Linux desktop contract](../packaging/linux/README.md).

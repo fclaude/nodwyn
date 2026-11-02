@@ -40,7 +40,19 @@ func runDesktopCheck() {
 	result := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/result" {
-			result <- r.URL.Query().Get("value")
+			value := r.URL.Query().Get("value")
+			if os.Getenv("NODWYN_TEST_DESKTOP_SECOND") == "1" {
+				value = "repeat launch opened another window"
+			} else {
+				repeatCtx, stop := context.WithTimeout(ctx, 5*time.Second)
+				defer stop()
+				repeat := exec.CommandContext(repeatCtx, os.Args[0], "-test.run=^TestWailsWindowRoundTrip$")
+				repeat.Env = append(os.Environ(), "NODWYN_TEST_DESKTOP_SECOND=1")
+				if output, err := repeat.CombinedOutput(); err != nil {
+					value = fmt.Sprintf("repeat activation: %v: %s", err, output)
+				}
+			}
+			result <- value
 			cancel()
 			return
 		}
@@ -55,7 +67,7 @@ window.addEventListener('nodwyn-desktop-ready', async () => {
 </script>`)
 	}))
 	defer server.Close()
-	if err := openWindow(ctx, server.URL+"/", false); err != nil {
+	if err := openWindow(ctx, server.URL+"/", false, "desktop-check"); err != nil {
 		panic(err)
 	}
 	select {

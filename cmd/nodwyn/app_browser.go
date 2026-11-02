@@ -10,7 +10,7 @@ import (
 
 // openWindow, in a build without the webview tag, uses the default browser
 // and runs until interrupted.
-func openWindow(ctx context.Context, url string, _ bool) error {
+func openWindow(ctx context.Context, url string, _ bool, _ string) error {
 	if err := openBrowser(ctx, url); err != nil {
 		fmt.Fprintln(os.Stderr, "app: open this address in your browser:", url)
 	}

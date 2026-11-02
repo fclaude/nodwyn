@@ -8878,6 +8878,12 @@
     },
     "rpc.helloResult": {
       "properties": {
+        "account": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
         "methods": {
           "items": {
             "type": "string"
@@ -8901,7 +8907,9 @@
         "protocol",
         "version",
         "methods",
-        "peer"
+        "peer",
+        "host",
+        "account"
       ],
       "type": "object"
     },

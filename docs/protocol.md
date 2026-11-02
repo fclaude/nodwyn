@@ -1513,3 +1513,9 @@ The views these methods answer with are exported from the Go package as
 sends rather than a copy of it; the generated schema names them so. The shapes
 are those described above.
 
+
+The `hello` result also supplies `host` (the daemon OS hostname) and `account`
+(the daemon effective UID’s account name, or numeric UID if lookup fails).
+These identify the server, independently of `peer`, which identifies the client.
+Linked connections receive the target daemon’s own identity. They confer no
+permissions and are sent only after the ordinary authenticated handshake.

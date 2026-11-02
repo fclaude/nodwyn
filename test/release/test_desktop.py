@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import time
 import unittest
@@ -27,6 +28,8 @@ class DesktopTest(unittest.TestCase):
                             str(binary), "--data-dir", str(data)], check=True)
             launcher = data / "applications/com.nodwyn.app.desktop"
             subprocess.run(["desktop-file-validate", str(launcher)], check=True)
+            if shutil.which("gtk-update-icon-cache"):
+                self.assertTrue((data / "icons/hicolor/icon-theme.cache").is_file())
             result = root / "result"
             subprocess.run(["gio", "launch", str(launcher)], check=True,
                            env=dict(os.environ, NODWYN_LAUNCH_RESULT=str(result)))

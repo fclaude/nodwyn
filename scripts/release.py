@@ -24,9 +24,10 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = ("linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64")
+LINUX_APP = "nodwyn-linux-amd64-desktop.tar.gz"
 APP = "Nodwyn-macos-universal.zip"
 PAYLOADS = {f"nodwyn-{target}.tar.gz" for target in TARGETS} | {
-    APP, "nodwyn.pdf", "expert.pdf", "SOURCE.json"
+    APP, LINUX_APP, "nodwyn.pdf", "expert.pdf", "SOURCE.json"
 }
 # What the app must hold: its executable, the Linux egress proxies for the
 # container's architecture, its Info.plist and its icon (scripts/app-macos.sh).
@@ -124,6 +125,19 @@ def build(output, version=None, app=None):
             pack(output / f"nodwyn-{target}.tar.gz", {
                 "nodwyn": binary, "nodwyn-egress": proxy,
                 "LICENSE": tree / "LICENSE", "NOTICE": tree / "NOTICE"}, epoch)
+        # Use Ubuntu 24.04's GTK3 ABI as the Linux desktop baseline.
+        native = binaries / "nodwyn-desktop"
+        subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-tags=webview,gtk3",
+                        "-ldflags", f"-s -w -X main.version={commit}", "-o", str(native), "./cmd/nodwyn"],
+                       cwd=tree, env=dict(env, CGO_ENABLED="1", GOOS="linux", GOARCH="amd64"), check=True)
+        subprocess.run(["bash", "scripts/selfcheck.sh", str(native)], cwd=tree, env=env, check=True)
+        pack(output / LINUX_APP, {
+            "nodwyn": native, "nodwyn-egress": binaries / "nodwyn-egress-linux-amd64",
+            "share/applications/com.nodwyn.app.desktop": tree / "packaging/linux/com.nodwyn.app.desktop",
+            "share/icons/hicolor/scalable/apps/com.nodwyn.app.svg": tree / "internal/frontend/web/assets/icons/icon.svg",
+            "share/icons/hicolor/512x512/apps/com.nodwyn.app.png": tree / "internal/frontend/web/assets/icons/icon-512.png",
+            "LINUX-DESKTOP.md": tree / "packaging/linux/README.md",
+            "LICENSE": tree / "LICENSE", "NOTICE": tree / "NOTICE"}, epoch)
         # The runner executes the Linux amd64 build against the repository's fake model.
         subprocess.run(["bash", "scripts/selfcheck.sh", str(binaries / "nodwyn-linux-amd64")],
                        cwd=tree, env=env, check=True)
@@ -140,6 +154,8 @@ def build(output, version=None, app=None):
                 "go": run("go", "version"), "targets": list(TARGETS),
                 "executed_target": "linux-amd64", "webview": False,
                 "proxy": "Linux, matching the archive architecture; runs inside the MCP container",
+                "linux_desktop": {"file": LINUX_APP, "tags": "webview,gtk3", "cgo": True,
+                                  "baseline": "Ubuntu 24.04 amd64", "window_executed": False},
                 "app": {"file": APP, "webview": True, "architectures": ["arm64", "x86_64"],
                         "signature": "ad hoc, not notarised", "executed": "arm64, on the macOS runner"}}
     (output / "SOURCE.json").write_text(json.dumps(metadata, indent=2) + "\n")

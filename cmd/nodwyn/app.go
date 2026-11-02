@@ -104,7 +104,7 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 		fmt.Fprintln(os.Stderr, "app: open", base+"/#ticket="+ticket)
 		<-ctx.Done()
 	} else {
-		windowErr = openWindow(ctx, base+"/#ticket="+ticket, forceBrowser)
+		windowErr = openWindow(ctx, base+"/#ticket="+ticket, forceBrowser, socket)
 	}
 	stopWeb()
 	stop()

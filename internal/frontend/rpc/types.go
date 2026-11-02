@@ -20,6 +20,8 @@ type helloResult struct {
 	Version  string   `json:"version"`
 	Methods  []string `json:"methods"`
 	Peer     string   `json:"peer"`
+	Host     string   `json:"host"`
+	Account  string   `json:"account"`
 }
 type openParams struct {
 	Repo string `json:"repo"`

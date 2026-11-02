@@ -73,3 +73,17 @@ neighbours, without the margin and rounded corners of the macOS grid. The
 embedded `cmd/nodwyn/icon.png` is now the 512-point image of
 `packaging/macos/Nodwyn.icns`, so the running app shows the bundle's icon.
 The Linux launcher keeps installing the console's icons.
+
+## Amendment 2026-11-02: Linux desktop release and daemon identity
+
+Publish a separate amd64 GTK3/WebKitGTK 4.1 archive on Ubuntu 24.04, carrying
+its desktop file, hicolor icons and packaging contract. Portable releases
+remain browser builds. Use the same com.nodwyn.app GNOME identity and refresh
+icon and desktop caches. Scope Wails activation by effective UID and socket;
+a repeat launch only shows and focuses the existing window, ignoring its
+arguments and ticket. Browser mode bypasses native activation. No project
+file supplies activation policy or authority. The daemon handshake reports
+its OS hostname and effective account, displayed in the console header beside
+the execution daemon of a linked route; neither a URL nor a link alias proves
+identity. Existing authentication and socket ownership checks remain the gate.
+Native arm64 publication and automated GNOME dock acceptance are not built.

@@ -33,3 +33,8 @@ Settings has five tabs: General, Models, Judge, Keys & devices and This browser.
 ## Light and dark
 
 The console starts dark. Settings › This browser chooses light, dark or whatever your system uses, and whether the model's thinking is shown. Both choices live in the browser, so your phone and your laptop can differ.
+
+The header names the connected daemon as `account@host`. In a linked host’s
+task or settings it separately names the execution daemon, so two accounts
+on the same computer remain distinguishable. The daemon supplies these names;
+the browser address and the link alias do not establish them.

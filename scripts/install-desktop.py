@@ -43,6 +43,9 @@ def install(binary, data):
     legacy = target.parent / "nodwyn.desktop"
     if legacy.exists():
         legacy.write_text(entry + "NoDisplay=true\n")
+    if shutil.which("gtk-update-icon-cache"):
+        subprocess.run(["gtk-update-icon-cache", "--force", "--ignore-theme-index",
+                        str(data / "icons/hicolor")], check=True)
     if shutil.which("update-desktop-database"):
         subprocess.run(["update-desktop-database", str(target.parent)], check=True)
     print(f"Installed {target}; pin nodwyn from your application menu.")

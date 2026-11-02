@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -385,7 +386,12 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		if !client.ready {
 			client.ready = true
 		}
-		return helloResult{ProtocolVersion, s.options.Version, methods, client.actor}, nil
+		host, _ := os.Hostname()
+		account := fmt.Sprint(os.Geteuid())
+		if owner, err := user.LookupId(account); err == nil {
+			account = owner.Username
+		}
+		return helloResult{ProtocolVersion, s.options.Version, methods, client.actor, host, account}, nil
 	}
 	if !client.ready {
 		return nil, failure(-32001, "hello required before session methods")

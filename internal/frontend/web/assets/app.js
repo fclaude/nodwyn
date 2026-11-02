@@ -296,7 +296,14 @@ function draw(routeChanged, what) {
   $("topbar-count").hidden = !attention;
   // On a phone the sidebar is a drawer, so this is the way to what waits.
   $("topbar-count").href = attention === 1 && waiting.length === 1 ? waiting[0].desk.href(waiting[0].item.id) : "#/";
-  document.title = attention ? `(${attention}) nodwyn` : "nodwyn";
+  const identity = (connection) => {
+    const hello = connection?.live && connection.hello;
+    return hello?.account && hello?.host ? `${hello.account}@${hello.host}` : "identity unavailable";
+  };
+  const connected = identity(conn);
+  const target = route.host ? identity(hosts.get(route.host)?.conn) : connected;
+  $("daemon-identity").textContent = `Connected to ${connected} · Runs on ${target}${route.host ? ` (${route.host})` : ""}`;
+  document.title = attention ? `(${attention}) nodwyn — ${target}` : `nodwyn — ${target}`;
   const view = $("view");
   const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.host}:${route.id}` : route.name === "settings" ? `settings:${route.host}` : route.name;
   const ctx = { conn, desk, hosts, navigate, rerender: () => render(), pickFolder: window.nodwynPickFolder };

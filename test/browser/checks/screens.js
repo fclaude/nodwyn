@@ -23,6 +23,7 @@ check(async () => {
     const [ticket] = await line(demo, /TICKET (\S+)/, "stdout", from);
     await page.goto(`${base}/#ticket=${ticket}`);
     await ready(page);
+    await shows(page, "#daemon-identity", `Connected to ${require("os").userInfo().username}@${require("os").hostname()}`, "Runs on");
     await look(page);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     // "Match the system" takes the side of the system's scheme.
