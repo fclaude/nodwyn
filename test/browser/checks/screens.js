@@ -23,7 +23,7 @@ check(async () => {
     const [ticket] = await line(demo, /TICKET (\S+)/, "stdout", from);
     await page.goto(`${base}/#ticket=${ticket}`);
     await ready(page);
-    await shows(page, "#daemon-identity", `Connected to ${require("os").userInfo().username}@${require("os").hostname()}`, "Runs on");
+    await shows(page, "#daemon-identity", `Connected to ${require("os").userInfo().username}@${require("os").hostname()}`);
     await look(page);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     // "Match the system" takes the side of the system's scheme.
@@ -41,6 +41,7 @@ check(async () => {
   // Home: the task waiting for an answer and the finished one, under its
   // folder, in the sidebar and on the page, with the model answering.
   const home = async (page) => {
+    assert.ok(!(await page.innerText("#daemon-identity")).includes("Runs on"), "Home claims an execution target before a task opens");
     await shows(page, "#sidebar", "NEEDS YOU", "Run ls -la · console", "receipts", "Summarize what is in this folder", "ready");
     await shows(page, "#view", "What should we get done?", "Run ls -la", "Allow once", "RECENTLY FINISHED", "Summarize what is in this folder");
     const picker = await page.$eval("#new-task-model .mp-controls", (el) => {

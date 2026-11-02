@@ -3409,6 +3409,8 @@ over 16 MiB or file contents over 256 MiB leaves the state unknown. Deleting
 non-ignored generated files changes this strict content fingerprint too.
 
 The console header names the connected daemon as `account@host` and separately
-names the execution daemon when a linked host is selected. These names come
+names the execution daemon while viewing a task, or the settings daemon
+while viewing linked settings. The new-task Runs on picker names its selected
+daemon separately. These names come
 from the daemon handshake, independently of the browser address. Native Linux
 release and package instructions are in [the Linux desktop contract](../packaging/linux/README.md).

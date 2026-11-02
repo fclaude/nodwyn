@@ -135,6 +135,8 @@ check(async () => {
   await page.click("a.new-task");
   await page.waitForSelector("#runs-on");
   await page.selectOption("#runs-on", "workshop");
+  assert.ok(!(await page.innerText("#daemon-identity")).includes("Runs on"), "Home's header contradicts the execution picker");
+  await shows(page, "#runs-on", `${require("os").userInfo().username}@${require("os").hostname()}`);
   // Runs on is a native select drawn like the model picker: no native arrow, a CSS chevron.
   const look = await page.$eval("#runs-on", (el) => ({
     tag: el.tagName,

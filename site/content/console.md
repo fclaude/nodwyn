@@ -37,4 +37,6 @@ The console starts dark. Settings › This browser chooses light, dark or whatev
 The header names the connected daemon as `account@host`. In a linked host’s
 task or settings it separately names the execution daemon, so two accounts
 on the same computer remain distinguishable. The daemon supplies these names;
-the browser address and the link alias do not establish them.
+the browser address and the link alias do not establish them. On Home, the
+Runs on picker names the selected execution daemon; the header names only
+the connection until a task opens.

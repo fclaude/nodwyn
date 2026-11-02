@@ -109,6 +109,8 @@ builder's `--check` refuses a stale file inventory or line count, and
 `make validate` refuses it first, counting new files git doesn't track yet.
 
 The console header names the connected daemon as `account@host` and separately
-names the execution daemon when a linked host is selected. These names come
+names the execution daemon while viewing a task, or the settings daemon
+while viewing linked settings. The new-task Runs on picker names its selected
+daemon separately. These names come
 from the daemon handshake, independently of the browser address. Native Linux
 release and package instructions are in [the Linux desktop contract](../packaging/linux/README.md).

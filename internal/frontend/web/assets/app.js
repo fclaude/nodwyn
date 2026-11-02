@@ -302,7 +302,9 @@ function draw(routeChanged, what) {
   };
   const connected = identity(conn);
   const target = route.host ? identity(hosts.get(route.host)?.conn) : connected;
-  $("daemon-identity").textContent = `Connected to ${connected} · Runs on ${target}${route.host ? ` (${route.host})` : ""}`;
+  const onTask = ["task", "search", "history"].includes(route.name);
+  const targetLabel = onTask ? "Runs on" : route.name === "settings" && route.host ? "Settings on" : "";
+  $("daemon-identity").textContent = `Connected to ${connected}${targetLabel ? ` · ${targetLabel} ${target}${route.host ? ` (${route.host})` : ""}` : ""}`;
   document.title = attention ? `(${attention}) nodwyn — ${target}` : `nodwyn — ${target}`;
   const view = $("view");
   const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.host}:${route.id}` : route.name === "settings" ? `settings:${route.host}` : route.name;
