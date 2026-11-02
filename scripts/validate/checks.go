@@ -80,7 +80,7 @@ func plan(base string, changed []string) []check {
 	return checks
 }
 
-// acceptChecks is make accept (lint, test, exfil: the Makefile's `accept`
+// acceptChecks is make accept (lint, test-race, exfil: the Makefile's `accept`
 // names them in that order) with the independent parts run at the same
 // time. Lint (vet, staticcheck, the boundary and ingress lints) does not
 // need the tests, and the tests take several times as long; the exfil suite
@@ -94,7 +94,7 @@ func acceptChecks(logs string) result {
 			return []result{step("make lint", "go vet, staticcheck, lints", logs, limit, "make", "lint")}
 		},
 		func() []result {
-			tests := step("make test", "go test -race ./...", logs, limit, "make", "test")
+			tests := step("make test-race", "full race suite", logs, limit, "make", "test-race")
 			if tests.status == "FAIL" {
 				return []result{tests}
 			}

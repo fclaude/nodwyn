@@ -769,3 +769,46 @@ func TestUncheckedSetupIsSaidForAddedLines(t *testing.T) {
 		}
 	}
 }
+
+// Iteration can omit the race detector, but validation must still reject a
+// failed race suite before it runs the separate exfiltration gate.
+func TestAcceptanceRunsTheRaceSuiteBeforeExfil(t *testing.T) {
+	dir := t.TempDir()
+	calls := filepath.Join(dir, "calls")
+	writeAll(t, dir, map[string]string{"make": `#!/bin/sh
+printf '%s\n' "$1" >> "$NODWYN_ACCEPT_TEST_LOG"
+if [ "$1" = test-race ] && [ "$NODWYN_ACCEPT_FAIL_RACE" = 1 ]; then exit 7; fi
+`})
+	if err := os.Chmod(filepath.Join(dir, "make"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("NODWYN_ACCEPT_TEST_LOG", calls)
+	t.Setenv("NODWYN_ACCEPT_FAIL_RACE", "0")
+	if got := acceptChecks(t.TempDir()); got.status != "PASS" {
+		t.Fatalf("passing gates: %+v", got)
+	}
+	read := func() []string {
+		t.Helper()
+		data, err := os.ReadFile(calls)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Fields(string(data))
+	}
+	got := read()
+	if len(got) != 3 || !slices.Contains(got, "lint") || slices.Index(got, "test-race") < 0 || slices.Index(got, "exfil") <= slices.Index(got, "test-race") {
+		t.Fatalf("acceptance commands = %v", got)
+	}
+	if err := os.WriteFile(calls, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NODWYN_ACCEPT_FAIL_RACE", "1")
+	if got := acceptChecks(t.TempDir()); got.status != "FAIL" {
+		t.Fatalf("failed race gate: %+v", got)
+	}
+	got = read()
+	if slices.Contains(got, "test") || slices.Contains(got, "exfil") || !slices.Contains(got, "test-race") {
+		t.Fatalf("commands after a failed race suite = %v", got)
+	}
+}

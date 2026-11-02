@@ -31,13 +31,18 @@ against the unchanged code, and checks the house rules a diff can show. Fix what
 its summary in your answer, answering each warning: a test that passes on
 the unchanged code is fixed or explained. A failure the unchanged code has
 too is not yours: say so. Never change `scripts/validate`, the `Makefile`
-or `.nodwyn/init.scm` to make it pass. While you work, the commands below
-are faster.
+or `.nodwyn/init.scm` to make it pass. While you work, `make test` runs the
+complete non-race suite with automatic
+platform sharding and timing weights. `make test-race` runs the same suite
+with the race detector. Before a push, run `make validate`; acceptance and
+promotion retain the race gate. An iteration-only pass is not push acceptance.
+See `docs/testing.md` for flags and unsharded diagnostic commands. The commands
+below are faster for a focused change.
 
 - **Every Go change:** `go build ./...`, `gofmt -l internal cmd test` (prints
   nothing), `go vet ./...`, and the whole package of each file you changed:
   `go test ./internal/<pkg>/`. `make accept` (go vet, staticcheck, the
-  boundary and ingress lints, `go test -race ./...`, the exfiltration
+  boundary and ingress lints, `make test-race`, the exfiltration
   suite) is what promotion runs.
 - **Tests that test the change:** a test for a fix fails on the unchanged
   code and passes on yours; one that passes on both does not test the fix,

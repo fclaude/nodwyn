@@ -1,8 +1,10 @@
+PYTHON ?= python3
+
 MODULE  := github.com/fclaude/nodwyn
 VERSION := $(shell git describe --always --dirty --abbrev=12 --exclude='*' 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build build-webview egress app test lint exfil browser accept validate promote selfcheck smoke book expert clean
+.PHONY: build build-webview egress app test test-race test-runner test-unsharded test-race-unsharded lint exfil browser accept validate promote selfcheck smoke book expert clean
 
 build: egress
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
@@ -20,7 +22,21 @@ egress:
 app:
 	scripts/app-macos.sh $(VERSION)
 
+## test: the complete non-race suite for iteration; test-race is the acceptance gate.
 test:
+	$(PYTHON) scripts/test.py $(GO_TEST_FLAGS)
+
+test-race: test-runner
+	$(PYTHON) scripts/test.py --race $(GO_TEST_FLAGS)
+
+test-runner:
+	$(PYTHON) -B -m unittest discover -s test/runner -q
+
+## Unsharded runs retain cross-test process state for order-dependent diagnosis.
+test-unsharded:
+	go test $(GO_TEST_FLAGS) ./...
+
+test-race-unsharded:
 	go test -race $(GO_TEST_FLAGS) ./...
 
 # lint runs the analyzer from the module (a `tool` in go.mod), so an installed
@@ -41,7 +57,7 @@ browser:
 	bash test/browser/run.sh
 
 ## accept: everything a candidate must pass before promotion (ADR 13)
-accept: lint test exfil
+accept: lint test-race exfil
 
 ## validate: the checks what changed since upstream needs, before work is called done (ADR 37)
 validate:

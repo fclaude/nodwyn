@@ -2994,7 +2994,10 @@ or write the text `[REDACTED anthropic-key]` over one.
    `fs-write` of a whole existing file deserves suspicion.
 4. When it gets in the way, hand-edit, and add one line to
    [docs/friction.md](friction.md). That file decides what gets built next.
-5. `make accept` before committing; you commit — there is no commit tool.
+5. `make test` while iterating; `make validate` before a push, which retains
+   `make accept` and its `make test-race` gate; you commit — there is no commit
+   tool. [Testing](testing.md) describes platform weights and the unsharded
+   diagnostic commands.
 6. `make promote` when a phase's acceptance is green.
 
 ### When a request to a model fails

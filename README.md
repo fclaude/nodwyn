@@ -57,6 +57,15 @@ alone. That's fine unless you run MCP servers in containers, which also need
 [Brote](https://github.com/fclaude/brote), and Go fetches it like any other
 dependency.
 
+## Development tests
+
+`make test` runs the whole Go suite without race instrumentation for iteration.
+`make test-race` adds the race detector; `make accept`, `make validate` and
+promotion keep that gate. Both test commands automatically split slow packages
+into independent processes and load platform timing weights, including Apple
+silicon macOS. Python 3.9+ and Go are required. See [testing](docs/testing.md)
+for flags, logs and the ordinary unsharded commands.
+
 ## First run
 
 ```sh

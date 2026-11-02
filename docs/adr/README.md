@@ -69,3 +69,5 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0058](./0058-apache-licence-and-public-repository.md) — Apache 2.0, and a public repository on GitHub
 - [0059](./0059-website-on-github-pages.md) — A website on GitHub Pages, built from the docs: a guide for the console, standalone and server use, and the repository's docs as the reference
 - [0060](./0060-windows-through-wsl2.md) — Windows through WSL 2 and a Windows browser; route documented, native port deferred, WSL acceptance gate and integration not built
+
+- [0061](./0061-platform-test-runner.md) — Platform-weighted process sharding, a non-race iteration command, and race acceptance before pushes
