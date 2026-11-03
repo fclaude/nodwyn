@@ -24,6 +24,9 @@ HOST:PORT` and `--tls-cert`/`--tls-key` (browser.md, "Other devices").
   Closing the app closes those tasks; their conversations are kept and resume
   later like after any daemon shutdown.
 
+In the Linux native window, Ctrl+Q quits the app, with the same effect as
+closing the window.
+
 The page the app opens pairs itself with a one-time launch ticket carried in
 the address's fragment (never sent to a server, removed from the address bar
 at once, valid for a minute). The browser is started with that address, so

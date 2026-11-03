@@ -76,9 +76,13 @@ func openWindow(ctx context.Context, address string, forceBrowser bool, instance
 			bridge.handle(source.Origin, source.TopOrigin, source.IsMainFrame, message, window.ExecJS)
 		},
 	})
+	bindings := map[string]func(application.Window){}
+	if runtime.GOOS == "linux" {
+		bindings["Ctrl+Q"] = func(application.Window) { app.Quit() }
+	}
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name: "nodwyn", Title: "nodwyn", Width: 1280, Height: 860, MinWidth: 760, MinHeight: 560,
-		URL: address, JS: desktopScript(origin, bridge.token),
+		URL: address, JS: desktopScript(origin, bridge.token), KeyBindings: bindings,
 	})
 	activeWindow.Store(window)
 	bridge.pickFolder = func() (string, error) {

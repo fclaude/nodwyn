@@ -3337,7 +3337,8 @@ setup, limits and tests required before calling it supported.
 `make app` builds the universal macOS bundle and `bin/Nodwyn-macos-universal.zip`.
 The `webview` build tag remains the switch for `nodwyn app` to use a window.
 The console, model setup, keychain and tasks behave as in the browser; folder
-selection uses Wails' native dialog. Closing the window stops tasks only when
+selection uses Wails' native dialog. Ctrl+Q quits the Linux native window.
+Closing the window stops tasks only when
 this app owns their daemon. Wails v3 is pinned to a beta release; see
 [the desktop build guide](app.md) for dependencies and its native test.
 Portable archives continue to open a browser. Windows uses the WSL 2 route
