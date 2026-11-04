@@ -1,0 +1,96 @@
+name: Gitea checks
+
+# Gitea uses this directory in preference to .github/workflows. The optional
+# repository variable NODWYN_LINUX_RUNNER overrides the Alpine runner label.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitea-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ${{ vars.NODWYN_LINUX_RUNNER || 'linux-alpine' }}
+    timeout-minutes: 45
+    env:
+      # Keep the Go processes within the shared runner's memory budget.
+      GOMEMLIMIT: 1GiB
+      # Tool archives carry build-machine owners, which the runner cannot set.
+      TAR_OPTIONS: --no-same-owner
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare runner tools
+        run: |
+          mkdir -p "${GOTMPDIR:-$RUNNER_TEMP}" "${TMPDIR:-$RUNNER_TEMP}" "$RUNNER_TEMP"
+          command -v python3
+          command -v perl
+          command -v desktop-file-validate
+          command -v gio
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Use the newest patch of go.mod's base release (ADR 33).
+          go-version: '1.26.x'
+          # Host jobs reuse local Go caches; archive restore cannot overwrite
+          # read-only module files with the runner's dropped capabilities.
+          cache: false
+      - name: Acceptance checks
+        run: |
+          # Each job owns its test logs; on failure print their tails before
+          # removing them, rather than exposing a previous job's scratch files.
+          test_scratch=$(mktemp -d "${TMPDIR:-$RUNNER_TEMP}/nodwyn-ci.XXXXXX")
+          trap 'rm -rf -- "$test_scratch"' EXIT
+          export TMPDIR="$test_scratch"
+          # CPU quotas do not limit sched_getaffinity; restrict the suite to
+          # two allowed CPUs so its sharder respects the runner's budget.
+          set +e
+          python3 - <<'PY'
+          import os
+          cpus = sorted(os.sched_getaffinity(0))
+          os.sched_setaffinity(0, cpus[:2])
+          os.environ.pop('GOMAXPROCS', None)
+          os.execlp('make', 'make', 'accept', 'GO_TEST_FLAGS=-count=1')
+          PY
+          result=$?
+          set -e
+          if [ "$result" -ne 0 ]; then
+            for logfile in "$test_scratch"/nodwyn-tests-*/*.log; do
+              [ -f "$logfile" ] || continue
+              echo "== $(basename "$logfile") (last 35 lines)"
+              tail -n 35 "$logfile"
+            done
+          fi
+          exit "$result"
+      - name: Release builder checks
+        run: python3 -B -m unittest discover -s test/release -v
+      - name: Known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Cross-compile release targets
+        run: |
+          mkdir -p "$RUNNER_TEMP/nodwyn-builds"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os=${target%/*}
+            arch=${target#*/}
+            echo "Building $os/$arch without cgo"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -o "$RUNNER_TEMP/nodwyn-builds/nodwyn-$os-$arch" ./cmd/nodwyn
+          done
+          "$RUNNER_TEMP/nodwyn-builds/nodwyn-linux-amd64" version
+          test "$("$RUNNER_TEMP/nodwyn-builds/nodwyn-linux-amd64" eval -e '(+ 1 2)')" = 3
+      - name: Build the site and check its links
+        run: |
+          site_venv=$(mktemp -d "$RUNNER_TEMP/nodwyn-site-venv.XXXXXX")
+          trap 'rm -rf -- "$site_venv"' EXIT
+          python3 -m venv "$site_venv"
+          "$site_venv/bin/python" -m pip install -r site/requirements.txt
+          "$site_venv/bin/python" site/build.py
+      - name: Check source stayed clean
+        run: test -z "$(git status --porcelain)"

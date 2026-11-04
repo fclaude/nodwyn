@@ -21,6 +21,20 @@ is not acceptance. CI still runs `make accept`, and promotion uses the same
 race gate. There is no automatically installed Git hook: the repository's
 agent instructions establish the before-push rule.
 
+## Gitea Actions
+
+Gitea selects `.gitea/workflows` before `.github/workflows`. Its check runs the
+same acceptance gate, release-builder tests, vulnerability scan and portable
+builds as GitHub, and also builds the website. It selects `linux-alpine` by
+default; the Gitea repository Actions variable `NODWYN_LINUX_RUNNER` can select
+another Alpine-based runner. That runner needs Bash, Git, Node, a C compiler,
+Python with `venv` and `pip`, Perl, `desktop-file-validate`, `gio`, and public
+HTTPS access. These tools are installed in the runner image ahead of the job.
+
+The Gitea check confines the sharded, uncached acceptance suite to two CPUs to
+fit a small runner. It does not run the browser checks or build the macOS app;
+GitHub's CI runs those, and GitHub alone publishes the website and releases.
+
 ## Automatic platform settings
 
 On Linux and macOS, `scripts/test.py` compiles the slow packages jointly and

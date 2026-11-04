@@ -71,3 +71,13 @@ TeX packages, not Alpine's.
 - A Windows build, a package for any distribution and a Homebrew tap.
 - The workflows have not run on a hosted runner at the time of writing: the
   first run of `ci.yml` and of `release.yml` is their test.
+
+## Amendment 2026-11-03: Checks on a Gitea mirror
+
+Gitea falls back to `.github/workflows` when it has no workflow directory of
+its own. That left its jobs waiting for GitHub-hosted runner labels. A separate
+`.gitea/workflows` check selects an Alpine runner and runs
+the acceptance gate, release-builder tests, vulnerability scan, portable builds
+and site build. GitHub remains the home for releases, site publication, browser
+checks and the macOS app build. The Gitea runner label is a repository variable,
+so the public tree does not name a private machine.
