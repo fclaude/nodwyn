@@ -145,6 +145,16 @@ is being built wait for `session.start`, as `egress.check` and
 `cred.refresh` do; the last are written before `session.end`. The window
 ignores them: they are audit history, not conversation.
 
+## Amendment — 2026-11-08: `browser.egress`
+
+`browser.egress` records one request or connection of the task's browser
+(ADR 62): a request a page made that was refused before it was sent
+(`proxy` false), or a connection through the browser's proxy, made or
+refused (`proxy` true); the method, host and port, whether it was allowed,
+and why not. Never a path or a query. A session records up to 1000; one
+more record then gives the count left out (`dropped`), written before
+`session.end`. The window ignores them, as it does `mcp.egress`.
+
 ## Amendment — 2026-10-02: `setting.change`
 
 `setting.change` records a setting a session saved because a person chose

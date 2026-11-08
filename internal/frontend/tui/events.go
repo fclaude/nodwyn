@@ -354,6 +354,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if line, ok := plain.EgressLine(p); ok && err == nil {
 			m.append(line)
 		}
+	case string(log.KindBrowserEgress):
+		var p log.BrowserEgress
+		p, err = decode[log.BrowserEgress](e.Payload)
+		if line, ok := plain.BrowserLine(p); ok && err == nil {
+			m.append(line)
+		}
 	case event.PromptConfirm, event.PromptSecret, event.PromptCheckpoint, event.PromptChoice:
 		err = m.setPrompt(e)
 	case event.PromptClosed:

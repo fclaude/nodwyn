@@ -168,6 +168,9 @@ type Session struct {
 	keeper   *prim.Keeper // the state a passing test run kept, for a hard stop (keep.go)
 	procs    *prim.Procs  // background processes; stopped when the session closes
 	terms    *prim.Terms  // experimental terminals (ADR 48); nil unless [experimental] terminal is set
+	// browser is the task's web browser (ADR 62, browser.go); nil unless
+	// config.toml's [browser] lists sites.
+	browser *taskBrowser
 	// workspace is the folders outside the root the session may use, as
 	// the workspace list named them at construction (ADR 22).
 	workspace config.Workspace
@@ -594,8 +597,9 @@ func (s *Session) Close() error {
 		if s.terms != nil {
 			s.terms.Close()
 		}
-		// Contained MCP servers stop before session.end, so their last
-		// proxy reports are recorded.
+		// The browser and contained MCP servers stop before session.end,
+		// so their last proxy reports are recorded.
+		s.closeBrowser()
 		s.closeMCP()
 		// Nothing runs in the worktree any more: it can go if that loses
 		// nothing.

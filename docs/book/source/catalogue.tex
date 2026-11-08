@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 301 of 674 tracked Go files: every non-test Go file, 76,869 of 151,002 Go source lines (50.9\% by lines). It also includes all 37 tracked Scheme files (6,572 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 302 of 676 tracked Go files: every non-test Go file, 77,399 of 151,801 Go source lines (51.0\% by lines). It also includes all 39 tracked Scheme files (6,586 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -91,6 +91,10 @@ This is the checked-in policy discussed in Chapter~\ref{chap:repo-customisation}
 \sourcefile{test/exfil/scenarios/018-edit-through-a-placeholder-does-not-open-a-denied-file.scm}{Scheme}
 
 \sourcefile{test/exfil/scenarios/019-key-then-private-key-in-a-write-asks.scm}{Scheme}
+
+\sourcefile{test/exfil/scenarios/020-key-typed-into-a-page.scm}{Scheme}
+
+\sourcefile{test/exfil/scenarios/021-click-in-the-browser-asks.scm}{Scheme}
 
 \chapter{Starting the binaries}
 
@@ -187,6 +191,8 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 \sourcefile{internal/core/attach.go}{Go}
 
 \sourcefile{internal/core/bindings.go}{Go}
+
+\sourcefile{internal/core/browser.go}{Go}
 
 \sourcefile{internal/core/budget.go}{Go}
 

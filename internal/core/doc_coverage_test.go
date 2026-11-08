@@ -20,8 +20,12 @@ func TestSessionPrimitivesAreDocumented(t *testing.T) {
 	}
 	text := string(doc)
 	// The experimental terminal primitives are only there when asked for
-	// (ADR 48), and are documented all the same.
-	r := newRigWith(t, true, func(c *config.Config) { c.Experimental.Terminal = true })
+	// (ADR 48), and the browser's when config.toml lists sites for it (ADR
+	// 62); both are documented all the same.
+	r := newRigWith(t, true, func(c *config.Config) {
+		c.Experimental.Terminal = true
+		c.Browser.Sites = []string{"docs.example.com"}
+	})
 	for _, p := range r.s.interp.Prims() {
 		if !strings.Contains(text, "`("+p.Name+" ") && !strings.Contains(text, "`("+p.Name+")") && !strings.Contains(text, "`"+p.Name+"`") {
 			t.Errorf("primitive %q is not documented in docs/scheme.md", p.Name)

@@ -1759,6 +1759,35 @@
       ],
       "type": "object"
     },
+    "log.BrowserEgress": {
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "dropped": {
+          "type": "integer"
+        },
+        "host": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "proxy": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "allowed"
+      ],
+      "type": "object"
+    },
     "log.ContextCompact": {
       "properties": {
         "after_tokens": {
@@ -3503,6 +3532,9 @@
     },
     "payload.binding.change": {
       "$ref": "#/$defs/log.BindingChange"
+    },
+    "payload.browser.egress": {
+      "$ref": "#/$defs/log.BrowserEgress"
     },
     "payload.context.compact": {
       "$ref": "#/$defs/log.ContextCompact"
@@ -11593,6 +11625,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.BindingChange"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "browser.egress"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.BrowserEgress"
             },
             "seq": {
               "minimum": 0,

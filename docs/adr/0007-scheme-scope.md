@@ -82,3 +82,53 @@ editor embed one implementation of this language. What this amendment decides:
   says that Brote's reference wins where they differ. Two copies drift; once
   Brote's repository is public this file links to it for those sections instead.
 
+
+## Amendment 2026-11-08: Brote v0.9.1, in step with Raulí
+
+nodwyn links Raulí (ADR 62), whose recipes are Brote, so the two must agree
+on one Brote: a module that requires both gets the newer anyway. Both now
+require Brote v0.9.1, the latest release, and nodwyn requires Raulí v0.2.0,
+which requires the same. The language reference (`docs/scheme.md` §§1-6,
+§10) follows Brote's for v0.9.1. This reverses two lines of the Decision
+above, on purpose:
+
+- **Macros are in.** `define-syntax`, `let-syntax` and `letrec-syntax` with
+  `syntax-rules`, not fully hygienic (a name a template only refers to means
+  what it means where the macro is used), and the prelude's
+  `define-record-type`, `let-values` and `case-lambda` are macros. "Never in
+  v0: hygienic macros" was about keeping evaluation fixed. What still holds:
+  a macro only rewrites code, and what it expands to crosses the guard
+  primitive by primitive, as `TestGateIsTheSingleExit` says; a macro cannot
+  take a special form's name (`(define-syntax if …)` is an error, tried); and
+  the model's `scheme` tool runs in an environment of its own, so a macro it
+  defines ends with its program. Only user-origin code (init.scm, `:eval`)
+  can define one for the session.
+- **Pairs can change.** `set-car!` and `set-cdr!`, in a program running
+  alone, never making a list hold itself; what is stored keeps its
+  provenance.
+
+Also new, from Brote 0.3.0 to 0.9.1: hash tables; characters; string ports,
+`read`, `read-line` and the rest, with `current-input-port` empty in every
+session (it reads EOF even with input piped to `nodwyn eval`, tried), so no
+program reads the daemon's or the terminal's input; nested quasiquote;
+positions and a trace in errors; `gensym`, `doc`, `apropos`; prelude
+procedures for lists, strings and vectors, and Scheme's test procedures. In
+all, 67 more builtins (110 to 177 in `nodwyn eval`). Provenance survives
+the new paths: a tagged string written to a string port, read back a
+character, a line or a datum at a time, split into characters and joined,
+mapped through `char->integer` and `integer->char`, copied, or stored with
+`set-car!`, keeps its tag (tried, one by one); only predicates and
+measurements (`char?`, `digit-value`, the comparisons) drop it, as before.
+
+Brote's tasks, channels and promises, and its `std` library, are not
+granted: nodwyn gives no `scheme.WithTasks` and imports no `std`, so those
+names are unbound and the prelude's `delay` is an error.
+
+Moving needed one fix in Brote and one line here. Brote 0.9.0 deadlocked a
+gate that evaluates Scheme inside its own check, which nodwyn's judge does:
+every judge test stopped at its 60-second wait and three packages hit the
+ten-minute test timeout. Brote 0.9.1 gives a check a turn of its own
+(Brote `fac397f`). Brote's vectors hide their items behind `Elements()`,
+which `prim/schemetool.go` now calls. With both, the whole suite passes;
+the only other failures were the two tests that every primitive is
+documented.

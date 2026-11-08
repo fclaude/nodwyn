@@ -414,6 +414,28 @@ type MCPEgress struct {
 	Dropped int    `json:"dropped,omitempty"` // attempts not recorded after the limit
 }
 
+// BrowserEgress records one request or connection of the task's browser
+// (ADR 62): a request the browser was refused before it was sent, because
+// its address is not on [browser] sites, or a connection through the
+// browser's proxy, made or refused. It names a method, a host and a port,
+// never a path or a query, which can carry what a page is sending. A
+// session records a limited number; the record after them says how many
+// more were left out.
+type BrowserEgress struct {
+	Method  string `json:"method,omitempty"` // a refused request's method, or CONNECT, or a plain-HTTP request's method
+	Host    string `json:"host,omitempty"`
+	Port    int    `json:"port,omitempty"`
+	Allowed bool   `json:"allowed"`
+	// Proxy is true for a connection through the browser's proxy, and
+	// false for a request a page made that was refused before it was sent.
+	// The proxy also sees the browser's own traffic (Google Chrome asks
+	// Google's hosts for updates and sign-in), so clients show a refused
+	// page request and leave the proxy's records to the log.
+	Proxy   bool   `json:"proxy,omitempty"`
+	Reason  string `json:"reason,omitempty"`  // why it was refused or failed
+	Dropped int    `json:"dropped,omitempty"` // records left out after the limit
+}
+
 // Note is a free-form annotation.
 type Note struct {
 	Text string `json:"text"`

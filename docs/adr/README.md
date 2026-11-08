@@ -71,3 +71,4 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 - [0060](./0060-windows-through-wsl2.md) — Windows through WSL 2 and a Windows browser; route documented, native port deferred, WSL acceptance gate and integration not built
 
 - [0061](./0061-platform-test-runner.md) — Platform-weighted process sharding, a non-race iteration command, and race acceptance before pushes
+- [0062](./0062-the-task-browser.md) — The task's web browser: Raulí's tools as `browser-NAME` primitives across the guard, driving a headless Chromium that reaches only `[browser] sites` in config.toml, through Raulí's request filter and an egress proxy in nodwyn's process; an action on a page asks, pages are `external:web`, screenshots, logins and the live view come later (amends 7, 23)

@@ -801,6 +801,30 @@ in only if it is bound for every one of those hosts, as the variable named
 contained server and what it can reach. The containers are removed when the
 task closes.
 
+\section{The web browser}
+
+A task can read and use web pages on the sites you list, and on no others
+(\adr{62}). List them in \file{config.toml}:
+
+\begin{txt}
+[browser]
+sites = ["pkg.go.dev", "go.dev", "localhost:3000"]   # host, or host:port
+\end{txt}
+
+A host allows ports 443 and 80, \code{host:port} that port alone, with no
+wildcard, so a site that loads its scripts from a CDN needs the CDN too.
+The model gets \code{browser-navigate}, \code{browser-snapshot},
+\code{browser-click}, \code{browser-type} and the rest; the browser is a
+headless Chromium-based one found on this computer, with a fresh profile
+each task and downloads refused. Reading a page asks nothing; a click,
+typing, a key press or a choice in a list asks every time, naming the page
+and the element, and \code{approval.commands} decides who answers. Every
+request a page makes is checked, and the browser's only way out is a proxy
+inside \nodwyn{} that lets through the listed hosts alone; each refused
+request is a line in the task, and the session log records them as
+\code{browser.egress}. Screenshots, logging in and a live view are not
+built yet.
+
 \chapter{Workspaces, attachments and undo}\label{ch:undo}
 
 A session's root is the directory it was started in. A workspace can also

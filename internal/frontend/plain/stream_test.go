@@ -101,6 +101,29 @@ func TestReplayShowsRefusedEgress(t *testing.T) {
 	}
 }
 
+// The browser's refused page requests are shown; the proxy's connections,
+// refused or not, stay in the log, since they include the browser's own
+// traffic (ADR 62).
+func TestReplayShowsRefusedBrowserRequests(t *testing.T) {
+	var history bytes.Buffer
+	w := log.New(&history, "browser")
+	w.Append(log.KindBrowserEgress, log.BrowserEgress{Method: "CONNECT", Host: "docs.example.com", Port: 443, Allowed: true, Proxy: true})
+	w.Append(log.KindBrowserEgress, log.BrowserEgress{Method: "CONNECT", Host: "accounts.google.com", Port: 443, Proxy: true, Reason: "not on [browser] sites in config.toml"})
+	w.Append(log.KindBrowserEgress, log.BrowserEgress{Method: "GET", Host: "tracker.example.net", Port: 443, Reason: "tracker.example.net:443 is not on the sites the browser may reach"})
+	w.Append(log.KindBrowserEgress, log.BrowserEgress{Dropped: 7})
+	events, err := log.Read(&history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	Replay(events, &out, false)
+	got := out.String()
+	if strings.Contains(got, "docs.example.com") || strings.Contains(got, "accounts.google.com") ||
+		!strings.Contains(got, "the browser was refused tracker.example.net:443") || !strings.Contains(got, "7 more requests") {
+		t.Fatal(got)
+	}
+}
+
 // A turn that stopped short says where it had got to, after the error; one
 // that completed says nothing more.
 func TestStoppedTurnPrintsWhereItStopped(t *testing.T) {

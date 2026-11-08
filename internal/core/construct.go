@@ -583,6 +583,9 @@ func (s *Session) initialize() (err error) {
 	}
 	s.interp.SetGate(turnGate{Gate: g, s: s})
 	s.connectMCP()
+	if err := s.registerBrowser(); err != nil {
+		return err
+	}
 	s.interp.SetExpand(expandScratch(s.scratch))
 	if err := s.registerHistory(); err != nil {
 		return err

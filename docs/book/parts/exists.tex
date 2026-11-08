@@ -110,7 +110,7 @@ Claim & Held by \\
 The log is the single source of truth & \code{nodwyn replay} reproduces a transcript from the file alone; the window takes only events; \code{log\_test.go} round-trips and repairs a truncated tail; \code{replay --window} verifies a request against its recorded digest \\
 One Scheme$\to$Go exit, the guard on it & \code{applyPrim} is the only caller of \code{Prim.Handler}; \code{TestGateIsTheSingleExit} records every crossing, including through \code{map}, \code{apply}, \code{sort} and a registered tool \\
 MCP tools cross the guard & \code{TestMCPToolsCrossTheGuard}: an undeclared tool confirms with no standing answer, the key reaches the server and neither the log nor the model, the checks are recorded; \code{TestMCPManifestChangeOffersNothing}; for a contained server, \code{TestContainedServerCrossesTheGuard} and \code{TestContainedCredentialMustBeBoundForEveryHost}, against a fake runtime \\
-Loading \code{.scm} cannot change evaluation & \code{TestKernelFixed}: only the table grew, \code{define-syntax} stays a binding \\
+Loading \code{.scm} cannot add a special form & \code{TestKernelFixed}: only the table grew, \code{define-syntax} bound as a variable stays a binding; a macro cannot take a special form's name \\
 A strategy cannot skip the invariants & \code{strategy\_test.go}: fabricated or rewritten calls refused, unanswered calls answered, stops uncatchable, provenance kept \\
 Proper tail calls & \code{TestTailCalls}: 200k iterations in nine tail positions under an 8\,MB stack cap \\
 Every primitive is documented & \code{TestDocCoverage}, \code{TestSessionPrimitivesAreDocumented} \\

@@ -528,6 +528,17 @@ check(async () => {
       const w = f.root.querySelector(".activity.writes");
       out.marks = { count: root.querySelectorAll(".audit").length, summary: m.querySelector("summary").textContent, notes: m.querySelector("pre")?.textContent, failed: { open: w.open, header: w.querySelector(".what").textContent } };
     }
+    // The task's browser (ADR 62): a request a page made that was refused
+    // is a line in the transcript; the proxy's connections, refused or not,
+    // are not, since they include the browser's own traffic.
+    {
+      const { root, t } = fresh();
+      t.render({ kind: "browser.egress", payload: { method: "CONNECT", host: "docs.example.com", port: 443, allowed: true, proxy: true } });
+      t.render({ kind: "browser.egress", payload: { method: "CONNECT", host: "accounts.google.com", port: 443, allowed: false, proxy: true, reason: "not on [browser] sites in config.toml" } });
+      t.render({ kind: "browser.egress", payload: { method: "GET", host: "tracker.example.net", port: 443, allowed: false, reason: "tracker.example.net:443 is not on the sites the browser may reach" } });
+      t.render({ kind: "browser.egress", payload: { dropped: 7, allowed: false } });
+      out.browserEgress = [...root.querySelectorAll(".audit")].map((n) => `${n.className} | ${n.querySelector("summary").textContent} | ${n.querySelector("pre")?.textContent || ""}`);
+    }
     // A transcript taken off the page while a command runs (the person left
     // the task) stops its clock at the next tick.
     {
@@ -1223,6 +1234,8 @@ check(async () => {
     want(r.requests.length === 2 && r.requests[0].method === (state === "open" ? "session.subscribe" : "log.read") && r.requests[1].method === "log.read" && r.requests[1].params.after === 5 && r.requests[1].params.through === 12, `newerSessionReplayLoadsHistoryAndStatistics ${state}: fixed watermark paging: ${JSON.stringify(r.requests)}`);
   }
   want(replay.empty.loaded && !replay.empty.failed && replay.empty.empty === "Nothing has run yet." && Object.keys(replay.empty.rows).length === 0, `newerSessionReplayLoadsHistoryAndStatistics: genuinely empty history stays empty: ${JSON.stringify(replay.empty)}`);
+  const browserLines = results.browserEgress;
+  want(browserLines.length === 2 && browserLines[0] === "audit bad | The browser was refused tracker.example.net:443 | tracker.example.net:443 is not on the sites the browser may reach" && browserLines[1].startsWith("audit bad | The browser: 7 more requests and connections were not recorded"), `the browser's refused page request and the count left out are lines, its proxy's connections are not: ${JSON.stringify(browserLines)}`);
   const build = results.indexBuild;
   want(build.args === "“binding check” in the repository" && build.decision === "" && build.line === "Index updated: read 2 files · left out by the guard: key.txt, vault.txt · holds 2 files · 1.2 s" && build.what === "searched once", `an index build's reads do not mark the search, and its line is under it: ${JSON.stringify(build)}`);
   const batch = results.concurrentReads;

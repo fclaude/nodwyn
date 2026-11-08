@@ -112,6 +112,9 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(turn-plan)} & the loop's, not the model's: the plan this turn recorded, with its marks, as \code{run-plan} gives a run's; a compaction that cannot give the plan back as the message after the note records it again in the new context \\
 \code{(http-request cred url method position headers body)} & a keyed request, checked against bindings and the user's transport policy \\
 \code{(credential class)} & the handle of a stored key, or \code{\#f} \\
+\code{(browser-navigate url [snapshot])}, \code{(browser-snapshot)}, \code{(browser-text)} & only with \code{[browser] sites} in \file{config.toml} (ADR 62): open a listed page in the task's browser; read it as text, with references such as \code{e12} on what can be acted on \\
+\code{(browser-click ref [double [right [snapshot]]])}, \code{(browser-type ref text [replace [slowly [snapshot [submit]]]])}, \code{(browser-press key [snapshot])}, \code{(browser-select option ref [snapshot])} & act on the page; each asks every call, naming the page and the element \\
+\code{(browser-hover ref [snapshot])}, \code{(browser-scroll [dx [dy [snapshot]]])}, \code{(browser-back [snapshot])}, \code{(browser-forward [snapshot])}, \code{(browser-reload [snapshot])}, \code{(browser-wait [seconds [snapshot [text]]])}, \code{(browser-tabs [action [index [url]]])}, \code{(browser-console)} & move over and scroll, the tab's history, waiting, tabs and the page's console \\
 \bottomrule
 \end{longtable}
 
@@ -402,7 +405,8 @@ the folder is refused. If you want every command asked, set
 Every value carries \textbf{provenance tags}: not what it contains, but where
 it came from. File reads are tagged \code{external:file}, command output
 \code{external:shell}, network responses \code{external:http}, and what an
-MCP server returns \code{external:mcp}. Tags flow
+MCP server returns \code{external:mcp}, and a web page the task's browser
+read \code{external:web}. Tags flow
 through computation:
 
 \begin{scm}

@@ -85,6 +85,8 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		"approval writes":   "[approval]\nwrites = \"judge\"\n",
 		"approval commands": "[approval]\ncommands = \"yes\"\n",
 		"approval unknown":  "[approval]\nreads = \"ask\"\n",
+		"browser wildcard":  "[browser]\nsites = [\"*.example.com\"]\n",
+		"browser url":       "[browser]\nsites = [\"https://example.com/\"]\n",
 	}
 	for name, body := range cases {
 		p := filepath.Join(t.TempDir(), "config.toml")
@@ -92,6 +94,20 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		if _, err := Load(p); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+// [browser] sites are read as a contained server's network list: a host,
+// or host:port (ADR 62).
+func TestBrowserSitesLoad(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	must.WriteFile(t, p, []byte("[browser]\nsites = [\"docs.example.com\", \"127.0.0.1:8080\"]\n"), 0o600)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(c.Browser.Sites, []string{"docs.example.com", "127.0.0.1:8080"}) {
+		t.Fatalf("sites = %q", c.Browser.Sites)
 	}
 }
 

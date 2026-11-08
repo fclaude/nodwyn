@@ -175,14 +175,16 @@ hundred thousand hops take no stack at all.
 
 \section{What is deliberately missing}
 
-No \code{call/cc}, no macros (\code{define-syntax}), no \code{eval}, no
-characters, no string mutation, no \code{set-car!}, no fractions or
-bignums, no nested quasiquote. The language is small on purpose: it is
-there to express policy, and a small language is one you can hold in your
-head and one whose every program the guard can reason about. There is
-also, deliberately, no way for a Scheme program to reach the kernel's
-evaluator: loading code can add functions and primitives, never new
-special forms.
+No \code{call/cc}, no \code{eval}, no file ports, no string mutation, no
+fractions or bignums, and none of Brote's tasks or promises, which
+\nodwyn{} does not grant. The language is small on purpose: it is there to
+express policy, and a small language is one you can hold in your head and
+one whose every program the guard can reason about. There is also,
+deliberately, no way for a Scheme program to reach the kernel's evaluator:
+loading code can add functions, primitives and \code{syntax-rules} macros,
+and a macro only rewrites code, whose every effect still crosses the guard.
+A macro cannot take a special form's name:
+\code{(define-syntax if ...)} is an error.
 
 \begin{puzzle}[ 8: a safe number parser]
 Write \code{(parse-ml text)} that turns \code{"250 ml"} into \code{250},

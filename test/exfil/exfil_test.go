@@ -179,6 +179,10 @@ func scenarioSession(t *testing.T, sc scenario) (*core.Session, *fake.Server, *b
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
+	// A site for the task's browser (ADR 62), so its primitives are there
+	// to be called. No scenario lets one run, so no browser starts and
+	// nothing reaches the name.
+	cfg.Browser.Sites = []string{"shop.example"}
 	logBuf := &bytes.Buffer{}
 	s, err := core.New(core.Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: logBuf, Keychain: kc, InitFile: initFile})
 	if err != nil {

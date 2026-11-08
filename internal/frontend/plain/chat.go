@@ -407,6 +407,11 @@ func (c *Chat) show(ev event.Event) {
 			endStream()
 			fmt.Fprintln(c.Out, line)
 		}
+	case string(log.KindBrowserEgress):
+		if line, ok := BrowserLine(ev.Payload.(log.BrowserEgress)); ok {
+			endStream()
+			fmt.Fprintln(c.Out, line)
+		}
 	}
 }
 
@@ -450,6 +455,20 @@ func EgressLine(p log.MCPEgress) (string, bool) {
 		return fmt.Sprintf("⚑ %s: %d more connection attempts were not recorded", p.Server, p.Dropped), true
 	case !p.Allowed:
 		return fmt.Sprintf("⚑ %s could not reach %s:%d: %s", p.Server, p.Host, p.Port, p.Reason), true
+	}
+	return "", false
+}
+
+// BrowserLine is the line a transcript shows for the task's browser (ADR
+// 62): a request a page made that was refused, and records left out. The
+// proxy's connections, the browser's own traffic among them, stay in the
+// log.
+func BrowserLine(p log.BrowserEgress) (string, bool) {
+	switch {
+	case p.Dropped > 0:
+		return fmt.Sprintf("⚑ the browser: %d more requests and connections were not recorded", p.Dropped), true
+	case !p.Allowed && !p.Proxy:
+		return fmt.Sprintf("⚑ the browser was refused %s:%d: %s", p.Host, p.Port, p.Reason), true
 	}
 	return "", false
 }
@@ -833,6 +852,12 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.MCPEgress
 			_ = ev.Decode(&p)
 			if line, ok := EgressLine(p); ok {
+				fmt.Fprintln(w, line)
+			}
+		case log.KindBrowserEgress:
+			var p log.BrowserEgress
+			_ = ev.Decode(&p)
+			if line, ok := BrowserLine(p); ok {
 				fmt.Fprintln(w, line)
 			}
 		case log.KindTurnCheckpoint:

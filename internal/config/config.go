@@ -28,6 +28,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/fclaude/nodwyn/internal/catalogue"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/egress"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/loopback"
 )
@@ -83,6 +84,8 @@ type Config struct {
 	Judge   Judge  `toml:"judge"`
 	Docs    Docs   `toml:"docs"`
 	MCP     MCP    `toml:"mcp"`
+	// Browser is the web browser a task may drive (ADR 62).
+	Browser Browser `toml:"browser"`
 	// Approval is what a session a person can answer does without asking
 	// (ADR 35).
 	Approval Approval `toml:"approval"`
@@ -114,6 +117,17 @@ type MCP struct {
 	// Egress is the nodwyn-egress proxy a server with a network list
 	// reaches the network through. Unset: next to the nodwyn executable.
 	Egress string `toml:"egress"`
+}
+
+// Browser is the web browser a task may drive, on these sites alone (ADR
+// 62). It is the person's, in config.toml, never a repository's: a clone
+// cannot widen where its tasks may browse.
+type Browser struct {
+	// Sites are the hosts the browser may reach, written as a contained MCP
+	// server's network list is: a host, which allows ports 443 and 80, or
+	// host:port, which allows that port alone; no wildcard. Empty, the
+	// default, offers no browser.
+	Sites []string `toml:"sites"`
 }
 
 // Notify is whether the daemon shows a desktop notification on this computer
@@ -873,6 +887,9 @@ func (c Config) Validate() error {
 	}
 	if c.MCP.Egress != "" && !filepath.IsAbs(c.MCP.Egress) {
 		return fmt.Errorf("mcp.egress must be an absolute path, got %q", c.MCP.Egress)
+	}
+	if _, err := egress.Allow(c.Browser.Sites); err != nil {
+		return fmt.Errorf("browser.sites: %w", err)
 	}
 	return nil
 }

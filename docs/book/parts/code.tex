@@ -1525,6 +1525,38 @@ proxy's reports reach the log; \code{TestContainedWithPodman} runs a
 server with the real podman or docker when asked to.
 \end{sloppypar}
 
+\section{The task's browser}
+
+\file{internal/core/browser.go} offers the task a web browser when
+\file{config.toml} lists \code{[browser] sites} (\adr{62}). The browser
+is Raulí, linked as a library: its \code{browser} package gives the
+session, its tools and the two interfaces it is driven through, a
+\code{Guard} and a \code{Vault}, public names, and \file{go.mod} pins it
+as it pins Brote. \code{browserPrim} makes each offered tool a primitive
+\code{browser-NAME} with the parameters \code{schemaParams} reads from
+Raulí's schema, as \code{mcpPrim} does for an MCP tool, and the same
+contained shape: \code{EgressHost} is \code{browser}, \code{EgressContained}
+and \code{EgressOnward} (the listed hosts) make \code{boundFor} above
+judge a key in what is typed by every listed host, \code{EgressApproved}
+lets content from outside go there, and \code{TaintSource} is
+\code{external:web}. A tool that acts on the page is \code{Irreversible},
+and its \code{Preview} names the page and the element its reference
+names in the last snapshot.
+
+The browser starts at the first call (\code{open}). Two things keep it to
+the list. \code{browserGuard} is Raulí's \code{Guard}: its
+\code{CheckURL}, which Raulí installs as the browser's request filter,
+refuses an address that is not listed before the request is sent. The
+filter does not see a WebSocket, so the browser's only way out is an
+\code{egress.Proxy} in nodwyn's process on a loopback port, the one a
+contained server's sidecar runs, its \code{Dial} refusing a name that
+resolves to this computer unless the person listed a loopback address,
+and Chromium is started with \code{-{}-proxy-bypass-list=<-loopback>}
+so loopback goes through it too. Both report to \code{browserRecorder},
+which records \code{browser.egress}. \code{TestBrowserReachesOnlyItsSites}
+loads a listed page that asks another host for an image and opens a
+WebSocket to a third, and checks that neither got a byte.
+
 \section{The other keyed requests, compared}
 
 Other routes send a key off the machine: \code{http-request} and the
@@ -1651,7 +1683,7 @@ Context & \code{context.narrow}, \code{context.widen}, \code{context.fold}, \cod
 Authority & \code{guard.decision}, \code{egress.check}, \code{approval.change}, \code{binding.change}, \code{cred.register}, \code{cred.refresh}, \code{redact.event} \\
 Plan gate and judge & \code{gate.plan}, \code{plan.step}, \code{jev.req} \\
 Runs & \code{run.state}, \code{run.turn}, \code{run.checkpoint} \\
-Other & \code{eval.req}, \code{eval.result} (Scheme you evaluated), \code{file.version} (a kept previous version), \code{doc.upload} (a document sent out), \code{mcp.egress} (a contained server's connection through its proxy), \code{note} \\
+Other & \code{eval.req}, \code{eval.result} (Scheme you evaluated), \code{file.version} (a kept previous version), \code{doc.upload} (a document sent out), \code{mcp.egress} (a contained server's connection through its proxy), \code{browser.egress} (the task's browser's refused requests and its proxy's connections), \code{note} \\
 \bottomrule
 \end{longtable}}
 
@@ -1779,7 +1811,7 @@ Field & What it means, and who reads it \\
 \code{Egress} & may send bytes off the machine; the binding table is consulted, and L1 and L2 judge its payload against it \\
 \code{Irreversible} & \code{MetaPolicy} asks; a host primitive is charged to the budget as an action; a turn that must plan is refused it until it has a plan \\
 \code{Audited} & the guard records even an allow \\
-\code{TaintSource} & the tag the result carries (\code{external:file}, \code{external:shell}, \code{external:http}, \code{external:mcp}, \code{external:log}) \\
+\code{TaintSource} & the tag the result carries (\code{external:file}, \code{external:shell}, \code{external:http}, \code{external:mcp}, \code{external:web}, \code{external:log}) \\
 \code{TaintOpaque} & the result is a measurement of the arguments and inherits none of their taint \\
 \code{TaintStrip} & removes taint; L2 refuses it to model and harness origin \\
 \code{EgressHost}, \code{EgressMethod}, \code{EgressPosition} & fixed egress facts for a primitive whose arguments do not carry them (the \code{judge-*} primitives, \code{google-doc-upload}, MCP) \\

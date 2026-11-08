@@ -44,6 +44,7 @@ var payloads = map[string]func(json.RawMessage) (any, error){
 	string(log.KindContextCompact): as[log.ContextCompact],
 	string(log.KindJevReq):         as[log.JevReq],
 	string(log.KindMCPEgress):      as[log.MCPEgress],
+	string(log.KindBrowserEgress):  as[log.BrowserEgress],
 }
 
 func as[T any](raw json.RawMessage) (any, error) {

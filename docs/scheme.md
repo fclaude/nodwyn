@@ -34,6 +34,7 @@ primitives (§5), the guard (§7) and the agent loop (§9).
 | `"""…"""` | raw string: no escapes, so the text is exactly what the file holds. See §1.1 |
 | `42` `-7` `+3` | integer (int64) |
 | `3.14` `1e3` `-0.5` `.5` | float (float64) |
+| `#\a` `#\space` `#\x41` | a character: `#\` and the character itself (any one, `#\(` too), or a name (`space` `newline` `tab` `return` `null` `alarm` `backspace` `delete` `escape`), or `x` and the code point in hex |
 | `#t` `#f` | booleans |
 | `.` | dotted pair inside a list: `(a . b)` |
 | anything else | a symbol; case-sensitive; `+`, `-`, `...`, `1+` are symbols |
@@ -91,9 +92,13 @@ already does.
 | integer | `42` | `integer?` | int64; wraps on overflow like Go |
 | float | `2.5` `1.0` | `float?` | float64; always printed with a `.` or exponent |
 | string | `"hi"` | `string?` | immutable UTF-8; lengths and indices count **runes** |
+| character | `#\a` | `char?` | one Unicode code point. `write` shows the shortest form the reader accepts (`#\a`, `#\space`, `#\x7`); `display` shows the character itself |
+| port | `#<input-port>` `#<output-port>` | `port?` | where text is read from or written to; see Ports |
+| end-of-file object | `#<eof>` | `eof-object?` | what reading gives at the end of input |
 | symbol | `foo` | `symbol?` | interned by name |
-| pair / list | `(1 2 3)` `(a . b)` | `pair?` `list?` | lists are chains of pairs ending in `()`; no mutation |
-| vector | `#(1 2 "x")` | `vector?` | indexed array; `vector-set!` mutates; no mutation of lists |
+| pair / list | `(1 2 3)` `(a . b)` | `pair?` `list?` | lists are chains of pairs ending in `()`; `set-car!` and `set-cdr!` change one, for a program running alone (see Pairs and lists) |
+| vector | `#(1 2 "x")` | `vector?` | indexed array; `vector-set!` mutates |
+| hash table | `#<hash ("a" . 1) (b . 2)>` | `hash?` | a mutable map from strings, symbols, integers and booleans, listed in the order the keys were added. It prints this way but has no written form to read back |
 | procedure | `#<procedure f>` `#<primitive car>` | `procedure?` | closures and primitives are both procedures |
 | handle | `#<cred:class:id>` | `handle?` | opaque credential handle (P3). Cannot be converted to a string by any builtin |
 | void | `#<void>` | — | result of `define`, `set!`, `display`, …; the REPL does not print it |
@@ -131,22 +136,25 @@ already does.
 |---|---|
 | `(define name expr)` | bind `name` in the current environment |
 | `(define (name param … [. rest]) body …)` | shorthand for a named `lambda` |
-| `(lambda (param … [. rest]) body …)` `(lambda args body …)` | closure; `rest`/`args` receive a list |
+| `(lambda (param … [. rest]) body …)` `(lambda args body …)` | closure; `rest`/`args` receive a list. A string before the other body expressions is not evaluated: it describes the procedure (`doc`) |
 | `(if test then [else])` | missing `else` yields void |
 | `(let ((v e) …) body …)` | bind in parallel |
 | `(let name ((v e) …) body …)` | named let: `name` is bound to the loop procedure inside the body |
 | `(let* ((v e) …) body …)` | bind sequentially |
 | `(letrec ((v e) …) body …)` | mutual bindings: every initializer may reference the other names (a closure resolves them at call time) |
 | `(case key [(datum …) body …] … [(else body …)])` | first clause whose datum list contains a member `equal?` to the key wins; no clause → void |
-| `(do ((v init [step]) …) (test [e …]) cmd …)` | loop: check `test`; on false evaluate the `cmd`s, then the `step`s (in parallel), rebind, repeat. Value is the test clause's last `e` (void if none). A Go loop — constant stack |
+| `(do ((v init [step]) …) (test [e …]) cmd …)` | loop: check `test`; on false evaluate the `cmd`s, then the `step`s (in parallel), rebind, repeat. Value is the test clause's last `e` (void if none). A Go loop, so constant stack |
 | `(when test e …)` | `e …` only if `test` is true; yields void otherwise |
 | `(unless test e …)` | `e …` only if `test` is false; yields void otherwise |
-| `(guard (var clause …) body …)` | evaluate `body …`; if it raises a Scheme error, bind `var` to the condition — an alist `((message . "text") (irritants …))` — and try the clauses like `cond` (`(test body …)`, `(test => proc)`, `(else …)`). The first true clause's value is the value of `guard`; no match re-raises. A guard **denial** and a **cancellation** are never catchable |
+| `(guard (var clause …) body …)` | evaluate `body …`; if it raises a Scheme error, bind `var` to the condition (an alist `((message . "text") (irritants …) (where . "file:line:col") (trace "in f (file:line:col)" …))`; the last two are there when the failing form was read from text) and try the clauses like `cond` (`(test body …)`, `(test => proc)`, `(else …)`). The first true clause's value is the value of `guard`; no match re-raises. A guard **denial** and a **cancellation** are never catchable |
 | `(with-output-to-string e …)` | evaluate `e …` with `display`/`write`/`newline` captured; return the captured text (a minimal string port) |
+| `(define-syntax name (syntax-rules (literal …) (pattern template) …))` | bind `name` to a macro (see Macros below) |
+| `(let-syntax ((name (syntax-rules …)) …) body …)` `(letrec-syntax …)` | macros known in `body` only. The two are the same: a macro may use the others |
+| `(syntax-rules …)` | the rules of a macro; an error anywhere but in `define-syntax`, `let-syntax` and `letrec-syntax` |
 | `(begin e …)` | evaluate in order, yield the last |
 | `(set! name expr)` | assign an **existing** binding; error if unbound |
 | `(quote d)` | the datum itself |
-| `(quasiquote d)` | like `quote`, but `(unquote e)` evaluates `e` and `(unquote-splicing e)` splices a list. One level only: nested quasiquote is not supported |
+| `(quasiquote d)` | like `quote`, but `(unquote e)` evaluates `e` and `(unquote-splicing e)` splices a list. A quasiquote inside a quasiquote raises the level: only the `unquote` that matches the outer one is evaluated, and the inner ones are kept as written (`` `(a `(b ,(c ,(+ 1 2)))) `` is ``(a `(b ,(c 3)))``). Vectors work too: `` `#(1 ,x) `` |
 | `(cond (test body …) … [(test => proc)] [(else body …)])` | first true clause wins; `=>` passes the test value to `proc`; no clause → void |
 | `(and e …)` | short-circuit; `(and)` is `#t` |
 | `(or e …)` | short-circuit; `(or)` is `#f` |
@@ -154,6 +162,44 @@ already does.
 `define` inside a `lambda` body binds in that call's environment (internal
 definitions). When `define` names a fresh anonymous closure, the closure takes
 that name for printing and error messages.
+
+### Macros
+
+`(define-syntax name (syntax-rules (literal …) (pattern template) …))` binds
+`name` to a macro. The form is evaluated as it is met: when the head of a form
+is a macro, the form is matched against the patterns in order, the template of
+the first that fits replaces the form (with the pattern's variables filled
+in), and the result is evaluated in the form's place and position, so a macro
+that expands to a tail call keeps it a tail call. The result is kept with the
+form, so a macro used in a loop expands once.
+
+- A pattern is a list whose first element (the keyword) is ignored. A name in
+  it matches any form; `_` matches any form and binds nothing; a name listed
+  as a `literal` matches only that name; other data match by `equal?`. A
+  pattern may be dotted, and a vector pattern matches a vector.
+- `p ...` after a pattern matches zero or more forms, and may be followed by
+  more patterns (`(_ a ... last)`). Variables under it are used in the
+  template with the same number of `...`, and `x ... ...` flattens two levels.
+  `(... ...)` in a template is a plain `...`, for a macro that defines
+  macros. `(syntax-rules ::: (literal …) …)` names another ellipsis.
+- No pattern matching is an error that names the macro and shows the form.
+- A macro is a value in the environment, found by name when the form is
+  evaluated, like a procedure. A variable of the same name hides it where it is
+  bound, a `define-syntax` in a body is local to the body, and one used before
+  its `define-syntax` has run is an unbound variable. A special form's name
+  cannot be redefined. `procedure?` is false for a macro, and passing one to
+  `map` is an error.
+- **Hygiene.** Macros are not fully hygienic. A name a template binds, with
+  `let`, `let*`, `letrec`, named `let`, `lambda` or `do`, is renamed for each
+  use, so `(swap! tmp other)` works when the template has its own `tmp`. A name a
+  template only refers to means what it means where the macro is *used*, so a
+  use that rebinds `list` locally changes the `list` in the expansion. A name
+  that a template `define`s keeps its spelling, so a macro can define things.
+  Inside `quote` names keep their spelling too.
+- Macros only rewrite code. What an expansion does still goes through the
+  guard, and nodwyn cannot be asked to do more because a macro wrote the call.
+  A model's `scheme` program runs in an environment of its own, so a macro it
+  defines is gone when the program ends (ADR 7, amended 2026-11-08).
 
 ## 4. Errors
 
@@ -172,6 +218,14 @@ Errors may be caught with `guard` (§3):
 
 An error not caught by any clause unwinds to the host, which reports it (the
 REPL prints it, the agent loop feeds it back to the model as the tool result).
+
+An error says where it happened. The reader remembers the line and column of
+every list it reads, and the error carries the position of the innermost list
+that was being evaluated when it was raised, then the procedures it left,
+innermost first (the sixteen innermost; the rest are counted). A procedure
+that finished with a tail call is not on the list. An error raised inside the
+prelude is reported at the call in the program that led to it. A `guard`
+condition has the same facts as `where` and `trace` (§3).
 
 A primitive the guard denies raises `<name>: denied: <reason>` (`fs-read: denied: …`). Denials and
 the turn's own cancellation (an abort, the turn's deadline) pass through
@@ -231,6 +285,16 @@ primitive in the table (§7) and can be listed with `(primitives)`.
 | `(fold f init l)` | left fold: `(f acc x)` |
 | `(sort l less?)` | stable; `less?` is a Scheme or primitive procedure |
 | `(apply f arg … l)` | last argument must be a list |
+| `(set-car! p x)` `(set-cdr! p x)` | replace the first element / the rest of a pair; yield void. See below |
+
+**Changing a pair.** A pair can be changed only by a program running alone: if
+another evaluation of the same interpreter is running, it is an error that
+says so. A change that would make a pair reachable from itself through cars
+and cdrs is an error, because a list must end: `length`, `append` and the
+printer would otherwise never finish; the list is as it was. What a change
+stores keeps its provenance tags, as in a vector. A list that a program wrote
+as a quoted constant is the same list every time that code runs, so changing
+it changes it for the next call; copy it first (`(append l '())`).
 
 ### Vectors
 
@@ -245,6 +309,30 @@ primitive in the table (§7) and can be listed with `(primitives)`.
 `equal?` compares vectors elementwise; `eq?`/`eqv?` compare vectors by
 identity.
 
+### Hash tables
+
+From Brote v0.2.0 (ADR 7, amended 2026-11-08).
+
+| | |
+|---|---|
+| `(make-hash)` `(hash? x)` | a new empty table / predicate |
+| `(hash-set! h key v)` | store `v` under `key`, replacing what was there; yields void. A key already in the table keeps its place in the order |
+| `(hash-ref h key [default])` | the value under `key`. When `key` is missing, `default` if one was given (the value itself: a procedure is not called), otherwise an error that names the key |
+| `(hash-has? h key)` | true if the table has an entry for `key` |
+| `(hash-remove! h key)` | remove the entry; a missing key is not an error. Adding the key again puts it at the end |
+| `(hash-count h)` | number of entries |
+| `(hash-keys h)` `(hash-values h)` `(hash->alist h)` | the keys, the values, or `(key . value)` pairs, as new lists in the order the keys were added |
+| `(alist->hash al)` | a table from an association list. A key that appears twice keeps its first place and takes the later value |
+| `(hash-update! h key proc [default])` | store `(proc old)` under `key`, where `old` is the current value, or `default` when the key is missing (an error naming the key when there is no default). If `proc` raises an error nothing is stored |
+
+A key is a string, a symbol, an integer or a boolean, and two keys are the
+same when `equal?` says so: the string `"a"` and the symbol `a` are different
+keys, and so are `1` and `#t`. Any other key is an error that names its type.
+Tables are shared the way vectors are, and `equal?` and `eq?` on tables are
+identity. `json-emit` writes a table as an object when every key is a
+string, and is an error otherwise; `json-parse` still gives an association
+list, which `alist->hash` turns into a table.
+
 ### Strings
 
 | | |
@@ -254,26 +342,78 @@ identity.
 | `(substring s start [end])` | rune indices; `end` defaults to the length; out of range is an error |
 | `(string=? a b …)` `(string<? a b …)` | |
 | `(string-upcase s)` `(string-downcase s)` `(string-trim s)` | `string-trim` strips Unicode whitespace at both ends |
-| `(string-split s sep)` | `sep` is a literal separator, not a regex; empty `sep` is an error |
+| `(string-split s sep)` | `sep` is a literal separator (no regular expressions); empty `sep` is an error |
 | `(string-join l sep)` | |
 | `(string-contains? s sub)` `(string-prefix? prefix s)` `(string-suffix? suffix s)` | |
 | `(string-replace s old new)` | replace every occurrence |
 | `(string->symbol s)` `(symbol->string sym)` `(symbol? x)` | |
+| `(gensym [prefix])` | a fresh symbol, named `prefix~n` (`gensym~n` without a prefix), that no earlier call — here or in macro expansion — produced |
 | `(format fmt arg …)` | `~a` display, `~s` write, `~%` newline, `~~` tilde; too few or too many args is an error |
+| `(string-ref s k)` | the character at rune index `k`; the time it takes grows with `k` |
+| `(string->list s [start [end]])` `(list->string l)` | the characters of a string as a list / a string of the characters in a list |
+| `(string c …)` `(make-string k [c])` | a string of the characters given / of `k` copies of `c` (a space by default) |
+| `(string-copy s [start [end]])` | part of a string (strings do not change, so this is `substring` with optional ends) |
+| `(string-for-each f s)` `(string-map f s)` | call `f` on each character / a string of the characters `f` returns |
+| `(string>? a b …)` `(string<=? a b …)` `(string>=? a b …)` `(string-ci=? a b …)` | more comparisons; the last ignores case |
 
-There is no character type; one-character strings serve that purpose.
+### Characters
+
+A character is one Unicode code point (§1 shows how to write one). A string is
+not a list of characters, but `string->list`, `list->string` and `string-ref`
+move between the two.
+
+| | |
+|---|---|
+| `(char? x)` | |
+| `(char->integer c)` `(integer->char n)` | the code point / the character; a surrogate or a number past `#x10FFFF` is an error |
+| `(char-upcase c)` `(char-downcase c)` | |
+| `(char-alphabetic? c)` `(char-numeric? c)` `(char-whitespace? c)` `(char-upper-case? c)` `(char-lower-case? c)` | by Unicode category; `char-numeric?` is true of decimal digits |
+| `(digit-value c)` | 0 to 9 for a decimal digit, else `#f` |
+| `(char=? a b …)` `(char<? a b …)` `(char>? a b …)` `(char<=? a b …)` `(char>=? a b …)` `(char-ci=? a b …)` | by code point, as a chain like `=`; the last ignores case |
+
+Characters are `eqv?` when they are the same code point, can be keys of hash
+tables, and `case` matches them.
+
 
 ### Output
 
 | | |
 |---|---|
-| `(display x)` | human form: strings without quotes |
-| `(write x)` | machine form: strings quoted and escaped, readable back |
-| `(newline)` | |
+| `(display x [port])` | human form: strings without quotes, characters as themselves |
+| `(write x [port])` | machine form: strings quoted and escaped, readable back |
+| `(newline [port])` | |
+| `(write-string s [port])` `(write-char c [port])` | |
 | `(with-output-to-string e …)` | a special form (reserved like the others): capture `display`/`write`/`newline` from `e …` and return the text |
 
-Output goes to the interpreter's output writer, which the host provides
-(the REPL uses stdout; the agent loop captures it). All three yield void.
+Without a port, output goes to the current output port: the interpreter's
+output writer, which the host provides (the REPL uses stdout; the agent loop
+captures it), or the capture of a `with-output-to-string` around
+it. All of them yield void.
+
+### Ports
+
+A port is where text is read from or written to. There are string ports and the
+two the interpreter has: the current output port and the current input port.
+There are no file ports: files are read and written through the host
+primitives (`fs-read`, `fs-write`), which the guard checks.
+
+| | |
+|---|---|
+| `(open-input-string s)` | a port that reads the characters of `s` |
+| `(open-output-string)` `(get-output-string port)` | a port that collects what is written to it / the text so far |
+| `(call-with-output-string proc)` | call `proc` with a new string port; the text it wrote |
+| `(current-output-port)` `(current-input-port)` | the port `display` writes to, and the one `read-line` reads when it is not given one. A nodwyn session gives it no input, so it is empty: reading it finds the end at once, and never the daemon's or the terminal's own input |
+| `(read-char [port])` `(peek-char [port])` | the next character, taken or not, or the end-of-file object |
+| `(read-line [port])` | the next line without its line ending (`\n` or `\r\n`), or the end-of-file object. A final line with no ending is still a line |
+| `(read-string k [port])` | up to `k` characters as a string; the end-of-file object if there are none left |
+| `(read [port])` | parse the next datum the way the reader does (§1), or the end-of-file object. Nothing is evaluated: `(read (open-input-string "(+ 1 2)"))` is the list `(+ 1 2)` |
+| `(eof-object)` `(eof-object? x)` | |
+| `(port? x)` `(input-port? x)` `(output-port? x)` | |
+| `(close-port port)` `(close-input-port port)` `(close-output-port port)` | writing to a closed port is an error; reading one finds the end |
+
+A string port that holds text from a tagged source keeps its provenance (§5
+Provenance): what is read from it carries the tags, and so does the text
+`get-output-string` returns for anything tagged that was written to it.
 
 ### Control
 
@@ -283,6 +423,15 @@ Output goes to the interpreter's output writer, which the host provides
 | `(apply f arg … l)` | see lists |
 | `(void)` | the void value |
 | `(error message irritant …)` | raise; see §4 |
+
+### Tasks (not in nodwyn)
+
+Brote's tasks, channels and promises (`spawn`, `task-wait`, `make-channel`,
+`force` and the rest) exist only in an interpreter the host gives them to
+(`scheme.WithTasks`). nodwyn gives none: the names are unbound, and `delay`,
+which the prelude defines, expands to `make-promise`, so using it is an
+unbound-variable error. A turn's tools run as the loop schedules them (§9;
+ADR 57 for reads that run together).
 
 ### JSON
 
@@ -308,6 +457,7 @@ come back as it was: an array of arrays that each start with a string
 An MCP tool's arguments are written by its schema instead: an argument the
 schema calls an array is emitted as one, and one it calls an object as an
 object, `{}` when empty, so a server gets them as the model wrote them.
+A hash table whose keys are all strings is emitted as an object.
 Procedures, handles, vectors, void, symbols other than `null`, and a NaN or
 infinite float cannot be emitted.
 
@@ -377,6 +527,35 @@ when it started, and its binding is checked again before each call. The
 confirm and the tool's description name the contained server and what it
 can reach.
 
+When config.toml's `[browser] sites` lists hosts (ADR 62), the session adds
+the task's web browser, Raulí's tools as primitives. Each runs in a headless
+Chromium that starts at the first call, reaches only the listed hosts (every
+request a page makes is checked, and its only way out is a proxy that lets
+those hosts through), and closes with the task. Their parameters come from
+Raulí's schemas, required ones first, then the rest by name, each a payload.
+Like a contained server's tools, they send to `browser`, which may pass what
+it is given on to the listed hosts: a literal key in what they send is
+refused unless its class is bound for every listed host, and content from
+outside may go there. Results are tagged `external:web`. `ref` is a
+reference such as `e12` from the page's last snapshot.
+
+| | |
+|---|---|
+| `(browser-navigate url [snapshot])` | open an address in the tab, wait for it to load, and return a snapshot (unless `snapshot` is `#f`); an address without a scheme is https. Egress: `url` is a payload |
+| `(browser-snapshot)` `(browser-text)` | the page as text with a reference on each element that can be acted on / its visible text in reading order |
+| `(browser-click ref [double [right [snapshot]]])` | click the element; **asks every call**, the confirm naming the page and the element |
+| `(browser-type ref text [replace [slowly [snapshot [submit]]]])` | type into a field; **asks every call**; egress: `text` is a payload, so a literal key in it is refused (L1) |
+| `(browser-press key [snapshot])` | press a key or a combination (`Enter`, `Control+a`); **asks every call** |
+| `(browser-select option ref [snapshot])` | choose an option in a list; **asks every call**; egress |
+| `(browser-hover ref [snapshot])` `(browser-scroll [dx [dy [snapshot]]])` | move the mouse over an element / scroll the page |
+| `(browser-back [snapshot])` `(browser-forward [snapshot])` `(browser-reload [snapshot])` | the tab's history |
+| `(browser-wait [seconds [snapshot [text]]])` | wait for text to appear, or for a number of seconds (at most 30) |
+| `(browser-tabs [action [index [url]]])` | list, open (`"new"`, with `url`; egress), select or close tabs |
+| `(browser-console)` | what the page wrote to its console since the last call, and the dialogs it raised (which Raulí answers at once) |
+
+Raulí's `screenshot`, `click_at`, `upload`, `eval`, `credentials`,
+`fill_credential` and `resize` are not offered (ADR 62, "Not built").
+
 ### Provenance (L2)
 
 Every value carries **provenance tags**: where it came from, not what it
@@ -385,7 +564,7 @@ contains. A host primitive tags its result (`fs-read`, `fs-list`, `fs-find`,
 `external:file`; `shell-exec` and the background-process primitives mint
 `external:shell`; `http-request`, the `judge-*` primitives and
 `google-doc-upload` mint `external:http`;
-MCP tools mint `external:mcp`; `session-list`, `session-events`,
+MCP tools mint `external:mcp`; the browser primitives mint `external:web`; `session-list`, `session-events`,
 `recall` and `index-search` over the conversation and earlier tasks mint `external:log`,
 and `index-search` over the repository and `index-update` `external:file`), a credential
 handle carries `cred:<class>`, and the tags of a call's arguments flow into
@@ -401,7 +580,8 @@ Propagation happens at the primitive dispatch. A list keeps each element's
 tags on the element, and a list built without a primitive (by `map`, by
 quasiquote, or holding what `vector-set!` put in a vector) may carry none of
 its own; so a string a primitive makes from a list or a vector (`string-join`,
-`json-emit`) takes the tags of everything in it, as do the output
+`json-emit`) takes the tags of everything in it, hash tables included (keys
+and values), as do the output
 `with-output-to-string` captures and the message `guard` hands on from an
 error that quoted a tagged value. A primitive whose result *measures* its arguments rather than
 being made of them carries nothing: `length`, `string-length`,
@@ -423,6 +603,8 @@ redaction (SPEC Risk 1).
 |---|---|
 | `(primitives)` | list of primitive names, sorted |
 | `(primitive-info name)` | alist: `doc`, `params`, `variadic`, `egress`, `irreversible`, `host`, `origin` |
+| `(doc name)` | how a procedure or special form is called and what it does, as text; `#f` if there is nothing to say. `name` is a symbol or a procedure. For a procedure written in Scheme, the description is the string before its body: `(define (f x) "Double x." (* 2 x))` |
+| `(apropos text)` | the names of the procedures and special forms whose name contains `text`, sorted, as symbols |
 | `(register-tool name proc meta)` | add a primitive backed by a Scheme procedure; see §7 |
 | `(load path)` | evaluate a file's forms in the global environment; a relative path resolves against the interpreter's base directory (the repository root in a session). A **host** primitive: it reads the filesystem and is subject to the guard |
 | `(handle? x)` | |
@@ -437,7 +619,22 @@ environment before anything else. It defines, in Scheme:
 | `(assoc-ref al key [default])` | `cdr` of `(assoc key al)`, or `default` (void if absent) |
 | `(identity x)` | |
 | `(compose f g)` | `(lambda args (f (apply g args)))` |
+| `(first l)` `(second l)` `(third l)` `(rest l)` | `car`, `cadr`, `caddr`, `cdr` |
+| `(take l n)` `(drop l n)` `(last l)` | first `n` elements, all but the first `n`, the final element; an error when the list is too short or, for `last`, empty |
+| `(any pred l)` `(every pred l)` | the first true value `pred` gives (`#f` if none) / `pred`'s last value if it is true for every element (`#t` for `()`) |
+| `(count pred l)` `(list-index pred l)` | how many elements satisfy `pred` / the index of the first, or `#f` |
+| `(remove pred l)` `(delete x l)` `(delete-duplicates l)` | `l` without the elements that satisfy `pred` / that are `equal?` to `x` / that repeat an earlier one |
+| `(partition pred l)` | a list of two lists: the elements that satisfy `pred`, then the rest |
+| `(filter-map f l)` `(append-map f l)` | `map`, keeping the true results / appending the list results |
+| `(string-index s sub)` | the rune index of the first occurrence of `sub` in `s`, or `#f` |
+| `(string-pad-left s n [pad])` `(string-pad-right s n [pad])` | add `pad` (default `" "`) at the left or right until `s` is at least `n` runes long; never cuts |
+| `(vector-map f v)` `(vector-for-each f v)` | `map` and `for-each` over one vector (`vector-map` makes a new vector) |
+| `(let-values ((formals expr) …) body …)` | each `expr` is evaluated once, in the scope around the form and before any name is bound, and must return a list with one element per name in `formals`; the names are bound in `body` |
+| `(case-lambda (formals body …) …)` | a procedure that runs the first clause whose `formals` fit the arguments it was called with; an error when none does |
+| `(define-record-type type (ctor field …) pred (field acc [mut]) …)` | a record type over vectors: `ctor` builds an instance (a vector tagged with a value made once for this form), `pred` is true only for its instances — not for another type, even one with the same name — and `acc`/`mut` read and set one field, erroring on a value that is not one. A field may leave out its mutator. The names are written in the form, since syntax-rules cannot join two names into one |
+| `(delay expr)` | a promise for `expr`; it needs tasks, which nodwyn does not give (§5 Tasks), so here it is an error |
 | `(string-empty? s)` | |
+| `(test name body …)` `(assert expr)` `(assert-equal expected expr)` `(assert-error expr [text])` `(test-results)` `(run-test name thunk)` | testing, written in Scheme; see Brote's [stdlib.md](https://github.com/fclaude/brote/blob/main/docs/stdlib.md#tests). The first four are macros |
 
 After the prelude, nodwyn loads the current `./.nodwyn/init.scm` only after
 external user trust (ADR 14, amended by ADR 45). `nodwyn trust` reviews and
@@ -1464,12 +1661,11 @@ an `old` that occurs twice occurs and where one that almost matches stops.
 
 Deliberately absent.
 
-- characters and the full string-port API (only `with-output-to-string`)
-- source positions in runtime errors (reader errors carry positions)
-- `define-macro` — the prelude does not need it (ADR 7)
-- `set-car!` / `set-cdr!` and string mutation
-- nested quasiquote
-- hygienic macros (`define-syntax`, `syntax-rules`)
+- file ports and binary I/O: files go through the host primitives, which the guard checks
+- mutable strings, `string-set!` and `string-fill!`: a string is a value, not a place. Build one with a string port, `list->string` or `string-append`
+- `define-macro` and other macro systems than `syntax-rules`
+- full hygiene for macros (names a template refers to are not protected from a use's bindings; see Macros)
+- tasks, channels and promises, which Brote has and nodwyn does not grant (§5 Tasks)
 - `call/cc`, `dynamic-wind`
 - an `eval` primitive — the kernel surface is not exposed to programs
 - exact rationals and bignums

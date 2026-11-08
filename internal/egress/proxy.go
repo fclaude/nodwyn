@@ -115,6 +115,10 @@ type Proxy struct {
 	report func(Report)
 	// Dial connects to an allowed host and port; tests replace it.
 	Dial func(ctx context.Context, network, address string) (net.Conn, error)
+	// List is what a refusal calls the allowlist: the server's network
+	// list, unless the proxy serves someone else (the task's browser,
+	// ADR 62).
+	List string
 }
 
 // New makes a proxy for the allowlist entries. report receives every
@@ -124,14 +128,16 @@ func New(entries []string, report func(Report)) (*Proxy, error) {
 	if err != nil {
 		return nil, err
 	}
-	dialer := &net.Dialer{Timeout: 10 * time.Second, Control: refuseLocal}
-	return &Proxy{allow: allow, report: report, Dial: dialer.DialContext}, nil
+	dialer := &net.Dialer{Timeout: 10 * time.Second, Control: RefuseLocal}
+	return &Proxy{allow: allow, report: report, Dial: dialer.DialContext, List: "the server's network list"}, nil
 }
 
-// refuseLocal keeps a listed name that resolves to this machine or to a
+// RefuseLocal keeps a listed name that resolves to this machine or to a
 // link-local address (a cloud metadata service, a rootless network's path
-// to the host's loopback) from being reached through the proxy.
-func refuseLocal(_, address string, _ syscall.RawConn) error {
+// to the host's loopback) from being reached through the proxy. It is a
+// net.Dialer's Control, so it sees the address a name resolved to; the
+// browser's proxy (ADR 62) uses it for every host but loopback it lists.
+func RefuseLocal(_, address string, _ syscall.RawConn) error {
 	ap, err := netip.ParseAddrPort(address)
 	if err != nil {
 		return err
@@ -179,8 +185,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		port = n
 	}
 	if !p.allowed(host, port) {
-		p.emit(Report{Method: r.Method, Host: strings.ToLower(host), Port: port, Allowed: false, Reason: "not on the server's network list"})
-		http.Error(w, "nodwyn-egress: "+host+" is not on this server's network list", http.StatusForbidden)
+		p.emit(Report{Method: r.Method, Host: strings.ToLower(host), Port: port, Allowed: false, Reason: "not on " + p.List})
+		http.Error(w, "nodwyn-egress: "+host+" is not on "+p.List, http.StatusForbidden)
 		return
 	}
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
@@ -239,8 +245,8 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	if !p.allowed(host, port) {
-		p.emit(Report{Method: "CONNECT", Host: host, Port: port, Allowed: false, Reason: "not on the server's network list"})
-		http.Error(w, "nodwyn-egress: "+host+" is not on this server's network list", http.StatusForbidden)
+		p.emit(Report{Method: "CONNECT", Host: host, Port: port, Allowed: false, Reason: "not on " + p.List})
+		http.Error(w, "nodwyn-egress: "+host+" is not on "+p.List, http.StatusForbidden)
 		return
 	}
 	upstream, err := p.Dial(r.Context(), "tcp", net.JoinHostPort(host, strconv.Itoa(port)))

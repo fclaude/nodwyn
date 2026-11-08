@@ -53,8 +53,9 @@ strings quoted and escaped, so the text reads back as the same value.
 \end{scm}
 
 \code{with-output-to-string} runs its body and returns everything the body
-printed, instead of printing it. It is the language's one string port, and
-it is surprisingly handy for building reports piece by piece.
+printed, instead of printing it. It is surprisingly handy for building
+reports piece by piece; \code{open-output-string} and
+\code{call-with-output-string} do the same with a port you pass around.
 
 \section{\texttt{format}}
 

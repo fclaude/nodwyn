@@ -32,6 +32,8 @@ Connections is for the keys nodwyn holds and the tools it's been given.
 
 **MCP servers** are tools other programs provide. A remote server is reached over HTTPS with a key you've bound to it. A local one can run inside a container (podman or docker), with the network reachable only through the `nodwyn-egress` helper, and nodwyn pins what the server says it offers, so a server that changes its tools behind your back is refused until you look.
 
+**The web browser** isn't on this page yet: you turn it on in `config.toml`, by listing the sites a task may open under `[browser] sites`. A task then reads those pages as text, and every click, or anything it types, asks first, as a command does. The browser reaches the listed sites and nothing else, and each request it was refused shows in the task. [The manual](../reference/manual.html#the-web-browser) has the details.
+
 ## Workspaces
 
 A workspace is a folder nodwyn works in.

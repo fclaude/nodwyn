@@ -723,6 +723,13 @@ export class Transcript {
         if (p.dropped) this.audit(`${p.server}: ${p.dropped} more connection attempts were not recorded`, p, "bad");
         else if (!p.allowed) this.audit(`${p.server} could not reach ${p.host}${p.port ? `:${p.port}` : ""}`, p.reason || p, "bad");
         break;
+      case "browser.egress":
+        // The task's browser (ADR 62): a request a page made that was
+        // refused is news. The proxy's connections stay in the log, since
+        // they include the browser's own traffic to Google's hosts.
+        if (p.dropped) this.audit(`The browser: ${p.dropped} more requests and connections were not recorded`, p, "bad");
+        else if (!p.allowed && !p.proxy) this.audit(`The browser was refused ${p.host}${p.port ? `:${p.port}` : ""}`, p.reason || p, "bad");
+        break;
       case "cred.refresh":
         // A refresh is routine; one that failed is why a call was refused.
         if (p.ok) this.audit(`Refreshed ${p.class} at ${p.endpoint}`, p);

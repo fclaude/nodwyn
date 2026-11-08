@@ -618,6 +618,15 @@ a host through its egress proxy (ADR 23 W3b): `server`, `method`, `host`,
 last one carries the count left out as `dropped`. A client shows the
 refused ones; the rest are routine.
 
+A `browser.egress` event records one request or connection of the task's
+browser (ADR 62): `method`, `host`, `port`, `allowed`, `proxy` and `reason`;
+never a path. `proxy` false is a request a page made that was refused before
+it was sent, because its address is not on `[browser] sites`; `proxy` true
+is a connection through the browser's proxy, made or refused, which includes
+the browser's own traffic. After 1000 in a task, a last one carries the count
+left out as `dropped`. A client shows the refused page requests and the
+count; the proxy's connections are routine.
+
 A `prompt.secret` contains only its ID and credential class. Send the value
 through `session.secret`, never Scheme source. The core copies secret bytes
 into its typed reply channel and registers them in the shared encrypted

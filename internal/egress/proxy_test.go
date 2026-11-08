@@ -216,11 +216,11 @@ func TestLocalAddressesAreNotReached(t *testing.T) {
 		t.Fatalf("reports %+v", reports)
 	}
 	for _, addr := range []string{"169.254.169.254:80", "[fe80::1]:443", "0.0.0.0:443", "[::1]:443"} {
-		if refuseLocal("tcp", addr, nil) == nil {
+		if RefuseLocal("tcp", addr, nil) == nil {
 			t.Errorf("%s was not refused", addr)
 		}
 	}
-	if err := refuseLocal("tcp", "93.184.216.34:443", nil); err != nil {
+	if err := RefuseLocal("tcp", "93.184.216.34:443", nil); err != nil {
 		t.Fatal(err)
 	}
 }

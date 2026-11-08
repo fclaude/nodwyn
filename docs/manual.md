@@ -97,7 +97,7 @@ Read a test when you want to know what a claim actually means.
 |---|---|
 | The log is the single source of truth | `nodwyn replay` reproduces a transcript from the file alone; `window.Build` takes only events; [log_test.go](../internal/log/log_test.go) round-trips and repairs |
 | The interpreter is the only Scheme→Go surface; the guard sits on it | `applyPrim` is the only caller of `Prim.Handler`; Brote's `scheme_test.go` `TestGateIsTheSingleExit` records every crossing including through `map`/`apply`/`sort` |
-| Loading `.scm` cannot change evaluation | Brote's `TestKernelFixed`: only the primitive table grew, and `define-syntax` stays a plain binding |
+| Loading `.scm` cannot add a special form | Brote's `TestKernelFixed`: only the primitive table grew, and `define-syntax` bound as a variable stays a plain binding; a macro cannot take a special form's name (Brote's Macros) |
 | Proper tail calls | Brote's `TestTailCalls`: 200k iterations in nine tail positions under an 8 MB stack cap |
 | Every primitive is documented | Brote's `TestDocCoverage` (builtins, against Brote's reference) and `TestSessionPrimitivesAreDocumented` (every primitive a session registers, builtins included, against `docs/scheme.md`) fail for any primitive missing |
 | A loop strategy cannot skip the invariants | [strategy_test.go](../internal/core/strategy_test.go): fabricated or rewritten calls refused, unanswered calls answered, stops uncatchable, provenance kept |
@@ -1390,6 +1390,12 @@ asks, and an undeclared one asks every call with no standing answer.
 A server on this computer runs only in a container nodwyn controls (W3b,
 ADR 23); "MCP servers" below says how.
 
+### Reading the web
+
+A task can drive a web browser on the sites you list, to read
+documentation, an issue, or the page of the app it is building. "The web
+browser" below says how to turn it on.
+
 ### Reviewing project startup
 
 A cloned `.nodwyn/allow.toml` cannot grant its own approvals. Until reviewed, it
@@ -1901,6 +1907,60 @@ that ends with its input, as MCP servers do; anything left shows in
 `podman ps --filter label=nodwyn.mcp`, and the networks remain until
 `podman network prune --filter label=nodwyn.mcp`. `transport =
 "host-process"` is refused.
+
+### The web browser
+
+A task can use a web browser on the sites `config.toml` lists, and on no
+others ([ADR 62](adr/0062-the-task-browser.md)). It is
+[Raulí](https://github.com/fclaude/rauli), linked into nodwyn: a headless
+Chromium-based browser it finds on this computer (`$RAULI_CHROME`, then
+`google-chrome-stable`, `google-chrome`, `chromium`, `chromium-browser` or
+`chrome` on `PATH`, then one Playwright downloaded, then Google Chrome or
+Chromium in `/Applications` on macOS), with a profile that is
+new for each task and deleted after it, and downloads refused.
+
+```toml
+# ~/.config/nodwyn/config.toml
+[browser]
+sites = ["pkg.go.dev", "go.dev", "localhost:3000"]   # host, or host:port
+```
+
+A host allows ports 443 and 80, `host:port` that port alone, and there is no
+wildcard: a site that loads its scripts from a CDN needs the CDN listed too.
+Unset or empty, the default, a task has no browser. The list is yours, in
+the config directory; nothing in a repository can add to it.
+
+The model gets the browser as tools named `browser-navigate`,
+`browser-snapshot`, `browser-click`, `browser-type` and so on
+([docs/scheme.md](scheme.md) lists them), in the full loop; the lean loop
+offers them only if the project adds them to `lean-tools`, as for MCP tools.
+It reads a page as text, with a reference on each element it can act on. The
+browser starts at the first call and closes with the task.
+
+- **Reading asks nothing.** Opening a listed page, reading it, scrolling,
+  going back and waiting run without a question.
+- **Acting asks every time.** A click, typing, a key press or a choice in a
+  list can pay, delete or send what was typed, so each asks, naming the page
+  and the element (`button "Pay now"`) and what is typed. `[approval]
+  commands` decides who answers, the judge by default, as for an MCP tool
+  that acts.
+- **Only the listed sites.** Every request a page makes (the page, its
+  scripts, images, frames and fetches) is checked before it is sent, and the
+  browser's only way out is a proxy inside nodwyn that lets through the
+  listed hosts and ports and nothing else, WebSockets and this computer's
+  own ports included. A listed name that points at this computer or at a
+  link-local address is refused; `localhost:PORT` or `127.0.0.1:PORT`, when
+  you list it, is reached.
+- **Pages are data.** What a page says comes back tagged `external:web`; it
+  never grants anything. A key typed into a page is refused unless a binding
+  names every listed site for it.
+
+Each refused request, and each connection through the proxy, is recorded in
+the session log as `browser.egress` (method, host and port, never a path);
+the task shows the refused requests. The proxy also refuses the browser's
+own traffic (Google Chrome asks Google's hosts for updates and sign-in),
+which stays in the log. Screenshots, logging in with a key from the
+keychain, uploads and a live view of the browser are not built yet.
 
 ### Choosing models
 

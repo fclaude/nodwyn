@@ -136,7 +136,7 @@ func schemeNotAllowed(in *scheme.Interp, forms []scheme.Value) string {
 				}
 			}
 		case scheme.KVec:
-			for _, e := range v.V.Items {
+			for _, e := range v.V.Elements() {
 				if s := walk(e); s != "" {
 					return s
 				}

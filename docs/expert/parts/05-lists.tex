@@ -37,10 +37,10 @@ list, \code{'()}:
 (list? '(1 . 2))            ;=> #f          no () at the end
 \end{scm}
 
-Lists in \nodwyn{} Scheme never change once made: there is no
-\code{set-car!}. You build new lists instead, which turns out to be exactly
-what you want when a strategy wraps another strategy: nobody can pull the
-rug from under anybody.
+\code{set-car!} and \code{set-cdr!} can change a pair, but only in a
+program running alone. You will mostly build new lists instead, which turns
+out to be exactly what you want when a strategy wraps another strategy:
+nobody can pull the rug from under anybody.
 
 \section{The everyday toolkit}
 

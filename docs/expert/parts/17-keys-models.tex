@@ -621,6 +621,20 @@ is removed when the task ends. A confirm names ``the contained server NAME
 (network: \ldots)''. An HTTP client in the server that ignores
 \code{HTTPS\_PROXY} reaches nothing.
 
+\subsection*{The web browser}
+
+The task's browser (ADR 62) is judged as a contained server is. Its tools,
+\code{browser-navigate}, \code{browser-type} and the rest, send to
+\code{browser}, which may pass what it is given on to the hosts of
+\code{[browser] sites} in \file{config.toml} and nowhere else: a key typed
+into a page is refused unless its class is bound for every listed host,
+and content from your files may go there, since you listed them. Every
+request a page makes is checked against the list, and the browser's only
+way out is an egress proxy in \nodwyn{}'s own process, which sees
+WebSockets too and records each connection as \code{browser.egress}.
+Pages come back tagged \code{external:web}. There is no login yet: the
+browser has no access to the keychain.
+
 
 \section{ChatGPT plan credentials for OpenAI models}
 
