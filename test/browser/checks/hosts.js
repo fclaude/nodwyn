@@ -505,6 +505,23 @@ check(async () => {
   // Settings say so once the link is back, and show no control.
   remoteUI.kill("SIGTERM");
   await remoteUI.exited;
+  // While workshop's console is down, Runs on and the line under the
+  // composer say why, in the words the link closed with, and not
+  // "identity unavailable (not reachable)" alone.
+  const onSettings = await page.evaluate(() => location.hash);
+  await page.evaluate(() => (location.hash = "#/"));
+  await page.waitForSelector("#runs-on");
+  await page.selectOption("#runs-on", "workshop");
+  await page.waitForSelector("#host-away-why:has-text('workshop cannot be reached')", { timeout: 30000 });
+  const awayOption = await page.$eval("#runs-on option[value='workshop']", (o) => ({ text: o.textContent, title: o.title }));
+  assert.match(awayOption.text, /^workshop · not reachable — workshop cannot be reached: /, "Runs on does not say why workshop is not reachable");
+  assert.match(awayOption.title, /^workshop cannot be reached: /, "Runs on's option has no reason in its title");
+  assert.ok(!awayOption.text.includes("identity unavailable"), "Runs on names an identity it cannot read");
+  assert.ok(await page.locator("button.send-round[disabled]").count(), "a task can be started on a host that is not reachable");
+  await page.screenshot({ path: `${out}/runs-on-away.png` });
+  await page.selectOption("#runs-on", "");
+  await page.evaluate((hash) => (location.hash = hash), onSettings);
+  step("Runs on and the composer say why workshop is not reachable");
   remoteUI = remoteConsole("--no-link-settings");
   await line(remoteUI, /(Browser view)/, "stderr");
   await page.waitForSelector("#host-settings-refused:has-text('workshop does not let other nodwyns change its settings')", { timeout: 30000 });

@@ -3484,5 +3484,9 @@ The console header names the connected daemon as `account@host` and separately
 names the execution daemon while viewing a task, or the settings daemon
 while viewing linked settings. The new-task Runs on picker names its selected
 daemon separately. These names come
-from the daemon handshake, independently of the browser address. Native Linux
+from the daemon handshake, independently of the browser address. A linked
+host that cannot be read has no handshake to name it: its Runs on option,
+and the line under the composer when it is chosen, say its state and the
+reason its link last closed with (for example `tarro · not reachable —
+tarro cannot be reached: connection refused`). Native Linux
 release and package instructions are in [the Linux desktop contract](../packaging/linux/README.md).

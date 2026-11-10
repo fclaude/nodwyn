@@ -97,6 +97,20 @@ const loadRunsOn = () => loadKept()?.runs_on || "";
 function setRunsOn(name) {
   keep(null, (k) => (k.runs_on = name));
 }
+// awayLine is a host that cannot be read now, in one line: its name, its
+// state, and the reason its connection last closed with, when it gave one.
+function awayLine(e) {
+  const [, words, why] = hostState(e);
+  return `${e.name || "This computer"} · ${words}${why ? ` — ${why}` : ""}`;
+}
+// runsOnLabel is a host's option in Runs on, and its title. A host that
+// cannot be read has no identity to show, since that comes with its hello:
+// its option says why instead.
+function runsOnLabel(e) {
+  if (!e.conn.live) return [awayLine(e), hostState(e)[2]];
+  const hello = e.conn.hello;
+  return [`${e.name || "This computer"} · ${hello?.account && hello?.host ? `${hello.account}@${hello.host}` : "identity unavailable"}`, ""];
+}
 // keyFor is the name a choice is kept under in this browser: this
 // computer's as it always was, a linked host's with the host's name, since
 // its folders are its own.
@@ -280,7 +294,13 @@ export function renderHome(root, ctx) {
   // other, and goes on until it is done.
   // A linked host that cannot be read now keeps its composer, which says so.
   const canStart = (conn.has("session.open") && conn.has("session.send")) || (!!target.name && !conn.live);
-  const where = !conn.live && target.name ? `${target.name} is not reachable` : control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
+  // away says why that host cannot be read, with the reason its connection
+  // last closed with: "not reachable" alone left the person to guess
+  // between a host that is off, one that refuses this computer, and a link
+  // that dropped.
+  const away = target.name && !conn.live ? awayLine(target) : "";
+  const hint = away || (several ? `Enter starts the task on ${target.name || "this computer"} · Shift+Enter for a new line` : "Enter starts the task · Shift+Enter for a new line");
+  const where = away ? away : control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
   // This computer chooses where a task's content goes (ADR 30, ADR 40): a
   // paired device starts tasks on the default model and says which it is.
   const canChoose = conn.has("session.model.set") && choicesOf(desk).length > 0;
@@ -423,6 +443,18 @@ export function renderHome(root, ctx) {
     main.replaceChild(grid, main.lastChild);
     const label = main.querySelector(".ask-bar .where");
     if (label) label.textContent = where;
+    // A host's connection comes and goes while Runs on or the message has
+    // the focus: the options and the line under the composer say what it
+    // is now, with the reason its link last closed with.
+    for (const option of main.querySelectorAll("#runs-on option")) {
+      const e = hosts?.get(option.value);
+      if (e) [option.textContent, option.title] = runsOnLabel(e);
+    }
+    const hintLine = main.querySelector(".ask-hint");
+    if (hintLine) {
+      hintLine.textContent = hint;
+      hintLine.id = away ? "host-away-why" : "";
+    }
     // The models' readiness arrives after the page is drawn, and changes
     // while it is open: the picker says so without a redraw of the composer.
     current?.refresh?.(desk);
@@ -451,7 +483,7 @@ export function renderHome(root, ctx) {
   // its message, or is "" when it can: a button that does nothing and says
   // nothing reads as a broken one.
   const unready = () =>
-    starting ? "A task is starting." : !conn.live ? (target.name ? `${target.name} is not reachable.` : "Disconnected.") : desk.keysLocked ? "Unlock your keys first." : !st.chosen ? "Choose a folder first." : canChoose && blocked(desk, selection()) ? "The chosen model cannot be used yet." : "";
+    starting ? "A task is starting." : !conn.live ? (away || "Disconnected.") : desk.keysLocked ? "Unlock your keys first." : !st.chosen ? "Choose a folder first." : canChoose && blocked(desk, selection()) ? "The chosen model cannot be used yet." : "";
   const ready = () => canStart && !unready() && !!task.value.trim();
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: true }, icon("up", 18, 2));
   // sync draws what depends on whether a task can start now.
@@ -583,9 +615,8 @@ export function renderHome(root, ctx) {
             },
           },
           entries.map((e) => {
-            const hello = e.conn.live && e.conn.hello;
-            const identity = hello?.account && hello?.host ? `${hello.account}@${hello.host}` : "identity unavailable";
-            return h("option", { value: e.name, selected: e === target }, `${e.name || "This computer"} · ${identity}${e.conn.live ? "" : ` (${hostState(e)[1]})`}`);
+            const [label, why] = runsOnLabel(e);
+            return h("option", { value: e.name, selected: e === target, title: why }, label);
           }),
         ),
       )
@@ -697,7 +728,7 @@ export function renderHome(root, ctx) {
         submit,
       ),
     ),
-    h("p", { class: "hint ask-hint" }, several ? `Enter starts the task on ${target.name || "this computer"} · Shift+Enter for a new line` : "Enter starts the task · Shift+Enter for a new line"),
+    h("p", { class: "hint ask-hint", id: away ? "host-away-why" : null }, hint),
   );
   sync();
 

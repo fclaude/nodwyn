@@ -39,4 +39,6 @@ task or settings it separately names the execution daemon, so two accounts
 on the same computer remain distinguishable. The daemon supplies these names;
 the browser address and the link alias do not establish them. On Home, the
 Runs on picker names the selected execution daemon; the header names only
-the connection until a task opens.
+the connection until a task opens. A linked host that cannot be reached is
+offered with its state and the reason its link last closed with, which the
+line under the composer repeats when it is chosen.
