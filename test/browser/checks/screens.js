@@ -65,8 +65,26 @@ check(async () => {
     assert.ok(await page.$eval("#new-task-model-effort", (el) => el.closest(".mp-field").hidden), "the effort field is not hidden");
     // The composer's bar holds the files, the options, the model and Send:
     // the rare choices wait behind Options, which opens on its own.
-    const bar = await page.$eval(".ask-bar", (el) => [...el.children].filter((c) => c.offsetParent !== null).length);
+    const bar = await page.$eval(".ask-bar", (el) => [...el.children].flatMap((c) => (c.classList.contains("ask-go") ? [...c.children] : [c])).filter((c) => c.offsetParent !== null).length);
     assert.strictEqual(bar, 4, "the composer's bar holds more than the files, the options, the model and Send");
+    // However wide the bar, Send is on the model's row: wrapped on its own,
+    // it was left alone under Attach where the model just fitted beside
+    // Options and Send did not. A phone puts Send on the first row and the
+    // model under it, on purpose.
+    const alone = page.viewportSize().width <= 760 ? [] : await page.evaluate(() => {
+      const bar = document.querySelector(".ask-bar");
+      const send = bar.querySelector(".send-round");
+      const model = bar.querySelector("#new-task-model");
+      const middle = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+      const widths = [];
+      for (let width = 320; width <= 1000; width += 2) {
+        bar.style.width = `${width}px`;
+        if (Math.abs(middle(send) - middle(model)) > 10 || bar.scrollWidth > bar.clientWidth) widths.push(width);
+      }
+      bar.style.width = "";
+      return widths;
+    });
+    assert.deepStrictEqual(alone, [], "Send leaves the model's row, or the bar overflows, at these widths");
     assert.ok(!(await page.$eval("#new-task-options", (el) => el.open)), "Options starts open");
     assert.ok(picker.contained, "the dropdowns extend outside their paired control");
     // With no judge set up, the judge alone refuses every command, and the

@@ -683,13 +683,19 @@ export function renderHome(root, ctx) {
       attach,
       options,
       runsOnPicker,
-      canChoose ? picker.el : h("span", { class: "where" }, where),
-      // A link that only answers on a linked host chooses no model there;
-      // without a word, the missing picker read as a fault.
-      target.name && conn.live && !conn.has("session.model.set")
-        ? h("a", { class: "where-why", id: "host-model-why", href: desk.at("settings"), title: `This computer only answers on ${target.name}: its Settings say how to make your choices there` }, "Why can't I choose?")
-        : null,
-      submit,
+      // The model and Send wrap to the next row together: wrapped on their
+      // own, Send could be left alone under Attach.
+      h(
+        "div",
+        { class: "ask-go" },
+        canChoose ? picker.el : h("span", { class: "where" }, where),
+        // A link that only answers on a linked host chooses no model there;
+        // without a word, the missing picker read as a fault.
+        target.name && conn.live && !conn.has("session.model.set")
+          ? h("a", { class: "where-why", id: "host-model-why", href: desk.at("settings"), title: `This computer only answers on ${target.name}: its Settings say how to make your choices there` }, "Why can't I choose?")
+          : null,
+        submit,
+      ),
     ),
     h("p", { class: "hint ask-hint" }, several ? `Enter starts the task on ${target.name || "this computer"} · Shift+Enter for a new line` : "Enter starts the task · Shift+Enter for a new line"),
   );

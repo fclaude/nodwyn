@@ -1259,6 +1259,20 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#new-task-model-commands"), "judge", "the approvals Settings starts tasks with");
   await page.waitForSelector("#new-task-model-judge", { state: "visible" });
   assert.strictEqual(await page.inputValue("#new-task-model-judge"), "", "a judge is shown as chosen with no default");
+  // With the effort, the approvals and the judge beside it, the model keeps
+  // its column in a narrow window: as a fraction of what they left, it had
+  // none, and its label lay under the effort's.
+  await page.setViewportSize({ width: 860, height: 1000 });
+  const narrow = await page.evaluate(() => {
+    const fields = [...document.querySelectorAll("#new-task-model .mp-field")].filter((f) => !f.hidden);
+    const box = document.querySelector("#new-task-model .mp-controls").getBoundingClientRect();
+    return { fields: fields.length, model: fields[0].getBoundingClientRect().width, contained: fields.every((f) => { const r = f.getBoundingClientRect(); return r.left >= box.left - 1 && r.right <= box.right + 1; }) };
+  });
+  await page.locator("form.ask").screenshot({ path: `${out}/models-new-task-narrow.png` });
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  assert.strictEqual(narrow.fields, 4, "the picker is not the model, the effort, the approvals and the judge");
+  assert.ok(narrow.model >= 140, `the model's column is ${narrow.model}px wide in a narrow window`);
+  assert.ok(narrow.contained, "a field of the picker lies outside it in a narrow window");
   await page.selectOption("#new-task-model-commands", "judge-auto");
   await until("the judge kept with the approvals", () => sent.of("newtask.last").at(-1)?.choices?.hosts?.some((e) => e.host === "" && e.commands === "judge-auto" && e.judge === "Jev"));
   // Jev's key is locked since the restart: it is chosen all the same, and
