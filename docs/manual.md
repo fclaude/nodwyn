@@ -1192,7 +1192,7 @@ of the files you attached, which the judge is not sent. If it needs a plan, the 
 the judge scores it against the ask (up to three revisions), and the plan goes
 into the task block the model sees. Its thresholds and prompts are Scheme definitions a
 project may redefine. As the model works it marks the plan's steps done or
-skipped with the `plan-step` tool, and the console's plan panel (`:plan` in
+skipped with the `plan-step` tool, and the plan pinned under the console's conversation (`:plan` in
 the TUI) shows its progress; a mark is the model's word, and the transcript
 is the evidence. A plan the model writes again keeps the marks of the steps
 it keeps word for word. Without a plan from the gate, the model writes its own with
@@ -2512,7 +2512,13 @@ reserved warning line flags tokens, time, tool calls, spend or context
 when they reach 90% of the displayed limit, and says when they reach it;
 the configured budgets still decide when to ask or stop.
 
-The tabs above the content are **Progress**, for the plan; **Changes**, still for
+The latest ask's plan is not in the side: it is pinned at the end of the
+conversation, under the latest message and above a request card, with each
+step ticked as the model marks it and the step being worked on spinning
+while a response runs. A step folds to its title; clicking it shows the
+whole of it and the mark's note. An ask with no plan shows none.
+
+The tabs above the content are **Changes**, still for
 approved previews, attachments and file recovery; **Statistics**, for all
 turn and task figures; and **Workspace**, for the folder, branch, access,
 tools, Details and retained project notes. A worktree task has a **Review**
@@ -2520,10 +2526,10 @@ button opening its actual changes in the centre, separate from Changes'
 approved previews and recovery. **Unified** is the default, with a
 **Side-by-side** option; **Close review** restores the conversation and reply
 form while retaining review drafts and reading position in this tab. Smaller
-labels and tighter spacing keep the four detail tabs on a single row at both
+labels and tighter spacing keep the three detail tabs on a single row at both
 desktop panel widths; keyboard focus remains visible.
 The summary stays visible across tabs. On desktop only the selected
-content scrolls: a long plan or an expanded step cannot displace the
+content scrolls: long notes or a long list of changes cannot displace the
 summary or navigation, and tabs keep their reading position across events
 and switches. Narrow screens use ordinary stacked sections and page
 scrolling instead of a nested scroll area.

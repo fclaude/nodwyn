@@ -723,6 +723,26 @@ stay aligned even when one side wraps; only the diff scrolls on a phone. */
   border: none; background: transparent; padding: 0; font-size: 12px; font-weight: 500; letter-spacing: 0;
   text-transform: none; color: var(--ink-2); text-decoration: underline;
 }
+/* The latest ask's plan, pinned under the conversation (task.js placePlan). */
+.plan-card {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px 18px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+}
+.plan-card h2 {
+  margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint);
+}
+.plan-card h2 .note { font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; text-align: right; }
+.plan-card .hint { margin: 0; }
+/* While a response runs, the step being worked on spins in place of its
+   number; with reduced motion it stays a still ring. */
+.plan-card.running .plan li.next::before {
+  content: ""; border-color: var(--ghost); border-top-color: var(--accent); animation: plan-spin 0.9s linear infinite;
+}
+@keyframes plan-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .plan-card.running .plan li.next::before { animation: none; border-color: var(--accent); }
+}
 .plan { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; counter-reset: step; }
 .plan li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
 .plan li::before {

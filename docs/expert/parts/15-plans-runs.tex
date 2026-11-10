@@ -211,7 +211,7 @@ starting the next, with the \code{plan-step} tool: a step's number, \code{done} 
 \code{skipped}, and a note saying what shows it. The strategy answers the
 call (it is an agent tool) with \code{record-step}, which records
 \code{plan.step} and returns how many steps are marked and which is next;
-the model reads that answer, the console's plan panel ticks the step, and
+the model reads that answer, the plan pinned under the console's conversation ticks the step, and
 \code{:plan} in the terminal client lists the steps as \code{[x]} done,
 \code{[-]} skipped or \code{[ ]} not yet, with the notes. A step the plan
 does not have, or a mark in a turn with no plan, is said in the answer and

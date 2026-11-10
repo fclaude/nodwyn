@@ -8,6 +8,8 @@ Your messages, the model's replies and its tool calls are in the middle column. 
 
 ![A task with its activity opened](shot:task-activity)
 
+When the model makes a plan, it is pinned at the end of the conversation, under the latest message. Each step is ticked as the model marks it done or skipped, and while it works the step it is on spins. A step folds to its title, and clicking it shows the whole of it.
+
 When the model needs something from you, an approval card appears in the conversation and the task shows **Waiting for you** in its heading. [Approvals](approvals.html) has the details. The reply box under it says to answer first, because a turn that's waiting can't take another message.
 
 While a turn runs, you can write a message and choose **Queue** to send it after the current response and any messages already queued. **Send** or Enter stops the current response and sends your message next, ahead of the queue. There is no separate Steer button. **Stop** stops the response and discards messages still waiting in the queue.
@@ -20,9 +22,7 @@ The heading shows the action that fits the state: **Stop** while the model works
 
 At the top, three numbers stay put across every tab: what the task has spent so far (it says *unpriced* when the provider gives no prices), how long the current turn has run, and how full the context window is. A warning line appears when any of them reaches 90% of its limit.
 
-Under them are four tabs.
-
-**Progress** is the plan. The model writes a plan for work that needs one, and marks each step done or skipped as it goes, with what shows it. A step folds to its title, and clicking it shows the whole of it.
+Under them are three tabs.
 
 **Changes** lists every file the model wrote, with the diff you approved. Click a file to see it with line numbers. The label says *Approved preview*, and it isn't proof that the write succeeded: approval comes before the write, and the tool result says whether it worked. **History** keeps the previous versions of a file, so you can compare an old version with the file as it is now and **Restore** the one you want. nodwyn keeps a version before it writes, unless git already has the file committed and unchanged.
 

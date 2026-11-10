@@ -739,3 +739,24 @@ share, including zero, wins; otherwise the token-weighted estimate shows
 marked ≈. A new turn starts new tallies. The transcript browser check
 renders reply events and checks estimates, weighting, reported precedence
 and the new turn's unknown share.
+
+## Amendment 2026-11-10: the plan sits under the conversation
+
+The plan leaves the side panel: the Progress tab is gone, and the latest
+ask's plan is a card pinned at the end of the conversation, under the
+latest message and above a request card, the way a reader follows the
+work. A plan in a tab was out of sight whenever another tab was chosen,
+and on a phone it was under everything else. The card has the same steps,
+marks, folds and judge note the tab had; while a response runs, the step
+being worked on (the first unmarked one) spins in place of its number, a
+still ring with reduced motion. An ask with no plan, or one the gate said
+needed none, shows no card; earlier asks' plans stay in their Activity
+rows and in Details › Plan record. The card is drawn again only when the
+plan, a mark or the running state changes, since the conversation is read
+aloud as it grows. Files attached while it is pinned still go with the
+message after them: the transcript skips pinned nodes (`data-pinned`)
+when it looks for them. The side keeps Changes, Statistics and Workspace,
+Changes first. The transcript browser check renders the card through a
+load, a reply, a mark, a request card, the end of a response, an
+attachment and a new ask; the approve and screens checks read the plan
+from the conversation.

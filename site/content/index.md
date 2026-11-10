@@ -1,6 +1,6 @@
 <p class="lede">nodwyn is a coding agent that keeps your keys out of the model's hands. It runs on your computer or on a server, and you work with it from a window, a browser, a phone or a terminal.</p>
 
-![The console: a task waiting for an answer, with its plan beside it](shot:task)
+![The console: a task waiting for an answer, with its plan above the request](shot:task)
 
 Give nodwyn a repository and a task, such as fixing a test. It can read the project, make changes and ask to run commands. You can follow its work, answer approvals and review the changes before landing them.
 

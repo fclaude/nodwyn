@@ -260,9 +260,9 @@ check(async () => {
         };
       });
       assert.strictEqual(layout.width, panel, `right panel width at ${viewport}px`);
-      assert.strictEqual(layout.tabs.length, 4, "all four task detail tabs are present");
+      assert.strictEqual(layout.tabs.length, 3, "all three task detail tabs are present");
       assert.strictEqual(await page.locator(".task-aside .review-open").count(), 1, "worktree review has a separate opener");
-      assert.ok(layout.tabs.every((t) => t.top === layout.tabs[0].top && t.left >= layout.left && t.right <= layout.right + 1 && t.width > 0) && !layout.overflow, `Four tabs fit one row at ${panel}px: ${JSON.stringify(layout)}`);
+      assert.ok(layout.tabs.every((t) => t.top === layout.tabs[0].top && t.left >= layout.left && t.right <= layout.right + 1 && t.width > 0) && !layout.overflow, `Three tabs fit one row at ${panel}px: ${JSON.stringify(layout)}`);
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
   };

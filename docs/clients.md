@@ -193,7 +193,7 @@ but `:replay`. Both read the same log.
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
 | Log records filtered by kind | Details › Log (latest run and inherited setup; earlier runs expand in Conversation) | `:log [n] [prefix]` | `:log [n]` | `replay` |
-| Plan record, step marks | Progress tab, Details › Plan record | `:plan` | — | — |
+| Plan record, step marks | pinned under the conversation (the step being worked on spins), Details › Plan record | `:plan` | — | — |
 | Indexed whole-task totals and turn/run counts (`session.totals`, ADR 49) | yes, Statistics and Changes, including closed tasks | deliberate gap: its inspectors read the log | — | — |
 | Budget, spend, checkpoints | Statistics tab, Details › Budget | `:budget` | — | `replay` shows the records |
 | Live gauges (spend, time, context, cache hit, 90% warnings) | yes, the summary above the tabs; session totals from `session.totals` | the context share in the title | — | — |

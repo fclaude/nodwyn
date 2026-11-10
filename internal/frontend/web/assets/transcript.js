@@ -229,6 +229,14 @@ export class Transcript {
     this.usage = null;
     this.closeCommands();
   }
+  // tail is the conversation's last node of its own: the task view pins
+  // the plan after it (data-pinned), and files attached before a message
+  // are still the node the message takes them from.
+  tail() {
+    let node = this.el.lastElementChild;
+    while (node && "pinned" in node.dataset) node = node.previousElementSibling;
+    return node;
+  }
   get empty() {
     return !this.el.querySelector(".turn");
   }
@@ -393,7 +401,7 @@ export class Transcript {
         this.narrowed = []; // a narrowed context ends with the turn
         const turn = h("div", { class: "turn user" }, h("div", { class: "who" }, "You"), h("div", { class: "you-text" }, p.text));
         // Files attached just before belong to this message.
-        const last = this.el.lastElementChild;
+        const last = this.tail();
         if (last?.classList.contains("attached")) {
           turn.append(last.querySelector(".attach-list"));
           last.remove();
@@ -403,7 +411,7 @@ export class Transcript {
       }
       case "attach": {
         this.end();
-        let holder = this.el.lastElementChild;
+        let holder = this.tail();
         if (!holder?.classList.contains("attached")) {
           // A workflow attaches the event that started a run (ADR 53): said
           // so, since the person did not, and it is data from outside.

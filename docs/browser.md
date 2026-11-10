@@ -4,8 +4,8 @@
 
 The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
-finished; a **task** shows its conversation with the approval inline, and
-beside it a compact monitoring summary above four tabs. Worktree tasks
+finished; a **task** shows its conversation with its plan and the approval inline,
+and beside it a compact monitoring summary above three tabs. Worktree tasks
 also have a **Review** button which opens their changes in the centre panel.
 
 The task's heading shows the one action for the state the task is in, **Stop**
@@ -43,17 +43,18 @@ has been reached. These are monitoring hints, not new enforcement rules.
 
 ## The bottom tabs
 
-**Progress** holds the plan; **Statistics** holds this turn's budget and the
+The latest ask's plan is pinned at the end of the conversation, not in a
+tab. **Statistics** holds this turn's budget and the
 task's totals; **Changes** still holds recorded write approvals, each
 file's kept versions and attachments; **Workspace** holds where it works,
 the tools it was offered, Details inspectors and retained project notes.
 **Review** replaces the centre conversation with a worktree task's actual
 changes since it branched, to comment on; **Close review** restores the
 conversation and its reply draft. It stays separate from Changes' approval
-previews and recovery tools. The four tabs sit above what they switch, at 12.5
+previews and recovery tools. The three tabs sit above what they switch, at 12.5
 px on desktop and 44 px tall on a phone, on one row at both desktop panel
 widths, with visible keyboard focus. On desktop only
-the selected content scrolls, so expanding a plan step cannot move the
+the selected content scrolls, so long notes cannot move the
 summary or the tabs; each tab keeps its scroll position through
 redraws and tab switches. On narrow screens the summary, content and
 navigation stack with ordinary page scrolling.

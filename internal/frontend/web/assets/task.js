@@ -1,6 +1,6 @@
 import { manageSchedule } from "./schedule.js";
-// The task view: one session's conversation with its approval inline, and
-// beside it, in tabs, the plan, this turn's budget, the changes, the
+// The task view: one session's conversation with its plan and its approval
+// inline, and beside it, in tabs, the changes, this turn's budget, the
 // project notes and the workspace. Every figure comes from the log or from
 // session.info; a panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, toastError, basename, sizeOf } from "./dom.js";
@@ -238,6 +238,7 @@ export class TaskView {
       this.busy = busy;
       this.loading = false;
       this.loadingNote.remove();
+      this.placePlan();
       for (const event of pending) this.render(event);
       for (const event of this.queued) this.render(event);
       this.queued = [];
@@ -550,6 +551,7 @@ export class TaskView {
     const follow = this.root.isConnected && view.scrollHeight - view.scrollTop - view.clientHeight < 120;
     view.querySelector(":scope > [data-placeholder]")?.remove();
     for (const stream of streams) this.transcript.render({ kind: stream.kind, payload: { Text: stream.chunks.join("") } });
+    this.placePlan();
     const placed = this.placePrompt();
     if (follow && !placed) view.scrollTop = view.scrollHeight;
   }
@@ -628,6 +630,7 @@ export class TaskView {
       default:
         this.transcript.render(event);
     }
+    this.placePlan();
     const placed = this.placePrompt();
     if (follow && !placed) view.scrollTop = view.scrollHeight;
   }
@@ -1502,7 +1505,6 @@ export class TaskView {
   // Statistics, and retained notes belong with the workspace they describe.
   asideTabs() {
     const tabs = [
-      { id: "progress", label: "Progress", draw: () => [this.planPanel()], empty: "No plan recorded yet." },
       { id: "changes", label: "Changes", draw: () => [this.changesPanel(), this.attachmentsPanel()], empty: "No approved changes yet." },
       { id: "statistics", label: "Statistics", draw: () => [this.turnPanel(), this.totalsPanel()], empty: "Nothing has run yet." },
       { id: "workspace", label: "Workspace", draw: () => [this.workspacePanel(), this.toolsPanel(), this.detailsPanel(), this.notesPanel()], empty: "Nothing to show." },
@@ -1524,16 +1526,43 @@ export class TaskView {
     tabs[next].click();
     this.el.side.querySelector(`#${tabs[next].id}`)?.focus();
   }
-  planPanel() {
+  // placePlan pins the latest ask's plan under the conversation, where the
+  // work is, and above a request card: the steps, the model's marks, and the
+  // step being worked on while a response runs. It is drawn again only when
+  // the plan, a mark or the running state changes, since the conversation is
+  // read aloud as it grows (aria-live) and a redraw would do so each time.
+  placePlan() {
+    if (this.loading || !this.el) return;
+    const view = this.el.transcript;
+    const current = view.querySelector(":scope > .plan-card");
+    const plan = this.latestPlan();
+    if (!plan) return void current?.remove();
+    const key = JSON.stringify([plan.seq, [...plan.marks.values()], this.busy]);
+    if (current?.dataset.key === key) return void view.append(current);
+    const card = this.planCard(plan);
+    card.dataset.key = key;
+    current?.remove();
+    view.append(card);
+  }
+  // latestPlan is the plan the last ask recorded (gate.plan) with the
+  // model's marks on it, the latest per step: those a carried plan brings
+  // from the run's earlier turns, then those since (plan.step). A mark is
+  // the model's word; the transcript holds what shows it. An ask that
+  // needed no plan has none to show.
+  latestPlan() {
     const turn = this.lastTurn();
     const at = turn ? turn.tail.findLastIndex((e) => e.kind === "gate.plan") : -1;
-    const panel = h("section", { class: "panel" });
-    if (at < 0) {
-      panel.append(h("h2", {}, "Plan", h("span", { class: "note" }, turn ? "none recorded for this ask" : "")));
-      if (!turn) return null;
-      return panel;
-    }
-    const p = turn.tail[at].payload;
+    if (at < 0) return null;
+    const event = turn.tail[at];
+    const p = event.payload;
+    const steps = planSteps(p.plan);
+    if (p.noul === "proceed" || (!steps.length && !p.reason)) return null;
+    const marks = new Map();
+    for (const m of p.marks || []) marks.set(m.step, m);
+    for (const e of turn.tail.slice(at + 1)) if (e.kind === "plan.step") marks.set(e.payload.step, e.payload);
+    return { seq: event.seq, p, steps, marks };
+  }
+  planCard({ p, steps, marks }) {
     // Where the plan came from matters only when the judge said something
     // about it; "drafted", "not needed" and "judge unavailable" are the
     // plan gate's own codes and told a reader nothing.
@@ -1549,54 +1578,55 @@ export class TaskView {
             : p.noul === "model"
               ? "written by the model"
               : "";
-    const steps = planSteps(p.plan);
-    // The model's marks, the latest per step: those a carried plan brings
-    // from the run's earlier turns, then those since (plan.step). A mark is
-    // the model's word; the transcript holds what shows it.
-    const marks = new Map();
-    for (const m of p.marks || []) marks.set(m.step, m);
-    for (const e of turn.tail.slice(at + 1)) if (e.kind === "plan.step") marks.set(e.payload.step, e.payload);
     const done = [...marks.values()].filter((m) => m.state === "done").length;
     const note = steps.length && marks.size ? `${done} of ${steps.length} done${judged ? ` · ${judged}` : ""}` : judged;
-    panel.append(h("h2", {}, "Plan", h("span", { class: "note" }, note)));
-    if (steps.length) {
-      const next = marks.size ? steps.findIndex((_, i) => !marks.has(i + 1)) : -1;
-      // The side is redrawn on every event, so a step the reader opened
-      // would fold again at the next one; the fold lives here, per task.
-      const opened = openSteps.get(this.item?.id) || new Set();
-      openSteps.set(this.item?.id ?? "", opened);
-      const items = steps.map((s, i) => {
-        const m = marks.get(i + 1);
-        const state = m ? m.state : i === next ? "next" : "";
-        const said = m ? (m.state === "done" ? "Marked done" : "Skipped") + (m.note ? `: ${m.note}` : "") : undefined;
-        // A step with more to say than its title — a detail, or the note
-        // the model marked it with — folds: the title stands, and clicking
-        // the step shows the whole of it and the note. By default neither
-        // shows, so the plan reads at a glance.
-        const title = stepTitle(s);
-        if (title === s && !m?.note)
-          return h("li", { class: state || undefined, title: said }, h("span", {}, h("span", { class: "text" }, s)));
-        const alt = title !== s;
-        const open = opened.has(s);
-        const li = h(
-          "li",
-          {
-            class: [state, "fold", alt && "alt", open && "open"].filter(Boolean).join(" "),
-            title: said,
-            onclick: () => {
-              // Read the set, not the open the render captured: a click
-              // that lands after a redraw would act on a stale boolean.
-              opened.has(s) ? opened.delete(s) : opened.add(s);
-              li.classList.toggle("open");
-            },
+    // While a response runs the step being worked on spins (style.css);
+    // between responses it is only the next one.
+    const card = h(
+      "section",
+      { class: ["plan-card", this.busy && "running"].filter(Boolean).join(" "), "aria-label": "Plan", dataset: { pinned: "" } },
+      h("h2", {}, "Plan", h("span", { class: "note" }, note)),
+    );
+    if (!steps.length) {
+      card.append(h("p", { class: "hint" }, p.reason));
+      return card;
+    }
+    const next = steps.findIndex((_, i) => !marks.has(i + 1));
+    // The card is drawn again as marks arrive, so a step the reader opened
+    // would fold again at the next one; the fold lives here, per task.
+    const opened = openSteps.get(this.item?.id) || new Set();
+    openSteps.set(this.item?.id ?? "", opened);
+    const items = steps.map((s, i) => {
+      const m = marks.get(i + 1);
+      const state = m ? m.state : i === next ? "next" : "";
+      const said = m ? (m.state === "done" ? "Marked done" : "Skipped") + (m.note ? `: ${m.note}` : "") : undefined;
+      // A step with more to say than its title — a detail, or the note
+      // the model marked it with — folds: the title stands, and clicking
+      // the step shows the whole of it and the note. By default neither
+      // shows, so the plan reads at a glance.
+      const title = stepTitle(s);
+      if (title === s && !m?.note)
+        return h("li", { class: state || undefined, title: said }, h("span", {}, h("span", { class: "text" }, s)));
+      const alt = title !== s;
+      const open = opened.has(s);
+      const li = h(
+        "li",
+        {
+          class: [state, "fold", alt && "alt", open && "open"].filter(Boolean).join(" "),
+          title: said,
+          onclick: () => {
+            // Read the set, not the open the render captured: a click
+            // that lands after a redraw would act on a stale boolean.
+            opened.has(s) ? opened.delete(s) : opened.add(s);
+            li.classList.toggle("open");
           },
-          h("span", {}, h("span", { class: "text" }, title), alt ? h("span", { class: "more" }, s) : null, m?.note ? h("small", {}, m.note) : null)
-        );
-        return li;
-      });
-      panel.append(h("ol", { class: "plan" }, items));
-    } else if (p.reason) panel.append(h("p", { class: "hint" }, p.reason));
-    return panel;
+        },
+        h("span", {}, h("span", { class: "text" }, title), alt ? h("span", { class: "more" }, s) : null, m?.note ? h("small", {}, m.note) : null)
+      );
+      return li;
+    });
+    card.append(h("ol", { class: "plan" }, items));
+    return card;
   }
   // Three fixed slots keep monitoring independent of the plan's length: what
   // a task costs, how long the turn has run and how full the context is. The

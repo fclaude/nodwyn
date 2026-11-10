@@ -190,7 +190,7 @@ check(async () => {
         await task.open("newer");
         if (delivery === "live") for (const event of history) { emit(event); emit(event); }
         const figures = () => {
-          task.el.side.querySelectorAll('[role="tab"]')[2].click();
+          task.el.side.querySelector("#aside-tab-statistics").click();
           const panel = task.el.side.querySelector("[data-totals]");
           const rows = Object.fromEntries([...(panel?.querySelectorAll(".kv") || [])].map((row) => [row.firstElementChild.textContent, row.lastElementChild.textContent]));
           return {
@@ -687,9 +687,9 @@ check(async () => {
       out.streaming = { burst, thoughts, followed, stayed, final, afterFinalFrame, promptOrder, unchangedAway, caughtUp, reloaded, closed, closedOnce, disposed };
     }
 
-    // The side's tabs: Progress first with the plan, the chosen tab
-    // kept through the redraw every event makes, an empty tab saying so,
-    // and the arrow keys moving the choice.
+    // The side's tabs: Changes first (the plan is in the conversation), the
+    // chosen tab kept through the redraw every event makes, an empty tab
+    // saying so, and the arrow keys moving the choice.
     {
       const { TaskView } = await import("/task.js");
       const { Desk } = await import("/desk.js");
@@ -753,8 +753,9 @@ check(async () => {
       };
       tabs.left = press("ArrowLeft");
       tabs.leftTwice = press("ArrowLeft");
-      tabs.home = press("Home");
       tabs.end = press("End");
+      tabs.home = press("Home");
+      press("End");
       tabs.edge = press("ArrowRight");
       tabs.focusVisible = !!bar().querySelector(":focus-visible");
       pick("Changes");
@@ -790,6 +791,75 @@ check(async () => {
       tabs.inspector.navigation = !task.comparisons.get(JSON.stringify(["old.txt", "hash"])).label;
       task.dispose();
       out.tabs = tabs;
+    }
+
+    // The plan is pinned under the conversation, not in the side: after the
+    // latest message and before a request card, its marks ticked off, the
+    // step being worked on spinning while a response runs, an opened step
+    // kept open as marks arrive, and gone once a new ask has none. Files
+    // attached with it pinned still go with the message after them.
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const listeners = new Set();
+      const conn = {
+        live: true,
+        methods: new Set(["session.send", "session.abort", "session.answer"]),
+        has(method) { return this.methods.has(method); },
+        onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        onResult() { return () => {}; },
+        async call(method) {
+          if (method === "session.subscribe") return { page: { events: [{ seq: 1, kind: "user.msg", payload: { text: "Begin" } }, { seq: 2, kind: "gate.plan", payload: { noul: "plan", score: 0.9, plan: "1. Change: app.js — the row\n2. Test: the check\n3. Check" } }], through: 2, more: false }, busy: true };
+          if (method === "session.info") return {};
+          if (method === "session.unsubscribe") return {};
+          throw new Error(`unexpected request: ${method}`);
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("inline", { id: "inline", repo: "/tmp/inline", open: true, busy: true });
+      const task = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(task.root);
+      await task.open("inline");
+      let seq = 2;
+      const emit = (kind, payload) => {
+        for (const fn of listeners) fn({ method: "session.event", params: { id: "inline", kind, payload, seq: ++seq } });
+      };
+      const view = task.el.transcript;
+      const card = () => view.querySelector(":scope > .plan-card");
+      const state = () => {
+        const c = card();
+        if (!c) return null;
+        const next = c.querySelector("li.next");
+        return {
+          last: view.lastElementChild === c,
+          head: c.querySelector("h2").textContent,
+          items: [...c.querySelectorAll("li")].map((li) => li.className),
+          spinning: next ? getComputedStyle(next, "::before").animationName : null,
+          inSide: !!task.el.side.querySelector(".plan"),
+        };
+      };
+      const plan = {};
+      plan.loaded = state();
+      emit("llm.resp", { content: "Starting" });
+      plan.afterReply = state();
+      card().querySelector("li.fold").click();
+      emit("plan.step", { step: 1, state: "done", note: "Edited" });
+      plan.marked = state();
+      plan.keptOpen = card().querySelector("li").classList.contains("open");
+      emit("prompt.confirm", { ID: "p1", Prompt: { Prim: "shell-exec", Argv: ["make", "test"], Reasons: ["Confirm the command"] } });
+      plan.withCard = { before: card()?.nextElementSibling?.classList.contains("ask-card"), last: view.lastElementChild.classList.contains("ask-card") };
+      emit("prompt.closed", { ID: "p1" });
+      emit("status", { State: "idle" });
+      plan.idle = state();
+      emit("attach", { name: "notes.txt", size: 4 });
+      emit("user.msg", { text: "Next" });
+      const turns = [...view.querySelectorAll(":scope > .turn.user")];
+      plan.attached = { merged: !!turns.at(-1).querySelector(".attach-list"), stray: !!view.querySelector(":scope > .attached") };
+      plan.newAsk = state();
+      emit("gate.plan", { noul: "proceed" });
+      plan.proceed = state();
+      task.dispose();
+      out.inlinePlan = plan;
     }
 
     // The side's clocks: only pairs the log answers count. A request that
@@ -1037,8 +1107,8 @@ check(async () => {
       out.sessionCacheRate = rates;
       task.dispose();
     }
-    // A long plan must not displace monitoring or navigation. Real events
-    // update the summary even while Statistics or Workspace is selected.
+    // Long notes must not displace monitoring or navigation. Real events
+    // update the summary even while Statistics or Changes is selected.
     {
       const { TaskView } = await import("/task.js");
       const { Desk } = await import("/desk.js");
@@ -1074,14 +1144,14 @@ check(async () => {
         return { summary: summary?.getBoundingClientRect().toJSON(), slots: [...summary.querySelectorAll(".monitor-stat")].map((s) => s.getBoundingClientRect().toJSON()), body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), scroll: body.scrollTop, overflow: body.scrollHeight > body.clientHeight, sideScroll: task.el.side.scrollTop };
       };
       const initial = values();
-      emit("user.msg", { text: "Work through this long plan" });
-      emit("gate.plan", { noul: "model", plan: Array.from({ length: 40 }, (_, i) => `${i + 1}. Change: Step ${i + 1} — ${"Detailed explanation. ".repeat(20)}`).join("\n") });
+      emit("user.msg", { text: "Work through this" });
+      task.notes = Array.from({ length: 40 }, (_, i) => `Note ${i + 1}: ${"Detailed explanation. ".repeat(20)}`).join("\n\n");
+      task.tab = "workspace";
+      task.aside();
       const before = geometry();
-      task.el.side.querySelector(".plan li.fold")?.click();
-      const expanded = geometry();
       const body = task.el.side.querySelector(".aside-panel");
       body.scrollTop = 160;
-      emit("plan.step", { step: 1, state: "done", note: "Checked" });
+      emit("llm.resp", { content: "Reading" });
       const redrawn = geometry();
       task.tab = "statistics";
       task.aside();
@@ -1102,12 +1172,12 @@ check(async () => {
       const ticked = task.el.side.querySelector('[data-monitor="time"]')?.textContent !== oldTime;
       const reused = task.tallied === tallied && task.el.side.querySelector('[data-monitor="spend"]') === spendNode && spendNode?.textContent.includes("0.42");
       task.busy = false;
-      task.tab = "workspace";
+      task.tab = "changes";
       task.aside();
       const workspace = values();
-      task.tab = "progress";
+      task.tab = "workspace";
       task.aside();
-      out.monitor = { initial, before, expanded, redrawn, updated, ticked, reused, workspace, returned: geometry(), warning: task.el.side.querySelector(".monitor-warning")?.textContent };
+      out.monitor = { initial, before, redrawn, updated, ticked, reused, workspace, returned: geometry(), warning: task.el.side.querySelector(".monitor-warning")?.textContent };
       window.monitorFixture = task;
     }
     {
@@ -1334,24 +1404,32 @@ check(async () => {
   want(early.folded.tokens?.text === "Tokens used922 / 2,000,000", `tokens used counts prompts, replies and cached tokens at a tenth: ${JSON.stringify(early.folded)}`);
   const m = results.monitor;
   want(m.initial.join() === "—,—,—", `monitor reserves three slots: spend, time and context: ${JSON.stringify(m.initial)}`);
-  want(m.before.overflow && m.before.summary?.bottom <= m.before.bar.top && m.before.bar.bottom <= m.before.body.top, `monitor and the tabs above it sit over the scrollable plan: ${JSON.stringify(m.before)}`);
-  want(m.expanded.summary?.top === m.before.summary?.top && m.expanded.bar.top === m.before.bar.top, "expanding a plan does not move summary or tabs");
+  want(m.before.overflow && m.before.summary?.bottom <= m.before.bar.top && m.before.bar.bottom <= m.before.body.top, `monitor and the tabs above it sit over the scrollable notes: ${JSON.stringify(m.before)}`);
   want(m.redrawn.scroll === 160 && m.redrawn.sideScroll === 0 && m.redrawn.bar.top === m.before.bar.top, `redraw keeps content scroll and fixed navigation: ${JSON.stringify(m.redrawn)}`);
   want(m.before.slots.length === 3 && m.before.slots.every((s) => s.top >= m.before.summary.top && s.bottom <= m.before.summary.bottom && s.left >= m.before.summary.left && s.right <= m.before.summary.right), "all three monitoring slots stay inside the summary");
-  want(m.updated[0]?.includes("0.42") && m.updated[2] === "50%" && m.ticked && m.reused, `summary updates on events and clock ticks outside Progress: ${JSON.stringify(m)}`);
-  want(m.workspace.join() === m.updated.join() || (m.workspace[0] === m.updated[0] && m.workspace[2] === m.updated[2]), "summary stays visible in Workspace");
+  want(m.updated[0]?.includes("0.42") && m.updated[2] === "50%" && m.ticked && m.reused, `summary updates on events and clock ticks outside Workspace: ${JSON.stringify(m)}`);
+  want(m.workspace.join() === m.updated.join() || (m.workspace[0] === m.updated[0] && m.workspace[2] === m.updated[2]), "summary stays visible in Changes");
   want(m.returned.scroll === 160 && m.warning?.includes("Tokens"), `tab return preserves scroll and warns about near token limit: ${JSON.stringify(m.returned)} ${m.warning}`);
   want(m.mobile.overflow === "visible" && m.mobile.bar.bottom <= m.mobile.body.top && m.mobile.tabHeight >= 44 && m.mobile.width <= 390 && !m.mobile.sideways, `phone stacks content without nested scrolling: ${JSON.stringify(m.mobile)}`);
+  const ip = results.inlinePlan;
+  want(ip.loaded?.last && !ip.loaded.inSide && ip.loaded.head === "Planscored 0.90 by the judge" && ip.loaded.items.join() === "next fold alt,,", `the plan pinned under a loaded conversation: ${JSON.stringify(ip.loaded)}`);
+  want(ip.afterReply?.last && ip.afterReply.spinning === "plan-spin", `the plan stays last as the reply grows, its step spinning: ${JSON.stringify(ip.afterReply)}`);
+  want(ip.marked?.head.startsWith("Plan1 of 3 done") && ip.marked.items.join() === "done fold alt open,next,", `a mark ticks its step and moves the spinner: ${JSON.stringify(ip.marked)}`);
+  want(ip.keptOpen, "an opened step stays open when a mark redraws the plan");
+  want(ip.withCard.before && ip.withCard.last, `a request card goes under the plan: ${JSON.stringify(ip.withCard)}`);
+  want(ip.idle?.last && ip.idle.spinning === "none" && ip.idle.items[1] === "next", `between responses the next step is still: ${JSON.stringify(ip.idle)}`);
+  want(ip.attached.merged && !ip.attached.stray, `files attached under the plan go with the message: ${JSON.stringify(ip.attached)}`);
+  want(ip.newAsk === null && ip.proceed === null, `a new ask with no plan shows none: ${JSON.stringify([ip.newAsk, ip.proceed])}`);
   const tb = results.tabs;
-  want(tb.names.join() === "Progress,Changes,Statistics,Workspace" && tb.first === "Progress", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
-  want(tb.live.join() === "Plan", `Progress tab panels: ${JSON.stringify(tb.live)}`);
+  want(tb.names.join() === "Changes,Statistics,Workspace" && tb.first === "Changes", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
+  want(tb.live === "No approved changes yet.", `the first tab before any change: ${JSON.stringify(tb.live)}`);
   want(tb.changes.chosen === "Changes" && tb.changes.shown === "No approved changes yet.", `Changes tab: ${JSON.stringify(tb.changes)}`);
   want(tb.afterEvent.chosen === "Changes" && tb.afterEvent.shown === "No approved changes yet.", `the tab kept through an event's redraw: ${JSON.stringify(tb.afterEvent)}`);
   want(tb.workspace.chosen === "Workspace" && tb.workspace.shown.join() === "Workspace,Details", `Workspace tab: ${JSON.stringify(tb.workspace)}`);
   want(tb.detailLinks.join() === "Log,Plan record,Budget,Policy,Tools", `Details entries: ${JSON.stringify(tb.detailLinks)}`);
   want(tb.notes.chosen === "Workspace" && tb.notes.shown.join() === "Workspace,Details,What nodwyn knows here", `Workspace notes: ${JSON.stringify(tb.notes)}`);
   want(tb.statistics.chosen === "Statistics" && tb.statistics.shown.join() === "This turn,Totals", `Statistics panels: ${JSON.stringify(tb.statistics)}`);
-  want(tb.left.chosen === "Statistics" && tb.left.focused === "Statistics" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Progress" && tb.home.focused === "Progress", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
+  want(tb.left.chosen === "Statistics" && tb.left.focused === "Statistics" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Changes" && tb.home.focused === "Changes", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
   want(tb.end.chosen === "Workspace" && tb.end.focused === "Workspace" && tb.edge.chosen === "Workspace" && tb.edge.focused === "Workspace" && tb.focusVisible, `tab End, right edge and visible keyboard focus: ${JSON.stringify(tb)}`);
   want(Object.values(tb.inspector).every(Boolean), `change inspector states and stale replies: ${JSON.stringify(tb.inspector)}`);
   want(Object.values(results.runHistoryFailures).every(Boolean), `history retry and task-switch states: ${JSON.stringify(results.runHistoryFailures)}`);

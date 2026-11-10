@@ -22,7 +22,7 @@ Below the box are four lists. **Needs you** holds the approvals and questions wa
 
 ## A task
 
-A task is a conversation in a folder. The page has the conversation in the middle, with its approval card inline when the model is waiting for you, and a panel on the right with the plan and the numbers. [Working in a task](tasks.html) goes through it.
+A task is a conversation in a folder. The page has the conversation in the middle, with its approval card inline when the model is waiting for you, its plan pinned under the latest message, and a panel on the right with the changes and the numbers. [Working in a task](tasks.html) goes through it.
 
 ![A task waiting for an answer](shot:task)
 

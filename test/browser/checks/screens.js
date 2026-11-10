@@ -103,13 +103,15 @@ check(async () => {
   };
   await shoot("home", { width: 1440, height: 900 }, "light", home);
 
-  // The task that waits: its approval, and its plan beside it.
+  // The task that waits: its plan pinned under the conversation, and its
+  // approval under the plan.
   const task = async (page) => {
     const href = await page.getAttribute(".nav-group a.nav-task.dotted", "href");
     await go(page, href);
     await page.waitForSelector(".task[data-loaded]", { timeout: 10000 });
     await shows(page, ".ask-card", "Run ls -la", "Allow once", "Deny");
-    await shows(page, ".task aside", "PLAN", "2 of 4 done");
+    await shows(page, ".transcript > .plan-card", "PLAN", "2 of 4 done");
+    assert.ok(await page.$eval(".transcript > .plan-card", (c) => c.nextElementSibling?.classList.contains("ask-card")), "the approval is not under the plan");
   };
   // Thinking is hidden unless this browser chose to show it.
   const visibleThinking = (page) => page.$$eval(".thinking", (ns) => ns.filter((n) => n.getClientRects().length > 0).length);

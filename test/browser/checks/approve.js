@@ -80,13 +80,15 @@ check(async () => {
     }
     throw new Error(`no session log for ${sid}`);
   };
-  // The plan panel shows every step of the planner's plan, each with its
+  // The plan, pinned under the conversation, shows every step of the
+  // planner's plan, each with its
   // kind, Test: and Docs: included, folded to its title until it is
   // clicked, and counts the steps the model marks: two before the commands
   // it asks about, two more once they are approved.
   const planPanel = () =>
     page.evaluate(() => ({
-      head: [...document.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.textContent.startsWith("Plan"))?.querySelector("h2")?.textContent,
+      head: document.querySelector(".transcript > .plan-card h2")?.textContent,
+      inSide: !!document.querySelector(".task-aside .plan"),
       steps: [...document.querySelectorAll("ol.plan li .text")].map((s) => s.textContent),
       items: [...document.querySelectorAll("ol.plan li")].map((li) => li.className),
       folds: [...document.querySelectorAll("ol.plan li")].map((li) => {
@@ -109,6 +111,7 @@ check(async () => {
   const before = await planPanel();
   assert.deepStrictEqual(before.steps.map((s) => s.split(":")[0]), ["Change", "Test", "Docs", "Check"], "the plan's steps");
   assert.strictEqual(before.head, "Plan2 of 4 done");
+  assert.ok(!before.inSide, "the plan is not in the side");
   assert.deepStrictEqual(before.items, ["done fold alt", "done fold alt", "next fold alt", ""]);
   // A step longer than its title folds: the title stands on the chevron's
   // line, the whole step and the mark's note wait hidden until the step is
@@ -302,7 +305,7 @@ check(async () => {
   assert.strictEqual(ran.open, false, "the finished run is folded");
   assert.deepStrictEqual(ran.rows.map((r) => r.name.replace(/\s+/g, " ").trim()), ["wc -l app.js"]);
   assert.ok(ran.rows.every((r) => /^exit 0/.test(r.stat)), `the run's rows: ${JSON.stringify(ran.rows)}`);
-  // The changes are in their tab now; Progress comes back for the plan below.
+  // The changes are in their tab now; the plan below stays in the conversation.
   await page.click(".task-aside [role=tab]:has-text('Changes')");
   const after = await page.evaluate(() => ({
     card: !!document.querySelector(".ask-card"),
@@ -319,14 +322,13 @@ check(async () => {
     await shows(page, ".change-inspector", "Approved preview—not proof of a successful write");
     assert.ok(await page.locator(".change-inspector .diff-line.add").count(), "recorded additions missing");
     assert.ok(await page.locator(".change-inspector .diff-line.del").count(), "recorded deletions missing");
-    await page.click(".task-aside [role=tab]:has-text('Progress')");
+    await page.click(".task-aside [role=tab]:has-text('Statistics')");
     await page.click(".task-aside [role=tab]:has-text('Changes')");
     assert.strictEqual(await page.getAttribute(".change-toggle", "aria-expanded"), "true", "preview folded during redraw");
     await page.screenshot({ path: `${out}/changes-preview.png` });
   }
   await changesPreviewInspector();
   assert.strictEqual(after.code, 'const meta = [session.repo, when, state].join(" · ");');
-  await page.click(".task-aside [role=tab]:has-text('Progress')");
   const marked = await planPanel();
   assert.deepStrictEqual(marked.steps, before.steps, "the plan's steps after the approvals");
   assert.strictEqual(marked.head, "Plan3 of 4 done");
@@ -359,7 +361,7 @@ check(async () => {
     answer: (await transcript()).includes("Tidied"),
     ...(await planPanel()),
   });
-  const want = { went: true, answer: true, head: "Plan4 of 4 done · carried over from an earlier turn", items: ["done fold alt", "done fold alt", "done fold alt", "done fold"] };
+  const want = { went: true, answer: true, head: "Plan4 of 4 done · carried over from an earlier turn", inSide: false, items: ["done fold alt", "done fold alt", "done fold alt", "done fold"] };
   await until("the carried plan", async () => {
     const got = await carried();
     return JSON.stringify({ ...got, steps: undefined, folds: undefined }) === JSON.stringify({ ...want, steps: undefined, folds: undefined });
