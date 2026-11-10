@@ -31,9 +31,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Choose the newest Go patch
+        id: go
+        # go.dev's newest patch of go.mod's release (ADR 33): setup-go's own
+        # list of versions can trail it by a day.
+        run: |
+          version=$(python3 scripts/go-newest.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.x'
+          go-version: ${{ steps.go.outputs.version }}
       - name: Build Nodwyn.app from the source commit
         run: scripts/app-macos.sh "$GITHUB_SHA" "${RELEASE_VERSION#v}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -60,9 +67,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Choose the newest Go patch
+        id: go
+        # go.dev's newest patch of go.mod's release (ADR 33): setup-go's own
+        # list of versions can trail it by a day.
+        run: |
+          version=$(python3 scripts/go-newest.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.x'
+          go-version: ${{ steps.go.outputs.version }}
       - name: Install the TeX packages both books use
         run: |
           sudo apt-get update

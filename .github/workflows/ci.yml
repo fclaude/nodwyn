@@ -21,11 +21,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Choose the newest Go patch
+        id: go
+        # go.dev's newest patch of go.mod's release (ADR 33): setup-go's own
+        # list of versions can trail it by a day.
+        run: |
+          version=$(python3 scripts/go-newest.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # The newest patch of go.mod's base release (ADR 33); go-version-file
-          # would install go.mod's 1.27.0 itself.
-          go-version: '1.27.x'
+          go-version: ${{ steps.go.outputs.version }}
       - name: Acceptance checks
         run: make accept GO_TEST_FLAGS=-count=1
       - name: Release builder checks
@@ -61,9 +66,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Choose the newest Go patch
+        id: go
+        # go.dev's newest patch of go.mod's release (ADR 33): setup-go's own
+        # list of versions can trail it by a day.
+        run: |
+          version=$(python3 scripts/go-newest.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.x'
+          go-version: ${{ steps.go.outputs.version }}
       - name: Build Nodwyn.app and run it
         run: scripts/app-macos.sh
 
@@ -74,9 +86,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Choose the newest Go patch
+        id: go
+        # go.dev's newest patch of go.mod's release (ADR 33): setup-go's own
+        # list of versions can trail it by a day.
+        run: |
+          version=$(python3 scripts/go-newest.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.x'
+          go-version: ${{ steps.go.outputs.version }}
       - name: Install Chromium for the browser checks
         run: cd test/browser && npm ci && npx playwright install --with-deps chromium
       - name: Browser checks
