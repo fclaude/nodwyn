@@ -301,18 +301,20 @@ check(async () => {
   assert.deepStrictEqual(limitsSent().at(-1), { id: limited, limits: {} }, "removing the last limit sent none");
   step("a task's limits added, changed and removed on its panel, none from Home");
 
-  // Only the task list scrolls: Settings and the model's state stay in view
-  // beside a list longer than the window, and a redraw keeps the list's place.
+  // Only the task list scrolls: Settings stays in view beside a list longer
+  // than the window, and a redraw keeps the list's place. The sidebar names
+  // no model, which said nothing about a task on another host.
   await page.setViewportSize({ width: 1440, height: 520 });
   const frame = () =>
     page.evaluate(() => {
       const list = document.querySelector(".nav-tasks"), side = document.querySelector("#sidebar");
       const bottom = (sel) => document.querySelector(sel).getBoundingClientRect().bottom;
-      return { scrolls: list.scrollHeight > list.clientHeight, sideOverflow: side.scrollHeight - side.clientHeight, links: bottom(".nav-links"), model: bottom(".model-line"), height: innerHeight, top: list.scrollTop };
+      return { scrolls: list.scrollHeight > list.clientHeight, sideOverflow: side.scrollHeight - side.clientHeight, links: bottom(".nav-links"), model: !!document.querySelector(".model-line"), height: innerHeight, top: list.scrollTop };
     });
   const long = await frame();
   assert.ok(long.scrolls, `the task list does not scroll: ${JSON.stringify(long)}`);
-  assert.ok(long.sideOverflow <= 0 && long.links <= long.height && long.model <= long.height, `the places or the model's state scrolled away: ${JSON.stringify(long)}`);
+  assert.ok(long.sideOverflow <= 0 && long.links <= long.height, `the places scrolled away: ${JSON.stringify(long)}`);
+  assert.ok(!long.model, "the sidebar still names a model");
   await page.evaluate(() => (document.querySelector(".nav-tasks").scrollTop = 60));
   await page.evaluate(() => dispatchEvent(new HashChangeEvent("hashchange")));
   assert.strictEqual((await frame()).top, 60, "a redraw moved the task list");

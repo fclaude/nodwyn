@@ -5,7 +5,6 @@
 // folders are under its name and state.
 import { h, icon, ago, minutes } from "./dom.js";
 import { summary } from "./prompts.js";
-import { stateWords } from "./modelpicker.js";
 import { searchURL } from "./search.js";
 import { chosenFolder } from "./home.js";
 import { hostState } from "./hosts.js";
@@ -211,12 +210,12 @@ export function renderSidebar(nav, { desk, hosts, route, conn, rerender }) {
   // sidebar would take the focus for its own field.
   const was = searching && document.activeElement?.matches?.("#sidebar input[type=search]") ? document.activeElement : null;
   const typing = was && { start: was.selectionStart, end: was.selectionEnd };
-  const control = desk.control();
-  const modelState = !conn.live ? ["bad", "offline"] : !control ? ["", "checking"] : control.state === "ready" ? ["ok", desk.running().length ? "working" : "ready"] : [control.state === "unreachable" ? "bad" : "warn", stateWords[control.state] || control.state];
   const link = (href, name, label) => h("a", { class: "nav-link", href, "aria-current": route.name === href.slice(2) ? "page" : null }, icon(name), h("span", {}, label));
 
-  // Only the task list scrolls: the places and the model's state stay where
-  // they are, and the list keeps its place through each redraw.
+  // Only the task list scrolls: the places stay where they are, and the
+  // list keeps its place through each redraw. The sidebar names no model:
+  // with several hosts the default model of this one says nothing about a
+  // task on another, and the offline banner says when the daemon is gone.
   const kept = nav.querySelector(".nav-tasks")?.scrollTop || 0;
   const tasks = h(
     "div",
@@ -240,13 +239,6 @@ export function renderSidebar(nav, { desk, hosts, route, conn, rerender }) {
     h("a", { class: "new-task", href: "#/", onclick: () => setTimeout(() => document.getElementById("task")?.focus(), 0) }, icon("plus"), h("span", {}, "New task"), h("kbd", {}, "⌘N")),
     tasks,
     h("div", { class: "nav-links" }, link("#/connections", "plug", "Connections"), link("#/workspaces", "folder", "Workspaces"), link("#/workflows", "clock", "Workflows"), conn.has("host.list") ? link("#/hosts", "hosts", "Hosts") : null, link("#/settings", "sliders", "Settings")),
-    h(
-      "div",
-      { class: "model-line", title: control?.detail || "" },
-      h("span", { class: `dot ${modelState[0]}` }),
-      h("span", {}, control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : conn.live ? "Model" : "Disconnected"),
-      h("span", { class: "state" }, modelState[1]),
-    ),
     ].filter(Boolean),
   );
   tasks.scrollTop = kept;

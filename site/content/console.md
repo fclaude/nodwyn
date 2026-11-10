@@ -4,7 +4,7 @@ The console is a web app that a daemon serves. `nodwyn app` shows it in a window
 
 ## The sidebar
 
-The sidebar is the same on every page. **New task** is at the top (⌘N on a Mac), and the magnifier next to it searches what your earlier tasks did. Under that, **Needs you** lists the tasks that have stopped to ask something, and below it your folders, each with its tasks. At the bottom are the pages: Connections, Workspaces, Workflows, Hosts and Settings. The last line says which daemon you're talking to and whether it's ready.
+The sidebar is the same on every page. **New task** is at the top (⌘N on a Mac), and the magnifier next to it searches what your earlier tasks did. Under that, **Needs you** lists the tasks that have stopped to ask something, and below it your folders, each with its tasks. At the bottom are the pages: Connections, Workspaces, Workflows, Hosts and Settings.
 
 On a phone the sidebar is a drawer, and a pill in the top bar says how many tasks need you. Tap it and you land on the one that's waiting.
 

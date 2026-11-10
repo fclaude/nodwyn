@@ -39,10 +39,12 @@ check(async () => {
   const go = (page, hash) => page.evaluate((h) => (location.hash = h), hash);
 
   // Home: the task waiting for an answer and the finished one, under its
-  // folder, in the sidebar and on the page, with the model answering.
+  // folder, in the sidebar and on the page. The sidebar names no model: with
+  // several hosts this one's default said nothing about a task on another.
   const home = async (page) => {
     assert.ok(!(await page.innerText("#daemon-identity")).includes("Runs on"), "Home claims an execution target before a task opens");
-    await shows(page, "#sidebar", "NEEDS YOU", "Run ls -la · console", "receipts", "Summarize what is in this folder", "ready");
+    await shows(page, "#sidebar", "NEEDS YOU", "Run ls -la · console", "receipts", "Summarize what is in this folder");
+    assert.ok(!/\bready\b/.test(await page.innerText("#sidebar")), "the sidebar still names the model and its state");
     await shows(page, "#view", "What should we get done?", "Run ls -la", "Allow once", "RECENTLY FINISHED", "Summarize what is in this folder");
     const picker = await page.$eval("#new-task-model .mp-controls", (el) => {
       const box = el.getBoundingClientRect();
