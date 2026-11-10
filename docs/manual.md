@@ -250,7 +250,7 @@ build where that can be built, so `nodwyn-stable app` opens a window; on Linux t
 Use `nodwyn-stable` for real work and `bin/nodwyn` only to test a change to
 nodwyn itself. Never run the binary you are editing (ADR 12).
 
-Building requires Go 1.26 or newer (ADR 33); `make lint` builds its
+Building requires Go 1.27 or newer (ADR 33); `make lint` builds its
 `staticcheck` from the module, so there is nothing else to install. The
 selfcheck's model turn goes to a fake model server, so promoting needs no
 model, key or passphrase. Using nodwyn needs a model to talk to: the

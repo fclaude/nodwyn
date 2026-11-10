@@ -1,6 +1,6 @@
 module github.com/fclaude/nodwyn
 
-go 1.26.0
+go 1.27.0
 
 require (
 	charm.land/bubbles/v2 v2.2.1
@@ -45,7 +45,7 @@ require (
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
-	honnef.co/go/tools v0.8.1 // indirect
+	honnef.co/go/tools v0.8.2 // indirect
 )
 
 tool honnef.co/go/tools/cmd/staticcheck

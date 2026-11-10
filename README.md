@@ -43,7 +43,7 @@ icon: `brew install --cask fclaude/fclaude-packages/nodwyn`, or
 `Nodwyn-macos-universal.zip` from the release.
 [docs/releases.md](docs/releases.md) has the details.
 
-To build from source you need Go 1.26 or newer:
+To build from source you need Go 1.27 or newer:
 
 ```sh
 git clone https://github.com/fclaude/nodwyn

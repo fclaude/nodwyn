@@ -19,7 +19,7 @@ Security problems don't go in public issues: see [SECURITY.md](SECURITY.md).
 
 ## Building and testing
 
-You need Go 1.26 or newer. Node and Playwright's Chromium are only for the
+You need Go 1.27 or newer. Node and Playwright's Chromium are only for the
 console's browser checks.
 
 ```sh

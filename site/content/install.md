@@ -24,7 +24,7 @@ The portable archives have no native window. Their `nodwyn app` opens your brows
 
 ## From source
 
-You need Go 1.26 or newer.
+You need Go 1.27 or newer.
 
 ```sh
 git clone https://github.com/fclaude/nodwyn
