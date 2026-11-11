@@ -35,16 +35,10 @@ jobs:
           command -v perl
           command -v desktop-file-validate
           command -v gio
-      - name: Choose the newest Go patch
-        id: go
-        # go.dev's newest patch of go.mod's release (ADR 33): setup-go's own
-        # list of versions can trail it by a day.
-        run: |
-          version=$(python3 scripts/go-newest.py)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ steps.go.outputs.version }}
+          # The exact Go named by go.mod's toolchain line (ADR 33).
+          go-version-file: go.mod
           # Host jobs reuse local Go caches; archive restore cannot overwrite
           # read-only module files with the runner's dropped capabilities.
           cache: false
