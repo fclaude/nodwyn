@@ -32,11 +32,15 @@ Python with `venv` and `pip`, Perl, `desktop-file-validate`, `gio`, and public
 HTTPS access. These tools are installed in the runner image ahead of the job.
 
 The Gitea check confines the sharded, uncached acceptance suite to as many CPUs
-as the runner container's cgroup quota (`/sys/fs/cgroup/cpu.max`) allows, since
-the sharder sizes itself from the CPUs it may run on and a quota does not limit
-those; without a readable quota it uses two. Its log says how many it used. It
-was fixed at two until 2026-11-11, which left half of a four-CPU runner idle: the
-race suite took 407 s there, against 194 s on GitHub's four. It does not run the browser checks or build the macOS app;
+as the runner container's cgroup allows, since the sharder starts a
+race-enabled test process for each CPU it may run on and a quota does not limit
+those: no more than its CPU quota (`/sys/fs/cgroup/cpu.max`), and no more than
+its memory limit (`memory.max`) holds at 1.5 GiB a process. Without a readable
+CPU quota it uses two. Its log says how many it used. It was fixed at two until
+2026-11-11, which left half of a four-CPU runner idle: the race suite took 407 s
+there, against 194 s on GitHub's four. Sized by CPUs alone on an eight-CPU,
+8 GiB runner, a race-enabled `core.test` of 1.26 GB was killed for want of
+memory; the memory limit holds that runner to five. It does not run the browser checks or build the macOS app;
 GitHub's CI runs those, and GitHub alone publishes the website and releases.
 
 ## Automatic platform settings
