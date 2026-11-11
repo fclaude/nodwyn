@@ -84,7 +84,7 @@ Know what that gives you. The keychain file is protected at rest, against a copy
 
 If you also run nodwyn on your laptop, its window can show the server's tasks beside its own, with everything that needs you under one **Needs you**, and a new task started on whichever computer should run it. The laptop links to the server once from **Hosts**, with an invitation made on the server.
 
-On the server, make the invitation with `nodwyn devices invite`, or with **Invite a device** in Settings › Keys & devices of a console signed in with your passkey. The second kind lets the laptop make your choices for the server's tasks, and the first lets it start and answer tasks. On the laptop, open **Hosts**, choose **Add a host**, and enter the server's address, the name the server should record your answers under (such as `laptop`), what to call the server here, and the invitation. The laptop keeps the link's token in its own keychain.
+On the server, make the invitation with `nodwyn devices invite`, or with **Invite a device** in Settings › Keys & devices of a console signed in with your passkey. The second kind lets the laptop make your choices for the server's tasks, and the first lets it start and answer tasks. On the laptop, open **Hosts**, choose **Add a host**, and enter the server's address and the invitation. Names are chosen automatically, or can be supplied under **Choose names (optional)**. The laptop keeps the link's token in its own keychain.
 
 ![Home, with a task asking for an answer](shot:home)
 

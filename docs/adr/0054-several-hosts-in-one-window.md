@@ -413,3 +413,13 @@ and its binding table; `--no-link-settings` still refuses all of it.
 not on the laptop; the `hosts` browser check chooses Always allow with The
 judge alone, sees the bar ask about both with nothing sent, then one
 `settings.docs.write` and one `settings.write` to workshop only.
+
+## Amendment 2026-11-11: names are optional when linking
+
+The console asks for the address and invitation. It derives the local host
+name from the address, adding a number if needed, and names this computer on
+the other host from its daemon's host name and a random suffix. The person can
+still supply either name under Choose names. The daemon and pairing rules are
+unchanged: a name already paired there is never replaced by an invitation.
+The hosts browser check links twice without choosing names, verifies both
+links and their distinct names, and exercises an explicit duplicate name.

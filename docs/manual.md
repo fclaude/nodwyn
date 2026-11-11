@@ -3260,9 +3260,13 @@ run it (ADR 54). The laptop links to the server once:
    limits and schedule, unlocking its keys); one from its terminal lets it
    start tasks and answer them.
 2. On the laptop, open **Hosts** in the sidebar and **Add a host**: the
-   server's address (`https://nodwyn.example.net`), the laptop's name there
-   (what the server records your answers with, such as `laptop`), what to
-   call the server here (such as `workshop`) and the invitation, then **Link**.
+   enter the server's address (`https://nodwyn.example.net`) and invitation,
+   then **Link**. The form chooses names for both computers; **Choose names
+   (optional)** lets you provide your own. A chosen name starts with a
+   lower-case letter or digit and may contain lower-case letters, digits,
+   dots, underscores or dashes, up to 32 characters. If the laptop's chosen
+   name is already paired on the server, choose another or revoke the old
+   device there; the invitation can be retried.
    The laptop keeps the link's token in its keychain, which has to be open:
    the form offers to unlock or create it.
 
