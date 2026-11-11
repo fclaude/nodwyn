@@ -48,7 +48,7 @@ check(async () => {
     await shows(page, "#view", "What should we get done?", "Run ls -la", "Allow once", "RECENTLY FINISHED", "Summarize what is in this folder");
     const picker = await page.$eval("#new-task-model .mp-controls", (el) => {
       const box = el.getBoundingClientRect();
-      // The judge's field is hidden where there is no judge to choose.
+      // The judge's field is drawn however many judges there are.
       const fields = [...el.querySelectorAll(".mp-field")].filter((field) => !field.hidden);
       const selects = fields.map((field) => field.querySelector("select").getBoundingClientRect());
       return {
@@ -60,9 +60,10 @@ check(async () => {
     });
     assert.ok(picker.height <= 46, `the Home picker is ${picker.height}px tall, not a slim paired control`);
     // A model that takes no effort has nothing to choose, so the picker is
-    // the model and the approvals (ADR 35, amended 2026-10-30), on one row;
-    // two fields carry a divider.
-    assert.strictEqual(picker.fields, 2, "the picker is not the model and the approvals");
+    // the model, the approvals (ADR 35, amended 2026-10-30) and the judge,
+    // on one row, the judge's field there with none set up; they carry
+    // dividers.
+    assert.strictEqual(picker.fields, 3, "the picker is not the model, the approvals and the judge");
     assert.strictEqual(picker.divider, "1px", "the approvals are not divided from the model");
     assert.ok(await page.$eval("#new-task-model-effort", (el) => el.closest(".mp-field").hidden), "the effort field is not hidden");
     // The model's strip is a row of its own over the composer's bar, which
@@ -92,12 +93,20 @@ check(async () => {
     assert.deepStrictEqual(alone, [], "Send leaves the end of Attach's row, or a row overflows, at these widths");
     assert.ok(!(await page.$eval("#new-task-options", (el) => el.open)), "Options starts open");
     assert.ok(picker.contained, "the dropdowns extend outside their paired control");
-    // With no judge set up, the judge alone refuses every command, and the
-    // picker says so; the default, the judge then the person, asks.
+    // With no judge set up the judge's field says so, disabled, and so does
+    // the picker: the judge then the person asks the person, the judge alone
+    // refuses every command, and a judge is not asked beside the answers
+    // that ask none.
+    assert.strictEqual(await page.locator("#new-task-model-judge").isVisible(), true, "the judge's field is not drawn with no judge set up");
+    assert.strictEqual(await page.locator("#new-task-model-judge").isDisabled(), true, "a judge can be chosen with none set up");
+    await shows(page, "#new-task-model-judge", "None set up");
+    await shows(page, "#new-task-model .mp-notes", "No judge is set up, so you answer every command.");
     await page.selectOption("#new-task-model-commands", "judge-auto");
     await shows(page, "#new-task-model .mp-notes", "No judge is set up, so every command is refused.");
-    await page.selectOption("#new-task-model-commands", "judge");
+    await page.selectOption("#new-task-model-commands", "ask");
     await page.waitForSelector("#new-task-model .mp-notes", { state: "hidden" });
+    assert.strictEqual(await page.locator("#new-task-model-judge").isVisible(), true, "the judge's field goes away beside approvals that ask no judge");
+    await page.selectOption("#new-task-model-commands", "judge");
     await page.focus("#new-task-model-model");
     // The ring is drawn inside the model's field, where it covers no label.
     const focus = await page.$eval("#new-task-model-model", (el) => ({ visible: el.matches(":focus-visible"), ring: getComputedStyle(el.closest(".mp-field")).boxShadow }));

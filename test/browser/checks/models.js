@@ -1180,15 +1180,20 @@ check(async () => {
 
   // A new task and a conversation choose their approvals beside their model
   // (ADR 35, amended 2026-10-30): who answers commands says whether the
-  // judge is asked at all, so with one judge set up there is no judge to
-  // pick, and asking or allowing all asks it nothing: the tasks here start
-  // on "Allow all", so nothing asks typesafe.ai.
+  // judge is asked at all; the judge's field is beside them whatever the
+  // number of judges, showing the one set up, and asking or allowing all asks
+  // it nothing: the tasks here start on "Allow all", so nothing asks
+  // typesafe.ai.
   await go("#/");
   await page.waitForSelector("#new-task-model-commands");
   assert.strictEqual(await page.inputValue("#new-task-model-commands"), "judge", "a new task does not start as Settings answers commands");
-  assert.strictEqual(await page.locator("#new-task-model-judge").isVisible(), false, "a judge is offered to pick with only one set up");
+  assert.strictEqual(await page.locator("#new-task-model-judge").isVisible(), true, "the judge is not shown with only one set up");
+  assert.strictEqual(await page.inputValue("#new-task-model-judge"), "Jev", "the judge shown is not the one set up");
+  assert.strictEqual(await page.locator("#new-task-model-judge").isDisabled(), false, "the judge cannot be picked with one set up");
   assert.strictEqual(await page.locator("#new-task-commands").count(), 0, "Options still has a Commands select");
   await page.selectOption("#new-task-model-commands", "allow");
+  assert.strictEqual(await page.locator("#new-task-model-judge").isVisible(), true, "the judge's field went away beside Allow all");
+  assert.strictEqual(await page.inputValue("#new-task-model-judge"), "Jev", "the judge changed with the approvals");
   await until("the choice kept for the next task", () => sent.of("newtask.last").at(-1)?.choices?.hosts?.some((e) => e.host === "" && e.commands === "allow"));
   await page.fill("#task", "Say hello");
   await page.click("button[aria-label='Start the task']");
@@ -1198,14 +1203,15 @@ check(async () => {
   await idle();
   await openPicker();
   assert.strictEqual(await page.inputValue("#task-model-commands"), "allow", "the task does not answer its commands as it was opened to");
-  assert.strictEqual(await page.locator("#task-model-judge").isVisible(), false, "a judge is offered beside Allow all");
+  assert.strictEqual(await page.locator("#task-model-judge").isVisible(), true, "the task's judge is not shown beside Allow all");
+  assert.strictEqual(await page.inputValue("#task-model-judge"), "Jev", "the task's judge is not the one it has");
   await shows("#task-model summary", "allow all");
   await page.selectOption("#task-model-commands", "judge-auto");
   await page.waitForSelector(".toast >> text=Approvals: judge only, from this task's next command.", { timeout: 10000 });
   assert.deepStrictEqual(sent.of("session.commands.set").at(-1), { id: judged, commands: "judge-auto" });
   assert.strictEqual(sent.of("session.judge.set").length, 0, "the task's judge was chosen again though it had one");
   await shows("#task-model summary", "judge only · judged by Jev");
-  step("a new task and a conversation choose their approvals beside their model, and the judge only beside the answers that ask it");
+  step("a new task and a conversation choose their approvals beside their model, with the judge always shown beside them");
 
   // The next task starts with the choice made last, after an app restart
   // too.

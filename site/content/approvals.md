@@ -12,7 +12,7 @@ Some things always ask you, whatever the settings say: a write to a protected pa
 
 Settings › General › Approvals sets the first two. **Writing files** is *Without asking* or *Ask me*, and **Running commands** is *Judge + me*, *Judge only*, *Ask me* or *Allow all*. Whichever you choose for commands also answers a command that names a path outside the task's folder (a read of the Go module cache, say) or is built from what a tool returned. *Judge only* refuses what the judge doesn't allow rather than putting it to you, and *Allow all* runs it; writes, sending out and keys still ask you. The last two ask the judge nothing at all, not even to score the plan, so they cost no judge tokens.
 
-Each task can have its own: **Approvals**, beside the model in New task's picker, sets it for the next task, and the same select in a task's picker changes it at any time. The **Judge** select appears beside it only for the two answers that use a judge, and only when there's more than one to choose from. Changing it while a question about a command is waiting answers that question the new way.
+Each task can have its own: **Approvals**, beside the model in New task's picker, sets it for the next task, and the same select in a task's picker changes it at any time. The **Judge** select is always beside it, showing which judge the task asks (dimmed for the two answers that ask none) and listing the others to choose from; with no judge set up it says so and links to Settings. Changing it while a question about a command is waiting answers that question the new way.
 
 ## The approval card
 

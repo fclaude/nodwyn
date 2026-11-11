@@ -10,7 +10,7 @@ import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
 import { keychainForm } from "./setup.js";
-import { ModelPicker, choiceNamed, effortLabel, judgesOf, commandsLabel } from "./modelpicker.js";
+import { ModelPicker, choiceNamed, effortLabel, commandsLabel } from "./modelpicker.js";
 import { limitsPanel, parseLimit } from "./limits.js";
 
 const drafts = new Map(); // per task, this tab only
@@ -869,7 +869,7 @@ export class TaskView {
     // computer, between turns: the daemon refuses a change while a response
     // runs, so the select waits for it.
     const judge = this.info?.judge;
-    const canJudge = this.conn.has("session.judge.set") && (judgesOf(this.desk).length > 0 || !!judge?.server);
+    const canJudge = this.conn.has("session.judge.set");
     picker.update({
       desk: this.desk,
       selection,
@@ -878,11 +878,11 @@ export class TaskView {
       disabled: !canChoose || this.changing || this.uploading || running,
       notes,
       onPick: (sel, reset) => this.chooseModel(sel, reset),
-      ...(canJudge && judge
+      ...(judge
         ? {
             judge: judge.server || "",
-            judgeDisabled: this.judging || this.busy,
-            judgeHint: this.busy ? "The judge can be changed once this response is done." : "",
+            judgeDisabled: !canJudge || this.judging || this.busy,
+            judgeHint: !canJudge ? "This computer cannot choose this task's judge." : this.busy ? "The judge can be changed once this response is done." : "",
             onJudge: (name) => this.chooseJudge(name),
           }
         : {}),

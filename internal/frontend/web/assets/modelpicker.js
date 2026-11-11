@@ -173,7 +173,7 @@ export class ModelPicker {
     // Beside an answer that asks no judge, the judge is not asked, so what
     // is wrong with it does not matter.
     const judgeFound = judge === undefined || (commands !== undefined && !judged(commands)) ? null : judgeProblem(desk, judge);
-    const sig = JSON.stringify([choices, states, selection, extra, disabled, notes, found, unavailable, judges, judge, judgeDisabled, judgeHint, commands, commandsDisabled, defaultCommands(desk)]);
+    const sig = JSON.stringify([choices, states, selection, extra, disabled, notes, found, unavailable, judges, !!desk.settings, judge, judgeDisabled, judgeHint, commands, commandsDisabled, defaultCommands(desk)]);
     if (sig === this.sig) return;
     this.sig = sig;
     const { listed, choice } = choiceOf(desk, selection, extra);
@@ -233,22 +233,25 @@ export class ModelPicker {
     }
 
     this.effortField.hidden = !!selection && !efforts.length;
-    // The judge's select lists no judge, then each judge the daemon lists,
-    // and a chosen one it no longer lists as it is, so what is shown is
-    // what the task has. Beside approvals, it shows only when they ask a
-    // judge and there is a choice of one to make, and "no judge" is said by
-    // the approvals rather than offered twice.
-    const pickable = commands === undefined || (judged(commands) && judges !== null && (judges.length > 1 || !judges.some((j) => j.name === judge)));
-    this.judgeField.hidden = judges === null || !pickable;
+    // The judge's select is always beside the approvals, so the composer has
+    // one shape: whether a judge is set up, one or several, and whether the
+    // approvals ask it. It lists each judge the daemon lists and, as it is,
+    // one the task has that the daemon no longer lists, so what is shown is
+    // what the task has. "No judge" is offered only where nothing else says
+    // it (beside approvals, "Ask me" does) or where it is what is shown. With
+    // no judge to choose it says why, rather than going away.
     if (judges !== null) {
-      const none = commands === undefined ? "No judge" : "Choose a judge…";
+      const asks = commands === undefined || judged(commands);
+      const none = !desk.settings ? "Not known" : !judges.length ? "None set up" : commands === undefined ? "No judge" : "Choose a judge…";
       const opts = [...(commands === undefined || !judge ? [h("option", { value: "" }, none)] : []), ...judges.map((j) => h("option", { value: j.name }, `${judgeLabel(j)}${j.default ? " (default)" : ""}${j.state !== "ready" ? ` — ${judgeStateWords[j.state] || j.state}` : ""}`))];
       if (judge && !judges.some((j) => j.name === judge)) opts.push(h("option", { value: judge }, `${judge} (no longer set up)`));
       this.judge.replaceChildren(...opts);
       this.judge.value = judge || "";
-      this.judge.disabled = disabled || judgeDisabled;
-      this.judge.title = judgeHint;
+      this.judge.disabled = disabled || judgeDisabled || (!judges.length && !judge);
+      this.judge.title = judgeHint || (asks ? "" : `Not asked while approvals are "${commandsLabel(commands).toLowerCase()}".`);
+      this.judgeField.classList.toggle("idle", !asks);
     }
+    this.judgeField.hidden = judges === null;
 
     // Who answers commands lists the four answers, the one Settings starts
     // tasks with marked.
@@ -261,10 +264,10 @@ export class ModelPicker {
       this.commands.title = commandsWords[commands] || "";
     }
 
-    // The judge alone, with none set up, refuses every command, so it says
-    // so; the judge then the person, the default, asks the person, which is
-    // what they expect, so it does not.
-    const noJudge = commands === "judge-auto" && !judgesOf(desk).length ? { kind: "warn", text: "No judge is set up, so every command is refused.", fix: "Settings › Judge" } : null;
+    // With none set up the judge alone refuses every command and the judge
+    // then the person asks the person, so the select says it is empty and
+    // this says what that means and where to set one up.
+    const noJudge = judges !== null && commands !== undefined && judged(commands) && desk.settings && !judges.length && !judge ? { kind: "warn", text: commands === "judge-auto" ? "No judge is set up, so every command is refused." : "No judge is set up, so you answer every command.", fix: "Settings › Judge" } : null;
     const lines = [...(found ? [{ kind: found.kind, text: found.text, fix: found.fix }] : []), ...(judgeFound ? [judgeFound] : []), ...(noJudge ? [noJudge] : []), ...notes];
     this.note.replaceChildren(
       ...lines.map((line) =>

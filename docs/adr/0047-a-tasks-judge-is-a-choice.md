@@ -183,3 +183,19 @@ session, validates the candidate configuration and choice, records the
 successful choice, then installs both together and retargets the primitives.
 `TestRejectedJudgeChoiceKeepsTheTasksConfiguration` exercises an invalid
 choice and a request made while the model is answering.
+
+## Amendment 2026-11-11: the Judge select is always drawn
+
+The picker showed the Judge select only beside an Approvals answer that asks
+a judge, and then only when there was more than one judge to choose or none
+chosen; New task also drew none when the host listed no judge or did not let
+this window choose one. So the same composer had a Judge select on one host or
+one answer and none on another, and a person on a host with one judge, or
+none, saw "Judge + me" with nothing to say which judge it was or why none could
+be picked. The select is now drawn whenever the model can be chosen: it shows
+the judge the task has, dimmed beside an answer that asks none (still
+choosable, for when the answer changes), says *None set up* (disabled, with the
+note linking Settings › Judge) when the host lists none, *Not known* when its
+settings were not read, and is disabled with a hint, rather than removed, on a
+host or in a task that does not let this window choose. The note for "no judge
+is set up" now also covers *Judge + me*, whose answer then falls to the person.

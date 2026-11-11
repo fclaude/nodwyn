@@ -279,6 +279,9 @@ check(async () => {
   const here = await strip();
   await page.screenshot({ path: `${out}/home-here.png` });
   assert.deepStrictEqual(here, there, "the composer changes shape between workshop and this computer");
+  // Where the model is chosen the judge's field is beside the approvals,
+  // however many judges there are.
+  assert.strictEqual(await page.locator("#new-task-model-judge").isVisible(), true, "the judge's field is not drawn beside the approvals");
   assert.ok(here.oneRow && here.runs === here.model && here.sendBelow && here.sendBesideAttach, `the composer's rows are out of place: ${JSON.stringify(here)}`);
   step("the composer keeps one shape on either host");
 

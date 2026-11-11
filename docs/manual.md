@@ -1293,9 +1293,12 @@ only*, *Ask me* and *Allow all*. On New task it is kept
 for the next task; in a task it changes at any time, during a response too:
 from its next question, and a question about a command already waiting is
 answered again by the new choice, so choosing *Judge only* or *Allow all*
-takes the card away. The **Judge** select shows beside it only for an answer
-that asks a judge and only when there is one to choose; choosing such an
-answer for a task with no judge chooses one, the default first. The choice is the task's: a resumed task
+takes the card away. The **Judge** select is always beside it, whichever
+answer is chosen and however many judges there are, so the picker is one shape:
+it shows the judge the task has (dimmed beside an answer that asks none), says
+*None set up* with a link to Settings › Judge when there is none, and is off,
+saying why, on a host this window may not choose a judge on; choosing an answer
+that asks a judge for a task with none chooses one, the default first. The choice is the task's: a resumed task
 keeps it, whatever Settings says by then. Only this computer, or a device or
 another nodwyn signed in with your passkey, chooses it.
 

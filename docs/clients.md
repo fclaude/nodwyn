@@ -145,7 +145,7 @@ an evaluation is never queued.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
-| See the task's judge, and the judges set up | yes, the picker's Judge select, beside an Approvals answer that asks a judge when there is one to choose | yes, `:judge` | — | — |
+| See the task's judge, and the judges set up | yes, the picker's Judge select, always beside Approvals: the judge the task has, the others to choose, or "None set up" | yes, `:judge` | — | — |
 | Choose a task's judge as it opens | yes, New task's picker | not built: `[judge]`'s; use `:judge` before the first message | `[judge]`'s | `nodwyn run`: `[judge]`'s |
 | Move a task to another judge, or none | yes, between turns | yes, `:judge NAME`, `:judge none` | not built | — |
 | Set a judge up: Jev's key, an OpenAI API key | Settings › Judge, in place | — | — | edit `config.toml`, `:eval (credential-register …)` |

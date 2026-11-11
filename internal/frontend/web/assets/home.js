@@ -310,10 +310,11 @@ export function renderHome(root, ctx) {
   // held is not what it would start a task on, nor are its warnings.
   const canChoose = conn.live && conn.has("session.model.set") && choicesOf(desk).length > 0;
   const selection = () => pickedOf(target.name) || defaultSelection(desk);
-  // The judge is chosen beside the model (ADR 47), on this computer only,
-  // and only where there is a judge to choose.
+  // The judge is chosen beside the model (ADR 47), on this computer only.
+  // Its field is always drawn: with no judge to choose, or a host that does
+  // not let this window choose, it says so rather than going away.
   const canDelegate = canChoose && conn.has("session.judge.set");
-  const canJudge = canChoose && conn.has("session.judge.set") && judgesOf(desk).length > 0;
+  const canJudge = canDelegate;
   const judgeChoice = () => pickedJudgeOf(target.name) ?? defaultJudge(desk);
   // Who answers its commands is chosen beside them, on this computer, for a
   // daemon that takes it.
@@ -571,15 +572,13 @@ export function renderHome(root, ctx) {
         sync();
         if (reset) toast("That model takes other efforts: its own default is chosen.");
       },
-      ...(canJudge
-        ? {
-            judge: judgeChoice(),
-            onJudge: (name) => {
-              pickJudge(name, desk);
-              drawPicker();
-            },
-          }
-        : {}),
+      judge: judgeChoice(),
+      judgeDisabled: !canJudge,
+      judgeHint: canJudge ? "" : `${target.name || "This computer"} does not let this window choose a task's judge.`,
+      onJudge: (name) => {
+        pickJudge(name, desk);
+        drawPicker();
+      },
       // Who answers its commands sits beside the judge it may ask, since
       // the one says whether the other is asked at all (ADR 35, amended
       // 2026-10-30).
