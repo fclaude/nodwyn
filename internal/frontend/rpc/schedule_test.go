@@ -3,12 +3,14 @@ package rpc
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -16,6 +18,156 @@ import (
 	"github.com/fclaude/nodwyn/test/fakes/must"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
+
+// Programs use the real harness, including model-turn's active-turn state,
+// and persist as programs across closing and resuming the task. The empty
+// fake script after the first run proves that arithmetic asks no model.
+func TestScheduledSchemeProgramsUseTheHarnessAndResume(t *testing.T) {
+	model := fake.NewT(t, fake.Turn{Content: "An explicit model answer."})
+	defer model.Close()
+	o := options(t)
+	o.Provider = llm.NewOllama(model.URL)
+	s := schedulerServer(t, o)
+	now := time.Now().Truncate(time.Minute)
+	id := scheduledTask(t, s, now)
+	const program = `(add-message "Only this program asked the model.") (model-turn "control" '((tools . #f)))`
+	set := func(source string) {
+		t.Helper()
+		raw, err := json.Marshal(map[string]any{"id": id, "program": source, "repeat": "hourly", "at": now.Format(schedule.Layout), "cost": 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.mu.Lock()
+		_, rerr := s.setSchedule(request{Params: raw}, &peer{actor: "test"})
+		s.mu.Unlock()
+		if rerr != nil {
+			t.Fatal(rerr.Message)
+		}
+	}
+	set(program)
+	tickSchedule(s, now)
+	scheduleIdle(t, s, id)
+	if len(model.Requests) != 1 || !strings.Contains(string(model.Requests[0].Raw), "Only this program asked the model.") {
+		t.Fatalf("program did not ask the model with its own message: %+v", model.Requests)
+	}
+	set(`(display "Program output") (+ 20 22)`)
+	s.mu.Lock()
+	s.closeIdle(id, s.sessions[id])
+	_, rerr := s.runSchedule(request{Params: mustID(id)}, &peer{actor: "test"})
+	s.mu.Unlock()
+	if rerr != nil {
+		t.Fatal(rerr.Message)
+	}
+	scheduleIdle(t, s, id)
+	var result log.EvalResult
+	var evaluation log.EvalRequest
+	for _, ev := range taskEvents(t, s, id) {
+		if ev.Kind == log.KindUserMsg {
+			t.Fatal("the program was sent to the model as a message")
+		}
+		if ev.Kind == log.KindEvalReq {
+			if err := ev.Decode(&evaluation); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if ev.Kind == log.KindEvalResult {
+			if err := ev.Decode(&result); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	state, err := s.store().Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Error != "" || result.Value != "42" || evaluation.Actor != "test" || len(model.Requests) != 1 || len(state.History) != 2 || state.History[1].Outcome != "completed" || !state.History[1].Manual {
+		t.Fatalf("evaluation %+v, result %+v, requests %d, history %+v", evaluation, result, len(model.Requests), state.History)
+	}
+}
+
+func TestScheduledSchemeRejectsBadDefinitionsBeforeRecording(t *testing.T) {
+	s := schedulerServer(t, options(t))
+	now := time.Now().Truncate(time.Minute)
+	id := scheduledTask(t, s, now)
+	for _, source := range []string{"(", "; only a comment", "   ", strings.Repeat("x", 1<<20+1)} {
+		raw, err := json.Marshal(map[string]any{"id": id, "program": source, "repeat": "hourly", "at": now.Format(schedule.Layout)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.mu.Lock()
+		_, rerr := s.setSchedule(request{Params: raw}, &peer{actor: "test"})
+		s.mu.Unlock()
+		if rerr == nil || rerr.Code != -32602 || !strings.Contains(rerr.Message, "Scheme") {
+			t.Fatalf("invalid program accepted or not explained: %+v", rerr)
+		}
+	}
+	state, err := s.store().Schedule(id)
+	if err != nil || state.Definition.Message != "check" {
+		t.Fatalf("a bad definition replaced the saved schedule: %+v %v", state, err)
+	}
+}
+
+func TestScheduledSchemeStillAsksAndStops(t *testing.T) {
+	model := fake.NewT(t)
+	defer model.Close()
+	o := options(t)
+	o.Provider = llm.NewOllama(model.URL)
+	s := schedulerServer(t, o)
+	now := time.Now().Truncate(time.Minute)
+	id := scheduledTask(t, s, now)
+	start := func(program string) {
+		t.Helper()
+		raw, err := json.Marshal(map[string]any{"id": id, "program": program, "repeat": "hourly", "at": now.Format(schedule.Layout)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.mu.Lock()
+		_, rerr := s.setSchedule(request{Params: raw}, &peer{actor: "test"})
+		if rerr == nil {
+			_, rerr = s.runSchedule(request{Params: mustID(id)}, &peer{actor: "test"})
+		}
+		s.mu.Unlock()
+		if rerr != nil {
+			t.Fatal(rerr.Message)
+		}
+	}
+	start(`(fs-write "program.txt" "Only with approval")`)
+	session := s.sessions[id].session
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		pending, err := session.PendingPrompts()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pending) > 0 {
+			if _, err := os.Stat(filepath.Join(session.Repo(), "program.txt")); !os.IsNotExist(err) {
+				t.Fatalf("a program wrote before approval: %v", err)
+			}
+			if err := session.Answer(pending[0].Payload.(event.Confirm).ID, "n"); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the program did not ask for write approval")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	scheduleIdle(t, s, id)
+	start(`(let loop () (loop))`)
+	session.Abort()
+	scheduleIdle(t, s, id)
+	state, err := s.store().Schedule(id)
+	if err != nil || len(state.History) != 2 || state.History[1].Outcome != "canceled" {
+		t.Fatalf("Stop did not cancel the program: %+v %v", state.History, err)
+	}
+	start(`(+ 20 22)`)
+	scheduleIdle(t, s, id)
+	state, err = s.store().Schedule(id)
+	if err != nil || len(state.History) != 3 || state.History[2].Outcome != "completed" {
+		t.Fatalf("the harness was not reusable after Stop: %+v %v", state.History, err)
+	}
+}
 
 func schedulerServer(t *testing.T, o core.Options) *server {
 	t.Helper()

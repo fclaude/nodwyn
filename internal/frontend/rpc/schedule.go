@@ -21,6 +21,7 @@ import (
 type scheduleSetParams struct {
 	ID      string         `json:"id"`
 	Message string         `json:"message,omitempty"`
+	Program string         `json:"program,omitempty"`
 	Repeat  string         `json:"repeat,omitempty"`
 	At      string         `json:"at,omitempty"`
 	Rule    *schedule.Rule `json:"rule,omitempty"`
@@ -217,14 +218,14 @@ func (s *server) setSchedule(req request, client *peer) (any, *rpcError) {
 		return nil, why
 	}
 	var p scheduleSetParams
-	if err := params(req.Params, &p, "id", "message", "repeat", "at", "rule", "cost", "day_cost", "paused", "remove"); err != nil {
+	if err := params(req.Params, &p, "id", "message", "program", "repeat", "at", "rule", "cost", "day_cost", "paused", "remove"); err != nil {
 		return nil, err
 	}
 	if p.ID == "" {
 		return nil, failure(-32602, "id is required")
 	}
 	now := time.Now()
-	definition := schedule.Definition{Message: p.Message, Repeat: p.Repeat, At: p.At, Rule: p.Rule, Cost: p.Cost, DayCost: p.DayCost, Paused: p.Paused}
+	definition := schedule.Definition{Message: p.Message, Program: p.Program, Repeat: p.Repeat, At: p.At, Rule: p.Rule, Cost: p.Cost, DayCost: p.DayCost, Paused: p.Paused}
 	if !p.Remove {
 		if err := settle(&definition, now); err != nil {
 			return nil, failure(-32602, err.Error())
@@ -552,6 +553,9 @@ func (s *server) executeSchedule(id string, def log.SessionSchedule, sequence ui
 	if current.Definition == nil || current.Sequence != sequence {
 		return fmt.Errorf("schedule changed while the task resumed")
 	}
+	if def.Program != "" {
+		return owned.session.EvalScheduled(def.Program, run)
+	}
 	return owned.session.SendScheduled(def.Message, run)
 }
 
@@ -579,7 +583,7 @@ func settle(d *schedule.Definition, now time.Time) error {
 
 func (s *server) nextSchedule(req request, _ *peer) (any, *rpcError) {
 	var d schedule.Definition
-	if err := params(req.Params, &d, "message", "repeat", "at", "rule", "cost", "day_cost", "paused"); err != nil {
+	if err := params(req.Params, &d, "message", "program", "repeat", "at", "rule", "cost", "day_cost", "paused"); err != nil {
 		return nil, err
 	}
 	now := time.Now()

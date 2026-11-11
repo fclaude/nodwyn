@@ -2578,6 +2578,38 @@ and how the latest ended, with Pause, Run now and Schedule…. **New
 timetable** opens Home's Schedule dialog, beside the task's folder, model
 and limits.
 
+Both timetables and event workflows have a **Run type**: **Send a message**
+starts the ordinary agent loop; **Run Scheme** evaluates the program you
+write in the task's harness. The Scheme editor highlights syntax and Tab
+inserts two spaces. Saving checks syntax without executing the program.
+Existing workflows keep their messages. Each Scheme run keeps the task's
+tools, normal approvals, spend limit, Stop button and run history; its
+source, output and returned value appear in the task. A model is asked only
+when the program asks one. For a first check, use:
+
+```scheme
+(display "Workflow ran")
+(+ 20 22)
+```
+
+It prints the text and returns `42`. A timetable's **Run now** runs it;
+an event workflow's **Check now** handles new events. **Test the trigger**
+previews the source and filters, without executing the program. Use a
+scratch workspace for a program that writes files: a manual run performs
+its real actions, under the task's approvals. To ask a model explicitly:
+
+```scheme
+(add-message "Summarise the attached event.")
+(model-turn "control" '((tools . #f)))
+```
+
+The event stays attached as external data. A completed run can hold its
+model's reply in the outbox; a program with no model reply queues nothing,
+even when an earlier run had an answer. Returned Scheme values and printed
+output stay in the task. Programs use the session's Scheme environment;
+definitions can survive later runs while it is open, and reset on resume.
+Keep any state needed across a restart in files through the guarded tools.
+
 ### Workflows from a terminal
 
 `nodwyn workflows` lists what the console's Workflows page lists, in the
@@ -2611,7 +2643,7 @@ something happens at a source (ADR 53). Its answers are four cards:
   fields author, base, head, draft, labels and title (a command's own
   fields too). An event that fails one runs nothing and is not asked about
   again.
-- **Do:** the instruction, sent as each run's request, with the task's
+- **Do:** a message sent as each run's request or a Scheme program, with the task's
   folder, worktree, model, limits and spend per run and per day, as any task.
 - **Then:** the answer stays in the task, or is **posted as a review**: a
   comment on the pull request, never an approval or a request for changes.

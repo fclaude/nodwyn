@@ -1080,7 +1080,17 @@ reconciliation; permissions are never silently merged (\adr{45}).
 \paragraph{Scheduled tasks (\adr{49}).}
 Home's \textbf{Options}, beside Attach, hold \textbf{Schedule\ldots}, which turns
 the request into a schedule with the same folder or worktree, model, helpers
-and judge, and asks for the message in its own form. Under
+and judge, and asks for the message in its own form. \textbf{Run type} also
+offers \textbf{Run Scheme}: a program evaluated directly in the task's harness,
+with a highlighted editor and syntax checked on save. For a first check,
+\texttt{(display "Workflow ran")} followed by \texttt{(+ 20 22)} prints the
+text and returns 42 without a model. \textbf{Run now} executes it with normal
+approvals, limits, Stop and history. Event workflows offer the same choice;
+\textbf{Check now} handles new events and \textbf{Test the trigger} only previews
+the source and filters. A program asks a model explicitly with
+\texttt{add-message} and \texttt{model-turn}; only its own model reply can
+reach the outbox. Definitions last while the task is open and reset on resume.
+Under
 \textbf{Repeat}, choose set times of day on chosen weekdays (``Tuesdays and
 Thursdays at 15:00''), an interval of 5 minutes to 24 hours, optionally only
 between two times (``Every 30 minutes from 09:00 to 18:00 on weekdays''),

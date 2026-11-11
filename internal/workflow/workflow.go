@@ -27,11 +27,12 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/schedule"
 	"github.com/fclaude/nodwyn/internal/watch"
 )
 
 // Definition is what a person chose: the source and how often it is
-// polled, the filters an event must pass, the message each run sends, where
+// polled, the filters an event must pass, the message or program each run uses, where
 // runs go (a task per subject, or one task for every event), and the
 // choices of the tasks it opens (folder, worktree, model, spend per run and
 // per day); like any task, those have no turn limits unless a person adds
@@ -43,7 +44,8 @@ type Definition struct {
 	Source      watch.Source   `json:"source"`
 	Every       int            `json:"every"`
 	Filters     []watch.Filter `json:"filters,omitempty"`
-	Message     string         `json:"message"`
+	Message     string         `json:"message,omitempty"`
+	Program     string         `json:"program,omitempty"`
 	Routing     string         `json:"routing"`
 	Repo        string         `json:"repo"`
 	Worktree    bool           `json:"worktree,omitempty"`
@@ -88,8 +90,6 @@ func (d Definition) Validate() error {
 	switch {
 	case strings.TrimSpace(d.Name) == "" || len(d.Name) > 200:
 		return fmt.Errorf("a workflow needs a name of at most 200 characters")
-	case strings.TrimSpace(d.Message) == "" || len(d.Message) > 1<<20:
-		return fmt.Errorf("a workflow needs a message of at most 1 MiB")
 	case d.Every < 1 || d.Every > 24*60:
 		return fmt.Errorf("a source is checked every 1 minute to 24 hours")
 	case d.Routing != PerSubject && d.Routing != OneTask:
@@ -98,6 +98,9 @@ func (d Definition) Validate() error {
 		return fmt.Errorf("a workflow's tasks work in a folder, given as an absolute path")
 	case d.Concurrency < 0 || d.Concurrency > 10:
 		return fmt.Errorf("at most 10 runs of a workflow go at once")
+	}
+	if err := schedule.ValidateRun(d.Message, d.Program); err != nil {
+		return err
 	}
 	for _, cost := range []float64{d.Cost, d.DayCost} {
 		if math.IsNaN(cost) || math.IsInf(cost, 0) || cost < 0 || cost > 1e9 {
@@ -467,6 +470,9 @@ func (d Definition) Sentence() string {
 		b.WriteString("; each in a task of its own")
 	} else {
 		b.WriteString("; all in one task")
+	}
+	if d.Program != "" {
+		b.WriteString("; runs a Scheme program")
 	}
 	switch {
 	case d.Then.Post == "review" && d.Then.Auto:

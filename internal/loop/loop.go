@@ -413,12 +413,30 @@ const TurnStartProcedure = "turn-start"
 // the turn stopped early: a budget or progress stop, a cancellation, a
 // failed model request, or the strategy's own error.
 func (l *Loop) Turn(ctx context.Context, request string) error {
+	return l.withTurn(ctx, request, func(harness context.Context) error {
+		strategy, ok := l.interp.Global().Lookup(TurnProcedure)
+		if !ok || !strategy.IsProcedure() {
+			return fmt.Errorf("loop: %s is not defined as a procedure; nodwyn calls (%s request) for every message", TurnProcedure, TurnProcedure)
+		}
+		_, err := l.interp.Apply(harness, strategy, []scheme.Value{scheme.Str(request)})
+		return err
+	})
+}
+
+// EvalProgram gives a person's program the same model and tool lifetime as
+// a message, without calling the default strategy or inventing a message.
+// The author is the person who saved the workflow, so its origin is User.
+func (l *Loop) EvalProgram(ctx context.Context, source string) (value scheme.Value, err error) {
+	err = l.withTurn(ctx, "", func(harness context.Context) error {
+		value, err = l.interp.EvalString(scheme.WithOrigin(harness, scheme.OriginUser), source)
+		return err
+	})
+	return value, err
+}
+
+func (l *Loop) withTurn(ctx context.Context, request string, work func(context.Context) error) error {
 	if !l.frozen {
 		return errors.New("loop: Freeze was not called")
-	}
-	strategy, ok := l.interp.Global().Lookup(TurnProcedure)
-	if !ok || !strategy.IsProcedure() {
-		return fmt.Errorf("loop: %s is not defined as a procedure; nodwyn calls (%s request) for every message", TurnProcedure, TurnProcedure)
 	}
 	l.turn = &turnState{budget: budget.From(ctx), progress: turnProgress{warnRepeats: l.cfg.Sandbox}}
 	defer func() { l.turn = nil }()
@@ -430,7 +448,7 @@ func (l *Loop) Turn(ctx context.Context, request string) error {
 		_, err = l.interp.Apply(harness, start, args)
 	}
 	if err == nil {
-		_, err = l.interp.Apply(harness, strategy, args)
+		err = work(harness)
 	}
 	if unwindErr := l.unwind(); unwindErr != nil && err == nil {
 		err = unwindErr

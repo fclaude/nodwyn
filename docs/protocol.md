@@ -1332,6 +1332,14 @@ reading old run previews or replaying the whole log.
   definition whose rule is the same as before (in normal form) preserves the
   consumed cursor; a new timing starts after now, so times before the change
   are not run late. Resuming a paused definition sets its cursor to now.
+  `program` may replace `message` in `schedule.set`, `schedule.next` and the
+  stored definition. Exactly one non-empty message or Scheme program is
+  required, at most 1 MiB; a program must parse and contain an expression.
+  This reads syntax without evaluating it. An old message-only definition
+  keeps its meaning. A program runs directly in the task's harness and records
+  `eval.req` (source, actor), output and `eval.result`, with the same
+  `schedule.run`, budget, approvals, cancellation and `turn.end` as a message.
+  It starts no default agent loop and asks no model implicitly.
 - `schedule.pause {id,paused}` preserves its definition and records the change.
   Archive records a paused definition before archiving; Unarchive leaves it
   paused. A closed scheduled task can still run automatically.
@@ -1356,7 +1364,7 @@ file or repository configuration is read. The index is only a derived view.
 
 Log payloads (see the generated schema for full shapes):
 
-- `session.schedule`: message/rule (or repeat/at)/cost/paused, actor,
+- `session.schedule`: message or program/rule (or repeat/at)/cost/paused, actor,
   removed, after (preserved consumed cursor, or now on resume or a new
   timing), words (the rule's sentence when written).
 - `schedule.run`: due, through (latest coalesced occurrence), started, missed,
@@ -1413,6 +1421,12 @@ run: item, version, kind, subject, task, summary) and `workflow.skip`.
   worktree, model, cost, day_cost, concurrency, existing, paused}`; the tasks
   it opens have no limits until a person adds some to one, and an older
   definition's `no_limits` is ignored.
+  `program` replaces `message` for a Scheme run, with the same exclusive
+  choice and syntax validation as a timetable. The daemon attaches the
+  event as external data before evaluating the saved program with user
+  origin. Only this run's completed model reply can enter the outbox;
+  printed output and returned Scheme values stay in the task. A program
+  that asks no model never reuses an earlier run's answer.
   `source` is `{kind, server, repo, credential, query, command, dir, on}`:
   `kind` is `gitea-pulls`, `github-pulls` (`server` optional, GitHub's API by
   default), `gmail` (`credential` an OAuth2 credential for Google, `query`

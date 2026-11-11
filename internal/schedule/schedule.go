@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/fclaude/brote/scheme"
 )
 
 const Layout = "2006-01-02T15:04"
@@ -21,13 +23,14 @@ const (
 // one every few seconds is a cost nobody means to set.
 const MinEvery = 5
 
-// Definition is what a person chose: the message each run sends, when it
+// Definition is what a person chose: the message or Scheme program, when it
 // runs, the spend a run may reach and the spend its runs may reach in a day
 // (DayCost, 0 for none). A schedule written before rules has Repeat and At,
 // one of five repeats from a local minute; it is read as the rule it always
 // meant (Timetable), so no log is rewritten.
 type Definition struct {
-	Message string  `json:"message"`
+	Message string  `json:"message,omitempty"`
+	Program string  `json:"program,omitempty"`
 	Repeat  string  `json:"repeat,omitempty"`
 	At      string  `json:"at,omitempty"`
 	Rule    *Rule   `json:"rule,omitempty"`
@@ -62,8 +65,8 @@ var (
 )
 
 func (d Definition) Validate() error {
-	if strings.TrimSpace(d.Message) == "" || len(d.Message) > 1<<20 {
-		return fmt.Errorf("a schedule needs a message of at most 1 MiB")
+	if err := ValidateRun(d.Message, d.Program); err != nil {
+		return err
 	}
 	if math.IsNaN(d.Cost) || math.IsInf(d.Cost, 0) || d.Cost < 0 || d.Cost > 1e9 {
 		return fmt.Errorf("the per-run spend limit must be between 0 and 1 billion dollars")
@@ -84,6 +87,31 @@ func (d Definition) Validate() error {
 	}
 	if _, err := time.Parse(Layout, d.At); err != nil {
 		return fmt.Errorf("time must be a local date and minute, YYYY-MM-DDTHH:MM")
+	}
+	return nil
+}
+
+// ValidateRun checks the person's choice before it is saved. Reading Scheme
+// only checks syntax; it never executes a program while a workflow is edited.
+func ValidateRun(message, program string) error {
+	if program == "" {
+		if strings.TrimSpace(message) == "" || len(message) > 1<<20 {
+			return fmt.Errorf("a run needs a message or a Scheme program of at most 1 MiB")
+		}
+		return nil
+	}
+	if message != "" {
+		return fmt.Errorf("a run has a message or a Scheme program, not both")
+	}
+	if len(program) > 1<<20 {
+		return fmt.Errorf("a Scheme program is at most 1 MiB")
+	}
+	forms, err := scheme.Read(program)
+	if err != nil {
+		return fmt.Errorf("invalid Scheme program: %w", err)
+	}
+	if len(forms) == 0 {
+		return fmt.Errorf("a Scheme program needs at least one expression")
 	}
 	return nil
 }

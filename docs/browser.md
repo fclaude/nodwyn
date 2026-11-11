@@ -154,6 +154,18 @@ topbar counts held answers with the tasks that need you, and the desk reads
 `outbox.list` at the start and on the pushed `outbox.changed`. The builder's
 **Then** card chooses leaving the answer in the task or posting it as a review
 (held, or **Without asking**) and the notice after each run.
+Both the timetable dialog and the builder's **Do** card offer **Run type**:
+**Send a message** or **Run Scheme**. `runeditor.js` shares the editor:
+a native textarea over a highlighted layer of text nodes, with comments,
+strings, keywords and literals coloured in either theme, Tab indentation
+and scrolling kept together. Only the selected message or program is sent.
+The saved program is highlighted in the schedule dialog and the task's
+evaluation record. Syntax is checked before saving; a run records
+`eval.req`, output and `eval.result` under the normal task lifetime.
+**Run now** executes a timetable's program; **Check now** handles new
+events. **Test the trigger** does not execute Scheme. A program can ask a
+model with `add-message` and `model-turn`, and only that run's model reply
+can enter its outbox.
 **Watch for events** opens the builder, `#/workflows/new` (and
 `#/workflows/<id>` to change one): cards for When, Only if, Do and Runs go
 to, the credential names from `credentials.list`, and **Test the trigger**,

@@ -103,6 +103,10 @@ check(async () => {
     await page.waitForSelector("dialog.schedule-dialog[open]");
     await page.waitForTimeout(300);
     await shot("schedule");
+    await page.selectOption("#schedule-run-kind", "scheme");
+    await page.fill("#schedule-program", '; Run inside the task, with its approvals and limits.\n(define report (fs-read "README.md"))\n(display report)\n(+ 20 22)');
+    await page.waitForTimeout(300);
+    await shot("schedule-scheme");
     await ctx.close();
 
     // The phone: Home and the waiting task.

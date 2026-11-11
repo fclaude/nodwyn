@@ -1657,6 +1657,44 @@ must hold, `repo-relative?`, the guard's refusal of a path under `/tmp`
 saying the scratch directory's own path, and fs-edit's errors that say where
 an `old` that occurs twice occurs and where one that almost matches stops.
 
+### 9.9 Workflow programs
+
+A timetable or event workflow can run a saved Scheme program instead of
+sending a message (ADR 53, amended 2026-11-11). Choose **Run Scheme** in the
+console's **Run type** field. The editor highlights syntax; saving parses
+the source without running it. The harness evaluates every expression in
+order and records the source and final value as `eval.req` and `eval.result`;
+`display` output also appears in the task. There is no implicit model request:
+
+```scheme
+(display "Workflow ran")
+(+ 20 22)
+```
+
+The program has an active harness turn, so the loop's `add-message`,
+`model-turn`, `run-tools` and context operations are available. For example:
+
+```scheme
+(add-message "Summarise the attached event.")
+(model-turn "control" '((tools . #f)))
+```
+
+`turn-start` resets the session's per-turn habits with an empty request;
+the default `nodwyn-turn` is not called. The program runs with user origin:
+it is authored by the person saving the definition through the same local
+or passkey-authorised API as a message workflow, in nodwyn's data directory,
+never read from an event or a repository file. The guard, approvals, budget
+and cancellation still apply. External events remain attachments, with their
+normal provenance. Only model replies from this completed run can be held
+for posting; a returned value is not posted.
+
+**Run now** runs a timetable's program, while **Check now** processes new
+events and **Test the trigger** only previews the source and filters. A run
+performs real actions under the task's approvals. Definitions remain in
+the open session's interpreter and reset when it resumes; persist needed
+state through the guarded file tools. No new Scheme primitive schedules or
+edits a workflow.
+
 ## 10. Not in nodwyn Scheme
 
 Deliberately absent.

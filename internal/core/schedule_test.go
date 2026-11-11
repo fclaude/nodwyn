@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
@@ -166,6 +167,38 @@ func TestAnEvaluationOnAScheduledTaskPreparesNoHandover(t *testing.T) {
 	followBudget(t, s, func(event.Checkpoint) { t.Fatal("checkpoint") })
 	if len(srv.Requests) != 0 || s.handover.Load() != nil {
 		t.Fatalf("the evaluation asked the model: %d requests, handover %+v", len(srv.Requests), s.handover.Load())
+	}
+}
+
+// A Scheme schedule never applies a message handover, so a person's chat
+// follow-up must not spend another model request preparing one for it.
+func TestASchemeSchedulePreparesNoMessageHandover(t *testing.T) {
+	srv := fake.NewT(t, fake.Turn{Content: "The person's answer."})
+	defer srv.Close()
+	o := diskOptions(t)
+	o.NoConfirm = false
+	o.Provider = llm.NewOllama(srv.URL)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var def log.SessionSchedule
+	if err := json.Unmarshal([]byte(`{"program":"(+ 20 22)","repeat":"daily","at":"2099-11-11T09:00"}`), &def); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Record(log.KindSessionSchedule, def); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Record(log.KindUserMsg, log.UserMsg{Text: "Earlier context " + strings.Repeat("z", 50000)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Send("Summarise that."); err != nil {
+		t.Fatal(err)
+	}
+	followBudget(t, s, func(event.Checkpoint) { t.Fatal("checkpoint") })
+	if len(srv.Requests) != 1 || s.handover.Load() != nil {
+		t.Fatalf("a program's schedule prepared an unused handover: %d requests, handover %+v", len(srv.Requests), s.handover.Load())
 	}
 }
 

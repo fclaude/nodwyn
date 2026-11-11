@@ -10,6 +10,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/schedule"
 	"github.com/fclaude/nodwyn/internal/watch"
+	"github.com/fclaude/nodwyn/internal/window"
 	"github.com/fclaude/nodwyn/internal/workflow"
 )
 
@@ -131,7 +132,15 @@ func (s *server) runEnded(task string) {
 		skip(fmt.Sprintf("the run for %s did not finish (%s), so there is no answer to post", run.label, outcome))
 		return
 	}
-	reply, found := owned.session.FinalReply()
+	// A Scheme run may ask no model at all. Only this run's replies may be
+	// posted; an earlier run's answer is never the answer to a new event.
+	var current []log.Event
+	for _, ev := range events {
+		if ev.Seq > started && ev.Seq < ended {
+			current = append(current, ev)
+		}
+	}
+	reply, found := window.LastReply(current)
 	body := strings.TrimSpace(reply.Content)
 	if !found || body == "" {
 		skip(fmt.Sprintf("the run for %s ended with no answer to post", run.label))

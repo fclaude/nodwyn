@@ -739,6 +739,20 @@ needs\_answer turns on with no local client in session.watch, and once per
 locked period when a locked keychain skips a scheduled run.
 
 \paragraph{Workflows that watch a source (\adr{53}).}
+Both timetables and event definitions choose exactly one message or
+\texttt{program}, at most 1 MiB. Saving a program reads Scheme syntax without
+executing it. The console shares a highlighted textarea editor for both.
+The program is authored by the person saving the definition through the
+local or passkey-authorised API, stored in the daemon's data directory;
+no repository or event supplies its executable source. It runs with user
+origin in the harness's active turn, with normal approvals, budget,
+cancellation, worktree catch-up and run markers. The host records eval.req
+and eval.result, resets turn-start with an empty request and calls no default
+strategy. Thus model-turn and the context operations work, but no model is
+asked implicitly. Definitions persist only while the interpreter is open.
+Only model replies between this run's marker and turn.end reach its outbox;
+output and Scheme values remain in the task, and no previous answer is reused.
+
 \texttt{internal/watch} reads a forge's open pull requests with the key the
 binding table allows at that host for GET (the table's own lookup, as the
 guard makes it for http-request; no redirect is followed and the body is

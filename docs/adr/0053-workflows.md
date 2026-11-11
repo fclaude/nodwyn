@@ -533,3 +533,51 @@ all this repository's, and `grep` for the old names finds none. The acts that
 are neither a read nor a write keep their verbs (`workflow.pause`,
 `workflow.check`, `workflow.test`, `outbox.decide`), as `schedule.pause`,
 `models.test` and `session.answer` do.
+
+## Amendment 2026-11-11: messages and Scheme programs as run types
+
+Both a timetable and an event workflow now choose exactly one non-empty
+`message` or `program`, each bounded to 1 MiB. Old message-only definitions
+retain their meaning. Saving a program uses Brote's reader to check syntax
+and requires at least one expression; it executes nothing. The console's
+**Run type** selects **Send a message** or **Run Scheme**, using one shared
+textarea editor with a text-node highlighting layer, scrolling, indentation,
+and colours for comments, strings, keywords and literals in both themes.
+The saved program is highlighted in the timetable dialog and transcript.
+
+Who writes the code: the person who saves a definition on this computer or
+through its passkey-authorised API, under the existing workflow/schedule
+write checks. It is stored in the daemon's own data directory and redacted
+like the rest of the definition. No repository file, source event or Scheme
+primitive creates or changes one. It therefore evaluates with user origin,
+as that person's manual evaluation does, under the guard. An event stays an
+external attachment and is never read as executable source.
+
+The program runs in the task's harness with an active loop turn, so
+`model-turn`, `add-message`, tools and context operations work. Both run
+types share turn initialisation, unwinding of contexts and pending calls,
+budget completion, normal approvals (Don't ask is revoked), Stop, the
+scheduled spend marker, worktree catch-up and history. `turn-start` receives
+an empty request; the default strategy and message handover are not called.
+The program asks no model implicitly. Its source and final result use the
+existing `eval.req`/`eval.result` path; output uses the task's output events.
+The interpreter is the task's: definitions survive later runs while it is
+open and reset on resume. Lasting state uses guarded file tools.
+
+Only model replies between this run's marker and its `turn.end` can enter
+the outbox. A program that asks no model must not reuse a previous answer;
+output and returned values stay in the task. Existing notification and
+posting choices otherwise apply. Timetables are tried with **Run now** and
+event workflows with **Check now** on new events. **Test the trigger** still
+only previews the source and filters; no isolated program-test action is
+built in this version. A manual run performs real guarded actions.
+
+Checks: `internal/schedule` checks the exclusive choice through decoded
+definitions. `internal/frontend/rpc` runs saved programs through automatic
+and manual dispatch, resume, syntax refusals without replacing a definition,
+guarded writes, Stop and another run after it, explicit fake-model calls,
+external event text, and a program with no reply after a message run.
+The `schedule` and `workflows` browser checks select, highlight, save,
+reload and execute programs, check their results and requests, and check
+phone width and source that resembles markup. Services are fakes; real
+mailboxes and forges are not exercised.

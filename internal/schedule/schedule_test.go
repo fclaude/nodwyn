@@ -1,11 +1,32 @@
 package schedule
 
 import (
+	"encoding/json"
 	"reflect"
 	"slices"
 	"testing"
 	"time"
 )
+
+func TestRunsChooseAMessageOrAReadableSchemeProgram(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		valid      bool
+	}{
+		{"program", `"program":"(define answer 40) (+ answer 2)"`, true},
+		{"both", `"message":"check", "program":"(+ 1 2)"`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var d Definition
+			if err := json.Unmarshal([]byte(`{"repeat":"daily","at":"2099-11-11T09:00",`+tc.body+`}`), &d); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.Validate(); (err == nil) != tc.valid {
+				t.Fatalf("valid = %v: %v", tc.valid, err)
+			}
+		})
+	}
+}
 
 func TestCivilRepeatsAndMissedTimes(t *testing.T) {
 	loc, err := time.LoadLocation("America/Los_Angeles")

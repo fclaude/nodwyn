@@ -10,6 +10,7 @@ import { h, toast, toastError, removal } from "./dom.js";
 import { nextLine, scheduleActions, manageSchedule } from "./schedule.js";
 import { usd } from "./transcript.js";
 import { choicesOf, defaultSelection } from "./modelpicker.js";
+import { runEditor } from "./runeditor.js";
 
 // newWorkflow says Home is to open its Schedule dialog once it is drawn,
 // which New workflow asks for on its way there.
@@ -138,7 +139,7 @@ export function renderWorkflows(root, ctx) {
         "div",
         { class: "page-col" },
         h("div", { class: "page-head" }, h("h1", {}, "Workflows"), start),
-        h("p", { class: "lede" }, "A workflow sends its task a message when its time comes, or when something happens at a source it watches, and each run goes into a task. Here is when each runs next or what it watches, what today's runs came to and how the latest ended."),
+        h("p", { class: "lede" }, "A workflow sends a message or runs a Scheme program when its time comes, or when something happens at a source it watches. Each run goes into a task. Here is when each runs next or what it watches, what today's runs came to and how the latest ended."),
         body,
       ),
     ),
@@ -178,7 +179,7 @@ function renderBuilder(root, ctx) {
   const redraw = () => renderBuilder(root, ctx);
   if (!state.loaded) {
     state.loaded = true;
-    conn.call("workflow.read", { id: editingId }).then((view) => { state.def = { ...defaults(), ...view.definition, filters: view.definition.filters || [], then: { ...defaults().then, ...(view.definition.then || {}) } }; delete state.def.actor; delete state.def.removed; redraw(); }).catch((error) => { toastError(error.message); navigate("#/workflows"); });
+    conn.call("workflow.read", { id: editingId }).then((view) => { state.def = { ...defaults(), ...view.definition, filters: view.definition.filters || [], then: { ...defaults().then, ...(view.definition.then || {}) } }; state.runDraft = {}; delete state.def.actor; delete state.def.removed; redraw(); }).catch((error) => { toastError(error.message); navigate("#/workflows"); });
   }
   if (conn.has("credentials.list") && !state.credentials.length) {
     conn.call("credentials.list").then((r) => { state.credentials = [...new Set((r.credentials || []).map((c) => c.class))]; redraw(); }).catch(() => {});
@@ -241,10 +242,12 @@ function renderBuilder(root, ctx) {
 
   const choices = choicesOf(desk);
   const model = h("select", { id: "wf-model", class: "input", onchange: (e) => set({ model: e.target.value }) }, [["", `${defaultSelection(desk)?.name || "The default"} (default)`], ...choices.map((c) => [c.name, c.name])].map(([v, label]) => h("option", { value: v, selected: v === (d.model || "") }, label)));
+  const run = runEditor(d, { prefix: "wf", draft: state.runDraft ||= {}, changed: (value) => { delete d.message; delete d.program; set(value); } });
   const doing = h(
     "section", { class: "builder-card", "aria-label": "Do" },
     h("h2", { class: "eyebrow" }, "Do"),
-    field("Instruction", h("textarea", { id: "wf-message", class: "input", rows: 4, oninput: (e) => set({ message: e.target.value }) }, d.message), "Sent as each run's request. The event is attached as data, never as instructions."),
+    run.node,
+    h("p", { class: "hint" }, "The event is attached as data, never as instructions."),
     field("Folder", select("wf-repo-folder", d.repo, folders.map((f) => [f, desk.folderName(f)]), (v) => set({ repo: v }))),
     h("label", { class: "check" }, h("input", { id: "wf-worktree", type: "checkbox", checked: !!d.worktree, onchange: (e) => set({ worktree: e.target.checked }) }), "Each task in a worktree of its own"),
     field("Model", model),

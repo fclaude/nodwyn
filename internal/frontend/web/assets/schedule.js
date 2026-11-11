@@ -5,6 +5,7 @@
 // page prints what it is sent and works out no times of its own.
 import { h, toastError, removal } from "./dom.js";
 import { usd } from "./transcript.js";
+import { runEditor, schemeCode } from "./runeditor.js";
 
 export const scheduleTime = (v) => v ? v.slice(0, 16).replace("T", " ") + " " + v.slice(19) : "";
 
@@ -120,8 +121,7 @@ function timetable(rule, changed) {
 // already typed, if any; save is given the definition.
 export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "Save schedule" } = {}) {
   const d = state?.definition || { message: draft, cost: 0, paused: false };
-  const text = h("textarea", { id: "schedule-message", class: "input", rows: 3, required: true });
-  text.value = d.message;
+  const run = runEditor(d, { prefix: "schedule" });
   const cost = h("input", { id: "schedule-cost", class: "input", type: "number", min: 0, max: 1000000000, step: "any", required: true, value: d.cost });
   const dayCost = h("input", { id: "schedule-day-cost", class: "input", type: "number", min: 0, max: 1000000000, step: "any", value: d.day_cost || 0 });
   const preview = h("div", { class: "schedule-preview", role: "status" });
@@ -130,7 +130,7 @@ export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "S
   const refresh = async () => {
     const version = ++revision;
     try {
-      const next = await conn.call("schedule.next", { ...value(), message: value().message || "Scheduled request" });
+      const next = await conn.call("schedule.next", { ...value(), ...(!value().program && !value().message ? { message: "Scheduled request" } : {}) });
       if (version === revision) {
         preview.replaceChildren(h("p", { class: "schedule-sentence" }, next.sentence), h("p", { class: "hint", title: `${next.timezone}: ${next.next_words.join(" · ")}` }, nextLine(next)));
         error.textContent = "";
@@ -138,14 +138,14 @@ export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "S
     } catch (e) { if (version === revision) preview.replaceChildren(h("p", { class: "hint" }, e.message)); }
   };
   const rule = timetable(state?.rule, () => refresh());
-  const value = () => ({ message: text.value, rule: rule.value(), cost: Number(cost.value), day_cost: Number(dayCost.value) || 0, paused: !!d.paused });
+  const value = () => ({ ...run.value(), rule: rule.value(), cost: Number(cost.value), day_cost: Number(dayCost.value) || 0, paused: !!d.paused });
   const submit = h("button", { type: "submit", class: "btn dark" }, submitLabel);
   const form = h("form", { class: "schedule-form", onsubmit: async (event) => {
     event.preventDefault(); submit.disabled = true;
     try { await save(value()); } catch (e) { error.textContent = e.message; }
     finally { submit.disabled = false; }
   } },
-  h("label", { for: "schedule-message" }, "Message for each run", text),
+  run.node,
   rule.node,
   h("div", { class: "schedule-row schedule-bounds" }, h("label", { for: "schedule-cost" }, "Spend limit per run ($; 0 means none)", cost), h("label", { for: "schedule-day-cost" }, "Spend limit per day ($; 0 means none)", dayCost)),
   h("p", { class: "hint" }, "Times are this computer's, and the daemon must be running. Runs use normal approvals. Missed times run once, late; busy tasks skip their time."), preview, error, submit);
@@ -208,7 +208,7 @@ export async function manageSchedule(conn, id, done) {
       const d = state.definition;
       body.replaceChildren(h("p", { class: "schedule-status" }, d ? `${d.paused ? "Paused" : state.archived ? "Archived" : "Scheduled"} · ${state.timezone}` : "No schedule"));
       if (d) {
-        body.append(h("p", { class: "schedule-sentence" }, state.sentence), h("p", {}, d.message), h("p", { class: "hint", title: state.next_words.length ? `${state.timezone}: ${state.next_words.join(" · ")}` : "" }, nextLine(state)));
+        body.append(h("p", { class: "schedule-sentence" }, state.sentence), d.program ? h("pre", { class: "scheme-preview", "aria-label": "Scheme program" }, schemeCode(d.program)) : h("p", {}, d.message), h("p", { class: "hint", title: state.next_words.length ? `${state.timezone}: ${state.next_words.join(" · ")}` : "" }, nextLine(state)));
         if (state.today?.runs || d.day_cost) body.append(h("p", { class: "hint", id: "schedule-today" }, state.today?.runs ? `Today: ${state.today.runs} run${state.today.runs === 1 ? "" : "s"} · ${usd(state.today.cost || 0)}${d.day_cost ? ` of ${usd(d.day_cost)} a day` : ""}` : `Up to ${usd(d.day_cost)} a day`));
         if (!state.scheduler) body.append(h("p", { class: "hint" }, "This daemon does not hold the scheduler lock."));
         body.append(h(

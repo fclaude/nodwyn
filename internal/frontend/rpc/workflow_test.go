@@ -57,6 +57,82 @@ func pullsWorkflow(f *forge.Forge, repo string) workflow.Definition {
 	}
 }
 
+// A program is the person's saved source; event text remains an attachment.
+// A program that asks no model cannot queue an earlier run's reply.
+func TestWorkflowSchemeProgramsKeepEventsAsDataAndUseOnlyTheirOwnAnswer(t *testing.T) {
+	f := forge.New("forge-token")
+	defer f.Close()
+	model := fake.NewT(t, fake.Turn{Content: "The message run's answer."}, fake.Turn{Content: "The program's own answer."})
+	defer model.Close()
+	s := schedulerServer(t, forgeOptions(t, f, model))
+	id, task := runAndWait(t, s, f, workflow.Then{Post: "review"})
+	holdsOne(t, s, id, 1)
+	change := func(program string) {
+		t.Helper()
+		d := pullsWorkflow(f, t.TempDir())
+		d.Message, d.Then = "", workflow.Then{Post: "review"}
+		raw, err := json.Marshal(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var definition map[string]any
+		if err := json.Unmarshal(raw, &definition); err != nil {
+			t.Fatal(err)
+		}
+		definition["program"] = program
+		raw, err = json.Marshal(map[string]any{"id": id, "definition": definition})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.mu.Lock()
+		_, rerr := s.workflowMethod(request{Method: "workflow.write", Params: raw}, &peer{actor: "test"})
+		s.mu.Unlock()
+		if rerr != nil {
+			t.Fatal(rerr.Message)
+		}
+	}
+	const source = `(display "Scheme ran") (+ 20 22)`
+	change(source)
+	f.Set("fc/nodwyn", forge.Pull{Number: 142, Title: "new commits", Body: `(error "event text was executed")`, Author: "ana", Head: "b2"})
+	s.pollWorkflows(context.Background(), time.Now().Add(4*time.Minute))
+	scheduleIdle(t, s, task)
+	deadline := time.Now().Add(5 * time.Second)
+	for state := flowState(t, s, id); state.LastSkip == nil || !strings.Contains(state.LastSkip.Reason, "no answer to post"); state = flowState(t, s, id) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the run never reported that it had no model answer: %+v", state)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if state := flowState(t, s, id); len(state.Outbox) != 1 || len(state.Fires) != 2 || state.Fires[1].Task != task {
+		t.Fatalf("the program posted a stale answer or lost its subject's task: %+v", state)
+	}
+	var result log.EvalResult
+	var evaluation log.EvalRequest
+	for _, ev := range taskEvents(t, s, task) {
+		if ev.Kind == log.KindEvalReq {
+			if err := ev.Decode(&evaluation); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if ev.Kind == log.KindEvalResult {
+			if err := ev.Decode(&result); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if evaluation.Source != source || evaluation.Actor != "workflow" || result.Value != "42" || result.Error != "" || len(model.Requests) != 1 {
+		t.Fatalf("evaluation %+v, result %+v, requests %d", evaluation, result, len(model.Requests))
+	}
+	change(`(add-message "Review the attached event.") (model-turn "control" '((tools . #f)))`)
+	f.Set("fc/nodwyn", forge.Pull{Number: 142, Title: "new commits", Author: "ana", Head: "b3"})
+	s.pollWorkflows(context.Background(), time.Now().Add(6*time.Minute))
+	scheduleIdle(t, s, task)
+	state := holdsOne(t, s, id, 2)
+	if state.Outbox[1].Body != "The program's own answer." || len(model.Requests) != 2 {
+		t.Fatalf("the program's model answer did not reach the outbox: %+v", state.Outbox)
+	}
+}
+
 // setWorkflow makes a workflow as the console does, on this computer.
 func setWorkflow(t *testing.T, s *server, d workflow.Definition) string {
 	t.Helper()

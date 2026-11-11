@@ -8,6 +8,7 @@ import { h, icon, oneLine, sizeOf, toolLabel, isMCP } from "./dom.js";
 import { markdown } from "./markdown.js";
 import { attachmentChip } from "./attach.js";
 import { limitsText } from "./limits.js";
+import { schemeCode } from "./runeditor.js";
 
 const readName = /(^|[-_/.])(read|list|find|grep|search|get|show|status|outline|log|diff|query|fetch|lookup|view|notes|events|info)([-_.]|$)/;
 const writes = new Set(["fs-write", "fs-edit", "doc-export"]);
@@ -624,9 +625,11 @@ export class Transcript {
         this.end();
         this.el.append(h("div", { class: "audit" }, `Run · turn ${p.number}`));
         break;
-      case "eval.req":
-        this.audit("You evaluated Scheme", p.source ?? p);
+      case "eval.req": {
+        const note = this.audit(p.actor === "workflow" || p.actor === "scheduler" ? "Workflow evaluated Scheme" : "You evaluated Scheme", undefined, "", true);
+        note.append(h("pre", { class: "scheme-preview" }, schemeCode(p.source || "")));
         break;
+      }
       case "eval.result":
         this.audit(p.error ? "Evaluation failed" : "Evaluation finished", p.error || p.value || "(no value)", p.error ? "bad" : "");
         break;

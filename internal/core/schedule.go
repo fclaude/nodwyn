@@ -3,9 +3,11 @@ package core
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"time"
 
+	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/schedule"
@@ -213,15 +215,8 @@ func (s *Session) SendScheduled(text string, run log.ScheduleRun) error {
 		return err
 	}
 	return s.startScheduledTurn(func(ctx context.Context) error {
-		if s.worktree != nil {
-			moved, err := catchUp(*s.worktree)
-			if err != nil {
-				_, _ = s.Record(log.KindNote, log.Note{Text: "The worktree could not be brought up to " + s.worktree.Base + ", so this run starts where the last one left it: " + err.Error()})
-			} else if moved != "" {
-				if _, err := s.Record(log.KindNote, log.Note{Text: "The worktree held no work, so it was brought up to " + s.worktree.Base + " at " + moved[:min(7, len(moved))] + ": this run starts from there."}); err != nil {
-					return err
-				}
-			}
+		if err := s.catchUpScheduledWorktree(); err != nil {
+			return err
 		}
 		// A note stands for the conversation only if it covers all of it: a
 		// run or a follow-up written after the note is in no note, and
@@ -237,6 +232,43 @@ func (s *Session) SendScheduled(text string, run log.ScheduleRun) error {
 		}
 		return s.turn(ctx, text, false, true)
 	}, &run)
+}
+
+// EvalScheduled runs the person's Scheme in the task's harness, with the
+// same run marker, approvals, budget and cancellation as a scheduled message.
+// Evaluation history stays out of model context, as with StartEval.
+func (s *Session) EvalScheduled(source string, run log.ScheduleRun) error {
+	if s.opts.Managed != nil {
+		return errors.New("managed: frontend evaluation is unavailable")
+	}
+	if err := s.scheduledApproval(); err != nil {
+		return err
+	}
+	return s.startScheduledTurn(func(ctx context.Context) error {
+		if err := s.catchUpScheduledWorktree(); err != nil {
+			return err
+		}
+		defer s.flushOutput()
+		_, err := s.recordEvaluation(source, run.Actor, func() (scheme.Value, error) {
+			return s.loop.EvalProgram(ctx, source)
+		})
+		return err
+	}, &run)
+}
+
+// Both kinds of run start from the current base when the worktree is clean.
+func (s *Session) catchUpScheduledWorktree() error {
+	if s.worktree == nil {
+		return nil
+	}
+	moved, err := catchUp(*s.worktree)
+	if err != nil {
+		_, _ = s.Record(log.KindNote, log.Note{Text: "The worktree could not be brought up to " + s.worktree.Base + ", so this run starts where the last one left it: " + err.Error()})
+	} else if moved != "" {
+		_, err = s.Record(log.KindNote, log.Note{Text: "The worktree held no work, so it was brought up to " + s.worktree.Base + " at " + moved[:min(7, len(moved))] + ": this run starts from there."})
+		return err
+	}
+	return nil
 }
 
 // isConversation says whether an event is part of what the model was told
@@ -263,7 +295,7 @@ func (s *Session) conversationAfter(seq uint64) bool {
 // cached prefix is still warm. It never replaces the current conversation.
 func (s *Session) prepareHandover(ctx context.Context) {
 	def := s.schedule.Load()
-	if def == nil || def.Paused {
+	if def == nil || def.Paused || def.Program != "" {
 		return
 	}
 	pending, err := s.PendingPrompts()

@@ -2885,6 +2885,9 @@
         "paused": {
           "type": "boolean"
         },
+        "program": {
+          "type": "string"
+        },
         "removed": {
           "type": "boolean"
         },
@@ -2906,7 +2909,6 @@
         }
       },
       "required": [
-        "message",
         "cost",
         "paused",
         "actor",
@@ -10298,6 +10300,9 @@
         "paused": {
           "type": "boolean"
         },
+        "program": {
+          "type": "string"
+        },
         "remove": {
           "type": "boolean"
         },
@@ -11487,6 +11492,9 @@
         "paused": {
           "type": "boolean"
         },
+        "program": {
+          "type": "string"
+        },
         "repeat": {
           "type": "string"
         },
@@ -11502,7 +11510,6 @@
         }
       },
       "required": [
-        "message",
         "cost",
         "paused"
       ],
@@ -13347,6 +13354,9 @@
         "paused": {
           "type": "boolean"
         },
+        "program": {
+          "type": "string"
+        },
         "removed": {
           "type": "boolean"
         },
@@ -13370,7 +13380,6 @@
         "name",
         "source",
         "every",
-        "message",
         "routing",
         "repo",
         "cost",
@@ -13417,6 +13426,9 @@
         "paused": {
           "type": "boolean"
         },
+        "program": {
+          "type": "string"
+        },
         "repo": {
           "type": "string"
         },
@@ -13437,7 +13449,6 @@
         "name",
         "source",
         "every",
-        "message",
         "routing",
         "repo",
         "cost",

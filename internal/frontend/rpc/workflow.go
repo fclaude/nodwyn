@@ -315,11 +315,17 @@ func (s *server) fire(id string, def workflow.Definition, state workflow.State, 
 		}
 		s.runs.add(task, pending)
 	}
-	if err := session.SendScheduled(def.Message, run); err != nil {
+	var startErr error
+	if def.Program != "" {
+		startErr = session.EvalScheduled(def.Program, run)
+	} else {
+		startErr = session.SendScheduled(def.Message, run)
+	}
+	if startErr != nil {
 		if watching {
 			s.runs.take(task)
 		}
-		return task, false, err
+		return task, false, startErr
 	}
 	return task, false, nil
 }
