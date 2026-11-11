@@ -24,6 +24,11 @@ class DesktopTest(unittest.TestCase):
             legacy = data / "applications/nodwyn.desktop"
             legacy.parent.mkdir(parents=True)
             legacy.write_text("[Desktop Entry]\nIcon=utilities-terminal\n")
+            # An earlier install left the console's square mark, which hicolor
+            # would choose over the tile.
+            stale = data / "icons/hicolor/scalable/apps/com.nodwyn.app.svg"
+            stale.parent.mkdir(parents=True)
+            stale.write_text("<svg/>")
             subprocess.run(["python3", str(ROOT / "scripts/install-desktop.py"),
                             str(binary), "--data-dir", str(data)], check=True)
             launcher = data / "applications/com.nodwyn.app.desktop"
@@ -39,11 +44,11 @@ class DesktopTest(unittest.TestCase):
             self.assertEqual(result.read_text(), "app")
             self.assertIn("Icon=com.nodwyn.app\n", launcher.read_text())
             self.assertEqual(legacy.read_text(), launcher.read_text() + "NoDisplay=true\n")
-            for size, source, extension in (("scalable", "icon.svg", "svg"),
-                                             ("512x512", "icon-512.png", "png")):
-                icon = data / f"icons/hicolor/{size}/apps/com.nodwyn.app.{extension}"
+            for size in ("512x512", "scalable"):
+                icon = data / f"icons/hicolor/{size}/apps/com.nodwyn.app.png"
                 self.assertEqual(icon.read_bytes(),
-                                 (ROOT / "internal/frontend/web/assets/icons" / source).read_bytes())
+                                 (ROOT / "packaging/linux/com.nodwyn.app.png").read_bytes())
+            self.assertFalse(stale.exists())
 
 
 if __name__ == "__main__":

@@ -134,8 +134,7 @@ def build(output, version=None, app=None):
         pack(output / LINUX_APP, {
             "nodwyn": native, "nodwyn-egress": binaries / "nodwyn-egress-linux-amd64",
             "share/applications/com.nodwyn.app.desktop": tree / "packaging/linux/com.nodwyn.app.desktop",
-            "share/icons/hicolor/scalable/apps/com.nodwyn.app.svg": tree / "internal/frontend/web/assets/icons/icon.svg",
-            "share/icons/hicolor/512x512/apps/com.nodwyn.app.png": tree / "internal/frontend/web/assets/icons/icon-512.png",
+            "share/icons/hicolor/512x512/apps/com.nodwyn.app.png": tree / "packaging/linux/com.nodwyn.app.png",
             "LINUX-DESKTOP.md": tree / "packaging/linux/README.md",
             "LICENSE": tree / "LICENSE", "NOTICE": tree / "NOTICE"}, epoch)
         # The runner executes the Linux amd64 build against the repository's fake model.

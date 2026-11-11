@@ -87,3 +87,20 @@ its OS hostname and effective account, displayed in the console header beside
 the execution daemon of a linked route; neither a URL nor a link alias proves
 identity. Existing authentication and socket ownership checks remain the gate.
 Native arm64 publication and automated GNOME dock acceptance are not built.
+
+## Amendment 2026-11-11: The Linux launcher shows the tile too
+
+The console's icon that the Linux launcher kept is a full-bleed dark square,
+right for a maskable web-app icon and wrong in a GNOME dock, where it sat
+beside rounded tiles as a black box. The launcher now installs
+`packaging/linux/com.nodwyn.app.png`: the 1024-pixel image of
+`packaging/macos/Nodwyn.icns`, cropped to its tile and shadow (the macOS grid
+leaves a fifth of the canvas empty, which a Linux dock does not expect) and
+scaled to 512 pixels. No scalable icon is installed, because the tile has no
+vector source and hicolor's `scalable/apps` wins over `512x512/apps` at the
+sizes a dock asks for. A distribution package drops the SVG. The installer
+removes the one an earlier run left in the person's data directory and puts
+the PNG in `scalable/apps` there as well, which GTK then chooses over the
+SVG of a system package that has not been updated (looked up with
+`Gtk.IconTheme` against such a package, at 32 to 256 pixels). The console
+and the website keep the square.

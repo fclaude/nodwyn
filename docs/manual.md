@@ -3497,11 +3497,12 @@ For operator recovery, `nodwyn-kids --profile PATH --revoke NAME` removes one na
 
 ## Desktop shortcut icon
 
-The native app uses the same cream **n** and blue dot as the console. On
+The native app's icon is a dark **n** and blue dot on a cream rounded tile, on
+macOS and on Linux. On
 macOS, pin `Nodwyn.app` from Applications. On Linux, run
 `python3 scripts/install-desktop.py /absolute/path/to/nodwyn` from the source
 checkout, then pin nodwyn from the application menu. This installs the
-launcher and icons for your account; see [the app](app.md#application-icon-and-linux-shortcuts)
+launcher and icon for your account; see [the app](app.md#application-icon-and-linux-shortcuts)
 for package paths and options.
 
 ## Office extraction cancellation

@@ -186,10 +186,11 @@ The native window carries the bundle's icon, a dark **n** and blue dot on a
 cream rounded tile drawn to the macOS icon grid; the Dock shows it while the
 app runs, whether started from `Nodwyn.app` or from `nodwyn app`. The macOS
 bundle includes `Nodwyn.icns`; move `Nodwyn.app` to Applications and pin that
-bundle in the Dock.
+bundle in the Dock. The Linux launcher shows the same tile, with less margin
+around it so that it is the size of its neighbours in a GNOME dock.
 
 On Linux, after building or installing nodwyn, install its application-menu
-entry and hicolor icons for your account:
+entry and hicolor icon for your account:
 
 ```sh
 python3 scripts/install-desktop.py /absolute/path/to/nodwyn
@@ -207,9 +208,12 @@ An existing per-user `nodwyn.desktop` is updated too, as a hidden alias for
 old pins, so the application menu shows only the new entry.
 
 Distribution packages can install `packaging/linux/com.nodwyn.app.desktop`
-in `share/applications`, and the console's `icons/icon.svg` and
-`icons/icon-512.png` as `com.nodwyn.app.svg` and `com.nodwyn.app.png` under
-`share/icons/hicolor/scalable/apps` and `share/icons/hicolor/512x512/apps`.
+in `share/applications`, and `packaging/linux/com.nodwyn.app.png` under
+`share/icons/hicolor/512x512/apps`. A package that installed the earlier
+`share/icons/hicolor/scalable/apps/com.nodwyn.app.svg` removes it: hicolor
+prefers it to the tile at most sizes. The installer puts the tile in your
+account's `scalable/apps` too, so it is shown even while a system package
+still carries the square.
 The native GTK application id and launcher id are both `com.nodwyn.app`, so
 Wayland can associate the window with the shortcut's icon.
 

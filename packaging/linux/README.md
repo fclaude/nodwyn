@@ -21,7 +21,10 @@ names or disable WebKit's sandbox. Package builders should generate shared
 library dependencies as well as declaring these requirements.
 
 Install the archive's `nodwyn` and `nodwyn-egress` to `/usr/bin` (0755),
-and its `share/` tree to `/usr/share` (files 0644). The desktop entry runs
+and its `share/` tree to `/usr/share` (files 0644). The icon is one 512-pixel
+PNG, `share/icons/hicolor/512x512/apps/com.nodwyn.app.png`; a package that
+shipped the earlier `scalable/apps/com.nodwyn.app.svg` must stop installing
+it, since hicolor prefers it to the PNG. The desktop entry runs
 `nodwyn app`; with `/usr/bin` on GNOME's PATH this is `/usr/bin/nodwyn app`.
 The application id, desktop basename, icon name and StartupWMClass are
 `com.nodwyn.app`. Do not set DBusActivatable: activation is handled by Wails.
@@ -35,7 +38,7 @@ gtk-update-icon-cache --force --ignore-theme-index /usr/share/icons/hicolor
 Run cache updates after removal too. Arch's standard desktop/icon hooks can
 supply these; avoid duplicate hooks. A source installation can instead run
 `python3 scripts/install-desktop.py /absolute/path/to/nodwyn` from the checkout.
-It installs per-user entries and icons and refreshes available caches.
+It installs per-user entries and the icon and refreshes available caches.
 
 Check for an overriding `~/.local/share/applications/com.nodwyn.app.desktop`
 and stale `nodwyn.desktop` before diagnosing the system package. Update its

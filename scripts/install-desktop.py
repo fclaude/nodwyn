@@ -27,14 +27,16 @@ def install(binary, data):
     command = command.replace("\\", "\\\\")
     entry = (ROOT / "packaging/linux/com.nodwyn.app.desktop").read_text()
     entry = entry.replace("Exec=nodwyn app", f'Exec="{command}" app')
-    destinations = (
-        ("scalable/apps/com.nodwyn.app.svg", "icon.svg"),
-        ("512x512/apps/com.nodwyn.app.png", "icon-512.png"),
-    )
-    for target, source in destinations:
-        target = data / "icons/hicolor" / target
+    icons = data / "icons/hicolor"
+    # Earlier installs and packages put the console's square mark in
+    # scalable/apps, which hicolor prefers to 512x512/apps at the sizes a dock
+    # asks for. The tile goes in both, so that this account's copy is chosen
+    # over a square that a system package still carries.
+    for size in ("512x512", "scalable"):
+        target = icons / size / "apps/com.nodwyn.app.png"
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ROOT / "internal/frontend/web/assets/icons" / source, target)
+        shutil.copyfile(ROOT / "packaging/linux/com.nodwyn.app.png", target)
+    (icons / "scalable/apps/com.nodwyn.app.svg").unlink(missing_ok=True)
     target = data / "applications/com.nodwyn.app.desktop"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(entry)

@@ -10,7 +10,7 @@ Every release has ten files:
 | File | What's in it |
 | --- | --- |
 | `Nodwyn-macos-universal.zip` | The macOS app, `Nodwyn.app`: Apple Silicon and Intel in one bundle, with its own window and icon, and the Linux egress proxies |
-| `nodwyn-linux-amd64-desktop.tar.gz` | The native GTK3/WebKitGTK 4.1 Linux x86-64 executable, egress proxy, desktop entry, hicolor icons and installation contract |
+| `nodwyn-linux-amd64-desktop.tar.gz` | The native GTK3/WebKitGTK 4.1 Linux x86-64 executable, egress proxy, desktop entry, hicolor icon and installation contract |
 | `nodwyn-linux-amd64.tar.gz` | The Linux x86-64 executable and its egress proxy, with `LICENSE` and `NOTICE` |
 | `nodwyn-linux-arm64.tar.gz` | The same for Linux ARM64 |
 | `nodwyn-darwin-amd64.tar.gz` | The macOS Intel executable, and a Linux x86-64 egress proxy |
