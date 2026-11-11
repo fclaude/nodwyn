@@ -49,13 +49,25 @@ jobs:
           test_scratch=$(mktemp -d "${TMPDIR:-$RUNNER_TEMP}/nodwyn-ci.XXXXXX")
           trap 'rm -rf -- "$test_scratch"' EXIT
           export TMPDIR="$test_scratch"
-          # CPU quotas do not limit sched_getaffinity; restrict the suite to
-          # two allowed CPUs so its sharder respects the runner's budget.
+          # A CPU quota does not limit sched_getaffinity, which the suite's
+          # sharder sizes itself from: the suite is confined to as many CPUs
+          # as the runner's cgroup quota allows, so it neither overruns the
+          # quota nor, as a fixed two did once the runners had four, leaves
+          # half of it idle. Without a readable quota it keeps two.
           set +e
           python3 - <<'PY'
-          import os
+          import math, os
+          def quota():
+              try:
+                  limit, period = open('/sys/fs/cgroup/cpu.max').read().split()
+              except (OSError, ValueError):
+                  return 2
+              return None if limit == 'max' else max(1, math.ceil(int(limit) / int(period)))
           cpus = sorted(os.sched_getaffinity(0))
-          os.sched_setaffinity(0, cpus[:2])
+          allowed = quota()
+          if allowed is not None:
+              os.sched_setaffinity(0, cpus[:allowed])
+          print(f'make accept on {len(os.sched_getaffinity(0))} of {len(cpus)} CPUs', flush=True)
           os.environ.pop('GOMAXPROCS', None)
           os.execlp('make', 'make', 'accept', 'GO_TEST_FLAGS=-count=1')
           PY

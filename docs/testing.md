@@ -31,8 +31,12 @@ another Alpine-based runner. That runner needs Bash, Git, Node, a C compiler,
 Python with `venv` and `pip`, Perl, `desktop-file-validate`, `gio`, and public
 HTTPS access. These tools are installed in the runner image ahead of the job.
 
-The Gitea check confines the sharded, uncached acceptance suite to two CPUs to
-fit a small runner. It does not run the browser checks or build the macOS app;
+The Gitea check confines the sharded, uncached acceptance suite to as many CPUs
+as the runner container's cgroup quota (`/sys/fs/cgroup/cpu.max`) allows, since
+the sharder sizes itself from the CPUs it may run on and a quota does not limit
+those; without a readable quota it uses two. Its log says how many it used. It
+was fixed at two until 2026-11-11, which left half of a four-CPU runner idle: the
+race suite took 407 s there, against 194 s on GitHub's four. It does not run the browser checks or build the macOS app;
 GitHub's CI runs those, and GitHub alone publishes the website and releases.
 
 ## Automatic platform settings
