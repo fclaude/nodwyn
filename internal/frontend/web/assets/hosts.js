@@ -225,7 +225,7 @@ export function renderHosts(root, ctx) {
         canLink && !adding ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "add-host", onclick: () => { adding = true; redraw(); document.getElementById("host-address")?.focus(); } }, icon("plus", 15), "Add a host")) : null,
         adding && canLink ? addHost(ctx, redraw) : null,
         h("section", { class: "stack-md", "aria-label": "Hosts" }, hosts.all().map(card)),
-        h("p", { class: "hint" }, "Linking makes this computer a device of the other host, named as you choose. That host decides what it may do: one invited by your device signed in there with your passkey makes your choices for its tasks and changes its settings and models here, unless that host refuses it, and one invited from its terminal answers. What a task may do without asking, its providers and the rest of its setup are changed in its own console, and it can unlink this computer there."),
+        h("p", { class: "hint" }, "Linking makes this computer a device of the other host. That host decides what it may do: one invited by your device signed in there with your passkey makes your choices for its tasks and changes its settings and models here, unless that host refuses it, and one invited from its terminal answers. What a task may do without asking, its providers and the rest of its setup are changed in its own console, and it can unlink this computer there."),
       ),
     ),
   );
@@ -254,19 +254,20 @@ function addHost(ctx, redraw) {
     return input;
   };
   const address = field("host-address", "address", { type: "url", required: true, placeholder: "https://workshop.example.net" });
-  const as = field("host-as", "as", { required: true, pattern: "[a-z0-9][a-z0-9._\\-]{0,31}", placeholder: "for example laptop" });
-  const name = field("host-name", "name", { pattern: "[a-z0-9][a-z0-9._\\-]{0,31}", placeholder: "for example workshop" });
+  const as = field("host-as", "as", { placeholder: "automatic" });
+  const name = field("host-name", "name", { placeholder: "for example workshop" });
   const invite = field("host-invite", "invite", { required: true, placeholder: "xxxx-xxxx-xxxx-xxxx-xxxx" });
   const error = h("p", { class: "error", role: "alert" });
   const submit = h("button", { type: "submit", class: "btn dark" }, "Link");
-  // The host's name defaults to the first part of its address's name.
+  // Names are identifiers, so leave room for a suffix when they collide.
+  const stem = (value, fallback) => value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 22) || fallback;
   const suggested = () => {
-    try {
-      const host = new URL(address.value.trim()).hostname;
-      return /^\d+(\.\d+){3}$/.test(host) ? "" : host.split(".")[0].toLowerCase();
-    } catch {
-      return "";
-    }
+    const host = new URL(address.value.trim()).hostname;
+    const base = stem(/^\d+(\.\d+){3}$/.test(host) || host.includes(":") ? "" : host.split(".")[0], "host");
+    const used = new Set(hosts.all().map((entry) => entry.name));
+    let candidate = base;
+    for (let n = 2; used.has(candidate); n++) candidate = `${base}-${n}`;
+    return candidate;
   };
   return h(
     "form",
@@ -277,13 +278,28 @@ function addHost(ctx, redraw) {
         event.preventDefault();
         error.textContent = "";
         const chosen = name.value.trim() || suggested();
+        const random = new Uint8Array(4);
+        crypto.getRandomValues(random);
+        const device = as.value.trim() || `${stem(conn.hello?.host || "", "computer")}-${Array.from(random, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+        const validName = /^[a-z0-9][a-z0-9._-]{0,31}$/;
+        if (!validName.test(device)) {
+          error.textContent = "Name this computer with up to 32 lower-case letters, digits, dots, underscores or dashes, starting with a letter or digit. For example, laptop or fc-tarro.";
+          as.focus();
+          return;
+        }
         if (!chosen) {
           error.textContent = "Name the host, for example workshop.";
+          name.focus();
+          return;
+        }
+        if (!validName.test(chosen)) {
+          error.textContent = "Name the other host with up to 32 lower-case letters, digits, dots, underscores or dashes, starting with a letter or digit.";
+          name.focus();
           return;
         }
         submit.disabled = true;
         try {
-          await conn.call("host.link", { name: chosen, address: address.value.trim(), as: as.value.trim(), invite: invite.value.trim() }, 30000);
+          await conn.call("host.link", { name: chosen, address: address.value.trim(), as: device, invite: invite.value.trim() }, 30000);
           for (const key of Object.keys(typed)) typed[key] = "";
           adding = false;
           toast(`Linked ${chosen}. Its tasks show in the sidebar under its name.`);
@@ -299,9 +315,10 @@ function addHost(ctx, redraw) {
     h("h2", {}, "Add a host"),
     h("p", { class: "hint" }, "On the other host, make an invitation: ", h("span", { class: "mono" }, "nodwyn devices invite"), " in its terminal, or Settings › Keys & devices in its console. One made by your device signed in there with your passkey lets this computer make your choices for that host's tasks and change its settings and models; one from its terminal lets it answer."),
     h("div", { class: "field" }, h("label", { for: "host-address" }, "The host's address"), address),
-    h("div", { class: "field" }, h("label", { for: "host-as" }, "This computer's name there"), as, h("p", { class: "hint" }, "What the host records each answer you give from here with.")),
-    h("div", { class: "field" }, h("label", { for: "host-name" }, "What to call the host here"), name, h("p", { class: "hint" }, "Lower-case letters, digits, dots or dashes; the first part of its address if left empty.")),
     h("div", { class: "field" }, h("label", { for: "host-invite" }, "Invitation"), invite, h("p", { class: "hint" }, "It is good once, for ten minutes.")),
+    h("details", {}, h("summary", {}, "Choose names (optional)"),
+      h("div", { class: "field" }, h("label", { for: "host-as" }, "Name for this computer on the other host"), as, h("p", { class: "hint" }, "Leave empty to choose one automatically. A chosen name must not already be paired there.")),
+      h("div", { class: "field" }, h("label", { for: "host-name" }, "Name for the other host here"), name, h("p", { class: "hint" }, "Leave empty to use its address. Both names use up to 32 lower-case letters, digits, dots, underscores or dashes, starting with a letter or digit."))),
     error,
     h("div", { class: "row-actions" }, submit, h("button", { type: "button", class: "btn ghost", onclick: () => { adding = false; redraw(); } }, "Cancel")),
   );

@@ -107,15 +107,51 @@ check(async () => {
   await page.click(".nav-link[href='#/hosts']");
   await page.waitForSelector("#hosts .host-card");
   await page.click("#add-host");
+  assert.strictEqual(await page.locator("#host-as").isVisible(), false, "names should be optional");
+  const autoInvite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
+  await page.fill("#host-address", remoteAddress);
+  await page.fill("#host-invite", autoInvite);
+  await page.click("#add-host-form button[type=submit]");
+  await page.waitForSelector("#hosts .host-card[data-host='host'] .host-state:has-text('ready')", { timeout: 20000 });
+  const automatic = of(sent.local, "host.link")[0];
+  assert.strictEqual(automatic.name, "host");
+  assert.match(automatic.as, /^[a-z0-9][a-z0-9._-]*-[0-9a-f]{8}$/);
+  assert.match(fs.readFileSync(`${workshop.root}/config/nodwyn/devices.toml`, "utf8"), new RegExp(`name = "${automatic.as}"`));
+  await page.click("#add-host");
+  const secondInvite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
+  await page.fill("#host-address", remoteAddress);
+  await page.fill("#host-invite", secondInvite);
+  await page.click("#add-host-form button[type=submit]");
+  await page.waitForSelector("#hosts .host-card[data-host='host-2'] .host-state:has-text('ready')", { timeout: 20000 });
+  const secondAutomatic = of(sent.local, "host.link")[1];
+  assert.notStrictEqual(secondAutomatic.as, automatic.as, "automatic device names collide");
+  for (const linked of ["host", "host-2"]) {
+    await page.click(`#unlink-${linked}`);
+    await page.click(`#unlink-${linked}-confirm`);
+    await until(`${linked} unlinked`, async () => (await page.locator(`#hosts .host-card[data-host='${linked}']`).count()) === 0);
+  }
+  const beforeManual = of(sent.local, "host.link").length;
+  await page.click("#add-host");
+  await page.click("#add-host-form summary");
   const invite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
   await page.fill("#host-address", remoteAddress);
   await page.fill("#host-as", "laptop");
   await page.fill("#host-name", "workshop");
   await page.fill("#host-invite", invite);
+  await page.fill("#host-as", "fc@tarro");
+  await page.click("#add-host-form button[type=submit]");
+  await shows(page, "#add-host-form [role=alert]", "Name this computer", "fc-tarro");
+  assert.strictEqual(of(sent.local, "host.link").length, beforeManual, "an invalid device name was sent");
+  await page.fill("#host-as", "laptop");
+  await page.fill("#host-name", "bad@host");
+  await page.click("#add-host-form button[type=submit]");
+  await shows(page, "#add-host-form [role=alert]", "Name the other host");
+  assert.strictEqual(of(sent.local, "host.link").length, beforeManual, "an invalid host name was sent");
+  await page.fill("#host-name", "workshop");
   await page.screenshot({ path: `${out}/add-host.png` });
   await page.click("#add-host-form button[type=submit]");
   await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('ready')", { timeout: 20000 });
-  assert.deepStrictEqual(of(sent.local, "host.link"), [{ name: "workshop", address: remoteAddress, as: "laptop", invite }], "Link sent");
+  assert.deepStrictEqual(of(sent.local, "host.link").slice(beforeManual), [{ name: "workshop", address: remoteAddress, as: "laptop", invite }], "Link sent");
   await shows(page, "#hosts .host-card[data-host='workshop']", "workshop", remoteAddress, "Linked as laptop", "Answers");
   const remoteDevices = fs.readFileSync(`${workshop.root}/config/nodwyn/devices.toml`, "utf8");
   assert.match(remoteDevices, /name = "laptop"[^[]*host = true/, "workshop's devices.toml has the laptop as another nodwyn");
@@ -320,10 +356,10 @@ check(async () => {
   // Unlink asks first, then forgets the link.
   await page.click("#unlink-workshop");
   await shows(page, "#hosts .host-card[data-host='workshop']", "Unlink workshop?");
-  assert.strictEqual(of(sent.local, "host.unlink").length, 0, "Unlink unlinked before it was confirmed");
+  assert.strictEqual(of(sent.local, "host.unlink").length, 2, "Unlink unlinked before it was confirmed");
   await page.click("#unlink-workshop-confirm");
   await until("workshop gone from Hosts", async () => (await page.locator("#hosts .host-card[data-host='workshop']").count()) === 0);
-  assert.deepStrictEqual(of(sent.local, "host.unlink"), [{ name: "workshop" }], "Unlink sent");
+  assert.deepStrictEqual(of(sent.local, "host.unlink").slice(2), [{ name: "workshop" }], "Unlink sent");
   assert.doesNotMatch(hostsFile(), /workshop/, "hosts.toml still names workshop");
   assert.doesNotMatch(fs.readFileSync(`${laptop.root}/config/nodwyn/bindings.toml`, "utf8"), /nodwyn-host-workshop/, "the token is still bound");
   assert.strictEqual(await page.locator(".nav-host").count(), 0, "the sidebar still groups by host with no link");
@@ -360,10 +396,14 @@ check(async () => {
   // Settings say the invitation is what to change.
   const plainInvite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
   await page.click("#add-host");
+  await page.click("#add-host-form summary");
   await page.fill("#host-address", `http://localhost:${port}`);
-  await page.fill("#host-as", "laptop");
+  await page.fill("#host-as", "phone");
   await page.fill("#host-name", "workshop");
   await page.fill("#host-invite", plainInvite);
+  await page.click("#add-host-form button[type=submit]");
+  await shows(page, "#add-host-form [role=alert]", "a device named phone is paired already");
+  await page.fill("#host-as", "laptop");
   await page.click("#add-host-form button[type=submit]");
   await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('ready')", { timeout: 20000 });
   await shows(page, "#hosts .host-card[data-host='workshop']", "Answers");
@@ -379,6 +419,7 @@ check(async () => {
   step("a terminal invitation at a localhost name: workshop's Settings say the invitation is what to change");
 
   await page.click("#add-host");
+  await page.click("#add-host-form summary");
   await page.fill("#host-address", `http://localhost:${port}`);
   await page.fill("#host-as", "laptop");
   await page.fill("#host-name", "workshop");

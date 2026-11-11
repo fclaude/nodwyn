@@ -1077,10 +1077,15 @@ name this computer has there and what it may do there.
 
 **Add a host** links this computer to another nodwyn. On the other host,
 make an invitation (`nodwyn devices invite` in its terminal, or Settings ›
-Keys & devices in its console); here, give the other console's address,
-this computer's name there (what it records your answers with, such as
-`laptop`), what to call the host here (`workshop`; the first part of its
-address if left empty) and the invitation. This computer's daemon pairs
+Keys & devices in its console); here, give the other console's address and
+the invitation. The form chooses a local host name from the address and a
+device name from this computer's host name with a random suffix; it chooses
+another local name if that one is already linked. **Choose names (optional)**
+offers both names for a person to supply instead. Both names start with a lower-case
+letter or digit and contain at most 32 lower-case letters, digits, dots,
+underscores or dashes. If the device name is already paired on the other host,
+choose another or revoke the old device there, then retry the invitation.
+This computer's daemon pairs
 with the other console as a device, and keeps the device's token in this
 computer's keychain, bound to the host's name: linking needs the keychain
 open, and the form offers to unlock or create it first. The token never
