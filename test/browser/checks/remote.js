@@ -83,7 +83,7 @@ check(async () => {
   assert.strictEqual(await page.$("#new-task-model-model"), null, "the phone is offered a model picker");
   // A task starts without limits on any screen (ADR 49, amended 2026-10-27).
   assert.strictEqual(await page.$("#new-task-limits"), null, "the phone is offered Limits on Home");
-  await shows(page, ".ask-bar .where", "demo");
+  await shows(page, ".ask-setup .where", "demo");
   await page.fill("#task", "The session list shows each session's first message. Make them easy to tell apart.");
   await page.click("button[aria-label='Start the task']");
   await page.waitForSelector(".ask-card .btn.accent", { timeout: 20000 });

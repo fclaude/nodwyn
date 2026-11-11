@@ -320,8 +320,27 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .ask textarea::placeholder, .reply textarea::placeholder { color: var(--faint-2); }
 .ask-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ask-bar .btn { background: var(--bg); border-color: var(--line); }
-.ask-bar .where { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-left: auto; }
-.ask-bar .where-why { font-size: 12px; white-space: nowrap; }
+.ask-bar .send-round { margin-left: auto; }
+/* Where the task runs and what it talks to: one strip, the same on every
+   host (home.js). Runs on and the model's fields are joined boxes of one
+   height; a host that offers no choice shows its model read only, in the
+   same place, and the picker's notes go under the whole strip. */
+.ask-setup { display: flex; flex-wrap: wrap; align-items: stretch; row-gap: 6px; min-width: 0; }
+.ask-setup .model-picker { display: contents; }
+.ask-setup .runs-on { flex: 0 1 240px; min-width: 150px; }
+.ask-setup .runs-on select { width: 100%; max-width: none; }
+.ask-setup .runs-on + .model-picker > .mp-controls { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.ask-setup .runs-on:has(+ .model-picker) { border-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ask-setup .mp-notes { padding: 0 2px; }
+.ask-setup .mp-fixed > span:first-child { display: block; }
+.ask-setup .mp-value { display: flex; align-items: center; gap: 12px; height: 24px; min-width: 0; }
+.ask-setup .mp-fixed .where { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--muted); }
+.ask-setup .where-why { flex-shrink: 0; font-size: 12.5px; white-space: nowrap; }
+.ask-setup .mp-fixed::after { display: none; }
+/* The focus ring is drawn inside a field, where it covers no label. */
+.ask-setup .runs-on select:focus-visible, .ask-setup .mp-select:focus-visible { outline: none; border-color: transparent; }
+.ask-setup .runs-on:has(select:focus-visible), .ask-setup .mp-field:has(select:focus-visible) { box-shadow: inset 0 0 0 2px var(--accent); }
+.ask-setup .mp-field:has(select:focus-visible) { border-radius: 9px; }
 .ask-hint { margin-top: -6px; }
 /* The rare choices behind one control: a count says how many are off their
    defaults (home.js). */
@@ -995,8 +1014,6 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .mp-note a { color: inherit; text-decoration: underline; }
 /* The model and Send are one group, pushed to the row's end, which wraps
    whole and narrows the model rather than leave Send on a row of its own. */
-.ask-go { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
-.ask-go .model-picker { flex: 0 1 auto; }
 /* The New task controls sit quietly beside the folder and attachment buttons. */
 /* Each field shown is a column of one row: the others as wide as what they
    say, the model the rest. The control grows with them: approvals beside the
@@ -1004,22 +1021,20 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
    The model keeps a floor: as a fraction it got only what the others left,
    and a judge with a long name among its options (a select is as wide as
    its widest option) left it none, its label under the effort's. */
-.ask-bar .mp-controls {
-  display: grid; grid-auto-flow: column; grid-template-columns: minmax(140px, 1fr); grid-auto-columns: auto; gap: 0;
-  width: 380px; max-width: 100%; padding: 3px 0; border-radius: 10px; background: var(--bg);
+.ask-setup .mp-controls {
+  display: grid; grid-auto-flow: column; grid-template-columns: minmax(140px, 1fr); grid-auto-columns: minmax(0, auto); gap: 0;
+  flex: 1 1 0; min-width: 0; max-width: 100%; padding: 0; border-radius: 10px; background: var(--bg);
 }
-.ask-bar .mp-controls:has(> .mp-field:not([hidden]) ~ .mp-field:not([hidden]) ~ .mp-field:not([hidden])) { width: 470px; }
-.ask-bar .mp-controls:has(> .mp-field:not([hidden]) ~ .mp-field:not([hidden]) ~ .mp-field:not([hidden]) ~ .mp-field:not([hidden])) { width: 590px; }
-.ask-bar .mp-field { position: relative; gap: 0; padding: 0 10px; font-weight: 500; letter-spacing: normal; line-height: 12px; }
-.ask-bar .mp-field + .mp-field { border-left: 1px solid var(--line); }
-.ask-bar .mp-field::after {
+.ask-setup .mp-field { position: relative; gap: 0; padding: 3px 10px; font-weight: 500; letter-spacing: normal; line-height: 12px; }
+.ask-setup .mp-field + .mp-field { border-left: 1px solid var(--line); }
+.ask-setup .mp-field::after {
   content: ""; position: absolute; right: 13px; bottom: 11px; width: 5px; height: 5px;
   border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); pointer-events: none;
 }
-.ask-bar .mp-field:has(select:disabled)::after { opacity: .4; }
-.ask-bar .mp-select { appearance: none; height: 24px; max-width: 100%; padding: 0 20px 0 0; text-overflow: ellipsis; cursor: pointer; }
-.ask-bar .mp-select:hover:not(:disabled) { background: var(--surface); }
-.ask-bar .mp-select:disabled { cursor: default; }
+.ask-setup .mp-field:has(select:disabled)::after { opacity: .4; }
+.ask-setup .mp-select { appearance: none; height: 24px; max-width: 100%; padding: 0 20px 0 0; text-overflow: ellipsis; cursor: pointer; }
+.ask-setup .mp-select:hover:not(:disabled) { background: var(--surface); }
+.ask-setup .mp-select:disabled { cursor: default; }
 .reply-opts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; }
 
 /* Settings › Models (models.js) */
@@ -1194,9 +1209,6 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .home.urgent .home-needs { order: -1; }
   /* Send stays on the first row, beside Attach and Options; the model
      takes the row under them, so their group dissolves. */
-  .ask-go { display: contents; }
-  .ask-bar .send-round { order: 2; margin-left: auto; }
-  .ask-bar .model-picker, .ask-bar .where, .ask-bar .where-why { order: 3; }
   /* The options open across the composer, not from the button's left edge. */
   .ask { position: relative; }
   .options { position: static; }
@@ -1240,7 +1252,6 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .ws-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); }
   .ws-row .end { grid-column: 2; margin-left: 0; justify-content: flex-start; }
   .ws-row .confirm-text { text-align: left; }
-  .ask-bar .model-picker { margin-left: 0; flex-basis: 100%; }
   .mp-select { max-width: 100%; }
   .mp-controls { width: 100%; }
   .mp-field { flex: 1 1 120px; }
@@ -1271,7 +1282,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   font-size: 11.5px; font-weight: 500; white-space: nowrap; vertical-align: middle;
 }
 .card-sub .host-chip, .finished .what .host-chip { margin-right: 6px; }
-/* Runs on is drawn like the model picker beside it (.ask-bar .mp-controls): the
+/* Runs on is drawn like the model picker beside it (.ask-setup .mp-controls): the
    same box, a CSS chevron over a native select, and the same hover and focus. */
 .runs-on { position: relative; display: flex; flex-direction: column; gap: 0; padding: 3px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); min-width: 0; line-height: 12px; }
 .runs-on-label { font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--faint); }
@@ -1315,6 +1326,11 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .host-actions { flex-wrap: wrap; }
 .host-actions .confirm-text { flex-basis: 100%; }
 @media (max-width: 760px) {
-  .ask-bar .runs-on { flex-basis: 100%; }
+  /* On a phone Runs on takes a row of its own, over the model's fields,
+     each box whole again. */
+  .ask-setup .runs-on { flex-basis: 100%; }
+  .ask-setup .runs-on:has(+ .model-picker) { border-right: 1px solid var(--line); border-radius: 10px; }
+  .ask-setup .runs-on + .model-picker > .mp-controls { border-radius: 10px; }
+  .ask-setup .mp-controls { flex-basis: 100%; }
   .runs-on select { max-width: 100%; }
 }

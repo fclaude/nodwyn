@@ -3266,7 +3266,12 @@ run it (ADR 54). The laptop links to the server once:
 The sidebar then groups the tasks under each host, with its state; each host
 starts folded, and its heading opens its folders (this browser remembers which
 you opened). Home's **Runs on** chooses the host a new task starts on, with that host's
-folders and model; the next task starts on the host chosen last. A task on the server says so in its heading; you answer
+folders and model; the next task starts on the host chosen last. Runs on and
+the model share one strip over **Attach**, **Options** and Send, in the same
+place on every host: a host whose model this window cannot choose shows it
+there, read only, with **Why can't I choose?**, and one that cannot be
+reached says *Not reachable*. A host's folders and models appear as soon as
+it answers, with the message you started typing kept. A task on the server says so in its heading; you answer
 it, message it and give it files from the laptop, and the server records the
 answers as the laptop's. A notice of the server's task opens it there.
 
@@ -3487,6 +3492,7 @@ daemon separately. These names come
 from the daemon handshake, independently of the browser address. A linked
 host that cannot be read has no handshake to name it: its Runs on option,
 and the line under the composer when it is chosen, say its state and the
-reason its link last closed with (for example `tarro · not reachable —
+reason its link last closed with, and its model's field says *Not
+reachable* rather than offer the models it last had (for example `tarro · not reachable —
 tarro cannot be reached: connection refused`). Native Linux
 release and package instructions are in [the Linux desktop contract](../packaging/linux/README.md).

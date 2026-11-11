@@ -25,6 +25,7 @@ let draft = "";
 let optionsOpen = false;
 let helpersOpen = false;
 let current = null;
+let drawnShape = ""; // what the composer on the page was built from (renderHome)
 let files = null; // the files chosen for the next task, kept across redraws
 let starting = false; // a start is in flight: one task per ask
 
@@ -300,10 +301,14 @@ export function renderHome(root, ctx) {
   // that dropped.
   const away = target.name && !conn.live ? awayLine(target) : "";
   const hint = away || (several ? `Enter starts the task on ${target.name || "this computer"} · Shift+Enter for a new line` : "Enter starts the task · Shift+Enter for a new line");
-  const where = away ? away : control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
+  // The line under the composer says why a host is away; the model's
+  // field only says that it is.
+  const where = away ? "Not reachable" : control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
   // This computer chooses where a task's content goes (ADR 30, ADR 40): a
   // paired device starts tasks on the default model and says which it is.
-  const canChoose = conn.has("session.model.set") && choicesOf(desk).length > 0;
+  // A host that cannot be read now offers no choice: what its desk last
+  // held is not what it would start a task on, nor are its warnings.
+  const canChoose = conn.live && conn.has("session.model.set") && choicesOf(desk).length > 0;
   const selection = () => pickedOf(target.name) || defaultSelection(desk);
   // The judge is chosen beside the model (ADR 47), on this computer only,
   // and only where there is a judge to choose.
@@ -437,11 +442,18 @@ export function renderHome(root, ctx) {
   // Startup finishes with a full redraw, but a passphrase already being
   // typed must stay in its masked field rather than move into the chat.
   const unlocking = locked && main?.querySelector("#keychain-pass")?.closest("form")?.contains(document.activeElement);
-  const keepTop = main && (ctx.keepTop || unlocking) && main.firstChild?.contains(document.activeElement);
+  // shape is what the top is built from, apart from what it patches in
+  // place below. A linked host's details arrive after Home is first drawn,
+  // with the message box already focused: kept, the top went on showing a
+  // composer built before they came, with no picker, no folders and no
+  // Options, until the person chose another host and back.
+  const settingUp = !desk.configured && ["settings.provider.write", "settings.model.write", "settings.control.write"].every((method) => conn.has(method));
+  const shape = JSON.stringify([entries.map((e) => e.name), target.name, conn.live, canStart, canChoose, canDelegate, canJudge, canAnswer, settingUp, locked, conn.has("worktree.open"), conn.has("schedule.set"), conn.has("session.model.set"), st.chosen, folders.slice(0, 7), desk.workspace(st.chosen)?.git]);
+  const keepTop = main && (unlocking || (ctx.keepTop && shape === drawnShape)) && main.firstChild?.contains(document.activeElement);
   if (keepTop) {
     main.classList.toggle("urgent", waiting.length > 0);
     main.replaceChild(grid, main.lastChild);
-    const label = main.querySelector(".ask-bar .where");
+    const label = main.querySelector(".ask-setup .where");
     if (label) label.textContent = where;
     // A host's connection comes and goes while Runs on or the message has
     // the focus: the options and the line under the composer say what it
@@ -708,26 +720,44 @@ export function renderHome(root, ctx) {
     h("label", { class: "sr-only", for: "task" }, "Describe the task"),
     task,
     files.list,
+    // Where the task runs and what it talks to are one row, the same on
+    // every host: Runs on, then the model's fields filling the rest. A host
+    // that offers no choice shows its model in the same box, read only, so
+    // the composer keeps its shape whichever host it starts on.
     h(
       "div",
-      { class: "ask-bar" },
-      attach,
-      options,
+      { class: "ask-setup" },
       runsOnPicker,
-      // The model and Send wrap to the next row together: wrapped on their
-      // own, Send could be left alone under Attach.
-      h(
-        "div",
-        { class: "ask-go" },
-        canChoose ? picker.el : h("span", { class: "where" }, where),
-        // A link that only answers on a linked host chooses no model there;
-        // without a word, the missing picker read as a fault.
-        target.name && conn.live && !conn.has("session.model.set")
-          ? h("a", { class: "where-why", id: "host-model-why", href: desk.at("settings"), title: `This computer only answers on ${target.name}: its Settings say how to make your choices there` }, "Why can't I choose?")
-          : null,
-        submit,
-      ),
+      canChoose
+        ? picker.el
+        : h(
+            "div",
+            { class: "model-picker" },
+            h(
+              "div",
+              { class: "mp-controls" },
+              h(
+                "div",
+                { class: "mp-field mp-fixed" },
+                h("span", {}, "Model"),
+                h(
+                  "span",
+                  { class: "mp-value" },
+                  h("span", { class: "where", title: where }, where),
+                  // A link that only answers on a linked host chooses no
+                  // model there; without a word, the missing picker read
+                  // as a fault. It is said in the field, so the strip
+                  // keeps its height.
+                  target.name && conn.live && !conn.has("session.model.set")
+                    ? h("a", { class: "where-why", id: "host-model-why", href: desk.at("settings"), title: `This computer only answers on ${target.name}: its Settings say how to make your choices there` }, "Why can't I choose?")
+                    : null,
+                ),
+              ),
+            ),
+          ),
     ),
+    // The files, the rare choices and Send: one row, Send at its end.
+    h("div", { class: "ask-bar" }, attach, options, submit),
     h("p", { class: "hint ask-hint", id: away ? "host-away-why" : null }, hint),
   );
   sync();
@@ -816,10 +846,9 @@ export function renderHome(root, ctx) {
   // The folders are the host's the task runs on.
   if (several) chips.append(h("span", { class: "hint work-in-host" }, target.name ? `Folders on ${target.name}` : "Folders on this computer"));
 
-  // The first run sets a model up with the forms of Settings › Models, which
-  // write a provider, a model and the default: all three are this computer's.
-  const settingUp = !desk.configured && ["settings.provider.write", "settings.model.write", "settings.control.write"].every((method) => conn.has(method));
-  // The forms ask the daemon and draw again when it answers: a page left
+  // The first run (settingUp) sets a model up with the forms of Settings ›
+  // Models, which write a provider, a model and the default: all three are
+  // this computer's. The forms ask the daemon and draw again when it answers: a page left
   // meanwhile is not drawn over.
   const redrawSetup = () => {
     if (root.querySelector("#first-model")) renderHome(root, { ...ctx, keepTop: false });
@@ -850,10 +879,13 @@ export function renderHome(root, ctx) {
   // The composer on the page is this one now.
   files.onChange = sync;
   // Setting a model up is typed into, and any change on the desk draws the
-  // page again: the field being typed in keeps the focus, as in Settings.
-  const focused = settingUp && root.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
+  // page again; the composer is drawn again under the message being typed
+  // when what it offers changes. The field being typed in keeps the focus,
+  // as in Settings.
+  const focused = root.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
   const typing = focused ? { id: focused.id, start: focused.selectionStart, end: focused.selectionEnd } : null;
   root.replaceChildren(h("main", { class: waiting.length ? "home urgent" : "home" }, top, grid));
+  drawnShape = shape;
   if (typing) {
     const node = document.getElementById(typing.id);
     node?.focus({ preventScroll: true });

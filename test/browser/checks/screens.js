@@ -65,28 +65,31 @@ check(async () => {
     assert.strictEqual(picker.fields, 2, "the picker is not the model and the approvals");
     assert.strictEqual(picker.divider, "1px", "the approvals are not divided from the model");
     assert.ok(await page.$eval("#new-task-model-effort", (el) => el.closest(".mp-field").hidden), "the effort field is not hidden");
-    // The composer's bar holds the files, the options, the model and Send:
-    // the rare choices wait behind Options, which opens on its own.
-    const bar = await page.$eval(".ask-bar", (el) => [...el.children].flatMap((c) => (c.classList.contains("ask-go") ? [...c.children] : [c])).filter((c) => c.offsetParent !== null).length);
-    assert.strictEqual(bar, 4, "the composer's bar holds more than the files, the options, the model and Send");
-    // However wide the bar, Send is on the model's row: wrapped on its own,
-    // it was left alone under Attach where the model just fitted beside
-    // Options and Send did not. A phone puts Send on the first row and the
-    // model under it, on purpose.
-    const alone = page.viewportSize().width <= 760 ? [] : await page.evaluate(() => {
-      const bar = document.querySelector(".ask-bar");
+    // The model's strip is a row of its own over the composer's bar, which
+    // holds the files, the options and Send: the rare choices wait behind
+    // Options, which opens on its own.
+    const bar = await page.$eval(".ask-bar", (el) => [...el.children].filter((c) => c.offsetParent !== null).length);
+    assert.strictEqual(bar, 3, "the composer's bar holds more than the files, the options and Send");
+    // However wide the composer, Send ends Attach's row, under the model's
+    // strip, and neither overflows: the bar's shape does not depend on how
+    // many fields the model has.
+    const alone = await page.evaluate(() => {
+      const form = document.querySelector("form.ask");
+      const strip = form.querySelector(".ask-setup");
+      const bar = form.querySelector(".ask-bar");
       const send = bar.querySelector(".send-round");
-      const model = bar.querySelector("#new-task-model");
+      const attach = bar.querySelector(".btn");
       const middle = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
       const widths = [];
       for (let width = 320; width <= 1000; width += 2) {
-        bar.style.width = `${width}px`;
-        if (Math.abs(middle(send) - middle(model)) > 10 || bar.scrollWidth > bar.clientWidth) widths.push(width);
+        form.style.width = `${width}px`;
+        const right = bar.getBoundingClientRect().right - send.getBoundingClientRect().right;
+        if (Math.abs(middle(send) - middle(attach)) > 2 || right > 1 || send.getBoundingClientRect().top < strip.getBoundingClientRect().bottom || strip.scrollWidth > strip.clientWidth || bar.scrollWidth > bar.clientWidth) widths.push(width);
       }
-      bar.style.width = "";
+      form.style.width = "";
       return widths;
     });
-    assert.deepStrictEqual(alone, [], "Send leaves the model's row, or the bar overflows, at these widths");
+    assert.deepStrictEqual(alone, [], "Send leaves the end of Attach's row, or a row overflows, at these widths");
     assert.ok(!(await page.$eval("#new-task-options", (el) => el.open)), "Options starts open");
     assert.ok(picker.contained, "the dropdowns extend outside their paired control");
     // With no judge set up, the judge alone refuses every command, and the
@@ -96,8 +99,9 @@ check(async () => {
     await page.selectOption("#new-task-model-commands", "judge");
     await page.waitForSelector("#new-task-model .mp-notes", { state: "hidden" });
     await page.focus("#new-task-model-model");
-    const focus = await page.$eval("#new-task-model-model", (el) => ({ visible: el.matches(":focus-visible"), outline: getComputedStyle(el).outlineStyle }));
-    assert.ok(focus.visible && focus.outline !== "none", "the model has no visible keyboard focus");
+    // The ring is drawn inside the model's field, where it covers no label.
+    const focus = await page.$eval("#new-task-model-model", (el) => ({ visible: el.matches(":focus-visible"), ring: getComputedStyle(el.closest(".mp-field")).boxShadow }));
+    assert.ok(focus.visible && /inset/.test(focus.ring), "the model has no visible keyboard focus");
     await page.keyboard.press("Tab");
     // The synthetic world's model takes no effort, so Tab skips that disabled control.
     assert.ok(await page.$eval("#new-task-model-effort", (el) => el.disabled), "the model with no efforts should leave effort disabled");

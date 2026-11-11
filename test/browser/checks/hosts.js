@@ -149,7 +149,7 @@ check(async () => {
   const newTaskFile = `${laptop.root}/config/nodwyn/new-task.toml`;
   await until("the daemon to keep Runs on", () => fs.existsSync(newTaskFile) && /runs_on = "workshop"/.test(fs.readFileSync(newTaskFile, "utf8")));
   await page.waitForSelector(".work-in-host:has-text('Folders on workshop')");
-  await shows(page, ".ask-bar .where", workshop.modelHost);
+  await shows(page, ".ask-setup .where", workshop.modelHost);
   // A device that answers on workshop chooses no model there, as a paired phone does not.
   assert.strictEqual(await page.locator("#new-task-model-model").count(), 0, "the laptop is offered workshop's model picker");
   // It says why, and the link opens workshop's Settings, which say how to change it.
@@ -237,6 +237,50 @@ check(async () => {
   assert.strictEqual(context.pages().length, 1, "the worker opened a second window beside the console");
   await page.click("a.new-task");
   step("opening the notice opens workshop's task");
+
+  // Home drawn before workshop's details arrive, with the message box
+  // focused, is drawn again when they come, the message kept: kept as it
+  // was, it showed none of workshop's folders until the person chose
+  // another host and back.
+  await page.selectOption("#runs-on", "workshop");
+  await page.waitForSelector(".work-in-host:has-text('Folders on workshop')");
+  let holding = true;
+  await page.routeWebSocket(/[?&]host=workshop/, (ws) => {
+    const server = ws.connectToServer();
+    server.onMessage((message) => setTimeout(() => ws.send(message), holding ? 1500 : 0));
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.activeElement?.id === "task");
+  await page.keyboard.type("half a thought");
+  await page.waitForSelector(".nav-host[data-host='workshop'] .host-head:has-text('ready')", { timeout: 20000 });
+  holding = false;
+  await page.waitForSelector("#work-in button.chip:has-text('work')");
+  await shows(page, ".ask-setup .where", workshop.modelHost);
+  assert.deepStrictEqual(await page.evaluate(() => [document.activeElement?.id, document.querySelector("#task").value]), ["task", "half a thought"], "the message box lost the focus or the message when workshop answered");
+  await page.fill("#task", "");
+  // Runs on and the model are one strip, in the same place and of the same
+  // height whichever host is chosen, and Send ends the row under it.
+  const strip = () =>
+    page.evaluate(() => {
+      const box = (el) => el.getBoundingClientRect();
+      const s = box(document.querySelector(".ask-setup"));
+      const runs = box(document.querySelector(".ask-setup .runs-on"));
+      const model = box(document.querySelector(".ask-setup .mp-controls"));
+      const send = box(document.querySelector(".ask-bar .send-round"));
+      const attach = box(document.querySelector(".ask-bar .btn"));
+      return { top: s.top, left: s.left, width: s.width, runs: runs.height, model: model.height, oneRow: Math.abs(runs.top - model.top) < 1, sendBelow: send.top >= s.bottom, sendBesideAttach: Math.abs(send.top + send.height / 2 - (attach.top + attach.height / 2)) < 2 };
+    });
+  const there = await strip();
+  await page.screenshot({ path: `${out}/home-workshop.png` });
+  step("Home drawn before workshop answers shows workshop's folders and model once it does, the message kept");
+  await page.selectOption("#runs-on", "");
+  await page.waitForSelector(".work-in-host:has-text('Folders on this computer')");
+  await page.waitForSelector("#new-task-model .mp-controls");
+  const here = await strip();
+  await page.screenshot({ path: `${out}/home-here.png` });
+  assert.deepStrictEqual(here, there, "the composer changes shape between workshop and this computer");
+  assert.ok(here.oneRow && here.runs === here.model && here.sendBelow && here.sendBesideAttach, `the composer's rows are out of place: ${JSON.stringify(here)}`);
+  step("the composer keeps one shape on either host");
 
   // A host starts folded, its folders away and its state in view; its
   // heading opens it, and this browser remembers it across a reload. This
@@ -518,6 +562,10 @@ check(async () => {
   assert.match(awayOption.title, /^workshop cannot be reached: /, "Runs on's option has no reason in its title");
   assert.ok(!awayOption.text.includes("identity unavailable"), "Runs on names an identity it cannot read");
   assert.ok(await page.locator("button.send-round[disabled]").count(), "a task can be started on a host that is not reachable");
+  // Its model's field says it is not reachable, in the strip's place: the
+  // picker workshop's desk last held, with its warnings, is not offered.
+  await shows(page, ".ask-setup .where", "Not reachable");
+  assert.strictEqual(await page.locator("#new-task-model-model").count(), 0, "a host that is not reachable offers the model it last had");
   await page.screenshot({ path: `${out}/runs-on-away.png` });
   await page.selectOption("#runs-on", "");
   await page.evaluate((hash) => (location.hash = hash), onSettings);
