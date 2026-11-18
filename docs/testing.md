@@ -31,17 +31,15 @@ another Alpine-based runner. That runner needs Bash, Git, Node, a C compiler,
 Python with `venv` and `pip`, Perl, `desktop-file-validate`, `gio`, and public
 HTTPS access. These tools are installed in the runner image ahead of the job.
 
-The Gitea check confines the sharded, uncached acceptance suite to as many CPUs
-as the runner container's cgroup allows, since the sharder starts a
-race-enabled test process for each CPU it may run on and a quota does not limit
-those: no more than its CPU quota (`/sys/fs/cgroup/cpu.max`), and no more than
-its memory limit (`memory.max`) holds at 1.5 GiB a process. Without a readable
-CPU quota it uses two. Its log says how many it used. It was fixed at two until
-2026-11-11, which left half of a four-CPU runner idle: the race suite took 407 s
-there, against 194 s on GitHub's four. Sized by CPUs alone on an eight-CPU,
-8 GiB runner, a race-enabled `core.test` of 1.26 GB was killed for want of
-memory; the memory limit holds that runner to five. It does not run the browser checks or build the macOS app;
-GitHub's CI runs those, and GitHub alone publishes the website and releases.
+The Gitea check caps CPU affinity by the CPU quota (`/sys/fs/cgroup/cpu.max`),
+falling back to at most two CPUs when the quota cannot be read. It sets
+`NODWYN_TEST_JOBS` from `memory.max` by budgeting 3 GiB per concurrent shard
+and reserving 2 GiB for the other packages, runner and file cache. On an eight-CPU, 8 GiB
+runner, the core suite is split into eight shards and runs up to two at once.
+The kernel killed `core.test` when five shards ran together on 2026-11-17. A
+local attempt with three larger shards also hit the 8 GiB limit.
+GitHub runs the browser checks and builds the macOS app. It also publishes
+the website and releases.
 
 ## Automatic platform settings
 
@@ -57,8 +55,9 @@ up to 4, each bounded by available logical CPUs. Each worker's GOMAXPROCS is
 `max(2, logical_CPUs / package_workers)`. Remaining packages use ordinary Go
 package scheduling. Hot test processes run through a queue capped at the logical CPU count
 (minimum 2, maximum 32 concurrent processes); Go still schedules the remaining
-packages normally. This avoids flooding a laptop and overrunning short
-application deadlines. These are worker budgets, not CPU affinity limits.
+packages normally. Set `NODWYN_TEST_JOBS` to a positive integer to lower the
+queue limit while keeping the same shard sizes. The queue limit prevents
+oversubscription and helps tests meet short application deadlines.
 Explicit runtime settings are respected as described below.
 
 Committed scheduling hints are selected by Go target OS/architecture

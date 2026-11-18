@@ -97,3 +97,17 @@ agents receive this environment automatically through the normal commands.
 This adds ephemeral OS resources, not a daemon or persistent workstation policy.
 The measured integration includes allocation and cleanup time; it does not
 claim the earlier pre-mounted RAM timings as automatic-command timings.
+
+## Amendment 2026-11-17: bound concurrent shards independently
+
+The 8 GiB Gitea runner killed a core race-test process in both attempts for
+`c6681292` with five shards running together. Reducing CPU affinity also puts
+more tests in each shard. In an 8 GiB local cgroup, one of three larger core
+shards reached over 3 GiB of resident anonymous memory before the kernel killed
+it.
+
+Keep CPU affinity as the input to partitioning. A positive `NODWYN_TEST_JOBS`
+can lower the sharded runner's queue limit. Gitea derives this limit from its
+memory cgroup independently of its CPU quota, leaving 2 GiB for the runner,
+the other packages and the file cache. It allows two concurrent shards on
+the 8 GiB runner.

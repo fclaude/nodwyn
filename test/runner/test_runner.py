@@ -88,7 +88,7 @@ class RunnerTests(unittest.TestCase):
         self.env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ["PATH"],
                         FAKE_ROOT=str(self.repo), FAKE_EVENTS=str(self.events), TMPDIR=str(self.root),
                         NODWYN_TEST_RAM="off")
-        for key in ["GOFLAGS", "GOMAXPROCS", "GOOS", "GOARCH", "NODWYN_TEST_MODE"]:
+        for key in ["GOFLAGS", "GOMAXPROCS", "GOOS", "GOARCH", "NODWYN_TEST_MODE", "NODWYN_TEST_JOBS"]:
             self.env.pop(key, None)
 
     def run_command(self, *args, mode=""):
@@ -258,12 +258,19 @@ class RunnerTests(unittest.TestCase):
         self.assertCountEqual([n for group in groups for n in group], ["TestNew", "TestHeavy", "TestFast"])
 
     def test_small_hosts_bound_concurrent_hot_processes(self):
-        directory = self.root/"limited"
+        self.check_worker_limit(cpu_count=2, expected_limit=2, expected_core_shards=2)
+
+    def test_memory_budget_limits_concurrency_without_enlarging_shards(self):
+        self.env["NODWYN_TEST_JOBS"] = "1"
+        self.check_worker_limit(cpu_count=4, expected_limit=1, expected_core_shards=4)
+
+    def check_worker_limit(self, cpu_count, expected_limit, expected_core_shards):
+        directory = self.root / "limited"
         directory.mkdir()
         supervisor = runner.Supervisor(directory)
         try:
             runner.run_suite(self.repo, supervisor, dict(self.env, FAKE_MODE="slow-workers"),
-                             runner.profile_name(), 2, {})
+                             runner.profile_name(), cpu_count, {})
         finally:
             supervisor.close()
         live = set()
@@ -275,7 +282,9 @@ class RunnerTests(unittest.TestCase):
             elif event["kind"] == "worker-end":
                 live.remove(event["pid"])
         self.assertEqual(live, set())
-        self.assertLessEqual(peak, 2)
+        self.assertLessEqual(peak, expected_limit)
+        manifest = json.loads((directory / "manifest.json").read_text())
+        self.assertEqual(len(manifest["packages"]["internal/core"]["groups"]), expected_core_shards)
 
     def test_cleanup_never_adopts_a_reused_process_id(self):
         for identity in [("old start", "old command"), None]:

@@ -402,6 +402,12 @@ class Supervisor:
 
 
 def run_suite(root, supervisor, env, profile, cpu_count, weights, race=False):
+    hot_limit = max(2, min(32, cpu_count))
+    if "NODWYN_TEST_JOBS" in env:
+        requested = int(env["NODWYN_TEST_JOBS"])
+        if requested < 1:
+            raise ValueError("NODWYN_TEST_JOBS must be a positive integer")
+        hot_limit = min(hot_limit, requested)
     race_flags = ["-race"] if race else []
     listing = supervisor.start("packages", ["go", "list", "-json", "./..."], root, env, capture=True)
     packages = list(json_stream(supervisor.wait(listing)))
@@ -420,7 +426,6 @@ def run_suite(root, supervisor, env, profile, cpu_count, weights, race=False):
         build = supervisor.start("compile", ["go", "test", *race_flags, "-c", "-o", str(binaries) + os.sep,
                                                *["./" + path for path in hot]], root, env)
         supervisor.wait(build)
-    hot_limit = max(2, min(32, cpu_count))
     manifest = {"hot_process_limit": hot_limit, "profile": profile, "race": race, "logical_cpus": cpu_count, "packages": {}}
     for path, count in hot.items():
         binary = binaries / (path.rsplit("/", 1)[-1] + ".test")

@@ -51,11 +51,10 @@ jobs:
           export TMPDIR="$test_scratch"
           # A CPU quota does not limit sched_getaffinity, which the suite's
           # sharder sizes itself from, starting one race-enabled test process
-          # per CPU. The suite is confined to as many CPUs as the runner's
-          # cgroup allows: no more than its CPU quota, and no more than its
-          # memory limit holds at 1.5 GiB a process (a race-enabled core.test
-          # reached 1.26 GB, and eight of them in 8 GiB were killed for want
-          # of memory). Without a readable CPU quota it keeps two.
+          # per CPU. Cap affinity by the CPU quota, then limit how many
+          # shards can run together without making each shard larger.
+          # Reserve 2 GiB for the other packages, runner and file cache,
+          # then budget 3 GiB per concurrent shard for the race runtime.
           set +e
           python3 - <<'PY'
           import math, os
@@ -65,17 +64,23 @@ jobs:
               except (OSError, ValueError):
                   return 2
               return None if limit == 'max' else max(1, math.ceil(int(limit) / int(period)))
-          def memory_quota():
+          def memory_jobs():
               try:
                   limit = open('/sys/fs/cgroup/memory.max').read().strip()
               except OSError:
                   return None
-              return None if limit == 'max' else max(1, int(limit) // (3 << 29))
+              if limit == 'max':
+                  return None
+              return max(1, (int(limit) - (2 << 30)) // (3 << 30))
           cpus = sorted(os.sched_getaffinity(0))
-          limits = [n for n in (cpu_quota(), memory_quota()) if n is not None]
-          if limits:
-              os.sched_setaffinity(0, cpus[:min(limits)])
+          quota = cpu_quota()
+          if quota is not None:
+              os.sched_setaffinity(0, cpus[:quota])
           print(f'make accept on {len(os.sched_getaffinity(0))} of {len(cpus)} CPUs', flush=True)
+          jobs = memory_jobs()
+          if jobs is not None:
+              os.environ['NODWYN_TEST_JOBS'] = str(jobs)
+              print(f'memory limit allows {jobs} concurrent shards', flush=True)
           os.environ.pop('GOMAXPROCS', None)
           os.execlp('make', 'make', 'accept', 'GO_TEST_FLAGS=-count=1')
           PY
