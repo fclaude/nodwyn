@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -9,6 +10,145 @@ import (
 	"testing"
 	"time"
 )
+
+// Terminal invitations authorise a computer directly; restricted invitations
+// cannot acquire owner access merely by claiming to be another nodwyn.
+func TestTerminalInvitationsAuthoriseComputerLinks(t *testing.T) {
+	for _, owner := range []bool{true, false} {
+		t.Run(map[bool]string{true: "owner", false: "tasks-only"}[owner], func(t *testing.T) {
+			devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
+			invite, _, err := devices.Invite(Terminal, owner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			token, err := devices.Link(invite, "laptop", true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			device, ok := devices.Check(token)
+			if !ok {
+				t.Fatal("the new link was not paired")
+			}
+			b := &bridge{devices: devices, tls: true}
+			r := httptest.NewRequest("GET", "https://workshop.example/socket", nil)
+			c := b.callerOf(r, device)
+			if got := b.allowed("session.model.set", c); got != owner {
+				t.Fatalf("model access = %v, want %v", got, owner)
+			}
+			if got := b.allowed("settings.write", c); got != owner {
+				t.Fatalf("settings access = %v, want %v", got, owner)
+			}
+			for _, method := range []string{"settings.provider.write", "credentials.add", "trust.set", "devices.authorise"} {
+				if b.access(method, c) != refused {
+					t.Errorf("a computer link acquired sensitive method %s", method)
+				}
+			}
+		})
+	}
+	// A browser's name can be terminal too; its grant must remain bound to
+	// the actual passkey rather than becoming an independent terminal grant.
+	t.Run("passkey-device-named-terminal", func(t *testing.T) {
+		devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
+		first, _, err := devices.Invite(Terminal, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := devices.Register(first, "terminal", Passkey{ID: "terminal", PublicKey: "unused"}); err != nil {
+			t.Fatal(err)
+		}
+		invite, _, err := devices.InviteAsPerson("terminal", "terminal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		token, err := devices.Link(invite, "laptop", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		device, ok := devices.Check(token)
+		if !ok || device.Passkey != "terminal" {
+			t.Fatalf("the authorising passkey was lost: %+v", device)
+		}
+		raw, err := json.Marshal(device)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), `"owner":true`) {
+			t.Fatal("a browser named terminal acquired an independent owner grant")
+		}
+	})
+}
+
+// An owner invitation cannot be silently downgraded or consumed on an unsafe
+// transport; retrying it over https must still work.
+func TestOwnerInvitationRequiresSecureTransport(t *testing.T) {
+	devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
+	invite, _, err := devices.Invite(Terminal, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := devices.Link(invite, "laptop", false); err == nil || !strings.Contains(err.Error(), "https") {
+		t.Fatalf("owner invitation over an unsafe transport: %v", err)
+	}
+	if _, err := devices.Link(invite, "laptop", true); err != nil {
+		t.Fatalf("the refused attempt consumed the invitation: %v", err)
+	}
+}
+
+// Existing links retain their token and pairing date when the person confirms
+// owner access, and lose a passkey-backed grant if that passkey is removed.
+func TestAuthoriseAnExistingComputerLink(t *testing.T) {
+	devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
+	first, _, err := devices.Invite(Terminal, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	phoneToken, err := devices.Register(first, "phone", Passkey{ID: "phone", PublicKey: "unused"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	phone, ok := devices.Check(phoneToken)
+	if !ok {
+		t.Fatal("the authorising phone was not paired")
+	}
+	invite, _, err := devices.Invite(Terminal, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := devices.Link(invite, "laptop", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := devices.Check(token)
+	b := &bridge{devices: devices, tls: true}
+	if b.access("devices.authorise", caller{local: true}) != refused || b.access("devices.authorise", caller{person: true}) != needsTouch || b.access("devices.authorise", caller{person: true, touched: true}) != granted {
+		t.Fatal("authorising a link must require a passkey confirmation")
+	}
+	if _, err := b.deviceMethod(request{Method: "devices.authorise", Params: json.RawMessage(`{"name":"laptop"}`)}, phone, caller{person: true, touched: true}); err != nil {
+		t.Fatal(err)
+	}
+	after, ok := devices.Check(token)
+	if !ok || before.Hash != after.Hash || !before.Paired.Equal(after.Paired) || after.Passkey != "phone" {
+		t.Fatalf("authorisation replaced the link: before %+v, after %+v", before, after)
+	}
+	r := httptest.NewRequest("GET", "https://workshop.example/socket", nil)
+	if !b.allowed("settings.write", b.callerOf(r, after)) {
+		t.Fatal("the authorised link still cannot change settings")
+	}
+	backup, _, err := devices.Invite(Terminal, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := devices.Register(backup, "backup", Passkey{ID: "backup", PublicKey: "unused"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := devices.RemovePasskey("phone"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ = devices.Check(token)
+	if b.allowed("settings.write", b.callerOf(r, after)) {
+		t.Fatal("a removed passkey still authorises the link")
+	}
+}
 
 // join pairs a device named name with a plain invitation from the terminal
 // and returns its token.

@@ -51,7 +51,14 @@ type Device struct {
 	// Host says the device is another nodwyn linked to this one (ADR 54),
 	// not a browser. It cannot touch a passkey, so it is offered no setup.
 	Host bool `toml:"host,omitempty" json:"host,omitempty"`
+	// Owner is a terminal's explicit grant to a linked computer. It does not
+	// expire when a passkey is removed, and never grants a passkey touch.
+	Owner bool `toml:"owner,omitempty" json:"owner,omitempty"`
 }
+
+// person reports authority to manage tasks; only linked computers may hold
+// a terminal's owner grant, so it cannot promote an ordinary browser.
+func (d Device) person() bool { return d.Passkey != "" || d.Host && d.Owner }
 
 // Passkey is a passkey (WebAuthn) the person registered with this console,
 // named after the device that registered it.
@@ -216,7 +223,15 @@ func (d *Devices) List() ([]Device, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	f, err := d.load()
-	return f.Device, err
+	if err != nil {
+		return nil, err
+	}
+	for i := range f.Device {
+		if !slices.ContainsFunc(f.Passkey, func(p Passkey) bool { return p.Name == f.Device[i].Passkey }) {
+			f.Device[i].Passkey = ""
+		}
+	}
+	return f.Device, nil
 }
 
 // Revoke forgets a device; its cookie stops working at its next request.
@@ -331,15 +346,10 @@ func (d *Devices) Join(code, name string) (string, error) {
 	return token, err
 }
 
-// Link uses an invitation to pair another nodwyn named name (ADR 54), and
-// returns its token. It is the person's when person allows it (the request
-// reached a console where a browser could be, over https or at a localhost
-// name, so the secrets the person types do not cross the network in clear)
-// and the invitation was made by a device of the person's that vouched for
-// it with a passkey still registered: it then carries that passkey, and only
-// answers once it is removed. Otherwise it answers, as a device paired by a
-// plain invitation does.
-func (d *Devices) Link(code, name string, person bool) (string, error) {
+// Link pairs another nodwyn. A terminal's owner invitation grants ownership
+// directly; one confirmed with a passkey remains tied to that key. Restricted
+// invitations grant tasks-only access. Owner links require a secure transport.
+func (d *Devices) Link(code, name string, secure bool) (string, error) {
 	var token string
 	err := d.change(func(f *deviceFile) error {
 		x, err := take(f, code)
@@ -347,16 +357,43 @@ func (d *Devices) Link(code, name string, person bool) (string, error) {
 			return err
 		}
 		vouch := ""
-		if person && x.Passkey && x.Vouch != "" && slices.ContainsFunc(f.Passkey, func(p Passkey) bool { return p.Name == x.Vouch }) {
+		owner := x.By == Terminal && x.Passkey && x.Vouch == ""
+		if secure && x.Passkey && x.Vouch != "" && slices.ContainsFunc(f.Passkey, func(p Passkey) bool { return p.Name == x.Vouch }) {
 			vouch = x.Vouch
+		}
+		if !secure && (owner || x.Vouch != "") {
+			return errors.New("owner access needs an https address (or loopback on this computer)")
 		}
 		if token, err = pair(f, name, x.By, vouch, false); err != nil {
 			return err
 		}
 		f.Device[len(f.Device)-1].Host = true
+		f.Device[len(f.Device)-1].Owner = owner
 		return nil
 	})
 	return token, err
+}
+
+// Authorise grants an existing link owner access without replacing its token.
+// The terminal passes no passkey; the console passes the key just confirmed.
+func (d *Devices) Authorise(name, passkey string) error {
+	return d.change(func(f *deviceFile) error {
+		if passkey != "" && !slices.ContainsFunc(f.Passkey, func(p Passkey) bool { return p.Name == passkey }) {
+			return errors.New("that passkey is no longer registered")
+		}
+		for i := range f.Device {
+			if f.Device[i].Name != name {
+				continue
+			}
+			if !f.Device[i].Host {
+				return errors.New("owner access is granted here only to a linked computer")
+			}
+			f.Device[i].Owner = passkey == ""
+			f.Device[i].Passkey = passkey
+			return nil
+		}
+		return fmt.Errorf("no linked computer is named %q", name)
+	})
 }
 
 // Register uses an invitation that may register a passkey: the passkey key,

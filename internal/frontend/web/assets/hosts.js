@@ -140,7 +140,7 @@ export function hostState(e) {
 // offers it: the person's choices, or answers alone.
 export function hostRole(e) {
   if (!e.name || !e.conn.live) return "";
-  return e.conn.has("session.model.set") ? "Makes your choices" : "Answers";
+  return e.conn.has("session.model.set") ? "Owner access" : "Tasks only";
 }
 
 // The Add a host form, open across redraws of the page.
@@ -165,6 +165,7 @@ export function renderHosts(root, ctx) {
       // whether it lets this computer change them (ADR 54, amended
       // 2026-10-23); the rest of its setup is changed in its own console.
       actions.push(h("a", { class: "btn small", href: e.desk.at("settings"), id: `host-settings-${e.name}` }, "Settings"));
+      if (e.conn.live && !e.conn.has("session.model.set")) actions.push(h("a", { class: "btn small", id: `host-authorise-${e.name}`, href: `${e.info.address}/#/settings/keys`, target: "_blank", rel: "noopener noreferrer" }, `Authorise on ${e.name}`));
       actions.push(h("a", { class: "btn small", href: e.info.address, target: "_blank", rel: "noopener noreferrer", title: "The rest of its setup is changed there, where your passkey signs you in" }, `Open ${e.name}'s console`));
       if (e.conn.state === "down" || e.conn.state === "unpaired") actions.push(h("button", { type: "button", class: "btn small", onclick: () => e.conn.connect() }, "Try now"));
       if (conn.has("host.unlink"))
@@ -225,7 +226,7 @@ export function renderHosts(root, ctx) {
         canLink && !adding ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "add-host", onclick: () => { adding = true; redraw(); document.getElementById("host-address")?.focus(); } }, icon("plus", 15), "Add a host")) : null,
         adding && canLink ? addHost(ctx, redraw) : null,
         h("section", { class: "stack-md", "aria-label": "Hosts" }, hosts.all().map(card)),
-        h("p", { class: "hint" }, "Linking makes this computer a device of the other host. That host decides what it may do: one invited by your device signed in there with your passkey makes your choices for its tasks and changes its settings and models here, unless that host refuses it, and one invited from its terminal answers. What a task may do without asking, its providers and the rest of its setup are changed in its own console, and it can unlink this computer there."),
+        h("p", { class: "hint" }, "Link your own computers with owner access to run tasks, choose models and change settings here. Sensitive changes require passkey confirmation in the other host’s console. A tasks-only link can be authorised there without linking again."),
       ),
     ),
   );
@@ -313,7 +314,7 @@ function addHost(ctx, redraw) {
       },
     },
     h("h2", {}, "Add a host"),
-    h("p", { class: "hint" }, "On the other host, make an invitation: ", h("span", { class: "mono" }, "nodwyn devices invite"), " in its terminal, or Settings › Keys & devices in its console. One made by your device signed in there with your passkey lets this computer make your choices for that host's tasks and change its settings and models; one from its terminal lets it answer."),
+    h("p", { class: "hint" }, "On the other host, make an invitation: ", h("span", { class: "mono" }, "nodwyn devices invite"), " in its terminal, or invite from its console after signing in with your passkey. Linking grants owner access to run tasks, choose models and change settings. Use an https address for another computer. For restricted access, use nodwyn devices invite --tasks-only."),
     h("div", { class: "field" }, h("label", { for: "host-address" }, "The host's address"), address),
     h("div", { class: "field" }, h("label", { for: "host-invite" }, "Invitation"), invite, h("p", { class: "hint" }, "It is good once, for ten minutes.")),
     h("details", {}, h("summary", {}, "Choose names (optional)"),

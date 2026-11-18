@@ -378,7 +378,7 @@ export function renderSettings(root, ctx) {
       h("h1", {}, host ? `${host}'s settings` : "Settings"),
       hostPicker(ctx),
       host
-        ? h("p", { class: "lede", id: "save-rule" }, `The settings tasks on ${host} start with, read from ${host} and saved there. A choice made here waits in the bar at the foot of the page and is saved with the others; a model is saved in its own form. The policy, what the judge sees and how sure it must be, the providers, the keychain, credentials and devices are changed in ${host}'s own console, after a touch of your passkey.`)
+        ? (refused ? null : h("p", { class: "lede", id: "save-rule" }, `Changes here are saved on ${host}. Security settings, providers and keys require passkey confirmation in `, h("a", { href: `${ctx.hostAddress}/#/settings`, target: "_blank", rel: "noopener noreferrer" }, `${host}’s own console`), "."))
         : h("p", { class: "lede", id: "save-rule" }, "A choice made here waits in the bar at the foot of the page and is saved with the others. Keys, the passphrase and starting at login act at once, a provider or a model is saved in its own form, and what is under “This browser” applies at once, to this browser alone."),
       refused ? hostRefusal(ctx) : null,
       !host && known && !editable(conn) ? h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
@@ -426,41 +426,17 @@ function hostRefusal(ctx) {
   const open = hostAddress ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: hostAddress, target: "_blank", rel: "noopener noreferrer" }, `Open ${host}'s console`)) : null;
   if (conn.has("session.model.set"))
     return h("div", { class: "callout plain", id: "host-settings-refused" }, h("p", {}, `${host} does not let other nodwyns change its settings: its console was started with --no-link-settings, or is older than this one.`), open);
-  // A link that only answers was let in by an invitation that vouched with
-  // no passkey (ADR 54 §5), or linked at an address where none can be used.
-  // People read the earlier one-sentence account of this as a riddle, so
-  // this says what the link can do, why, and the steps that change it.
-  const plain = !!hostAddress && !passkeyAddress(hostAddress);
+  const name = ctx.hostDevice || "NAME";
   return h(
-    "div",
-    { class: "callout plain", id: "host-settings-refused" },
-    h("p", {}, `From here you can start tasks on ${host} and answer their questions, but not change ${host}'s settings or choose the model its tasks use.`),
-    plain
-      ? h("p", {}, `This computer reaches ${host} at ${hostAddress}. A browser can use a passkey only at an https address or a localhost name, so a link made at this one never makes your choices, whatever invitation made it.`)
-      : h("p", {}, `${host} lets a linked computer make those choices only when its invitation came from a browser signed in to ${host} with your passkey. This link's invitation came from ${host}'s terminal, or from ${host}'s own browser, which do not use a passkey.`),
-    h("p", {}, "To make your choices here:"),
-    h(
-      "ol",
-      {},
-      h("li", {}, `Open ${host}'s console at its https address, signed in with your passkey. A browser without one gets one by pairing with an invitation from `, h("span", { class: "mono" }, "nodwyn devices invite"), ` in ${host}'s terminal.`),
-      h("li", {}, "There, in Settings › Keys & devices, choose Invite a device."),
-      h("li", {}, `Here, on `, h("a", { href: "#/hosts" }, "Hosts"), `, unlink ${host} and add it again${plain ? " at its https address" : ""} with that invitation.`),
-    ),
-    open,
+    "div", { class: "callout plain", id: "host-settings-refused" },
+    h("h2", {}, "Owner access required"),
+    h("p", {}, `This computer has tasks-only access to ${host}. Authorise owner access to choose models and change settings.`),
+    h("p", { class: "hint" }, `In ${host}’s Keys & devices, choose Authorise owner access beside ${name}. This link will reconnect automatically.`),
+    h("div", { class: "row-actions" },
+      hostAddress ? h("a", { class: "btn small", id: "host-authorise", href: `${hostAddress}/#/settings/keys`, target: "_blank", rel: "noopener noreferrer" }, `Authorise on ${host}`) : null,
+      h("button", { type: "button", class: "btn small", id: "host-access-check", onclick: () => conn.connect() }, "Check access")),
+    h("details", { id: "host-authorise-terminal" }, h("summary", {}, "Use the terminal instead"), h("p", {}, `Run on ${host}: `, h("span", { class: "mono" }, `nodwyn devices authorise ${name}`))),
   );
-}
-
-// passkeyAddress reports whether a link made at address can carry a passkey,
-// as the host's bridge judges it (passkeyHost): https or a localhost name,
-// and a name rather than an IP address.
-function passkeyAddress(address) {
-  try {
-    const { protocol, hostname } = new URL(address);
-    if (/^\d+(\.\d+){3}$/.test(hostname) || hostname.startsWith("[")) return false;
-    return protocol === "https:" || hostname === "localhost" || hostname.endsWith(".localhost");
-  } catch {
-    return false;
-  }
 }
 
 // loosening says which of the approvals and the upload answer waiting in the
@@ -1104,6 +1080,7 @@ function connectionSection(ctx) {
 // its confirm: a device revoked is locked out at once and pairs again only
 // with an invitation, and a passkey removed signs nothing in again.
 let revoking = "";
+let authorising = "";
 let removing = "";
 // invitation is the last one made here, shown until it expires.
 let invitation = null;
@@ -1137,6 +1114,21 @@ async function showDevices(node, ctx) {
       await conn.call("devices.revoke", { name });
       toast(`${name} can no longer reach nodwyn.`);
     });
+  const authorise = (name) =>
+    act(async () => {
+      authorising = "";
+      await conn.call("devices.authorise", { name });
+      toast(`${name} now has owner access. Its existing link will reconnect.`);
+    });
+  const authoriseButton = (d) => {
+    if (!d.host || d.owner || d.passkey || !conn.has("devices.authorise")) return null;
+    if (authorising !== d.name) return h("button", { type: "button", class: "btn small", id: `authorise-${d.name}`, onclick: () => { authorising = d.name; draw(); } }, "Authorise owner access");
+    return [
+      h("span", { class: "muted confirm-text" }, `Allow ${d.name} to choose models and change task settings? Sensitive changes will still require your passkey here.`),
+      h("button", { type: "button", class: "btn small accent", id: `authorise-${d.name}-confirm`, onclick: () => authorise(d.name) }, "Authorise owner access"),
+      h("button", { type: "button", class: "btn small ghost", onclick: () => { authorising = ""; draw(); } }, "Cancel"),
+    ];
+  };
   const removeKey = (name) =>
     act(async () => {
       removing = "";
@@ -1194,9 +1186,9 @@ async function showDevices(node, ctx) {
                 list.map((d) =>
                   h(
                     "div",
-                    { class: "list-row" },
-                    h("div", { class: "main" }, h("strong", {}, d.name, d.name === me ? " (this device)" : ""), h("span", {}, [`paired ${ago(d.paired)}`, `last seen ${ago(d.last_seen)}`, d.host ? "another nodwyn, linked to this one" : "", d.passkey ? `${d.host ? "vouched for" : "signed in"} with the passkey ${d.passkey}` : "answers only", d.by ? `let in by ${d.by}` : ""].filter(Boolean).join(" · "))),
-                    h("div", { class: "end" }, removal({ label: "Revoke", consequence: `Revoke ${d.name}? It is locked out at once, and pairs again only with an invitation.`, asking: revoking === d.name, ask: () => ((revoking = d.name), draw()), cancel: () => ((revoking = ""), draw()), run: () => revoke(d.name) })),
+                    { class: "list-row", dataset: { device: d.name } },
+                    h("div", { class: "main" }, h("strong", {}, d.name, d.name === me ? " (this device)" : ""), h("span", {}, [`paired ${ago(d.paired)}`, `last seen ${ago(d.last_seen)}`, d.host ? "another nodwyn, linked to this one" : "", d.host ? (d.owner || d.passkey ? "Owner access" : "Tasks only") : d.passkey ? `signed in with the passkey ${d.passkey}` : "answers only", d.by ? `let in by ${d.by}` : ""].filter(Boolean).join(" · "))),
+                    h("div", { class: "end" }, authoriseButton(d), removal({ label: "Revoke", consequence: `Revoke ${d.name}? It is locked out at once, and pairs again only with an invitation.`, asking: revoking === d.name, ask: () => ((revoking = d.name), draw()), cancel: () => ((revoking = ""), draw()), run: () => revoke(d.name) })),
                   ),
                 ),
               )

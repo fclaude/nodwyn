@@ -8894,6 +8894,9 @@
     },
     "rpc.helloParams": {
       "properties": {
+        "owner": {
+          "type": "boolean"
+        },
         "passkey": {
           "type": "string"
         },

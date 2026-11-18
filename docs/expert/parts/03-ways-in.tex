@@ -190,17 +190,19 @@ page keeps one origin and never holds the token. The sidebar groups tasks
 by host, Needs you holds every host's questions, Home's Runs on chooses
 where a new task starts, with that host's folders and model (a host that
 cannot be read is offered with the reason its link last closed with), and a notice
-of the server's task opens it there. A link made with an invitation from the
-person's passkey device also changes the server's settings and models from the
-laptop's Settings, unless the server's console was started with
-\code{-{}-no-link-settings}; the rest of its setup stays in its own console.
-
-The server decides what the link may do, as it does for any device: it
-answers and starts tasks, and when your device signed in there with your
-passkey made its invitation, it makes your choices for the server's tasks
-too, until that passkey is removed, and changes its settings and models. It never
-changes the rest of the server's setup, since that waits for a touch of a
-passkey, which it cannot give: Open its console, on Hosts, is for that.
+of the server's task opens it there. An owner invitation from the terminal or a passkey-confirmed browser grants
+Owner access to the server's task choices and ordinary settings, unless its
+console uses \code{-{}-no-link-settings}. HTTPS or loopback is required, including
+IP addresses; WebAuthn support does not determine a computer link's authority.
+The terminal offers \code{nodwyn devices invite -{}-tasks-only} for restricted
+access. Existing restricted links can be authorised in the destination's
+Keys \& devices after passkey confirmation, or by
+\code{nodwyn devices authorise NAME} at its terminal. The device token and
+pairing date are kept; a changed grant closes the socket with 1012 and the
+page reconnects with fresh capabilities. Terminal grants are independent of
+passkeys; a passkey-backed grant loses its authority if that key is removed.
+Sensitive setup, providers, credentials, policy and judge tuning still require
+confirmation in the destination's own console; links never hold a touch.
 Revoking it on the server ends the link; Unlink on the laptop forgets it
 and asks the server to forget the laptop. Everything for the server passes
 the laptop's daemon, so its tasks show while the laptop's \nodwyn{} runs.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -10,6 +11,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -215,5 +217,62 @@ func TestAcmeConfigServesItsNameFromTheCacheAndNoOther(t *testing.T) {
 	leaf, err := x509.ParseCertificate(got.Certificate[0])
 	if err != nil || leaf.SerialNumber.Int64() != 7 {
 		t.Fatalf("served %v %v", leaf, err)
+	}
+}
+
+// The terminal upgrades a paired computer without issuing another token, and
+// its invitation command makes restricted delegation an explicit choice.
+func TestCLIAuthorisesExistingComputerLinks(t *testing.T) {
+	dir := t.TempDir()
+	env := lineEnv(t, dir)
+	store := webui.OpenDevices(filepath.Join(dir, "config", "nodwyn", "devices.toml"))
+	invite, _, err := store.Invite(webui.Terminal, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := store.Link(invite, "laptop", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, ok := store.Check(token)
+	if !ok {
+		t.Fatal("link was not paired")
+	}
+	run := func(args ...string) string {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--", "devices"}, args...)...)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("devices %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	if out := run("authorise", "laptop"); !strings.Contains(out, "Authorised owner access") {
+		t.Fatal(out)
+	}
+	after, ok := store.Check(token)
+	if !ok || before.Hash != after.Hash || !before.Paired.Equal(after.Paired) {
+		t.Fatal("authorisation replaced the link")
+	}
+	if out := run("list"); !strings.Contains(out, "owner access") {
+		t.Fatal(out)
+	}
+	for _, tasksOnly := range []bool{false, true} {
+		args := []string{"invite"}
+		if tasksOnly {
+			args = append(args, "--tasks-only")
+		}
+		out := run(args...)
+		fields := strings.Fields(out)
+		if len(fields) < 2 {
+			t.Fatal(out)
+		}
+		live, passkey := store.Invited(fields[1])
+		if !live || passkey == tasksOnly {
+			t.Fatalf("invitation authority: %s", out)
+		}
 	}
 }

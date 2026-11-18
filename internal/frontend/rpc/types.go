@@ -14,6 +14,9 @@ type helloParams struct {
 	// with (ADR 30, amended 2026-10-17). With it, the device is not limited
 	// as a paired device is; it is recorded after via, as passkey:NAME.
 	Passkey string `json:"passkey,omitempty"`
+	// Owner records a terminal-authorised computer link, independently of a
+	// passkey. Like Passkey, it is a claim of the same-user bridge after Via.
+	Owner bool `json:"owner,omitempty"`
 }
 type helloResult struct {
 	Protocol int      `json:"protocol"`

@@ -494,10 +494,10 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 		}
 		join := func() (string, error) { return b.devices.Join(p.Invite, p.Device) }
 		if p.Host {
-			// A link is the person's only where a browser could be: where
-			// what the person types does not cross the network in clear.
+			// Owner access requires encrypted transport or loopback; browser
+			// passkey support does not determine a computer link’s authority.
 			join = func() (string, error) {
-				return b.devices.Link(p.Invite, p.Device, passkeyHost(r.Host, b.secure(r.Host)))
+				return b.devices.Link(p.Invite, p.Device, linkSecure(r.Host, b.secure(r.Host)))
 			}
 		}
 		token, err := join()
@@ -590,8 +590,13 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 	// from: only this machine's pairing grants local powers.
 	remote := b.remoteFor(r, device.Name)
 	via, passkey := relay(device)
+	secure := !device.Host || linkSecure(r.Host, b.secure(r.Host))
+	owner := device.Host && device.Owner && secure
+	if !secure {
+		passkey = ""
+	}
 	dialCtx, stop := context.WithTimeout(ctx, 5*time.Second)
-	client, err := rpc.DialAs(dialCtx, b.socket, via, passkey)
+	client, err := rpc.DialAs(dialCtx, b.socket, via, passkey, owner)
 	stop()
 	if err != nil {
 		// A refused handshake is all a browser learns of an HTTP error,
@@ -619,14 +624,17 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 	who := func(now Device) caller {
 		// Another nodwyn never touches a passkey, whatever its settings
 		// calls renewed: a touch is the person's, at their own device.
-		return caller{local: !remote, person: now.Passkey != "" && now.Passkey == device.Passkey, touched: now.Name != "" && !now.Host && b.touched(now.Hash), link: now.Host}
+		return caller{local: !remote, person: secure && now.person() && now.Passkey == device.Passkey && now.Owner == device.Owner, touched: now.Name != "" && !now.Host && b.touched(now.Hash), link: now.Host}
 	}
 	revoked := func() {
 		conn.Close(websocket.StatusPolicyViolation, "this device was revoked")
 		cancel()
 	}
 	b.keepAlive(ctx, conn, cancel)
-	b.watchDevice(ctx, device, token, revoked)
+	b.watchDevice(ctx, device, token, revoked, func() {
+		conn.Close(websocket.StatusServiceRestart, "access changed; reconnecting")
+		cancel()
+	})
 	// Browser backpressure cannot block a session: the RPC client and daemon
 	// already enforce bounded queues. A failed connection is never replayed.
 	go func() {
@@ -688,7 +696,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 			// Answered when it is done; the console's next requests are
 			// read meanwhile.
 			go func(req request) {
-				result, err := b.slowCall(ctx, via, passkey, req)
+				result, err := b.slowCall(ctx, via, passkey, owner, req)
 				if audited {
 					b.audited(current, req.Method, err)
 				}
@@ -706,7 +714,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 					// A setup method waiting for a touch is offered: the
 					// console asks for the passkey when it is used.
 					methods := []string{}
-					for _, method := range append(hello.Methods, "devices.list", "devices.revoke", "devices.invite", "devices.leave", "passkeys.list", "passkeys.remove") {
+					for _, method := range append(hello.Methods, "devices.list", "devices.revoke", "devices.invite", "devices.authorise", "devices.leave", "passkeys.list", "passkeys.remove") {
 						if b.access(method, c) != refused {
 							methods = append(methods, method)
 						}
@@ -769,7 +777,7 @@ func (b *bridge) keepAlive(ctx context.Context, conn *websocket.Conn, cancel fun
 // watchDevice checks every deviceRecheck (b.recheck) that a paired device's
 // console is still paired, and calls revoked once it is not, so a revocation
 // also ends a console that is only watching.
-func (b *bridge) watchDevice(ctx context.Context, device Device, token string, revoked func()) {
+func (b *bridge) watchDevice(ctx context.Context, device Device, token string, revoked, changed func()) {
 	if device.Name == "" {
 		return
 	}
@@ -785,8 +793,13 @@ func (b *bridge) watchDevice(ctx context.Context, device Device, token string, r
 			case <-ctx.Done():
 				return
 			case <-tick.C:
-				if _, ok := b.stillPaired(device, token); !ok {
+				now, ok := b.stillPaired(device, token)
+				if !ok {
 					revoked()
+					return
+				}
+				if now.Owner != device.Owner || now.Passkey != device.Passkey {
+					changed()
 					return
 				}
 			}
@@ -831,10 +844,10 @@ var slowCalls = map[string]time.Duration{
 }
 
 // slowCall relays one of slowCalls over a daemon connection of its own.
-func (b *bridge) slowCall(ctx context.Context, via, passkey string, req request) (json.RawMessage, error) {
+func (b *bridge) slowCall(ctx context.Context, via, passkey string, owner bool, req request) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, slowCalls[req.Method])
 	defer cancel()
-	client, err := rpc.DialAs(ctx, b.socket, via, passkey)
+	client, err := rpc.DialAs(ctx, b.socket, via, passkey, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -852,7 +865,7 @@ func write(ctx context.Context, c *websocket.Conn, v any) error {
 // A caller is who a console's requests come from.
 type caller struct {
 	local   bool // this computer's browser (ADR 30)
-	person  bool // a device signed in with a passkey still registered
+	person  bool // a registered passkey or a terminal-authorised computer
 	touched bool // such a device whose person touched it within touchLife
 	link    bool // another nodwyn linked to this one, which never touches (ADR 54)
 }
@@ -946,6 +959,8 @@ func (b *bridge) tierOf(method string) tier {
 		return tierAnswer
 	case "devices.list", "passkeys.list":
 		return tierPerson
+	case "devices.authorise":
+		return tierPasskey
 	case "devices.revoke", "passkeys.remove":
 		return tierSetup
 	}
@@ -1041,8 +1056,9 @@ func (b *bridge) access(method string, c caller) access {
 	// Another nodwyn that is the person's changes some of this computer's
 	// settings without the touch it cannot give, unless this computer's
 	// console was started to refuse it (ADR 54, amended 2026-10-23): its
-	// invitation was made with the person's passkey. One that only answers is
-	// not let in, since whoever holds a plain invitation may say it is
+	// invitation was authorised at the terminal or with a passkey. A
+	// restricted link is not let in, since whoever holds a plain invitation
+	// may say it is
 	// another nodwyn. What would widen what a task may do stays behind the
 	// touch (linkWidens), since the link's token is kept on another computer.
 	case c.link && linkSettings[method] && !b.noLinkSettings:
@@ -1110,7 +1126,10 @@ func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device Device) {
 	// linked host, which waits as long there, longer still.
 	ctx, cancel := context.WithTimeout(b.ctx, 12*time.Minute)
 	defer cancel()
-	client, err := rpc.DialAs(ctx, b.socket, via, passkey)
+	if device.Host && !linkSecure(r.Host, b.secure(r.Host)) {
+		passkey = ""
+	}
+	client, err := rpc.DialAs(ctx, b.socket, via, passkey, device.Host && device.Owner && linkSecure(r.Host, b.secure(r.Host)))
 	if err != nil {
 		http.Error(w, "Daemon unavailable", http.StatusServiceUnavailable)
 		return
@@ -1159,6 +1178,8 @@ func (b *bridge) deviceMethod(req request, device Device, c caller) (json.RawMes
 		by = device.Name
 	}
 	switch req.Method {
+	case "devices.authorise":
+		return marshal(struct{}{}, b.devices.Authorise(p.Name, device.Passkey))
 	case "devices.list":
 		devices, err := b.devices.List()
 		if devices == nil {

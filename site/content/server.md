@@ -84,11 +84,15 @@ Know what that gives you. The keychain file is protected at rest, against a copy
 
 If you also run nodwyn on your laptop, its window can show the server's tasks beside its own, with everything that needs you under one **Needs you**, and a new task started on whichever computer should run it. The laptop links to the server once from **Hosts**, with an invitation made on the server.
 
-On the server, make the invitation with `nodwyn devices invite`, or with **Invite a device** in Settings › Keys & devices of a console signed in with your passkey. The second kind lets the laptop make your choices for the server's tasks, and the first lets it start and answer tasks. On the laptop, open **Hosts**, choose **Add a host**, and enter the server's address and the invitation. Names are chosen automatically, or can be supplied under **Choose names (optional)**. The laptop keeps the link's token in its own keychain.
+On the server, make the invitation with `nodwyn devices invite`, or with **Invite a device** in Settings › Keys & devices of a console signed in with your passkey. Both grant **Owner access** when linking your computers: run tasks, choose models and change ordinary settings. Use the server’s https address. For restricted access, make the invitation with `nodwyn devices invite --tasks-only`. On the laptop, open **Hosts**, choose **Add a host**, and enter the server's address and the invitation. Names are chosen automatically, or can be supplied under **Choose names (optional)**. The laptop keeps the link's token in its own keychain.
 
 ![Home, with a task asking for an answer](shot:home)
 
 From then on the sidebar groups tasks by host, **Runs on** on Home picks the host a new task starts on, with that host's folders and models, and you answer the server's tasks from the laptop. The server decides what the laptop may do. To refuse the settings a linked laptop could otherwise change, start the server's console with `--no-link-settings`.
+
+An existing **Tasks only** link can gain owner access without linking again. Choose **Authorise on SERVER** in its Settings, then **Authorise owner access** beside the computer in the server’s Settings > Keys & devices. Confirm with your passkey when asked. Or run `nodwyn devices authorise NAME` in the server’s terminal, using the **Linked as** name. The link reconnects automatically with its token kept. Sensitive changes, including credentials, providers and security policy, still require confirmation in the server’s own console.
+
+![An existing tasks-only link can be authorised without linking again](shot:host-settings-tasks-only)
 
 ## Pointing terminals at it
 

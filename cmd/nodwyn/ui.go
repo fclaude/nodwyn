@@ -318,22 +318,38 @@ func (c *cli) devices() error {
 			// Another nodwyn linked to this one (ADR 54), not a browser.
 			if d.Host {
 				signed += "  another nodwyn"
+				if d.Owner || d.Passkey != "" {
+					signed += "  owner access"
+				} else {
+					signed += "  tasks only"
+				}
 			}
 			fmt.Printf("%-20s paired %s  last seen %s%s\n", d.Name, d.Paired.Local().Format("2006-01-02"), d.LastSeen.Local().Format("2006-01-02 15:04"), signed)
 		}
 		return nil
-	case len(args) == 1 && args[0] == "invite":
+	case len(args) == 1 && args[0] == "invite", len(args) == 2 && args[0] == "invite" && args[1] == "--tasks-only":
 		// Printed here, to the terminal of whoever ran it, never to the
 		// console's log. One from the terminal may register a passkey: it is
 		// how the first one is made, and how the person gets in again if
 		// every passkey is lost.
-		code, expires, err := store.Invite(webui.Terminal, true)
+		owner := len(args) == 1
+		code, expires, err := store.Invite(webui.Terminal, owner)
 		if err != nil {
 			return err
 		}
 		fmt.Println("Invitation:", code)
 		fmt.Printf("Good once, until %s. On the other device, open nodwyn's address, enter it and name the device;\n", expires.Local().Format("15:04"))
-		fmt.Println("over https it also makes a passkey there, which other devices can then sign in with.")
+		if owner {
+			fmt.Println("Linking another computer grants owner access; pairing a browser over https can make a passkey.")
+		} else {
+			fmt.Println("This invitation grants tasks-only access.")
+		}
+		return nil
+	case len(args) == 2 && args[0] == "authorise":
+		if err := store.Authorise(args[1], ""); err != nil {
+			return err
+		}
+		fmt.Println("Authorised owner access for", args[1]+"; its link reconnects with the same token.")
 		return nil
 	case len(args) == 2 && args[0] == "revoke":
 		if err := store.Revoke(args[1]); err != nil {
@@ -342,7 +358,7 @@ func (c *cli) devices() error {
 		fmt.Println("Revoked", args[1]+"; its next request is refused.")
 		return nil
 	}
-	return fmt.Errorf("devices: expected list, invite or revoke NAME")
+	return fmt.Errorf("devices: expected list, invite [--tasks-only], authorise NAME or revoke NAME")
 }
 
 // loopbackListener listens on this computer's loopback address, on the port

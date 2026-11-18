@@ -36,6 +36,16 @@ func (e *LinkError) Error() string { return e.Message }
 // DialLink connects to the daemon on socket as DialAs does and asks it to
 // relay the linked host name.
 func DialLink(ctx context.Context, socket, via, passkey, name string) (*Link, error) {
+	return dialLink(ctx, socket, name, helloParams{Protocol: ProtocolVersion, Via: via, Passkey: passkey})
+}
+
+// DialOwnerLink is DialLink for a terminal-authorised computer, whose owner
+// claim is independent of a passkey.
+func DialOwnerLink(ctx context.Context, socket, via, name string) (*Link, error) {
+	return dialLink(ctx, socket, name, helloParams{Protocol: ProtocolVersion, Via: via, Owner: true})
+}
+
+func dialLink(ctx context.Context, socket, name string, identity helloParams) (*Link, error) {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	if err != nil {
 		return nil, err
@@ -49,7 +59,7 @@ func DialLink(ctx context.Context, socket, via, passkey, name string) (*Link, er
 		method string
 		params any
 	}{
-		{"hello", helloParams{Protocol: ProtocolVersion, Via: via, Passkey: passkey}},
+		{"hello", identity},
 		{"host.connect", hostNameParams{Name: name}},
 	}
 	for i, step := range steps {

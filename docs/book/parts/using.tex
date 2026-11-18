@@ -315,11 +315,14 @@ provider that cannot read one refuses that request, and the turn says so
   The sidebar then groups tasks by host, each host's heading opening its
   folders (a host starts folded, with its state in view), Needs you holds both hosts'
   questions, and Home's Runs on starts a task on either, with that host's
-  folders and model, and says why when one cannot be reached. The server decides what the link may do: it answers,
-  or, invited by your device signed in there with your passkey, makes your
-  choices for the server's tasks and changes its settings and models from the
-  laptop's Settings, unless the server is started with \code{-{}-no-link-settings};
-  the rest of its setup stays in its own console.
+  folders and model, and says why when one cannot be reached. Owner invitations from the server's terminal or a passkey-confirmed browser
+  grant Owner access: task choices and ordinary settings, unless the server
+  uses \code{-{}-no-link-settings}. Use https for another computer. For restricted
+  access use \code{nodwyn devices invite -{}-tasks-only}. An existing restricted
+  link is authorised in the server's Keys \& devices, after passkey confirmation,
+  or with \code{nodwyn devices authorise NAME} there. Its token stays the same
+  and it reconnects automatically. Sensitive setup still requires confirmation
+  in the server's own console.
 \end{description}
 
 \chapter{A session}

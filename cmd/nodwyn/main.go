@@ -54,8 +54,9 @@ commands:
   ui --listen ADDR     also serve other machines; devices pair with an invitation
   ui --acme NAME --acme-accept-terms   get an https certificate for NAME from an ACME CA
   devices [revoke NAME] list or revoke browsers paired from other machines
-  devices invite       print a one-time invitation for another device (over https
-                       it also registers a passkey there)
+  devices authorise NAME  grant an existing computer link owner access
+  devices invite [--tasks-only]  print an owner invitation, or restrict it to tasks
+                       a browser can also register a passkey over https
   tui [--socket PATH]   interactive terminal client, over the daemon (starts one if none runs)
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files

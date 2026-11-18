@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -15,7 +17,15 @@ import (
 // callerOf is who a request of device comes from, as the console's socket
 // sees it when it opens.
 func (b *bridge) callerOf(r *http.Request, device Device) caller {
-	return caller{local: !b.remoteFor(r, device.Name), person: device.Passkey != "", touched: device.Name != "" && !device.Host && b.touched(device.Hash), link: device.Host}
+	return caller{local: !b.remoteFor(r, device.Name), person: device.person() && (!device.Host || linkSecure(r.Host, b.secure(r.Host))), touched: device.Name != "" && !device.Host && b.touched(device.Hash), link: device.Host}
+}
+
+// linkSecure checks transport rather than browser passkey support: an https
+// IP address and loopback are safe for a computer link too.
+func linkSecure(host string, secure bool) bool {
+	name := strings.Trim(hostName(host), "[]")
+	ip := net.ParseIP(name)
+	return secure || name == "localhost" || strings.HasSuffix(name, ".localhost") || ip != nil && ip.IsLoopback()
 }
 
 // connectHost relays a console's socket for the linked host name (ADR 54):
@@ -39,7 +49,13 @@ func (b *bridge) connectHost(w http.ResponseWriter, r *http.Request, device Devi
 	via, passkey := relay(device)
 	// The daemon gives a host 15 seconds to answer.
 	dialCtx, stop := context.WithTimeout(ctx, 20*time.Second)
-	link, err := rpc.DialLink(dialCtx, b.socket, via, passkey, name)
+	var link *rpc.Link
+	var err error
+	if device.Host && device.Owner {
+		link, err = rpc.DialOwnerLink(dialCtx, b.socket, via, name)
+	} else {
+		link, err = rpc.DialLink(dialCtx, b.socket, via, passkey, name)
+	}
 	stop()
 	if err != nil {
 		// A host that no longer takes this computer is 1008, as a revoked
@@ -67,7 +83,10 @@ func (b *bridge) connectHost(w http.ResponseWriter, r *http.Request, device Devi
 		cancel()
 	}
 	b.keepAlive(ctx, conn, cancel)
-	b.watchDevice(ctx, device, token, revoked)
+	b.watchDevice(ctx, device, token, revoked, func() {
+		conn.Close(websocket.StatusServiceRestart, "access changed; reconnecting")
+		cancel()
+	})
 	go func() {
 		defer cancel()
 		for {
@@ -100,8 +119,13 @@ func (b *bridge) connectHost(w http.ResponseWriter, r *http.Request, device Devi
 		if err != nil {
 			return
 		}
-		if _, ok := b.stillPaired(device, token); !ok {
+		now, ok := b.stillPaired(device, token)
+		if !ok {
 			revoked()
+			return
+		}
+		if !b.allowed("host.list", b.callerOf(r, now)) {
+			conn.Close(websocket.StatusServiceRestart, "access changed; reconnecting")
 			return
 		}
 		// The daemon reads a line of at most its frame limit: a larger

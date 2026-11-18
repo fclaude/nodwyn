@@ -60,6 +60,12 @@ response payloads are not printed to daemon diagnostics. Application results
 and error messages pass through shared redaction; caller-selected correlation
 IDs are transport data and are echoed unchanged.
 
+`hello` also accepts `owner: true` with `via`, without `passkey`, for a
+terminal-authorised computer link. It records `owner:terminal` after the
+relayed device name and lifts the paired-device task restrictions. These
+claims come from the same-user bridge over the authenticated Unix socket;
+they are never accepted directly from the browser as authority.
+
 After the first successful `hello`, readiness and peer identity stay fixed.
 A later `hello` without `via` reads the handshake again; it may run beside
 an outstanding `session.attach` without changing that shared state.
@@ -868,7 +874,7 @@ says the device's person signed in with that passkey (ADR 30, amended
 2026-10-17): the actor reads `… via web:tablet passkey:laptop`, and the
 daemon refuses that connection nothing it refuses a paired device, since a
 client that claims nothing at all may already call every method. Below, "a
-paired device" is an actor relayed `via` without `passkey`. The bridge asks
+paired device" is an actor relayed `via` without `passkey` or `owner: true`. The bridge asks
 the person's device for a touch of its passkey before relaying a setup
 method, and refuses one before it with code -32030.
 
@@ -879,7 +885,7 @@ method, and refuses one before it with code -32030.
 | `workspace.list` | `{}` | Named workspaces: `[{name, path, mounts, git, earlier_tasks}]`; `earlier_tasks` is whether the model may search the folder's earlier tasks (ADR 50) |
 | `workspace.forgotten` | `{}` | `[absolute paths]`: the folders `workspace.remove` forgot, which the console leaves out of its suggestions, not out of task history. A paired device may read it. An older daemon lacks the method, and the console then hides nothing |
 | `workspace.active` | `{}` reads, `{"path"}` records | `{"path"}`: the folder the console last picked for a new task, which a window or tab that has not picked starts in; kept in `last-workspace.toml` beside `workspaces.toml`, since the app's window has a console on a new port every launch and the browser remembers nothing across a restart |
-| `newtask.last` | `{}` reads, `{"choices"}` replaces | `{runs_on, hosts: [{host, model?, effort?, judge?, commands?, helpers?, worktree?: [{folder, on}]}]}`: what the console chose last for a new task, which the next one starts with (ADR 41, amended 2026-10-27): the host it runs on (`""` this computer) and, for each host, the model and effort (absent: Settings' default), the judge (absent: Settings' default; `""`: no judge), who answers its commands (absent: `approval.commands`), the helpers and per folder whether it opens in a worktree. A new task starts without limits. Kept in `new-task.toml` in the config directory, so every console, browser and address starts with it. It only preselects: `session.open` checks each choice again. At most 64 hosts, 64 helpers and 256 worktree choices each; a folder is absolute; an effort needs its model. The daemon refuses a replacement to an actor that carries `via` without `passkey` |
+| `newtask.last` | `{}` reads, `{"choices"}` replaces | `{runs_on, hosts: [{host, model?, effort?, judge?, commands?, helpers?, worktree?: [{folder, on}]}]}`: what the console chose last for a new task, which the next one starts with (ADR 41, amended 2026-10-27): the host it runs on (`""` this computer) and, for each host, the model and effort (absent: Settings' default), the judge (absent: Settings' default; `""`: no judge), who answers its commands (absent: `approval.commands`), the helpers and per folder whether it opens in a worktree. A new task starts without limits. Kept in `new-task.toml` in the config directory, so every console, browser and address starts with it. It only preselects: `session.open` checks each choice again. At most 64 hosts, 64 helpers and 256 worktree choices each; a folder is absolute; an effort needs its model. The daemon refuses a replacement to an actor that carries `via` without `passkey` or `owner: true` |
 | `workspace.save` | `{"path","name","mounts"}` (all required; `mounts` may be `[]`), and optionally `"earlier_tasks"` | The saved workspace. The name, the mounts and whether the model may search the folder's earlier tasks go to `workspaces.toml` in the config directory; nothing is written into the folder. Without `earlier_tasks` the saved choice is kept, so a client that does not send it never turns it off |
 | `workspace.remove` | `{"path"}` | `{}`; forgets a named or unnamed absolute folder, its name and mounts, never its files or tasks; persists a suggestion-exclusion marker and clears a matching last pick. Repeated removal is harmless. `workspace.save`, or a task started or resumed in the folder (by any client, a paired device or a terminal included), clears the marker |
 | `versions.list` | `{"repo","path"}` | A file's kept previous versions (outside git); `repo` must be a named workspace or a folder a task has used |
@@ -912,7 +918,7 @@ device's `session.limits.set` reaches the daemon, which holds it to adding
 or lowering a task's limits. The console never
 offers `session.eval`, and its bridge relays no run method (ADR 35). The
 daemon also refuses `run.start` and `run.resume` with `auto_approve`,
-`judge` or `unattended` to an actor that carries `via` without `passkey`, as
+`judge` or `unattended` to an actor that carries `via` without `passkey` or `owner: true`, as
 the bridge's actor for a paired device does. A device signed in with a
 passkey may call all of them, the setup methods after a touch of its passkey;
 `session.eval` and the run methods stay out of every browser's reach.
@@ -986,11 +992,24 @@ unless the host's console was started with `--no-link-settings`. A
 in `hello` (ADR 54, amended 2026-10-23 and 2026-10-30: the approvals and a
 `settings.docs.write` of `"allow"` are the link's). It never holds a touch, whatever it has changed; and any
 device may ask `devices.leave
-{}` to be revoked itself. Whether it makes the person's choices there is
-decided by the invitation it used: one made by a device of the person's that
-proved itself with a passkey, at an address where a passkey works (https or a
-`localhost` name), makes it the person's, carrying that passkey's name in
-`hello`'s `passkey`.
+{}` to be revoked itself. Owner access comes from a terminal owner invitation or an invitation made
+with a registered passkey. The former is `owner: true` in the bridge's daemon
+`hello`; the latter retains `passkey: NAME`. Owner links require https or
+loopback, including IP addresses; browser WebAuthn support is independent.
+An owner invitation on insecure transport fails without being consumed.
+`devices.list` reports `host: true` and `owner: true` for terminal-backed
+links, or `passkey` for passkey-backed authority. Restricted invitations
+remain tasks-only.
+
+The bridge-only `devices.authorise {"name":"laptop"}` authorises an existing
+host device after a destination passkey confirmation. It returns `{}`,
+leaves its token and pairing date unchanged, and is not offered to the local
+console's token or to any link. `nodwyn devices authorise NAME` is the
+terminal equivalent, storing an independent owner grant. The watcher closes
+a socket whose authority changes with 1012; it reconnects and reads a fresh
+`hello`. Existing links are never automatically promoted. Sensitive methods
+retain the destination's existing passkey checks, and a link never holds a
+touch. `nodwyn devices invite --tasks-only` makes restricted delegation explicit.
 
 ## Generated contract
 

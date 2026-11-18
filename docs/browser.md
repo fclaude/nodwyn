@@ -1106,17 +1106,29 @@ reaches the page or a file in clear, and a changed address in `hosts.toml`
 (where each link's name, address and name there are kept, in the config
 directory) is sent no token.
 
-What the link may do is the other host's to say. One invited by your
-device signed in there with your passkey makes your choices for its tasks
-(a task's model, judge, helpers and limits, schedules, a key the model asks
-for, unlocking its keychain), and changes its settings and models (amended
-2026-10-23); one invited from its terminal answers and starts tasks, as a
-device paired by a plain invitation does. A link changes none of the other
-host's other setup (its folders, MCP servers, credentials, keychain,
-devices, starting at login, trust), since that waits for a touch of a
-passkey, which a link cannot give: **Open its console** opens that host's
-own console in the browser, where your passkey signs you in. That host's
-Settings › Keys & devices and `nodwyn devices`
+An owner invitation from `nodwyn devices invite` or a passkey-confirmed
+browser grants **Owner access**: task models, judges, helpers and limits,
+schedules, unlocking keys, and ordinary settings. This requires https or
+loopback, independently of whether that address can use browser passkeys.
+The terminal offers `nodwyn devices invite --tasks-only` for restricted access;
+plain invitations from browsers remain restricted.
+
+A **Tasks only** link can be authorised without relinking. Its Settings offers
+**Authorise on HOST**, opening the destination's Settings > Keys & devices.
+**Authorise owner access** there confirms the choice and calls
+`devices.authorise {name}`, requiring the person's passkey touch. The local
+console's token and other links cannot call it. Alternatively,
+`nodwyn devices authorise NAME` runs on the destination's terminal. Both keep
+the existing token and pairing date. A changed grant closes the socket with
+1012; the page reconnects, refreshes its desk and offers the new capabilities.
+Terminal ownership is recorded as `owner` on the device and `owner:terminal`
+in the daemon actor; passkey authorisation remains tied to that key.
+
+Sensitive setup (folders, MCP servers, credentials, keychain, devices, policy,
+judge tuning, starting at login and trust) stays in the destination's own
+console, with its existing passkey checks. The link never holds a touch.
+**Open its console** opens that host's browser view. Its Keys & devices and
+`nodwyn devices`
 say the device is another nodwyn, and revoking it there ends the link here:
 the host shows as refused, and **Unlink** forgets it. **Unlink** asks first,
 asks the host to forget this computer, and forgets the token, its binding

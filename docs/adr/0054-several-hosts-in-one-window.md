@@ -423,3 +423,67 @@ still supply either name under Choose names. The daemon and pairing rules are
 unchanged: a name already paired there is never replaced by an invitation.
 The hosts browser check links twice without choosing names, verifies both
 links and their distinct names, and exercises an explicit duplicate name.
+
+## Amendment 2026-11-15: owner access when linking computers
+
+A person linking their own computers received tasks-only access from a terminal
+invitation, although that invitation could already register an owner passkey in
+a browser. Settings then explained a save that was unavailable and required a
+browser invitation followed by unlinking and linking again. The source of an
+invitation should not impose that ceremony on the owner.
+
+1. **Owner access is the default for an owner invitation.** An invitation from
+   `nodwyn devices invite` directly authorises another nodwyn to choose models,
+   manage tasks and change the ordinary settings already available to a
+   passkey-authorised link. The host device stores `owner = true`, separately
+   from `passkey`; this terminal grant survives passkey removal. Invitations
+   made after passkey confirmation keep their existing association with that
+   passkey and lose their authority if it is removed. A plain invitation stays
+   restricted, including one made by the local console; the terminal offers
+   `nodwyn devices invite --tasks-only` for deliberate restricted access.
+2. **Ownership requires secure transport, independently of WebAuthn.** HTTPS
+   (including an IP address) or loopback qualifies. An owner invitation used on
+   another plain-HTTP address is refused without consuming it. Existing owner
+   links receive no owner methods over an insecure transport.
+3. **An existing link is authorised in place.** In the destination console,
+   Settings > Keys & devices offers **Authorise owner access** for a restricted
+   computer. It asks for confirmation and calls `devices.authorise {name}` only
+   after the destination's passkey check. This method is refused to local-console
+   tokens, restricted devices and links themselves. Alternatively,
+   `nodwyn devices authorise NAME` on the destination grants terminal-backed
+   ownership. Both keep the device token, pairing date and local host entry.
+   Existing links are never silently promoted based on their original inviter.
+4. **A permission change reconnects the existing socket.** The device watcher
+   closes it with 1012, so the ordinary reconnect reads the new capabilities
+   and refreshes the desk. Per-request checks also retain the connection's
+   original authority until that reconnect; removing authority takes effect
+   before another privileged request is relayed.
+5. **Sensitive changes retain destination confirmation.** Links never acquire
+   a passkey touch. Providers, credentials, policy, judge tuning and the rest
+   of setup stay in the destination console with its existing passkey checks.
+   `--no-link-settings` still refuses links the ordinary settings. The existing
+   second confirmation for loosening approval or upload settings remains.
+6. **The interface names the access.** Hosts says **Owner access** or **Tasks
+   only**. Restricted Settings offers **Authorise on HOST** and a destination
+   terminal command, with no unlink/relink instructions or unavailable save
+   explanation. Owner Settings links to the destination for sensitive changes.
+7. **The daemon records terminal authority honestly.** `hello` accepts optional
+   `owner: true` with `via` and without `passkey`, recording `owner:terminal` in
+   the actor. It has the same task authority as a passkey claim. The Unix socket
+   authenticates the same-user bridge: a process that could forge this claim
+   already has all methods by omitting `via`.
+
+The bridge and terminal write `devices.toml` as the user in the private config
+directory, as before. The new grant comes from the terminal or a confirmed
+passkey, never from repository content, a browser-supplied owner flag or an
+unconfirmed local-console session.
+
+Evidence: `TestTerminalInvitationsAuthoriseComputerLinks`,
+`TestOwnerInvitationRequiresSecureTransport`,
+`TestAuthoriseAnExistingComputerLink`,
+`TestALinkedHostIsReachedThroughThisComputersDaemon`,
+`TestOwnerComputerMakesThisComputersChoices` and
+`TestCLIAuthorisesExistingComputerLinks`. The `hosts` browser check exercises
+both the default owner link and passkey authorisation of an existing restricted
+link, asserting its unchanged token and host entry, automatic reconnect, model
+and settings actions, and the existing sensitive-setting restrictions.

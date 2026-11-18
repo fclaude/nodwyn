@@ -3285,12 +3285,12 @@ window can show both: the server's tasks beside the laptop's, what either
 waits for under one **Needs you**, and a new task started on whichever should
 run it (ADR 54). The laptop links to the server once:
 
-1. On the server, make an invitation: `nodwyn devices invite` in its
-   terminal, or **Invite a device** in Settings › Keys & devices of its
-   console. One made by your device signed in there with your passkey lets
-   the laptop make your choices for the server's tasks (a task's model,
-   limits and schedule, unlocking its keys); one from its terminal lets it
-   start tasks and answer them.
+1. On the server, run `nodwyn devices invite`, or choose **Invite a device**
+   in Settings > Keys & devices after signing in with your passkey. Linking
+   with either invitation grants **Owner access**: run tasks, choose models
+   and change ordinary settings. Use an https address for another computer;
+   loopback addresses also work locally. For restricted delegation, use
+   `nodwyn devices invite --tasks-only`.
 2. On the laptop, open **Hosts** in the sidebar and **Add a host**: the
    enter the server's address (`https://nodwyn.example.net`) and invitation,
    then **Link**. The form chooses names for both computers; **Choose names
@@ -3314,8 +3314,7 @@ it answers, with the message you started typing kept. A task on the server says 
 it, message it and give it files from the laptop, and the server records the
 answers as the laptop's. A notice of the server's task opens it there.
 
-The server decides what the laptop may do. A laptop linked with an
-invitation from your passkey's device changes the server's settings from
+The server decides what the laptop may do. A laptop with owner access changes the server's settings from
 its own window: **Settings** on the server's card in Hosts, or the server's
 chip at the top of Settings, opens its General, Models and Judge tabs, which are
 saved on the server. Its limits, its default model, its default judge
@@ -3335,15 +3334,16 @@ with `nodwyn ui --no-link-settings` (also taken by `nodwyn app`). The rest
 of its setup (keys, folders, connections, devices) is changed in its own
 console: **Open its console** on Hosts.
 
-A laptop that only answers on the server, its link made with an invitation
-from the server's terminal or at an address where a browser cannot use a
-passkey (plain http other than a `localhost` name, or an IP address), chooses
-no model there: Home shows the server's default model with **Why can't I
-choose?**, and a task's model says so too. Both lead to the server's
-Settings, which list the steps: sign in to the server's console with your
-passkey, at its https address, make an invitation in its
-Settings › Keys & devices, then unlink the server on the laptop and add it
-again with that invitation.
+A **Tasks only** link starts and answers tasks, with the server's model fixed.
+To authorise it, choose **Authorise on SERVER** in its Settings here. In the
+server's Settings > Keys & devices, choose **Authorise owner access** beside
+this computer, confirm, and use your passkey when asked. The existing link
+reconnects automatically: its token and host entry stay the same. You can also
+run `nodwyn devices authorise NAME` in the server's terminal, using the
+**Linked as** name shown on Hosts. There is no need to unlink or invite again.
+A terminal grant lasts until the device is revoked; a passkey-backed grant
+also loses owner access if its authorising passkey is removed. Sensitive
+changes still require confirmation in the server's own console.
 Revoking the laptop there ends the link, and Hosts says the server refuses
 it; **Unlink** on the laptop forgets the link and asks the server to forget
 the laptop too, saying when it could not. The laptop reaches the server

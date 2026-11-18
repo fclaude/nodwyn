@@ -699,3 +699,37 @@ func TestADailySpendLimitSkipsTheRestOfTheDay(t *testing.T) {
 		t.Fatal("a negative daily limit was taken")
 	}
 }
+
+// A terminal-authorised computer gets the same task choices as a passkey
+// device, with its distinct authority recorded rather than a fictitious key.
+func TestOwnerComputerMakesThisComputersChoices(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	local := connect(t, path)
+	local.hello()
+	id := opened(t, local, t.TempDir())
+	for _, claim := range []map[string]any{
+		{"protocol": 1, "owner": true},
+		{"protocol": 1, "via": "web:laptop", "owner": true, "passkey": "phone"},
+	} {
+		if r := connect(t, path).call("hello", claim); r.Error == nil {
+			t.Fatalf("invalid owner claim accepted: %v", claim)
+		}
+	}
+	laptop := connect(t, path)
+	var hello struct {
+		Peer string `json:"peer"`
+	}
+	into(t, laptop.ok("hello", map[string]any{"protocol": 1, "via": "web:laptop", "owner": true}), &hello)
+	if !strings.HasSuffix(hello.Peer, " via web:laptop owner:terminal") {
+		t.Fatalf("owner attribution: %q", hello.Peer)
+	}
+	laptop.ok("schedule.set", map[string]any{"id": id, "message": "check", "repeat": "daily", "at": time.Now().Add(48 * time.Hour).Format(schedule.Layout)})
+	state, err := core.Store{Dir: o.Paths.SessionsDir}.Schedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Definition == nil || state.Definition.Actor != hello.Peer {
+		t.Fatalf("the owner schedule's actor: %+v", state.Definition)
+	}
+}

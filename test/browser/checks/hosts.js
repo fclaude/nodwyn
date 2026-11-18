@@ -9,7 +9,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const { execFileSync } = require("child_process");
-const { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, shows, until, step, ready, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, freePort, launch, watch, requests, expectError, shows, until, step, ready, check } = require("../lib");
 
 check(async () => {
   // Two worlds, each with its own config, data, folder and scripted model.
@@ -113,6 +113,7 @@ check(async () => {
   await page.fill("#host-invite", autoInvite);
   await page.click("#add-host-form button[type=submit]");
   await page.waitForSelector("#hosts .host-card[data-host='host'] .host-state:has-text('ready')", { timeout: 20000 });
+  await shows(page, "#hosts .host-card[data-host='host']", "Owner access");
   const automatic = of(sent.local, "host.link")[0];
   assert.strictEqual(automatic.name, "host");
   assert.match(automatic.as, /^[a-z0-9][a-z0-9._-]*-[0-9a-f]{8}$/);
@@ -133,7 +134,7 @@ check(async () => {
   const beforeManual = of(sent.local, "host.link").length;
   await page.click("#add-host");
   await page.click("#add-host-form summary");
-  const invite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
+  const invite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite", "--tasks-only"], { env: workshop.env }).toString())[1];
   await page.fill("#host-address", remoteAddress);
   await page.fill("#host-as", "laptop");
   await page.fill("#host-name", "workshop");
@@ -152,7 +153,7 @@ check(async () => {
   await page.click("#add-host-form button[type=submit]");
   await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('ready')", { timeout: 20000 });
   assert.deepStrictEqual(of(sent.local, "host.link").slice(beforeManual), [{ name: "workshop", address: remoteAddress, as: "laptop", invite }], "Link sent");
-  await shows(page, "#hosts .host-card[data-host='workshop']", "workshop", remoteAddress, "Linked as laptop", "Answers");
+  await shows(page, "#hosts .host-card[data-host='workshop']", "workshop", remoteAddress, "Linked as laptop", "Tasks only");
   const remoteDevices = fs.readFileSync(`${workshop.root}/config/nodwyn/devices.toml`, "utf8");
   assert.match(remoteDevices, /name = "laptop"[^[]*host = true/, "workshop's devices.toml has the laptop as another nodwyn");
   const hostsFile = () => (fs.existsSync(`${laptop.root}/config/nodwyn/hosts.toml`) ? fs.readFileSync(`${laptop.root}/config/nodwyn/hosts.toml`, "utf8") : "");
@@ -192,7 +193,7 @@ check(async () => {
   await page.click("#host-model-why");
   await page.waitForFunction(() => location.hash === "#/host/workshop/settings");
   await page.waitForSelector("#host-settings-refused");
-  await shows(page, "#host-settings-refused", "not change workshop's settings or choose the model its tasks use");
+  await shows(page, "#host-settings-refused", "Authorise owner access to choose models and change settings");
   await page.click("a.new-task");
   await page.waitForSelector(".work-in-host:has-text('Folders on workshop')");
   await page.click("text=Add a folder");
@@ -379,7 +380,7 @@ check(async () => {
   await shows(page, "main.settings-page h1", "workshop's settings");
   // The link was made at an IP address over plain http, where no browser
   // uses a passkey, so the page says that is what to change.
-  await shows(page, "#host-settings-refused", "From here you can start tasks on workshop and answer their questions", `This computer reaches workshop at ${remoteAddress}`, "Settings › Keys & devices", "add it again at its https address", "Open workshop's console");
+  await shows(page, "#host-settings-refused", "Owner access required", "Keys & devices", "Authorise on workshop");
   await shows(page, "#settings-hosts", "This computer", "workshop");
   assert.strictEqual(await page.locator("main.settings-page [role=tablist], main.settings-page .settings-panel input, main.settings-page .settings-panel button").count(), 0, "workshop's Settings show controls to a link that answers");
   assert.ok(of(sent.workshop, "settings.read").length > 0, "workshop's settings were not read over workshop's socket");
@@ -418,6 +419,7 @@ check(async () => {
   // makes the invitation.
   const phoneContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const phone = watch(await phoneContext.newPage(), "workshop's phone");
+  const phoneRequests = requests(phone);
   const cdp = await phoneContext.newCDPSession(phone);
   await cdp.send("WebAuthn.enable");
   await cdp.send("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
@@ -436,12 +438,8 @@ check(async () => {
   if (await phone.locator("#touch-confirm").count()) await phone.click("#touch-confirm");
   await phone.waitForSelector("#invitation");
   const vouched = (await phone.textContent("#invitation strong")).trim();
-  await phoneContext.close();
-
-  // An invitation from workshop's terminal, at the localhost name where a
-  // passkey could be used, still makes a link that answers: workshop's
-  // Settings say the invitation is what to change.
-  const plainInvite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite"], { env: workshop.env }).toString())[1];
+  // A restricted invitation deliberately creates tasks-only access.
+  const plainInvite = /Invitation: (\S+)/.exec(execFileSync(process.env.NODWYN, ["devices", "invite", "--tasks-only"], { env: workshop.env }).toString())[1];
   await page.click("#add-host");
   await page.click("#add-host-form summary");
   await page.fill("#host-address", `http://localhost:${port}`);
@@ -453,17 +451,60 @@ check(async () => {
   await page.fill("#host-as", "laptop");
   await page.click("#add-host-form button[type=submit]");
   await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('ready')", { timeout: 20000 });
-  await shows(page, "#hosts .host-card[data-host='workshop']", "Answers");
+  await shows(page, "#hosts .host-card[data-host='workshop']", "Tasks only");
   await page.click("#host-settings-workshop");
   await page.waitForSelector("#host-settings-refused");
-  await shows(page, "#host-settings-refused", "This link's invitation came from workshop's terminal", "Invite a device", "unlink workshop and add it again with that invitation");
-  assert.ok(!(await page.innerText("#host-settings-refused")).includes("This computer reaches workshop at"), "a localhost link is told its address is the fault");
-  await page.screenshot({ path: `${out}/workshop-settings-terminal.png` });
+  await shows(page, "#host-settings-refused", "Owner access required", "Authorise on workshop");
+  await page.click("#host-authorise-terminal summary");
+  await shows(page, "#host-authorise-terminal", "nodwyn devices authorise laptop");
+  await page.click("#host-authorise-terminal summary");
+  const greetingsBeforeCheck = of(sent.workshop, "hello").length;
+  await page.click("#host-access-check");
+  await until("Check access reconnected", () => of(sent.workshop, "hello").length > greetingsBeforeCheck);
+  await page.waitForSelector("#host-settings-refused");
+  assert.strictEqual(await page.locator("#save-rule").count(), 0, "tasks-only Settings explain a save that cannot happen");
+  assert.doesNotMatch(await page.innerText("#host-settings-refused"), /unlink|add it again/i);
+  await page.waitForSelector("#toast", { state: "hidden" });
+  await page.screenshot({ path: `${out}/workshop-settings-tasks-only.png` });
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate((mode) => { document.documentElement.dataset.theme = mode; }, theme);
+    await page.screenshot({ path: `${out}/host-settings-tasks-only-${theme}.png` });
+  }
+  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+  const devicesFile = `${workshop.root}/config/nodwyn/devices.toml`;
+  const laptopRecord = () => fs.readFileSync(devicesFile, "utf8").split("[[device]]").find((record) => /name = "laptop"/.test(record));
+  const originalHash = /token_sha256 = "([^"]+)"/.exec(laptopRecord())[1];
+  const originalHosts = hostsFile();
+  const linkCalls = of(sent.local, "host.link").length;
+  const unlinkCalls = of(sent.local, "host.unlink").length;
+  const target = await page.getAttribute("#host-authorise", "href");
+  assert.strictEqual(target, `http://localhost:${port}/#/settings/keys`);
+  await phone.goto(target);
+  await phone.reload();
+  await ready(phone);
+  await phone.waitForSelector("#authorise-laptop");
+  await phone.click("#authorise-laptop");
+  await shows(phone, "#devices", "Allow laptop to choose models and change task settings?");
+  assert.doesNotMatch(laptopRecord(), /passkey = "phone"/, "owner access was granted before confirmation");
+  await phone.click("[data-device='laptop'] button:has-text('Cancel')");
+  assert.strictEqual(phoneRequests.of("devices.authorise").length, 0, "cancelling authorisation sent a grant");
+  await phone.click("#authorise-laptop");
+  await phone.click("#authorise-laptop-confirm");
+  await until("owner authorisation answered", () => phoneRequests.settled("devices.authorise"));
+  await until("existing link authorised", () => /passkey = "phone"/.test(laptopRecord()));
+  await page.waitForSelector("main.settings-page [role=tablist]", { timeout: 20000 });
+  assert.strictEqual(/token_sha256 = "([^"]+)"/.exec(laptopRecord())[1], originalHash, "authorisation replaced the token");
+  assert.strictEqual(hostsFile(), originalHosts, "authorisation rewrote the local link");
+  assert.strictEqual(of(sent.local, "host.link").length, linkCalls, "authorisation linked again");
+  assert.strictEqual(of(sent.local, "host.unlink").length, unlinkCalls, "authorisation unlinked");
+  assert.deepStrictEqual(phoneRequests.of("devices.authorise").at(-1), { name: "laptop" });
+  await phoneContext.close();
+  await page.screenshot({ path: `${out}/workshop-settings-authorised.png` });
+  step("the person authorises an existing link, which reconnects with its token and host entry kept");
   await page.evaluate(() => (location.hash = "#/hosts"));
   await page.click("#unlink-workshop");
   await page.click("#unlink-workshop-confirm");
   await until("workshop unlinked again", async () => (await page.locator("#hosts .host-card[data-host='workshop']").count()) === 0);
-  step("a terminal invitation at a localhost name: workshop's Settings say the invitation is what to change");
 
   await page.click("#add-host");
   await page.click("#add-host-form summary");
@@ -473,7 +514,7 @@ check(async () => {
   await page.fill("#host-invite", vouched);
   await page.click("#add-host-form button[type=submit]");
   await page.waitForSelector("#hosts .host-card[data-host='workshop'] .host-state:has-text('ready')", { timeout: 20000 });
-  await shows(page, "#hosts .host-card[data-host='workshop']", "Makes your choices");
+  await shows(page, "#hosts .host-card[data-host='workshop']", "Owner access");
   assert.match(fs.readFileSync(`${workshop.root}/config/nodwyn/devices.toml`, "utf8"), /name = "laptop"[^[]*passkey = "phone"[^[]*host = true/, "workshop's devices.toml has the laptop vouched for by the phone's passkey");
   await page.click("#host-settings-workshop");
   await page.waitForSelector("main.settings-page [role=tablist]");

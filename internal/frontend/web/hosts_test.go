@@ -67,7 +67,7 @@ func tempRoot(t *testing.T, prefix string) string {
 // daemon, as the host's device. The host decides what that device may do:
 // one invited by the person's passkey device makes the person's choices and
 // changes the host's settings, but is offered no other setup, one invited
-// from the terminal answers. The host's revocation closes the open socket
+// for tasks only answers; terminal invitations grant owner access directly. The host's revocation closes the open socket
 // and refuses the next; an address changed in hosts.toml is sent no cookie;
 // unlinking tells the host and forgets the token, its bindings and the line.
 func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
@@ -368,9 +368,12 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	}
 	forgotten()
 
-	// One invited from workshop's terminal answers: it starts tasks and answers,
-	// and makes none of the person's choices nor changes workshop's settings.
-	plain, _, _ := devices.Invite(Terminal, true)
+	// An explicitly restricted invitation starts tasks and answers, without
+	// choosing models or changing settings.
+	plain, _, err := devices.Invite(Terminal, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	link(plain)
 	conn = open()
 	greeting = hello(conn)
@@ -387,6 +390,40 @@ func TestALinkedHostIsReachedThroughThisComputersDaemon(t *testing.T) {
 	}
 	if written, _ := os.ReadFile(remotePaths.ConfigFile); !bytes.Contains(written, []byte(`shell_timeout = "3m"`)) {
 		t.Fatalf("a refused write changed workshop's config.toml: %s", written)
+	}
+	conn.Close(websocket.StatusNormalClosure, "")
+
+	// The terminal authorises a fresh computer link directly, with no browser
+	// or passkey invitation in between.
+	if err := devices.Revoke("laptop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := daemon.Call(ctx, "host.unlink", map[string]string{"name": "workshop"}, &unlinked); err != nil {
+		t.Fatal(err)
+	}
+	ownerInvite, _, err := devices.Invite(Terminal, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link(ownerInvite)
+	conn = open()
+	greeting = hello(conn)
+	if !strings.HasSuffix(greeting.Peer, " via web:laptop owner:terminal") || !slices.Contains(greeting.Methods, "session.model.set") {
+		t.Fatalf("the terminal link lacks owner access: %+v", greeting)
+	}
+	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"loop.shell_timeout": "5m"}}, &settings); err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"settings.provider.write", "credentials.add", "devices.authorise", "trust.set"} {
+		if slices.Contains(greeting.Methods, method) {
+			t.Errorf("a terminal owner link was offered sensitive method %s", method)
+		}
+		if err := call(conn, method, map[string]any{}, &settings); err == nil || !strings.Contains(err.Error(), "not available from this device") {
+			t.Errorf("a terminal owner link reached sensitive method %s: %v", method, err)
+		}
+	}
+	if err := call(conn, "settings.write", map[string]any{"set": map[string]any{"policy.allow_insecure_http": true}}, &settings); err == nil || !strings.Contains(err.Error(), "widens what this host's tasks may do") {
+		t.Errorf("a terminal owner link changed security policy: %v", err)
 	}
 	conn.Close(websocket.StatusNormalClosure, "")
 

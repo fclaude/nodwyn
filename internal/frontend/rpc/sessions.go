@@ -357,7 +357,7 @@ var methodTable = map[string]handler{
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if req.Method == "hello" {
 		var p helloParams
-		if err := params(req.Params, &p, "protocol", "via", "passkey"); err != nil {
+		if err := params(req.Params, &p, "protocol", "via", "passkey", "owner"); err != nil {
 			return nil, err
 		}
 		if p.Protocol != ProtocolVersion {
@@ -365,6 +365,9 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		}
 		if p.Passkey != "" && (p.Via == "" || !passkeyName.MatchString(p.Passkey)) {
 			return nil, failure(-32602, "passkey names the passkey of a device given by via, such as laptop")
+		}
+		if p.Owner && (p.Via == "" || p.Passkey != "") {
+			return nil, failure(-32602, "owner requires via and is separate from passkey")
 		}
 		if p.Via != "" {
 			if client.ready || !viaName.MatchString(p.Via) {
@@ -377,6 +380,8 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 			// already has every method, so it raises nobody above that.
 			if p.Passkey != "" {
 				client.actor += " passkey:" + p.Passkey
+			} else if p.Owner {
+				client.actor += " owner:terminal"
 			} else {
 				client.device = true
 			}

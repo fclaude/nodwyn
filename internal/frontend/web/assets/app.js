@@ -380,7 +380,7 @@ function draw(routeChanged, what) {
 // (ADR 54, amended 2026-10-23).
 function settingsCtx(ctx, entry) {
   if (!route.host) return { ...ctx, tab: route.tab };
-  return { ...ctx, conn: entry.conn, desk: entry.desk, host: route.host, hostAddress: entry.info?.address || "", tab: route.tab };
+  return { ...ctx, conn: entry.conn, desk: entry.desk, host: route.host, hostAddress: entry.info?.address || "", hostDevice: entry.info?.as || "", tab: route.tab };
 }
 
 // hostAway is what a linked host's task or settings show while the host
