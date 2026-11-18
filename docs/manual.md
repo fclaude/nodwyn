@@ -2566,6 +2566,8 @@ from 09:00 to 18:00 on weekdays") with the next times, and refuses what a
 schedule cannot be (an interval under 5 minutes, hours that end before they
 start) before anything is saved. A new schedule's first run is its first time
 after now, so try one with **Run now**.
+If saving fails, the Schedule dialog shows the error and keeps what you typed
+so you can correct it and try again.
 Saving opens the task immediately; its message is sent when due. Scheduled
 tasks appear on Home with their next time or Paused, and a card has **Pause
 schedule** (or **Resume schedule**) and **Run now**; Home says "Nothing
@@ -2576,7 +2578,8 @@ Scheduled section) lists every schedule: its task, the rule in words, when
 it runs next (or Paused, or held by locked keys), what today's runs cost
 and how the latest ended, with Pause, Run now and Schedule…. **New
 timetable** opens Home's Schedule dialog, beside the task's folder, model
-and limits.
+and limits. If you haven't chosen a folder, Home asks you to add one before
+opening the Schedule dialog.
 
 Both timetables and event workflows have a **Run type**: **Send a message**
 starts the ordinary agent loop; **Run Scheme** evaluates the program you

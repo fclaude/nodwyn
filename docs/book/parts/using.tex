@@ -1101,11 +1101,14 @@ monthly dates or a weekday of the month, or once; \textbf{Starts} and
 \textbf{Last day} bound it, and a dollar spend limit per run (0 means none)
 caps each run. The daemon says the rule back in words with its next times,
 in this computer's named zone, and refuses what a schedule cannot be before it
-is saved. A new schedule first runs at its first time after now. The task's
+is saved. If saving fails, the dialog keeps the draft so you can correct it and
+try again. A new schedule first runs at its first time after now. The task's
 \textbf{Schedule\ldots} also lists recent runs: when, how each ended or why
 it was skipped, and its cost. The \textbf{Workflows} page lists every
 schedule with what today's runs cost, beside a daily spend limit that skips
-the rest of a day's times once reached (\adr{53}). A workflow can also watch
+the rest of a day's times once reached (\adr{53}). \textbf{New timetable}
+opens the Schedule dialog on Home, after asking for a folder if one is needed.
+A workflow can also watch
 a Gitea or GitHub repository's pull requests, or a command's output: it
 filters what happens, then runs a task for each pull request with the event
 attached as data and your instruction as the request, and a new commit to the

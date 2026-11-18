@@ -26,6 +26,7 @@ perform real actions, so try file-writing programs in a scratch workspace.
 ![The schedule dialog on Home](shot:schedule)
 
 The dialog offers set times on chosen weekdays, an interval within the hours of a day, and monthly dates or a weekday of the month. **Recent runs** lists when each one started, how it ended or why it was skipped, and what it cost.
+If saving fails, the dialog shows the error and keeps your draft so you can correct it and try again.
 
 Scheduled runs happen in the daemon, so they need it to be running. Settings › General › **While you're away** › **Start at login** keeps it going after you close the window, and on a computer nobody logs in to, [the server page](server.html) shows how to have it start at boot. If the keychain has a passphrase, a daemon that started by itself is locked, and a run that needs a key waits until you unlock it from Home, once. It then runs once, late.
 
@@ -36,6 +37,8 @@ Workflows is a page for everything that starts without you.
 ![Workflows](shot:workflows)
 
 It lists every timetable, along with workflows that watch something and start when it changes. A watcher can follow the pull requests of a Gitea or GitHub repository, a Gmail search, or the lines a command prints. Each event is handed to the task as data, labelled as coming from outside, so a pull request that says "ignore your instructions" is read as text.
+
+**New timetable** opens the Schedule dialog on Home. If you haven't chosen a folder, Home asks you to add one first.
 
 The builder's **Do** card has the same **Run type** choice. **Check now**
 processes new events using the saved message or program; **Test the trigger**

@@ -253,7 +253,7 @@ export function forgetFolder(folder, host = "") {
   if (localStorage.getItem(keyFor(LAST_KEY, host)) === folder) localStorage.removeItem(keyFor(LAST_KEY, host));
 }
 
-export function renderHome(root, ctx) {
+export function renderHome(root, ctx, openTimetable = false) {
   const { navigate, hosts } = ctx;
   // The host a new task starts on (ADR 54), and what the composer offers
   // follows it: its folders, its models and the choices its console lets
@@ -495,8 +495,9 @@ export function renderHome(root, ctx) {
   // unready says why a task cannot be started or scheduled yet, apart from
   // its message, or is "" when it can: a button that does nothing and says
   // nothing reads as a broken one.
+  const needsFolder = "Choose a folder first.";
   const unready = () =>
-    starting ? "A task is starting." : !conn.live ? (away || "Disconnected.") : desk.keysLocked ? "Unlock your keys first." : !st.chosen ? "Choose a folder first." : canChoose && blocked(desk, selection()) ? "The chosen model cannot be used yet." : "";
+    starting ? "A task is starting." : !conn.live ? (away || "Disconnected.") : desk.keysLocked ? "Unlock your keys first." : !st.chosen ? needsFolder : canChoose && blocked(desk, selection()) ? "The chosen model cannot be used yet." : "";
   const ready = () => canStart && !unready() && !!task.value.trim();
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: true }, icon("up", 18, 2));
   // sync draws what depends on whether a task can start now.
@@ -545,7 +546,9 @@ export function renderHome(root, ctx) {
   const scheduleButton = conn.has("schedule.set")
     ? h("button", { type: "button", class: "btn small", id: "new-task-schedule", onclick: () => {
         options.open = false;
-        newSchedule(conn, task.value, (d) => startTask(new Event("submit", { cancelable: true }), d));
+        // A retry in this dialog uses the task already opened for it.
+        const attempt = { id: "" };
+        newSchedule(conn, task.value, (definition, close) => startTask(null, { definition, attempt, close }));
       } }, "Schedule…")
     : null;
   const optionsCount = h("span", { class: "count", hidden: true });
@@ -632,19 +635,20 @@ export function renderHome(root, ctx) {
         ),
       )
     : null;
-  // startTask starts the task and sends its message, or, given a schedule,
-  // schedules it instead. The schedule is an argument, not page state: one
-  // whose start failed stayed set, and the next plain Send scheduled.
+  // The schedule draft belongs to its dialog so an ordinary Send never uses it.
   let startTask;
   const form = h(
     "form",
     {
       class: "ask",
       onsubmit: startTask = async (event, scheduling = null) => {
-        event.preventDefault();
-        // A schedule carries its own message, written in its dialog.
-        if (scheduling ? !canStart || unready() : !ready()) return;
-        const text = scheduling ? scheduling.message : task.value;
+        event?.preventDefault();
+        if (scheduling) {
+          const why = unready();
+          if (why) throw new Error(why);
+          if (!canStart) throw new Error("This view cannot start tasks.");
+        } else if (!ready()) return;
+        const text = scheduling ? scheduling.definition.message : task.value;
         // The task's page is opened when the start gets there, which can be
         // after the person went elsewhere (an image's confirm waits, then is
         // stopped): it is opened from where they started it or on its own
@@ -655,9 +659,11 @@ export function renderHome(root, ctx) {
         };
         starting = true;
         submit.disabled = true;
-        let opened = "",
-          sending = false;
+        let opened = scheduling?.attempt.id || "";
+        let attaching = false;
         try {
+          // Check timing and run content in the daemon before creating a task or worktree.
+          if (scheduling) await conn.call("schedule.next", scheduling.definition);
           // A model or effort chosen on this page is sent as it is. Left
           // alone, the picker shows the default and the task starts on it, as
           // a task always did: the daemon pins its effort in the log.
@@ -677,22 +683,34 @@ export function renderHome(root, ctx) {
           if (helpers.length) params.delegates = [...helpers].sort();
           // A task starts without limits; they are set on its panel, for
           // the few tasks that want one (ADR 49, amended 2026-10-27).
-          const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
-          opened = info.id;
+          if (!opened) {
+            const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
+            opened = info.id;
+            if (scheduling) scheduling.attempt.id = opened;
+          }
           // An image waits for its own confirm, which the task's page shows.
-          if (files.files.some(isImage)) follow(info.id);
-          if (files.files.length) await files.upload(info.id, target.name);
-          sending = true;
-          if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling });
-          else await conn.call("session.send", { id: info.id, text });
+          attaching = true;
+          if (files.files.some(isImage)) {
+            scheduling?.close();
+            follow(opened);
+          }
+          if (files.files.length) await files.upload(opened, target.name);
+          attaching = false;
+          if (scheduling) await conn.call("schedule.set", { id: opened, ...scheduling.definition });
+          else await conn.call("session.send", { id: opened, text });
           draft = "";
           optionsOpen = helpersOpen = false;
           // What was chosen stays for the next task (ADR 41, amended
           // 2026-10-27).
-          await desk.refresh();
-          follow(info.id);
+          if (scheduling) await desk.reload();
+          else await desk.refresh();
+          follow(opened);
         } catch (error) {
-          if (opened && !sending) {
+          if (scheduling && !attaching) {
+            if (opened) desk.reload();
+            throw error;
+          }
+          if (attaching) {
             // The task opened, but an attachment was refused (an image's
             // confirm declined) before the message went: the message waits
             // in the task's reply box, to send there with or without the
@@ -789,6 +807,7 @@ export function renderHome(root, ctx) {
   if (listed.length > 6 && !target.name) chips.append(h("a", { class: "chip", href: "#/workspaces", style: "text-decoration:none", title: "Every folder, on Workspaces" }, `${listed.length - 6} more`));
   // Adding a folder names it; where the console may save workspaces, the
   // folder joins the list for next time.
+  let scheduleAfterFolder = false;
   const adding = h("form", { class: "add-folder card", hidden: true });
   const pathInput = h("input", { class: "input", id: "add-path", placeholder: "/absolute/path/to/a/folder", spellcheck: false, autocomplete: "off", required: true });
   const nameInput = h("input", { class: "input", id: "add-name", placeholder: "for example Receipts 2026", autocomplete: "off" });
@@ -799,7 +818,11 @@ export function renderHome(root, ctx) {
     canSave ? h("div", { class: "field" }, h("label", { for: "add-name" }, "Name"), nameInput) : null,
     canSave ? h("p", { class: "hint" }, "nodwyn reads, writes and organizes the files there and can run programs. Unless git has a file committed and unchanged, it keeps the previous version before changing it.") : null,
     addError,
-    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, canSave ? "Add this folder" : "Use this folder"), h("button", { type: "button", class: "btn ghost", onclick: () => (adding.hidden = true) }, "Cancel")),
+    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, canSave ? "Add this folder" : "Use this folder"), h("button", { type: "button", class: "btn ghost", onclick: () => {
+      adding.hidden = true;
+      addError.textContent = "";
+      scheduleAfterFolder = false;
+    } }, "Cancel")),
   );
   adding.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -818,7 +841,7 @@ export function renderHome(root, ctx) {
       }
     }
     setFolder(path, desk);
-    renderHome(root, { ...ctx, keepTop: false });
+    renderHome(root, { ...ctx, keepTop: false }, scheduleAfterFolder);
   });
   chips.append(
     h(
@@ -901,7 +924,16 @@ export function renderHome(root, ctx) {
   if (canChoose) drawPicker();
   // New workflow on the Workflows page comes here for the Schedule dialog,
   // which starts a task with every choice above.
-  if (takeNewWorkflow() && scheduleButton && !scheduleButton.disabled) scheduleButton.click();
+  if (takeNewWorkflow() || openTimetable) {
+    const why = settingUp ? "Set up a model on Home first." : unready() || (!scheduleButton || !canStart ? "Choose a computer that can create schedules." : "");
+    if (why === needsFolder && canStart) {
+      scheduleAfterFolder = true;
+      addError.textContent = why;
+      adding.hidden = false;
+      pathInput.focus();
+    } else if (why) toastError(why);
+    else scheduleButton.click();
+  }
   current = {
     focus,
     // Redrawn when the desk changes under a page being typed into.

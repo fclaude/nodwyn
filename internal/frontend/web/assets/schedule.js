@@ -85,7 +85,11 @@ function timetable(rule, changed) {
     sections.days.hidden = k !== "times" && k !== "every";
     sections.once.hidden = k !== "once";
     sections.bounds.hidden = k === "once";
-    for (const input of between) input.disabled = !windowed.checked;
+    // Hidden fields keep their drafts, but cannot block the active rule's submission.
+    for (const section of Object.values(sections)) {
+      for (const field of section.querySelectorAll("input, select")) field.disabled = section.hidden || field.hidden;
+    }
+    for (const input of between) input.disabled ||= !windowed.checked;
   };
   kind.addEventListener("change", show);
   monthly.addEventListener("change", show);
@@ -129,11 +133,13 @@ export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "S
   let revision = 0;
   const refresh = async () => {
     const version = ++revision;
+    error.textContent = "";
     try {
-      const next = await conn.call("schedule.next", { ...value(), ...(!value().program && !value().message ? { message: "Scheduled request" } : {}) });
+      const definition = value();
+      if (!definition.program && !definition.message) definition.message = "Scheduled request";
+      const next = await conn.call("schedule.next", definition);
       if (version === revision) {
         preview.replaceChildren(h("p", { class: "schedule-sentence" }, next.sentence), h("p", { class: "hint", title: `${next.timezone}: ${next.next_words.join(" · ")}` }, nextLine(next)));
-        error.textContent = "";
       }
     } catch (e) { if (version === revision) preview.replaceChildren(h("p", { class: "hint" }, e.message)); }
   };
@@ -141,7 +147,10 @@ export function scheduleEditor(conn, state, save, { draft = "", submitLabel = "S
   const value = () => ({ ...run.value(), rule: rule.value(), cost: Number(cost.value), day_cost: Number(dayCost.value) || 0, paused: !!d.paused });
   const submit = h("button", { type: "submit", class: "btn dark" }, submitLabel);
   const form = h("form", { class: "schedule-form", onsubmit: async (event) => {
-    event.preventDefault(); submit.disabled = true;
+    event.preventDefault();
+    if (submit.disabled) return;
+    submit.disabled = true;
+    error.textContent = "";
     try { await save(value()); } catch (e) { error.textContent = e.message; }
     finally { submit.disabled = false; }
   } },
@@ -167,7 +176,16 @@ export function dialog(title = "Schedule") {
 // is a field here, whatever was typed in the composer before is its start.
 export function newSchedule(conn, draft, save) {
   const box = dialog();
-  box.append(scheduleEditor(conn, null, async (d) => { box.close(); await save(d); }, { draft, submitLabel: "Schedule" }));
+  const close = () => box.close();
+  box.append(scheduleEditor(conn, null, async (d) => {
+    try { await save(d, close); }
+    catch (error) {
+      if (box.open) throw error;
+      toastError(error.message);
+      return;
+    }
+    close();
+  }, { draft, submitLabel: "Schedule" }));
 }
 
 // scheduleActions are the buttons that act on a task's schedule, shared by its

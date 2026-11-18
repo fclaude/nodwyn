@@ -4,18 +4,38 @@ const fs = require("fs");
 const path = require("path");
 const { out, requests, openOptions, taskMenu, until, ready, desk, check } = require("../lib");
 check(async () => {
-  const { url, repo, page } = await desk({ timezoneId: "Pacific/Honolulu" });
+  const { url, repo, page } = await desk({ args: ["-pace=0"], timezoneId: "Pacific/Honolulu" });
   const sent = requests(page);
   const manage = () => taskMenu(page, "Schedule…");
   const close = () => page.click('button[aria-label="Close schedule"]');
   const status = async (text) => until(text, async () => (await page.locator('.schedule-status').textContent()).includes(text));
+  let rejectedTask;
+  await page.routeWebSocket('**/socket', (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      const { id, method, params } = JSON.parse(message);
+      if (method === 'schedule.set' && params.message === 'Write scheduled' && !rejectedTask) {
+        rejectedTask = params.id;
+        socket.send(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32000, message: 'Could not write the task log.' } }));
+      } else server.send(message);
+    });
+  });
   await page.goto(url); await ready(page);
   await page.evaluate(() => location.hash = '#/settings');
   await page.waitForSelector('#section-approval');
   await page.click("[id='set-approval.writes-ask']");
   await page.click(".save-bar button:has-text('Save')");
   await until('write approval setting saved', async () => sent.of('settings.write').length === 1 && await page.$eval('.save-bar', (el) => el.hidden));
-  await page.evaluate(() => location.hash = '#/');
+  // A fresh desk needs a folder before it can create a timetable. New
+  // timetable on Workflows takes the person straight to the folder field.
+  await page.click('.nav-link[href="#/workflows"]');
+  await page.click('#new-workflow');
+  await page.waitForSelector('.add-folder [role=alert]:has-text("Choose a folder first.")', { timeout: 3000 });
+  await page.fill('#add-path', repo);
+  await page.click('button:text-is("Add this folder")');
+  await page.waitForSelector('dialog.schedule-dialog[open] #schedule-message');
+  await close();
+  await page.waitForSelector(`#work-in button[title="${repo}"][aria-pressed=true]`);
   // Nothing is scheduled yet, and Home says so. Scheduling is one of Home's
   // Options, and opens the dialog with the composer empty: the message is a
   // field there, and required.
@@ -50,11 +70,27 @@ check(async () => {
   await page.selectOption('#schedule-repeat', 'every');
   await page.fill('#schedule-every', '2');
   await page.waitForFunction(() => document.querySelector('.schedule-form [role=status]')?.textContent.includes('from 5 minutes to 24 hours'));
+  await page.click('.schedule-form button[type=submit]');
+  await page.waitForSelector('.schedule-form [role=alert]:has-text("from 5 minutes to 24 hours")', { timeout: 3000 });
+  assert.strictEqual(await page.inputValue('#schedule-message'), 'Write scheduled', 'the rejected save lost the message');
+  assert.strictEqual(await page.inputValue('#schedule-every'), '2', 'the rejected save lost the rule');
+  assert.ok(!sent.of('session.open').length && !sent.of('worktree.open').length, 'the rejected schedule opened an empty task');
+  assert.strictEqual(sent.of('schedule.set').length, 0, 'the rejected schedule reached the save request');
+  await page.fill('#schedule-every', '0');
   await page.selectOption('#schedule-repeat', 'times');
+  assert.ok(await page.$eval('.schedule-form', (form) => form.checkValidity()), 'an invalid field from a hidden repeat mode blocked submission');
   await page.waitForFunction(() => document.querySelector('.schedule-form [role=status]')?.textContent.startsWith('Tuesdays and Thursdays'));
+  await page.click('.schedule-form button[type=submit]');
+  // The daemon can still refuse the save after opening the task. The
+  // editor keeps the definition and tries again on the same task.
+  await page.waitForSelector('.schedule-form [role=alert]:has-text("Could not write the task log.")');
+  assert.strictEqual(await page.inputValue('#schedule-day-cost'), '5', 'the failed save lost the limit');
+  assert.strictEqual(await page.inputValue('.schedule-time'), '15:00', 'the failed save lost the time');
   await page.click('.schedule-form button[type=submit]');
   await page.waitForSelector('.task[data-loaded]');
   const id = await page.evaluate(() => location.hash.split('/')[2]);
+  assert.strictEqual(id, rejectedTask, 'retry opened a second task');
+  assert.strictEqual(sent.of('session.open').length + sent.of('worktree.open').length, 1, 'more than one task was opened');
   assert.strictEqual(sent.of('session.send').filter((p) => p.id === id).length, 0, 'creation sent the message immediately');
   const def = sent.of('schedule.set').find((p) => p.id === id);
   assert.strictEqual(def.message, 'Write scheduled'); assert.strictEqual(def.cost, 1.25);
