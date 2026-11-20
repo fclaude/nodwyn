@@ -1,6 +1,7 @@
 package plain
 
 import (
+	"bytes"
 	"io"
 	"strings"
 	"sync"
@@ -93,5 +94,58 @@ func TestLongTerminalMessageIsComplete(t *testing.T) {
 				t.Fatal("line not received")
 			}
 		})
+	}
+}
+
+type promptSignals struct {
+	message  chan struct{}
+	question chan struct{}
+}
+
+func (w promptSignals) Write(p []byte) (int, error) {
+	for prompt, ready := range map[string]chan struct{}{"message> ": w.message, "choice> ": w.question} {
+		if bytes.Contains(p, []byte(prompt)) {
+			select {
+			case ready <- struct{}{}:
+			default:
+			}
+		}
+	}
+	return len(p), nil
+}
+
+func TestQuestionAcceptsOnlyInputTypedAfterItsPrompt(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	ready := promptSignals{make(chan struct{}, 1), make(chan struct{}, 1)}
+	reader := newLineReader(slave, ready)
+	write := make(chan error, 1)
+	go func() {
+		<-ready.message
+		if _, err := io.WriteString(master, "hello\rfirst\r"); err != nil {
+			write <- err
+			return
+		}
+		<-ready.question
+		_, err := io.WriteString(master, "second\r")
+		write <- err
+	}()
+	if got, ok := reader.read("message> "); !ok || got != "hello" {
+		t.Fatalf("message = %q, read = %v", got, ok)
+	}
+	if got, ok := reader.answer("choice> "); !ok || got != "second" {
+		t.Errorf("choice = %q, read = %v, want second", got, ok)
+	}
+	select {
+	case err := <-write:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("input writer did not finish")
 	}
 }

@@ -47,6 +47,13 @@ func (lr *lineReader) useScanner(in io.Reader) {
 	lr.tty = nil
 }
 
+// Flush both the terminal driver and the editor, which may already have read
+// several lines in one system call.
+func (lr *lineReader) discardTypeAhead() {
+	_ = discardTypeAhead(int(lr.tty.Fd()))
+	lr.term.DiscardInput()
+}
+
 // answer reads the answer to a question (a confirm, a choice, a limit). On a
 // terminal, what was typed before the question was shown is dropped: the
 // terminal queues keys pressed while a turn runs, and the next read took a
@@ -54,7 +61,7 @@ func (lr *lineReader) useScanner(in io.Reader) {
 // security confirm nobody had read.
 func (lr *lineReader) answer(prompt string) (line string, ok bool) {
 	if lr.tty != nil {
-		_ = discardTypeAhead(int(lr.tty.Fd()))
+		lr.discardTypeAhead()
 	}
 	return lr.read(prompt)
 }
@@ -110,7 +117,7 @@ func (lr *lineReader) secret(prompt string) (line string, ok bool) {
 		}
 		return lr.scanner.Text(), true
 	}
-	_ = discardTypeAhead(int(lr.tty.Fd())) // as answer does
+	lr.discardTypeAhead()
 	fmt.Fprint(lr.out, prompt)
 	buf, err := term.ReadPassword(int(lr.tty.Fd()))
 	if err != nil {

@@ -983,6 +983,15 @@ func (pasteIndicatorError) Error() string {
 // paste started. The caller can join those fragments into one message.
 var ErrPasteIndicator = pasteIndicatorError{}
 
+// DiscardInput drops keys read ahead after a submitted line. A new question
+// must be answered after the user has seen it.
+func (t *Terminal) DiscardInput() {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	t.remainder = nil
+	t.pasteActive = false
+}
+
 // SetBracketedPasteMode requests that the terminal bracket paste operations
 // with markers. Not all terminals support this but, if it is supported, then
 // enabling this mode will stop any autocomplete callback from running due to
