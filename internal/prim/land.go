@@ -372,7 +372,7 @@ func (l lander) moveLocal(w *Worktree, head string) string {
 	if changes, _ := l.git(checkout, "status", "--porcelain", "--untracked-files=no"); changes != "" {
 		return "the checkout at " + checkout + " has changes of its own, so its " + w.Base + " was left alone: pull it when they are done"
 	}
-	if _, err := l.git(checkout, "merge", "-q", "--ff-only", head); err != nil {
+	if _, err := l.git(checkout, "merge", "-q", "--ff-only", "--no-overwrite-ignore", head); err != nil {
 		return "the checkout at " + checkout + " could not be fast-forwarded: " + err.Error()
 	}
 	return "the checkout at " + checkout + " fast-forwarded to " + short(head)

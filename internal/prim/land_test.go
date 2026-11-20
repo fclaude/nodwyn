@@ -233,3 +233,24 @@ func TestGitLandLeavesADirtyCheckoutAlone(t *testing.T) {
 		t.Fatal("a dirty checkout's main moved")
 	}
 }
+
+func TestGitLandKeepsIgnoredFileInBaseCheckout(t *testing.T) {
+	r := newLandRig(t)
+	r.write(r.repo, ".git/info/exclude", "output.txt\n")
+	r.write(r.repo, "output.txt", "personal copy")
+	r.write(r.tree, "output.txt", "task copy")
+	r.git(r.tree, "add", "-f", "output.txt")
+	r.git(r.tree, "commit", "-qm", "Track output")
+
+	result, err := r.land("Publish changes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(r.repo, "output.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "personal copy" {
+		t.Fatalf("git-land replaced the ignored file in the main checkout with %q: %s", got, result)
+	}
+}
