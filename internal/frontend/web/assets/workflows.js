@@ -181,8 +181,14 @@ function renderBuilder(root, ctx) {
     state.loaded = true;
     conn.call("workflow.read", { id: editingId }).then((view) => { state.def = { ...defaults(), ...view.definition, filters: view.definition.filters || [], then: { ...defaults().then, ...(view.definition.then || {}) } }; state.runDraft = {}; delete state.def.actor; delete state.def.removed; redraw(); }).catch((error) => { toastError(error.message); navigate("#/workflows"); });
   }
-  if (conn.has("credentials.list") && !state.credentials.length) {
-    conn.call("credentials.list").then((r) => { state.credentials = [...new Set((r.credentials || []).map((c) => c.class))]; redraw(); }).catch(() => {});
+  if (conn.has("credentials.list") && !state.credentialsRequested) {
+    state.credentialsRequested = true;
+    conn.call("credentials.list").then((r) => {
+      state.credentials = [...new Set((r.credentials || []).map((c) => c.class))];
+      if (draft === state) {
+        root.querySelector("#builder-credentials")?.replaceChildren(...state.credentials.map((c) => h("option", { value: c })));
+      }
+    }).catch(() => { state.credentialsRequested = false; });
   }
   const d = state.def;
   const set = (patch) => { Object.assign(d, patch); state.test = null; };
