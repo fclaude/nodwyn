@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/url"
 	"os"
@@ -409,11 +410,11 @@ func (s Store) Append(id, kind string, payload any) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return State{}, err
 	}
-	if _, err := f.Write(append(line, '\n')); err != nil {
+	if err := appendRecord(f, line); err != nil {
 		f.Close()
 		return State{}, err
 	}
@@ -422,6 +423,27 @@ func (s Store) Append(id, kind string, payload any) (State, error) {
 	}
 	state.observe(r)
 	return state, nil
+}
+
+// Keep the next record on its own line even when a crash interrupted the last
+// write. Replay can then recover a complete JSON value missing only its newline
+// and skip an incomplete value without losing the record that follows.
+func appendRecord(f *os.File, line []byte) error {
+	end, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
+		return err
+	}
+	if end > 0 {
+		var last [1]byte
+		if _, err := f.ReadAt(last[:], end-1); err != nil {
+			return err
+		}
+		if last[0] != '\n' {
+			line = append([]byte{'\n'}, line...)
+		}
+	}
+	_, err = f.Write(append(line, '\n'))
+	return err
 }
 
 // Sentence says the workflow in words, as every client shows it: "When a
