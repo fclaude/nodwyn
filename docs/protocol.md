@@ -1516,7 +1516,8 @@ pending `outbox`.
   workflow's credential at the position the forge takes it, only if the
   binding table allows it at that host for POST; no redirect is followed. A
   failure leaves the item and says why. `body` posts other words than the
-  run's: refused to a paired device. An item already decided is refused.
+  run's: refused to a paired device. The scheduler's daemon handles decisions. It refuses a second decision on an
+  item while delivery is in progress or after it has been decided.
   With `then.auto` the daemon posts as the run ends, by `workflow`, and a
   post that cannot be made leaves the item.
 

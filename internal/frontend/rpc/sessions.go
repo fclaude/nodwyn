@@ -67,6 +67,8 @@ type server struct {
 	// runs are the workflow runs waiting for their task to go idle, so that
 	// their answers can be read (outbox.go).
 	runs runs
+	// A delivery releases mu while it contacts the destination.
+	posting map[string]bool
 	// ctx ends when Serve is told to stop, and every wait on the network a
 	// method makes without the lock ends with it (base). closing is set once
 	// the sessions are being closed, which a session made after that does not

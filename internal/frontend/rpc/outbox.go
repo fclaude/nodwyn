@@ -186,6 +186,11 @@ func (s *server) deliver(ctx context.Context, id string, item workflow.Outbox, b
 	if item.Source == nil {
 		return fmt.Errorf("the original destination of this answer could not be recovered")
 	}
+	if s.posting == nil {
+		s.posting = make(map[string]bool)
+	}
+	s.posting[item.ID] = true
+	defer delete(s.posting, item.ID)
 	poller := s.poller()
 	var err error
 	switch {
@@ -248,6 +253,15 @@ func (s *server) outboxMethod(req request, client *peer) (any, *rpcError) {
 	var p outboxDecideParams
 	if err := params(req.Params, &p, "workflow", "id", "decision", "body"); err != nil {
 		return nil, err
+	}
+	if err := s.ensureScheduler(); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	if s.schedulerLock == nil {
+		return nil, failure(-32000, "The scheduler is owned by another daemon")
+	}
+	if s.posting[p.ID] {
+		return nil, failure(-32000, "This answer is already being posted")
 	}
 	state, err := s.flows().Read(p.Workflow)
 	if err != nil || state.Definition == nil || state.Definition.Removed {

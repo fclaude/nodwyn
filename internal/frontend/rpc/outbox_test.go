@@ -3,6 +3,10 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -336,5 +340,59 @@ func TestOutboxKeepsOriginalDestination(t *testing.T) {
 				t.Fatalf("held review for %s was delivered to %s#%s", item.URL, rr[0].Repo, rr[0].Number)
 			}
 		})
+	}
+}
+
+func TestConcurrentDecisionsDeliverOnce(t *testing.T) {
+	f := forge.New("forge-token")
+	defer f.Close()
+	target, err := url.Parse(f.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forward := httputil.NewSingleHostReverseProxy(target)
+	first := make(chan struct{}, 2)
+	release := make(chan struct{})
+	delayed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			first <- struct{}{}
+			<-release
+		}
+		forward.ServeHTTP(w, r)
+	}))
+	defer delayed.Close()
+	f.URL = delayed.URL
+	m := fake.NewT(t, fake.Turn{Content: "Please add coverage."})
+	defer m.Close()
+	o := forgeOptions(t, f, m)
+	bindPost(t, o)
+	s := schedulerServer(t, o)
+	id, _ := runAndWait(t, s, f, workflow.Then{Post: "review"})
+	item := holdsOne(t, s, id, 1).Outbox[0]
+	p := outboxDecideParams{Workflow: id, ID: item.ID, Decision: "post"}
+	results := make(chan *rpcError, 2)
+	go func() { results <- decide(t, s, &peer{actor: "desktop"}, p) }()
+	select {
+	case <-first:
+	case <-time.After(3 * time.Second):
+		close(release)
+		t.Fatal("first review never arrived")
+	}
+	otherDaemon := schedulerServer(t, o)
+	if e := decide(t, otherDaemon, &peer{actor: "second"}, outboxDecideParams{Workflow: id, ID: item.ID, Decision: "discard"}); e == nil {
+		t.Error("a second daemon discarded the item during delivery")
+	}
+	go func() { results <- decide(t, s, &peer{actor: "phone", device: true}, p) }()
+	select {
+	case <-first:
+	case <-time.After(250 * time.Millisecond):
+	}
+	close(release)
+	a, b := <-results, <-results
+	if (a == nil) == (b == nil) {
+		t.Errorf("expected one successful approval, got %v and %v", a, b)
+	}
+	if n := len(f.Reviews()); n != 1 {
+		t.Fatalf("%d reviews reached the forge for one outbox item; callers returned %v and %v", n, a, b)
 	}
 }
