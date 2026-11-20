@@ -79,6 +79,14 @@ func OpenStore(workspace, export string) (*Store, error) {
 		if e.IsDir() {
 			return nil, errors.New("journal: unexpected directory")
 		}
+		if e.Type().IsRegular() && strings.HasPrefix(e.Name(), ".pending-") {
+			// The committed records and pending.json are authoritative. A crash
+			// can leave the writer's temporary record just before its rename.
+			if err := os.Remove(filepath.Join(export, "records", e.Name())); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		name := fmt.Sprintf("%020d.json", s.seq+1)
 		if e.Name() != name {
 			return nil, errors.New("journal: sequence gap")

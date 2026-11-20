@@ -331,3 +331,31 @@ func TestBoundedProviderAcceptsBufferedOllamaCallsWithoutStreamingCallback(t *te
 		t.Fatalf("streaming call: %+v %q %v", response, received, err)
 	}
 }
+
+func TestRestartRecoversBeforeRecordRename(t *testing.T) {
+	store := storeFor(t)
+	project, err := store.Create("first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := filepath.Join(store.Export, "records", "00000000000000000001.json")
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Recreate the on-disk state immediately before atomicMode renames the synced record.
+	if err := os.WriteFile(filepath.Join(store.Export, "pending.json"), data, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(record, filepath.Join(store.Export, "records", ".pending-123456789")); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenStore(store.Workspace, store.Export)
+	if err != nil {
+		t.Fatalf("restart with a complete intent and prepared record failed: %v", err)
+	}
+	ps := reopened.Projects()
+	if len(ps) != 1 || ps[0].ID != project.ID {
+		t.Fatalf("expected original project, got %v", ps)
+	}
+}
