@@ -78,7 +78,7 @@ type indexedChunk struct {
 // root, is indexed whole from now on, git's ignores notwithstanding.
 // Nobody is asked about a read (guard.WithoutAsking): a file the guard
 // would ask about is left out and named, as one it refuses is.
-func (x *repoIndex) refresh(c *scheme.Call, bound time.Duration, add string) (nlog.IndexUpdate, retrieval.Manifest, error) {
+func (x *repoIndex) refresh(c *scheme.Call, bound time.Duration, add string, verify bool) (nlog.IndexUpdate, retrieval.Manifest, error) {
 	start := time.Now()
 	sum := nlog.IndexUpdate{Root: x.o.Root}
 	read, ok := c.In.Lookup("fs-read")
@@ -88,6 +88,15 @@ func (x *repoIndex) refresh(c *scheme.Call, bound time.Duration, add string) (nl
 	deny := denylist(x.o)
 	ctx := guard.WithoutAsking(c.Ctx)
 	var m retrieval.Manifest
+	hasChunks := x.store.Has
+	if verify || x.manifest == nil {
+		// A cold index or an explicit update checks that its cached files decode.
+		// Repeated searches can reuse the already loaded index.
+		hasChunks = func(hash string) bool {
+			_, ok := x.store.Chunks(hash)
+			return ok
+		}
+	}
 	// The manifest is published as a policy file is: one writer at a time
 	// under a sibling lock, a temporary file renamed into place.
 	err := policyfile.Update(c.Ctx, x.store.ManifestPath(x.o.Root), func(raw []byte) ([]byte, error) {
@@ -139,7 +148,7 @@ func (x *repoIndex) refresh(c *scheme.Call, bound time.Duration, add string) (nl
 				drop(rel)
 				continue
 			}
-			if old, ok := m.Files[rel]; ok && sameFile(old, info) && x.store.Has(old.Hash) {
+			if old, ok := m.Files[rel]; ok && sameFile(old, info) && hasChunks(old.Hash) {
 				text += info.Size()
 				continue
 			}
@@ -175,10 +184,13 @@ func (x *repoIndex) refresh(c *scheme.Call, bound time.Duration, add string) (nl
 			// reaches the store.
 			redacted := redact.Redact(value.S, nil).Text
 			hash := retrieval.Hash(redacted)
-			if x.store.Has(hash) {
+			if hasChunks(hash) {
 				x.store.Touch(hash)
-			} else if err := x.store.Put(hash, retrieval.Chunks(redacted)); err != nil {
-				return nil, err
+			} else {
+				if err := x.store.Put(hash, retrieval.Chunks(redacted)); err != nil {
+					return nil, err
+				}
+				x.manifest = nil
 			}
 			// The state is taken after the read, so a change made while
 			// reading shows next time.
@@ -302,7 +314,8 @@ func (x *repoIndex) load(m retrieval.Manifest) error {
 	for _, p := range paths {
 		chunks, ok := x.store.Chunks(m.Files[p].Hash)
 		if !ok {
-			continue // read again by the next refresh, which finds it missing
+			x.manifest = nil // The next refresh must repair this incomplete index.
+			continue
 		}
 		x.files++
 		for _, ch := range chunks {
@@ -325,7 +338,7 @@ func (x *repoIndex) load(m retrieval.Manifest) error {
 func (x *repoIndex) search(c *scheme.Call, query string, limit int, under string) (string, error) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
-	sum, m, err := x.refresh(c, indexSearchTime, "")
+	sum, m, err := x.refresh(c, indexSearchTime, "", false)
 	if err != nil {
 		return "", err
 	}
@@ -423,7 +436,7 @@ func (x *repoIndex) forget(ctx context.Context, rel string) {
 func (x *repoIndex) update(c *scheme.Call, path string) (string, error) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
-	sum, m, err := x.refresh(c, indexUpdateTime, path)
+	sum, m, err := x.refresh(c, indexUpdateTime, path, true)
 	if err != nil {
 		return "", err
 	}

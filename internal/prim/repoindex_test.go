@@ -302,3 +302,31 @@ func TestAnUnreadableFileIsSkipped(t *testing.T) {
 		t.Fatalf("index-grep with an unreadable file: %s %v", scheme.Write(v), err)
 	}
 }
+
+func TestIndexUpdateRepairsDamagedChunk(t *testing.T) {
+	root, dir := indexRepo(t), t.TempDir()
+	h := newIndexHarness(t, root, dir)
+	const search = `(index-search "untrackedHelper" "repo")`
+	if got := h.eval(t, search); !strings.Contains(got, "helper.go:") {
+		t.Fatal(got)
+	}
+	contents, err := os.ReadFile(filepath.Join(root, "helper.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := retrieval.Hash(string(contents))
+	if err := os.WriteFile(filepath.Join(dir, "files", key[:2], key+".json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h.eval(t, `(index-update)`)
+	if _, ok := (retrieval.Store{Dir: dir}).Chunks(key); !ok {
+		t.Fatal("refresh did not repair the warm index's on-disk chunk")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "files", key[:2], key+".json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h = newIndexHarness(t, root, dir)
+	if got := h.eval(t, search); !strings.Contains(got, "helper.go:") {
+		t.Fatalf("search in a new session: %s", got)
+	}
+}

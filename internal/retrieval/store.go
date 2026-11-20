@@ -65,6 +65,18 @@ func Hash(text string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func validChunkHash(hash string) bool {
+	if len(hash) != sha256.Size*2 {
+		return false
+	}
+	for _, c := range hash {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func (s Store) chunkPath(hash string) string {
 	return filepath.Join(s.Dir, "files", hash[:2], hash+".json")
 }
@@ -72,7 +84,7 @@ func (s Store) chunkPath(hash string) string {
 // Chunks returns the chunks stored under hash; false when there are none
 // or they do not read.
 func (s Store) Chunks(hash string) ([]Chunk, bool) {
-	if len(hash) < 2 {
+	if !validChunkHash(hash) {
 		return nil, false
 	}
 	raw, err := os.ReadFile(s.chunkPath(hash))
@@ -88,6 +100,9 @@ func (s Store) Chunks(hash string) ([]Chunk, bool) {
 
 // Has reports whether chunks are stored under hash.
 func (s Store) Has(hash string) bool {
+	if !validChunkHash(hash) {
+		return false
+	}
 	_, err := os.Stat(s.chunkPath(hash))
 	return err == nil
 }
