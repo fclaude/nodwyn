@@ -16,6 +16,7 @@ check(async () => {
     const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: 1 });
     if (theme !== "dark") await ctx.addInitScript((mode) => localStorage.setItem("nodwyn-theme", mode), theme);
     const page = watch(await ctx.newPage(), name);
+    const sent = requests(page);
     await prepare(page);
     // Each page pairs with a ticket of its own, one per line the demo reads.
     const from = demo.stdoutText.length;
@@ -24,7 +25,7 @@ check(async () => {
     await page.goto(`${base}/#ticket=${ticket}`);
     await ready(page);
     await shows(page, "#daemon-identity", `Connected to ${require("os").userInfo().username}@${require("os").hostname()}`);
-    await look(page);
+    await look(page, sent);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     // "Match the system" takes the side of the system's scheme.
     const want = (theme === "system" ? scheme : theme) === "light" ? "rgb(245, 242, 234)" : "rgb(23, 22, 19)";
@@ -41,7 +42,7 @@ check(async () => {
   // Home: the task waiting for an answer and the finished one, under its
   // folder, in the sidebar and on the page. The sidebar names no model: with
   // several hosts this one's default said nothing about a task on another.
-  const home = async (page) => {
+  const home = async (page, sent) => {
     assert.ok(!(await page.innerText("#daemon-identity")).includes("Runs on"), "Home claims an execution target before a task opens");
     await shows(page, "#sidebar", "NEEDS YOU", "Run ls -la · console", "receipts", "Summarize what is in this folder");
     assert.ok(!/\bready\b/.test(await page.innerText("#sidebar")), "the sidebar still names the model and its state");
@@ -107,6 +108,12 @@ check(async () => {
     await page.waitForSelector("#new-task-model .mp-notes", { state: "hidden" });
     assert.strictEqual(await page.locator("#new-task-model-judge").isVisible(), true, "the judge's field goes away beside approvals that ask no judge");
     await page.selectOption("#new-task-model-commands", "judge");
+    // The next screenshot opens a new window on the same daemon. Let it
+    // receive the restored default before closing this window's socket.
+    await until("the default command approvals saved", () => {
+      const saves = sent.of("newtask.last").filter((request) => request.choices);
+      return saves.at(-1)?.choices.hosts.some((host) => host.host === "" && !host.commands) && sent.settled("newtask.last");
+    });
     await page.focus("#new-task-model-model");
     // The ring is drawn inside the model's field, where it covers no label.
     const focus = await page.$eval("#new-task-model-model", (el) => ({ visible: el.matches(":focus-visible"), ring: getComputedStyle(el.closest(".mp-field")).boxShadow }));
@@ -180,8 +187,7 @@ check(async () => {
   // behind Options, which counts those off their defaults, and scheduling
   // opens its own dialog that asks for the message, so it does nothing
   // silently when the box is empty.
-  let homeOptions;
-  await shoot("home-options", { width: 1280, height: 800 }, "light", async (page) => {
+  await shoot("home-options", { width: 1280, height: 800 }, "light", async (page, sent) => {
     await page.click("#new-task-options > summary");
     assert.ok(await page.isVisible("#new-task-schedule"), "Options did not open");
     await shows(page, "#new-task-options", "In a worktree", "Schedule…");
@@ -197,7 +203,7 @@ check(async () => {
     assert.ok(await page.$eval("#new-task-options .count", (el) => el.hidden), "the count stayed after the worktree choice went back");
     // The choice put back is kept for the next task before the page goes:
     // the next shot's page would otherwise start in a worktree.
-    await until("the worktree choice kept", async () => homeOptions.of("newtask.last").length >= 2 && homeOptions.settled("newtask.last"));
+    await until("the worktree choice kept", () => sent.of("newtask.last").filter((request) => request.choices).length >= 2 && sent.settled("newtask.last"));
     await page.screenshot({ path: `${out}/home-options-open.png` });
     assert.ok(await page.isEnabled("#new-task-schedule"), "Schedule is off with an empty box");
     await page.click("#new-task-schedule");
@@ -206,7 +212,7 @@ check(async () => {
     await shows(page, "dialog.schedule-dialog", "Schedule");
     await page.screenshot({ path: `${out}/home-schedule-dialog.png` });
     await page.click('button[aria-label="Close schedule"]');
-  }, "light", async (page) => { homeOptions = requests(page); });
+  });
   await shoot("home-options-phone", { width: 390, height: 844 }, "light", async (page) => {
     await page.click("#new-task-options > summary");
     const pop = await page.$eval(".options-pop", (el) => { const r = el.getBoundingClientRect(); return [r.left, r.right, innerWidth]; });
@@ -214,18 +220,17 @@ check(async () => {
   });
   // Enter starts the task and Shift+Enter breaks the line, as in a task's
   // reply box, and the box says so.
-  let enter;
-  await shoot("home-enter", { width: 1280, height: 800 }, "light", async (page) => {
+  await shoot("home-enter", { width: 1280, height: 800 }, "light", async (page, sent) => {
     await shows(page, ".ask", "Enter starts the task", "Shift+Enter for a new line");
     await page.fill("#task", "line one");
     await page.press("#task", "Shift+Enter");
     assert.strictEqual(await page.inputValue("#task"), "line one\n", "Shift+Enter did not break the line");
-    assert.strictEqual(enter.of("session.open").length, 0, "Shift+Enter started the task");
+    assert.strictEqual(sent.of("session.open").length, 0, "Shift+Enter started the task");
     await page.keyboard.type("line two");
     await page.press("#task", "Enter");
     await page.waitForFunction(() => location.hash.startsWith("#/task/"));
-    await until("the message sent", async () => enter.of("session.send").some((p) => p.text === "line one\nline two"));
-  }, "light", async (page) => { enter = requests(page); });
+    await until("the message sent", async () => sent.of("session.send").some((p) => p.text === "line one\nline two"));
+  });
   // On a phone only what waits for an answer comes before the composer.
   await shoot("home-phone-order", { width: 390, height: 844 }, "light", async (page) => {
     // Read in one step in the page: Home is drawn again at each change of
