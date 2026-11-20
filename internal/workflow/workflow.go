@@ -186,15 +186,16 @@ type Fire struct {
 // where (the item of the source), the task that wrote it and the text. ID
 // names it among the workflow's.
 type Outbox struct {
-	ID      string    `json:"id"`
-	Kind    string    `json:"kind"`
-	Item    string    `json:"item"`
-	Subject string    `json:"subject,omitempty"`
-	Task    string    `json:"task"`
-	Summary string    `json:"summary"`
-	URL     string    `json:"url,omitempty"`
-	Body    string    `json:"body"`
-	At      time.Time `json:"at"`
+	Source  *watch.Source `json:"source,omitempty"`
+	ID      string        `json:"id"`
+	Kind    string        `json:"kind"`
+	Item    string        `json:"item"`
+	Subject string        `json:"subject,omitempty"`
+	Task    string        `json:"task"`
+	Summary string        `json:"summary"`
+	URL     string        `json:"url,omitempty"`
+	Body    string        `json:"body"`
+	At      time.Time     `json:"at"`
 	// Reply is, for a draft, whom it answers and in which thread.
 	Reply *watch.Reply `json:"reply,omitempty"`
 }
@@ -238,6 +239,8 @@ type State struct {
 	Outbox    []Outbox    `json:"outbox"`
 	Delivered []Delivered `json:"delivered,omitempty"`
 	seq       uint64
+	// Older outbox records omitted the destination. A task runs one event at a time.
+	firedSource map[string]watch.Source
 }
 
 // recent is how many fires State keeps.
@@ -263,6 +266,12 @@ func (s *State) observe(r record) {
 				s.Subjects = map[string]string{}
 			}
 			s.Subjects[p.Subject] = p.Task
+			if s.Definition != nil {
+				if s.firedSource == nil {
+					s.firedSource = make(map[string]watch.Source)
+				}
+				s.firedSource[p.Task] = s.Definition.Source
+			}
 			s.Fires = append(s.Fires, p)
 			if len(s.Fires) > recent {
 				s.Fires = slices.Clone(s.Fires[len(s.Fires)-recent:])
@@ -276,6 +285,12 @@ func (s *State) observe(r record) {
 	case KindOutbox:
 		var p Outbox
 		if json.Unmarshal(r.Payload, &p) == nil {
+			if p.Source == nil {
+				if source, ok := s.firedSource[p.Task]; ok {
+					p.Source = &source
+				}
+			}
+			delete(s.firedSource, p.Task)
 			s.Outbox = append(s.Outbox, p)
 		}
 	case KindDelivered:

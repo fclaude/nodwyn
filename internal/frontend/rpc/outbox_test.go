@@ -3,6 +3,8 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -268,5 +270,71 @@ func TestWhatAWorkflowDoesWithItsAnswerIsChecked(t *testing.T) {
 	d.Source.Kind, d.Source.Command, d.Source.Dir = "command", []string{"gh"}, "/work"
 	if d.Validate() == nil {
 		t.Error("a review was posted by a command source")
+	}
+}
+
+func TestOutboxKeepsOriginalDestination(t *testing.T) {
+	for _, format := range []string{"current", "legacy"} {
+		t.Run(format, func(t *testing.T) {
+			f := forge.New("forge-token")
+			defer f.Close()
+			m := fake.NewT(t, fake.Turn{Content: "Looks good."})
+			defer m.Close()
+			o := forgeOptions(t, f, m)
+			bindPost(t, o)
+			s := schedulerServer(t, o)
+			id, _ := runAndWait(t, s, f, workflow.Then{Post: "review"})
+			st := holdsOne(t, s, id, 1)
+			item := st.Outbox[0]
+			if format == "legacy" {
+				// Older daemons wrote only the item number and the link beside the answer.
+				path := filepath.Join(o.Paths.DataDir, "workflows", id+".jsonl")
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+				for i, line := range lines {
+					var record map[string]any
+					if err := json.Unmarshal([]byte(line), &record); err != nil {
+						t.Fatal(err)
+					}
+					if record["kind"] != workflow.KindOutbox {
+						continue
+					}
+					delete(record["payload"].(map[string]any), "source")
+					raw, err = json.Marshal(record)
+					if err != nil {
+						t.Fatal(err)
+					}
+					lines[i] = string(raw)
+				}
+				if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			d := st.Definition.Definition
+			d.Source.Repo = "fc/second"
+			raw, err := jsonRaw(map[string]any{"id": id, "definition": d})
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.mu.Lock()
+			_, re := s.workflowMethod(request{Method: "workflow.write", Params: raw}, &peer{actor: "test"})
+			s.mu.Unlock()
+			if re != nil {
+				t.Fatal(re.Message)
+			}
+			if re := decide(t, s, &peer{actor: "test"}, outboxDecideParams{Workflow: id, ID: item.ID, Decision: "post"}); re != nil {
+				t.Fatal(re.Message)
+			}
+			rr := f.Reviews()
+			if len(rr) != 1 {
+				t.Fatalf("received %d reviews", len(rr))
+			}
+			if rr[0].Repo != "fc/nodwyn" {
+				t.Fatalf("held review for %s was delivered to %s#%s", item.URL, rr[0].Repo, rr[0].Number)
+			}
+		})
 	}
 }

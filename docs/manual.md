@@ -2656,7 +2656,8 @@ something happens at a source (ADR 53). Its answers are four cards:
   daemon post it as the run ends. Either way the daemon posts it, with the
   token, and only where Connections › Credentials allows that token at the
   forge's host for **POST**: the permission to list pull requests (GET) is a
-  separate one, and a post that cannot be made stays in the outbox with the
+  separate one. Editing a watcher leaves its queued reviews addressed to their
+  original repository. A post that cannot be made stays in the outbox with the
   reason. A run that did not finish, or said nothing, queues nothing. You can
   also have a desktop notice after every run, or none, besides the notice that
   a held answer needs you.

@@ -32,6 +32,8 @@ const (
 // pendingRun is a workflow run that has started and has not been read yet.
 type pendingRun struct {
 	workflow string
+	source   watch.Source
+	then     workflow.Then
 	item     string
 	subject  string
 	summary  string
@@ -122,7 +124,7 @@ func (s *server) runEnded(task string) {
 	if def.Then.Notify == "run" {
 		s.tell(ranTitle, ranBody)
 	}
-	if def.Then.Post != "review" && def.Then.Post != "draft" {
+	if run.then.Post == "" || run.then.Post != def.Then.Post {
 		return
 	}
 	skip := func(why string) {
@@ -158,15 +160,15 @@ func (s *server) runEnded(task string) {
 			return
 		}
 	}
-	item := workflow.Outbox{ID: id, Kind: kind, Item: run.item, Subject: run.subject, Task: task, Summary: run.summary, URL: run.url, Body: body, At: now, Reply: run.reply}
+	item := workflow.Outbox{ID: id, Kind: kind, Item: run.item, Subject: run.subject, Task: task, Summary: run.summary, URL: run.url, Body: body, At: now, Reply: run.reply, Source: &run.source}
 	if _, err := s.flows().Append(run.workflow, workflow.KindOutbox, item); err != nil {
 		return
 	}
-	if def.Then.Auto {
+	if run.then.Auto && def.Then.Auto {
 		// Without asking: posted now, the same way, by the workflow's own
 		// choice. If it cannot be (no POST binding, a locked keychain) it
 		// stays in the outbox for the person.
-		if err := s.deliver(context.Background(), run.workflow, def, item, body, "workflow"); err != nil {
+		if err := s.deliver(context.Background(), run.workflow, item, body, "workflow"); err != nil {
 			skip("could not " + map[string]string{"review": "post the review for ", "draft": "save the draft reply for "}[kind] + run.label + ": " + err.Error())
 			s.watch.broadcast("outbox.changed")
 			s.tell(answerTitle, answerBody)
@@ -180,14 +182,17 @@ func (s *server) runEnded(task string) {
 
 // deliver posts an outbox item as a review and records that it was, by whom.
 // Under the lifecycle lock, released while the forge is asked.
-func (s *server) deliver(ctx context.Context, id string, def workflow.Definition, item workflow.Outbox, body, by string) error {
+func (s *server) deliver(ctx context.Context, id string, item workflow.Outbox, body, by string) error {
+	if item.Source == nil {
+		return fmt.Errorf("the original destination of this answer could not be recovered")
+	}
 	poller := s.poller()
 	var err error
 	switch {
 	case item.Kind == "draft" && item.Reply != nil:
-		s.slow("", func() { err = poller.SaveDraft(ctx, def.Source, *item.Reply, body) })
+		s.slow("", func() { err = poller.SaveDraft(ctx, *item.Source, *item.Reply, body) })
 	case item.Kind == "review":
-		s.slow("", func() { err = poller.PostReview(ctx, def.Source, item.Item, body) })
+		s.slow("", func() { err = poller.PostReview(ctx, *item.Source, item.Item, body) })
 	default:
 		err = fmt.Errorf("an answer of kind %q has nowhere to go", item.Kind)
 	}
@@ -276,7 +281,7 @@ func (s *server) outboxMethod(req request, client *peer) (any, *rpcError) {
 		if strings.TrimSpace(body) == "" {
 			return nil, failure(-32602, "There is nothing to post")
 		}
-		if err := s.deliver(s.serving(), p.Workflow, state.Definition.Definition, *item, body, client.actor); err != nil {
+		if err := s.deliver(s.serving(), p.Workflow, *item, body, client.actor); err != nil {
 			return nil, failure(-32000, "Could not post it: "+err.Error()+". It stays here.")
 		}
 	default:

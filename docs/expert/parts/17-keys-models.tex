@@ -764,7 +764,8 @@ are. A run attaches the event as a file, so the window frames it as data, and
 sends the instruction as an ordinary scheduled turn: the event is never a
 user message, and no primitive makes or changes a workflow. A run whose
 answer is to be posted is tracked in memory until its task goes idle; the
-host then reads the final reply from the log into a workflow.outbox record,
+host then reads the final reply from the log into a workflow.outbox record
+with the source that triggered the run,
 and only on a decision, or the workflow's own choice made on this computer,
 posts it with the binding table's lookup for POST, so a run that read a
 hostile pull request has nothing to send with. Every poll and post goes

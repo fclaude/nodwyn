@@ -92,7 +92,7 @@ func (s *server) pollWorkflows(ctx context.Context, now time.Time) {
 			return
 		}
 		s.mu.Lock()
-		s.applyPoll(state.ID, items, err, now)
+		s.applyPoll(state.ID, state.Sequence, items, err, now)
 		s.mu.Unlock()
 	}
 }
@@ -101,10 +101,10 @@ func (s *server) pollWorkflows(ctx context.Context, now time.Time) {
 // cannot fire yet (its task busy, the workflow's runs all going, the keys
 // locked, the day's spend reached) is not marked seen, so the next poll
 // tries it again: events wait their turn. It runs under the lifecycle lock.
-func (s *server) applyPoll(id string, items []watch.Item, pollErr error, now time.Time) {
+func (s *server) applyPoll(id string, definitionSeq uint64, items []watch.Item, pollErr error, now time.Time) {
 	store := s.flows()
 	state, err := store.Read(id)
-	if err != nil || state.Definition == nil || state.Definition.Removed || state.Definition.Paused {
+	if err != nil || state.Sequence != definitionSeq || state.Definition == nil || state.Definition.Removed || state.Definition.Paused {
 		return
 	}
 	if s.polled == nil {
@@ -306,7 +306,7 @@ func (s *server) fire(id string, def workflow.Definition, state workflow.State, 
 	// Registered before the run starts, so that its end cannot be missed.
 	watching := def.Then.Post != "" || def.Then.Notify == "run"
 	if watching {
-		pending := pendingRun{workflow: id, item: ev.Item.ID, subject: subject, summary: run.Event, url: ev.Item.URL, label: "#" + ev.Item.ID}
+		pending := pendingRun{workflow: id, source: def.Source, then: def.Then, item: ev.Item.ID, subject: subject, summary: run.Event, url: ev.Item.URL, label: "#" + ev.Item.ID}
 		if def.Source.Kind == watch.Gmail {
 			pending.label = fmt.Sprintf("%q", cmp.Or(ev.Item.Title, "(no subject)"))
 			if reply, err := watch.ReplyTo(ev.Item); err == nil {
@@ -511,7 +511,7 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		def := state.Definition.Definition
 		look := watch.Look{Seen: state.Seen, IDsOnly: !state.Seeded && !def.Existing}
 		s.slow("", func() { items, pollErr = poller.PollLook(s.serving(), def.Source, look) })
-		s.applyPoll(state.ID, items, pollErr, time.Now())
+		s.applyPoll(state.ID, state.Sequence, items, pollErr, time.Now())
 		if state, err := s.flows().Read(state.ID); err == nil {
 			return s.WorkflowView(state), nil
 		}

@@ -8061,6 +8061,16 @@
             }
           ]
         },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/watch.Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "subject": {
           "type": "string"
         },
@@ -13544,6 +13554,16 @@
           "anyOf": [
             {
               "$ref": "#/$defs/watch.Reply"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/watch.Source"
             },
             {
               "type": "null"

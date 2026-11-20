@@ -1508,7 +1508,8 @@ log as `workflow.outbox` (`id`, `kind` `review`, `item`, `subject`, `task`,
 pending `outbox`.
 
 - `outbox.list {}` returns every held answer across workflows, each with
-  `workflow`, `name` and `when`.
+  `workflow`, `name` and `when`. The optional `source` identifies the destination
+  captured for that run. Posting uses its server, repository and credential class.
 - `outbox.decide {workflow, id, decision, body?}`: `decision` is `post` or
   `discard`. A post is the daemon's `POST` of `{body, event: "COMMENT"}` to the
   forge's review endpoint (Gitea's and GitHub's `…/pulls/N/reviews`), with the
