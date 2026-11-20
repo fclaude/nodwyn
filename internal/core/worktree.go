@@ -305,7 +305,7 @@ func catchUp(w log.Worktree) (string, error) {
 	if err != nil || base == head {
 		return "", err
 	}
-	if _, err := gitIn(w.Path, "-c", "core.fsmonitor=false", "merge", "--ff-only", "-q", tip); err != nil {
+	if _, err := gitIn(w.Path, "-c", "core.fsmonitor=false", "merge", "--ff-only", "--no-overwrite-ignore", "-q", tip); err != nil {
 		return "", err
 	}
 	return base, nil

@@ -471,3 +471,38 @@ func TestScheduleHistorySaysWhatEachTimeCameTo(t *testing.T) {
 		t.Fatalf("%d entries, the newest due %s", len(state.History), state.History[len(state.History)-1].Due)
 	}
 }
+
+func TestScheduledFastForwardKeepsIgnoredFile(t *testing.T) {
+	repo, git := gitRepo(t)
+	write := func(p, body string) {
+		t.Helper()
+		if err := os.WriteFile(p, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(repo, ".gitignore"), "output.txt\n")
+	git(repo, "add", ".gitignore")
+	git(repo, "commit", "-qm", "Ignore local output")
+	o := worktreeOptions(t, repo, fake.Turn{Content: "Done"})
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	path := filepath.Join(s.Worktree().Path, "output.txt")
+	write(path, "only local copy")
+	write(filepath.Join(repo, "output.txt"), "base copy")
+	git(repo, "add", "-f", "output.txt")
+	git(repo, "commit", "-qm", "Track output")
+	err = s.SendScheduled("check", log.ScheduleRun{Manual: true})
+	if err == nil {
+		followBudget(t, s, func(event.Checkpoint) { t.Fatal("checkpoint") })
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "only local copy" {
+		t.Fatalf("scheduled run replaced ignored contents with %q", got)
+	}
+}
