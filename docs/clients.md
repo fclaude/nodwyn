@@ -74,7 +74,7 @@ it can see the thing but not change it.
 |---|---|---|---|---|
 | Jump from a search match to bounded, read-only turn history (`log.context`) | yes; load earlier/later within that turn, or open the live task | deliberate gap: replays whole history | replays whole | `memory recall` reads an event and the turn’s card |
 | Open at the latest run; page back through collapsed earlier runs (ADR 49) | yes; earlier contents load on expansion | deliberate gap: replays the conversation whole | replays whole | `replay` reads whole |
-| Send a message, abort a turn | yes | yes; Ctrl+C aborts, and clears an unsent draft before it quits | yes | — |
+| Send a message, abort a turn | yes | yes; Ctrl+C aborts, and clears an unsent draft before it quits | yes, including typed and pasted lines longer than 4096 characters | — |
 | Queue a message behind a running turn, or steer with it (stop the turn and send it next) | yes; Send or Enter steers a running response; Queue waits; listed as queued until it starts | yes; Ctrl+O queues the draft, Ctrl+S steers with it, shown as `queued>` until it starts | — (line mode reads no line while a turn runs) | — |
 | A turn another client or the schedule started | live | live | shown when line mode next reads a line, with its message | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |

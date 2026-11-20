@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+
+	"github.com/fclaude/nodwyn/internal/frontend/plain/lineedit"
 
 	"golang.org/x/term"
 )
 
 // lineReader reads one line of user input, showing a prompt. On a terminal
-// it switches to raw mode for the duration of the read and uses x/term's
+// it switches to raw mode for the duration of the read and uses the VT100
 // line editor: the kernel's canonical-mode line limit (1024 bytes on macOS)
 // no longer applies, pasted text of any length arrives intact, and
 // bracketed paste is handled. Raw mode is restored after every read, so
@@ -21,22 +24,27 @@ type lineReader struct {
 	scanner *bufio.Scanner // non-tty
 	out     io.Writer
 	tty     *os.File // tty, or nil
-	term    *term.Terminal
+	term    *lineedit.Terminal
 }
 
 func newLineReader(in io.Reader, out io.Writer) *lineReader {
 	lr := &lineReader{out: out}
 	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
 		lr.tty = f
-		lr.term = term.NewTerminal(struct {
+		lr.term = lineedit.NewTerminal(struct {
 			io.Reader
 			io.Writer
 		}{f, out}, "")
 		return lr
 	}
+	lr.useScanner(in)
+	return lr
+}
+
+func (lr *lineReader) useScanner(in io.Reader) {
 	lr.scanner = bufio.NewScanner(in)
 	lr.scanner.Buffer(make([]byte, 0, 64<<10), 16<<20)
-	return lr
+	lr.tty = nil
 }
 
 // answer reads the answer to a question (a confirm, a choice, a limit). On a
@@ -64,17 +72,31 @@ func (lr *lineReader) read(prompt string) (line string, ok bool) {
 	old, err := term.MakeRaw(int(lr.tty.Fd()))
 	if err != nil {
 		// Not really a tty after all: fall back for this and later reads.
-		lr.tty = nil
-		lr.scanner = bufio.NewScanner(lr.tty)
+		lr.useScanner(lr.tty)
 		return lr.read(prompt)
 	}
 	defer term.Restore(int(lr.tty.Fd()), old)
+	lr.term.SetBracketedPasteMode(true)
+	defer lr.term.SetBracketedPasteMode(false)
 	lr.term.SetPrompt(prompt)
-	line, err = lr.term.ReadLine()
-	if err != nil {
-		return "", false
+	var pasted strings.Builder
+	for {
+		line, err = lr.term.ReadLine()
+		if err == nil {
+			if pasted.Len() == 0 {
+				return line, true
+			}
+			pasted.WriteString(line)
+			return pasted.String(), true
+		}
+		if err != lineedit.ErrPasteIndicator {
+			return "", false
+		}
+		// Enter inside bracketed paste belongs to the same message.
+		pasted.WriteString(line)
+		pasted.WriteByte('\n')
+		lr.term.SetPrompt("")
 	}
-	return line, true
 }
 
 // secret reads one masked line: the user's input is not echoed. It is used

@@ -6,6 +6,9 @@ libraries it links, the Scheme interpreter Brote (github.com/fclaude/brote,
 MIT) and the typefaces its console ships. `nodwyn licenses` prints every one of
 their licences, and internal/frontend/web/licenses has the same texts.
 
+The plain terminal line editor is adapted from golang.org/x/term v0.47.0.
+Its BSD licence is included in internal/frontend/plain/lineedit/LICENSE.
+
 internal/catalogue/models.json is a snapshot of the model data published by
 models.dev (https://models.dev, MIT, Copyright (c) 2025 models.dev).
 

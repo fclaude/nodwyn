@@ -2,6 +2,8 @@ package plain
 
 import (
 	"io"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,5 +42,56 @@ func TestTypeAheadDoesNotAnswerAQuestion(t *testing.T) {
 	}()
 	if line, ok := lr.answer("[y/n] "); !ok || line != "n" {
 		t.Fatalf("the answer read %q (%v): what was typed before the question answered it", line, ok)
+	}
+}
+
+type promptReadyWriter struct {
+	ready chan struct{}
+	once  sync.Once
+}
+
+func (w *promptReadyWriter) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.ready) })
+	return len(p), nil
+}
+
+func TestLongTerminalMessageIsComplete(t *testing.T) {
+	message := strings.Repeat("é", 4996) + "END!"
+	for _, tc := range []struct{ name, keys, want string }{
+		{"typed", message + "X\x7f\r", message},
+		{"bracketed", "\x1b[200~" + message + "\x1b[201~\r", message},
+		{"multiline", "prefix \x1b[200~first\r" + message + "\x1b[201~\r", "prefix first\n" + message},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			master, terminal, err := pty.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer master.Close()
+			defer terminal.Close()
+			output := &promptReadyWriter{ready: make(chan struct{})}
+			reader := newLineReader(terminal, output)
+			read := make(chan string, 1)
+			go func() {
+				line, _ := reader.read("you> ")
+				read <- line
+			}()
+			select {
+			case <-output.ready:
+			case <-time.After(2 * time.Second):
+				t.Fatal("prompt not ready")
+			}
+			if _, err := io.WriteString(master, tc.keys); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case got := <-read:
+				if got != tc.want {
+					t.Fatalf("entered %d bytes, received %d, final marker present=%v", len(tc.want), len(got), strings.HasSuffix(got, "END!"))
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("line not received")
+			}
+		})
 	}
 }
