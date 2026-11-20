@@ -153,15 +153,45 @@ func (s *server) applyPoll(id string, definitionSeq uint64, items []watch.Item, 
 		}
 		fire = append(fire, ev)
 	}
-	if len(fire) > workflow.MaxEvents {
+	if backlog := state.Backlog; backlog != nil {
+		changed := workflow.FloodControl{Define: *state.Definition}
+		if backlog.Items == nil && len(fire) > workflow.MaxEvents {
+			backlog = eventVersions(fire)
+			changed.Backlog = backlog
+			if _, err := store.Append(id, workflow.KindDefine, changed); err != nil {
+				return
+			}
+		}
+		var approved []watch.Event
+		for _, ev := range fire {
+			if version, ok := backlog.Items[ev.Item.ID]; ok && version == ev.Item.Version {
+				approved = append(approved, ev)
+			}
+		}
+		if len(approved) != 0 {
+			fire = approved
+		} else {
+			changed.Backlog = nil
+			if _, err := store.Append(id, workflow.KindDefine, changed); err != nil {
+				return
+			}
+			state.Backlog = nil
+		}
+	}
+	if state.Backlog == nil && len(fire) > workflow.MaxEvents {
 		_, _ = store.Append(id, workflow.KindSkip, workflow.Skip{Reason: fmt.Sprintf("%d events at once, more than %d: the workflow is paused; resume it to handle them", len(fire), workflow.MaxEvents), At: now})
 		paused := *state.Definition
 		paused.Paused, paused.Actor = true, "workflow"
-		_, _ = store.Append(id, workflow.KindDefine, paused)
+		control := workflow.FloodControl{Define: paused, Backlog: eventVersions(fire)}
+		_, _ = store.Append(id, workflow.KindDefine, control)
 		return
 	}
 	today := now.In(time.Local).Format(schedule.DateLayout)
+	handled := 0
 	for _, ev := range fire {
+		if handled == workflow.MaxEvents {
+			break
+		}
 		if def.DayCost > 0 && s.workflowToday(state, now).Cost >= def.DayCost {
 			if s.capped[id] != today {
 				s.capped[id] = today
@@ -173,6 +203,8 @@ func (s *server) applyPoll(id string, definitionSeq uint64, items []watch.Item, 
 		if wait {
 			continue
 		}
+		// Busy subjects can wait while other approved events use this batch.
+		handled++
 		next[ev.Item.ID] = ev.Item.Version
 		if err != nil {
 			_, _ = store.Append(id, workflow.KindSkip, workflow.Skip{Item: ev.Item.ID, Reason: err.Error(), At: now})
@@ -189,6 +221,14 @@ func (s *server) applyPoll(id string, definitionSeq uint64, items []watch.Item, 
 	if !state.Seeded || !maps.Equal(next, state.Seen) {
 		_, _ = store.Append(id, workflow.KindSeen, workflow.Seen{Items: next})
 	}
+}
+
+func eventVersions(events []watch.Event) *workflow.Seen {
+	items := make(map[string]string, len(events))
+	for _, ev := range events {
+		items[ev.Item.ID] = ev.Item.Version
+	}
+	return &workflow.Seen{Items: items}
 }
 
 // workflowToday is what the runs of a workflow's tasks started today came
@@ -492,7 +532,10 @@ func (s *server) workflowMethod(req request, client *peer) (any, *rpcError) {
 		if rerr != nil {
 			return nil, rerr
 		}
-		changed := *state.Definition
+		changed := workflow.FloodControl{Define: *state.Definition, Backlog: state.Backlog}
+		if changed.Paused && changed.Actor == "workflow" && !*p.Paused && changed.Backlog == nil {
+			changed.Backlog = &workflow.Seen{}
+		}
 		changed.Paused, changed.Actor = *p.Paused, client.actor
 		state, err := s.flows().Append(state.ID, workflow.KindDefine, changed)
 		if err != nil {

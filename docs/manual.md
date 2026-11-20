@@ -2666,6 +2666,9 @@ something happens at a source (ADR 53). Its answers are four cards:
   as its next run), or one task for every event. At most 2 runs go at once
   (settable); events past that wait for the next check.
 
+When more than 20 events arrive at one check, the watcher pauses. Resume it to
+process that backlog in batches of up to 20, subject to its usual run and spend limits.
+
 The event is attached to the run as a file, `pull-request-142.md`, which the
 conversation says the workflow attached, and framed to the model as data,
 never instructions: what a pull request's description says is not your

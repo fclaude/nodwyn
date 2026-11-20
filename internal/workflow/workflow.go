@@ -165,6 +165,13 @@ type Define struct {
 	Removed bool   `json:"removed,omitempty"`
 }
 
+// FloodControl carries a flood's event versions with the pause or resume that
+// authorises their handling. It is a journal record owned by the scheduler.
+type FloodControl struct {
+	Define
+	Backlog *Seen `json:"backlog,omitempty"`
+}
+
 // Seen is what the source had: each item's id and version.
 type Seen struct {
 	Items map[string]string `json:"items"`
@@ -226,6 +233,7 @@ type record struct {
 // State is a workflow's log folded: Seeded says its source was seen once,
 // Subjects are the task of each subject (the one task's under "").
 type State struct {
+	Backlog    *Seen             `json:"-"`
 	ID         string            `json:"id"`
 	Definition *Define           `json:"definition,omitempty"`
 	Sequence   uint64            `json:"sequence"`
@@ -250,9 +258,9 @@ func (s *State) observe(r record) {
 	s.seq = r.Seq
 	switch r.Kind {
 	case KindDefine:
-		var d Define
+		var d FloodControl
 		if json.Unmarshal(r.Payload, &d) == nil {
-			s.Definition, s.Sequence = &d, r.Seq
+			s.Definition, s.Sequence, s.Backlog = &d.Define, r.Seq, d.Backlog
 		}
 	case KindSeen:
 		var p Seen

@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -440,4 +441,59 @@ func TestUpdateOnlyWatcherTracksNewPullRequests(t *testing.T) {
 	if len(st.Fires) != 1 {
 		t.Fatalf("got %d runs after a new commit on PR 5, seen=%v", len(st.Fires), st.Seen)
 	}
+}
+
+func TestResumeAfterFloodProcessesTheBacklog(t *testing.T) {
+	f := forge.New("forge-token")
+	defer f.Close()
+	s := schedulerServer(t, forgeOptions(t, f, nil))
+	d := pullsWorkflow(f, t.TempDir())
+	d.Message = ""
+	d.Program = "(+ 1 2)"
+	id := setWorkflow(t, s, d)
+	now := midday()
+	s.pollWorkflows(context.Background(), now)
+	var pulls []forge.Pull
+	for i := 1; i <= workflow.MaxEvents+1; i++ {
+		pulls = append(pulls, forge.Pull{Number: i, Title: fmt.Sprint(i), Head: "a", Author: "ana"})
+	}
+	f.Set("fc/nodwyn", pulls...)
+	s.pollWorkflows(context.Background(), now.Add(3*time.Minute))
+	if !flowState(t, s, id).Definition.Paused {
+		t.Fatal("the initial flood did not pause")
+	}
+	raw, err := jsonRaw(map[string]any{"id": id, "paused": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	_, re := s.workflowMethod(request{Method: "workflow.pause", Params: raw}, &peer{actor: "test"})
+	s.mu.Unlock()
+	if re != nil {
+		t.Fatal(re.Message)
+	}
+	s.pollWorkflows(context.Background(), now.Add(6*time.Minute))
+	st := flowState(t, s, id)
+	if st.Definition.Paused || len(st.Fires) == 0 || len(st.Fires) > workflow.MaxEvents {
+		t.Fatalf("resumed workflow paused again with zero runs: %s", st.LastSkip.Reason)
+	}
+	for tick := 1; len(st.Seen) < len(pulls) && tick <= len(pulls); tick++ {
+		for _, task := range st.Subjects {
+			scheduleIdle(t, s, task)
+		}
+		s.pollWorkflows(context.Background(), now.Add(time.Duration(6+3*tick)*time.Minute))
+		st = flowState(t, s, id)
+	}
+	if len(st.Seen) != len(pulls) || st.Definition.Paused {
+		t.Fatalf("drained %d of %d events, paused=%v", len(st.Seen), len(pulls), st.Definition.Paused)
+	}
+	for i := 1; i <= workflow.MaxEvents+1; i++ {
+		pulls = append(pulls, forge.Pull{Number: 100 + i, Title: "another change", Head: "b", Author: "ana"})
+	}
+	f.Set("fc/nodwyn", pulls...)
+	s.pollWorkflows(context.Background(), now.Add(3*time.Hour))
+	if !flowState(t, s, id).Definition.Paused {
+		t.Fatal("an independent flood ran without approval")
+	}
+
 }
