@@ -140,6 +140,9 @@ func (s *server) applyPoll(id string, definitionSeq uint64, items []watch.Item, 
 	for _, item := range items {
 		if version, ok := state.Seen[item.ID]; ok {
 			next[item.ID] = version
+		} else if len(def.Source.On) > 0 && !slices.Contains(def.Source.On, "opened") {
+			// Its first version is the baseline for the next update.
+			next[item.ID] = item.Version
 		}
 	}
 	var fire []watch.Event

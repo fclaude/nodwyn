@@ -420,3 +420,24 @@ func TestAWorkflowsDailySpendLimitHoldsItsEvents(t *testing.T) {
 		t.Fatalf("said more than once: %s %v", page, err)
 	}
 }
+
+func TestUpdateOnlyWatcherTracksNewPullRequests(t *testing.T) {
+	f := forge.New("forge-token")
+	defer f.Close()
+	m := fake.NewT(t, fake.Turn{Content: "Done."})
+	defer m.Close()
+	s := schedulerServer(t, forgeOptions(t, f, m))
+	d := pullsWorkflow(f, t.TempDir())
+	d.Source.On = []string{"updated"}
+	id := setWorkflow(t, s, d)
+	now := midday()
+	s.pollWorkflows(context.Background(), now)
+	for i, head := range []string{"head1", "head2"} {
+		f.Set("fc/nodwyn", forge.Pull{Number: 5, Head: head, Title: "Feature", Author: "ana"})
+		s.pollWorkflows(context.Background(), now.Add(time.Duration(i+1)*3*time.Minute))
+	}
+	st := flowState(t, s, id)
+	if len(st.Fires) != 1 {
+		t.Fatalf("got %d runs after a new commit on PR 5, seen=%v", len(st.Fires), st.Seen)
+	}
+}
