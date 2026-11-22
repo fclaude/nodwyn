@@ -529,3 +529,12 @@ and `rm`, so such a confirm is answered once at a time.
 `TestNoStandingApprovalForTheNetworkDeletesOrCommits` holds it. A prefix a
 person writes in `allow.toml` is still theirs.
 
+## Amendment 2026-11-21: a write approval covers where a write lands
+
+A standing write approval matched the path as the model wrote it, so an
+approval of `docs/` covered `docs/link/x.go` when `docs/link` was a link to
+`internal/`. A write is now covered only when, its links followed as the
+repository pin follows them, it also lands under an approved prefix. The
+protected paths were already judged where they lead. It matters with
+`approval.writes = "ask"`; `TestAStandingWriteApprovalFollowsLinks` holds it.
+

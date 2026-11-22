@@ -432,6 +432,7 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 		s.allow.Add(c)
 	}
 	s.writes = guard.NewWriteAllow(o.Config.Policy.AllowWrites...)
+	s.writes.Root = o.Repo
 	for _, w := range repoAllow.Writes {
 		s.writes.Add(w)
 	}

@@ -19,6 +19,9 @@ import (
 // Some paths are never covered by a standing approval, whatever the list
 // says: the ones that change policy or run in CI. Those always prompt.
 type WriteAllow struct {
+	// Root is the repository, where a path's links are followed to judge
+	// it: "" judges paths as written.
+	Root     string
 	mu       sync.RWMutex
 	prefixes []string
 }
@@ -172,10 +175,26 @@ func (w *WriteAllow) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 	if !ok {
 		return Decision{Verdict: Allow}
 	}
-	if m := w.Match(rel); m != "" {
+	if m := w.Match(rel); m != "" && w.matchesWhereItLeads(rel) {
 		return Decision{Verdict: Allow, Standing: true, Reason: "standing write approval: " + m}
 	}
 	return Decision{Verdict: Allow}
+}
+
+// matchesWhereItLeads says a write to rel, its links followed as the
+// repository pin follows them, also lands under an approved prefix: an
+// approval of docs/ covered docs/link/x.go when docs/link led to internal/
+// (a review, 2026-11-21). ProtectedPaths already judged where a path leads.
+func (w *WriteAllow) matchesWhereItLeads(rel string) bool {
+	if w.Root == "" {
+		return true
+	}
+	abs := (RepoPin{Root: w.Root}).Resolve(rel)
+	if abs == "" {
+		return false
+	}
+	real, err := filepath.Rel(resolveExisting(w.Root), resolveExisting(abs))
+	return err == nil && w.Match(real) != ""
 }
 
 // WritePath returns the repository-relative path of a write primitive

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/brote/scheme"
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 var writePrim = &scheme.Prim{Name: "fs-edit", Meta: scheme.Meta{Doc: "d", Irreversible: true, Params: []scheme.Param{
@@ -120,5 +121,27 @@ func TestProtectedPathsAreSecurityConfirms(t *testing.T) {
 	if err := g.Before(context.Background(), writePrim, writeArgs("src/meta/hooks/pre-commit")); err == nil ||
 		!strings.Contains(err.Error(), "unattended runs (--yolo) never approve it") {
 		t.Fatalf("unattended protected write: %v", err)
+	}
+}
+
+// A standing write approval matched a path as written, so an approval of
+// docs/ covered docs/link/x.go when docs/link led to internal/. A write is
+// covered only when where it lands is under an approved prefix too.
+func TestAStandingWriteApprovalFollowsLinks(t *testing.T) {
+	root := t.TempDir()
+	must.MkdirAll(t, filepath.Join(root, "docs"), 0o755)
+	must.MkdirAll(t, filepath.Join(root, "internal"), 0o755)
+	must.Symlink(t, filepath.Join(root, "internal"), filepath.Join(root, "docs", "link"))
+	w := NewWriteAllow("docs/")
+	w.Root = root
+	if d := w.Check(context.Background(), writePrim, writeArgs("docs/notes.md")); !d.Standing {
+		t.Fatalf("a write in docs/ is not covered: %+v", d)
+	}
+	if d := w.Check(context.Background(), writePrim, writeArgs("docs/link/x.go")); d.Standing {
+		t.Fatalf("a write through a link into internal/ is covered: %+v", d)
+	}
+	w.Add("internal/")
+	if d := w.Check(context.Background(), writePrim, writeArgs("docs/link/x.go")); !d.Standing {
+		t.Fatalf("with internal/ approved too: %+v", d)
 	}
 }
