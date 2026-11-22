@@ -142,3 +142,33 @@ func TestRestoreKeptOnlyForAHardStopOfAnUnattendedTurn(t *testing.T) {
 		}
 	}
 }
+
+// What a turn keeps is that turn's: the state an earlier turn's tests passed
+// on was never cleared, so a later turn that changed nothing and hit a hard
+// limit put it back, and the earlier turn's finished edit went to
+// kept/discarded (ADR 18, amended 2026-11-21). The full profile, which the
+// package's tests run.
+func TestAHardStopKeepsAnEarlierTurnsFinishedEdits(t *testing.T) {
+	turns := []fake.Turn{
+		write("w1", "fix.txt", "good\n"),
+		shell("t", "true # go test ./..."),
+		write("w2", "fix.txt", "final\n"),
+		{Content: "done"},
+	}
+	for range 6 {
+		turns = append(turns, fake.Turn{Content: "done"})
+	}
+	r := keepRig(t, turns...)
+	r.turn("fix it")
+	if got := contentOf(t, r.repo, "fix.txt"); got != "final\n" {
+		t.Fatalf("turn 1 left %q", got)
+	}
+	r.srv.Script(shell("a", "echo a"), shell("b", "echo b"), shell("c", "echo c"), shell("d", "echo d"), shell("e", "echo e"))
+	r.turn("look around")
+	if got := contentOf(t, r.repo, "fix.txt"); got != "final\n" {
+		t.Fatalf("fix.txt went from \"final\\n\" to %q after a turn that changed nothing", got)
+	}
+	if strings.Contains(r.logb.String(), "put the files back") {
+		t.Fatal("the log says the files were put back")
+	}
+}

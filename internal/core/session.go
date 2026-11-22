@@ -419,6 +419,13 @@ func (s *Session) launchLocked(work func(context.Context) error, run *log.Schedu
 	// last chat turn's files and commands (turn() sets the task of a chat).
 	s.setTurnTask("", nil)
 	first := s.eventCount()
+	// A hard stop puts back the state this turn's tests last passed on,
+	// never one an earlier turn kept (keep.go).
+	if s.keeper != nil {
+		if err := s.keeper.Forget(); err != nil {
+			s.note("the state an earlier turn kept could not be removed: " + err.Error())
+		}
+	}
 
 	go func() {
 		var turnErr error

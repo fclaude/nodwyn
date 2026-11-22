@@ -76,6 +76,20 @@ func (k *Keeper) Failed() string {
 	return k.failed
 }
 
+// Forget drops what is kept, so a turn starts with nothing to go back to: a
+// state an earlier turn kept is no result of this one, and putting it back
+// on this turn's hard stop undid the earlier turn's finished edits (ADR 18,
+// amended 2026-11-21).
+func (k *Keeper) Forget() error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.failed = ""
+	if k.o.Scratch == "" {
+		return nil
+	}
+	return os.RemoveAll(k.dir())
+}
+
 // Keep replaces what is kept with the changes as they are now, and returns
 // how many files it kept. A Keep that fails leaves the earlier one, which
 // was a state a test run passed on too.

@@ -540,3 +540,16 @@ limit that falls in the middle runs the calls that fit and answers the rest as
 not executed, as before; the stop cancels the turn's context only once those
 calls have run (`budget.Turn.Hold`). The turn's budget takes a lock, since the
 gate of each call of such a batch charges it from its own goroutine.
+
+## Amendment 2026-11-21: what a turn keeps is that turn's
+
+The kept state (`kept/` in the session's scratch directory) was never
+cleared between turns. In a run of several turns, a turn whose test passed
+kept its state, went on to finish its work; a later turn that changed
+nothing and hit a hard limit then put that earlier state back, and the
+earlier turn's finished edit went to `kept/discarded`. That contradicted
+the 2026-10-06 amendment: a turn that changed nothing keeps nothing, and a
+stopped turn goes back to its own last passing state. Every turn now starts
+by dropping what an earlier one kept. `TestAHardStopKeepsAnEarlierTurnsFinishedEdits`
+holds it.
+
