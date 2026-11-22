@@ -93,6 +93,11 @@ type Session struct {
 	// 47): config.toml's [judge] server, or the one a person chose for the
 	// task. It changes only while the task is idle, under mu.
 	judge string
+	// titled says the log has a session.title before what the session
+	// holds: a resumed session holds only the end of its log (ADR 49 §10),
+	// and nameTask, which looked only there, named again a task a person
+	// had named (a review, 2026-11-21). Set at resume.
+	titled bool
 	// judges is the config the daemon had when a task last chose its judge,
 	// kept for its [servers] and [judge] tables: a judge set up after the
 	// task opened is one it may be given (SetJudgeFrom). Nil until then, when

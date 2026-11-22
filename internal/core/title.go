@@ -30,6 +30,9 @@ func (s *Session) nameTask(reply string) (string, error) {
 	if title == "" {
 		return "", errors.New("name-task takes three to seven words naming the task")
 	}
+	if s.titled {
+		return "The task has a name already; nothing changed.", nil
+	}
 	for _, ev := range s.EventsSoFar() {
 		if ev.Kind == log.KindSessionTitle {
 			return "The task has a name already; nothing changed.", nil

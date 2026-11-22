@@ -155,3 +155,44 @@ func TestResumeHoldsTheEndOfALongLog(t *testing.T) {
 		t.Fatalf("a log with a summary is held from seq %d", first)
 	}
 }
+
+// A resumed task holds only the end of its log (ADR 49 §10), and name-task
+// looked for a name there alone: a person's name near the start of a long
+// task was replaced by the model's after a resume. The log index keeps the
+// latest name for a resume.
+func TestAResumedTaskKeepsAPersonsName(t *testing.T) {
+	o := diskOptions(t)
+	o.Provider = waitingProvider{}
+	id := "20260901T070000Z-0000dddd"
+	longLog(t, o, id, 5, -1, func(write func(log.Kind, any)) {
+		write(log.KindSessionTitle, log.SessionTitle{Actor: "desk", Title: "My own name"})
+		for i := 0; i < 200; i++ {
+			write(log.KindUserMsg, log.UserMsg{Text: "filler"})
+			write(log.KindLLMResp, log.LLMResp{Content: "ok"})
+			write(log.KindTurnEnd, log.TurnEnd{Outcome: "completed"})
+		}
+		write(log.KindHarnessMsg, log.HarnessMsg{Text: "write the handover"})
+		write(log.KindLLMResp, log.LLMResp{Content: "the note"})
+		write(log.KindContextNarrow, log.ContextNarrow{System: "sys", Agent: "compaction", Lasting: true})
+		write(log.KindHarnessMsg, log.HarnessMsg{Text: "The conversation was cleared. The note"})
+		write(log.KindContextCompact, log.ContextCompact{Trigger: "auto", Compacted: true})
+		for i := 0; i < 50; i++ {
+			write(log.KindUserMsg, log.UserMsg{Text: "more"})
+			write(log.KindLLMResp, log.LLMResp{Content: "ok"})
+			write(log.KindTurnEnd, log.TurnEnd{Outcome: "completed"})
+		}
+	})
+	o.Repo = ""
+	s, err := Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if first := s.EventsSoFar()[0].Seq; first < 100 {
+		t.Fatalf("the resumed task holds its log from seq %d: the test needs only its end", first)
+	}
+	answer, err := s.nameTask("Model chosen title here")
+	if err != nil || answer != "The task has a name already; nothing changed." {
+		t.Errorf("a resumed task named by a person was renamed by the model: %q %v", answer, err)
+	}
+}

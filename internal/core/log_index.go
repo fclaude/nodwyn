@@ -38,7 +38,8 @@ import (
 // reach (the default denylist), and whatever could write it could write the
 // log itself.
 
-const indexVersion = 9
+// 10: the latest session.title is kept for a resume (keptChoices).
+const indexVersion = 10
 
 // markEvery is how many events apart the index notes where a line starts: a
 // page is read from the nearest mark before it, at most this many events
@@ -100,7 +101,7 @@ type resumeFold struct {
 }
 
 // keptChoices are the kinds whose latest record resumeFold keeps.
-var keptChoices = []log.Kind{log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits, log.KindSessionCommands, log.KindSessionSchedule, log.KindScheduleRun, log.KindContextHandover}
+var keptChoices = []log.Kind{log.KindSessionTitle, log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits, log.KindSessionCommands, log.KindSessionSchedule, log.KindScheduleRun, log.KindContextHandover}
 
 // observe folds one event in.
 func (r *resumeFold) observe(ev log.Event) {

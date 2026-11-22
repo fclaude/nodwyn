@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
@@ -146,6 +147,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if rec, found := lastCommands(choices); found {
 		s.commands, s.commandsActor = rec.Commands, rec.Actor
 	}
+	s.titled = slices.ContainsFunc(choices, func(ev log.Event) bool { return ev.Kind == log.KindSessionTitle })
 	if err = s.restoreHistory(history); err != nil {
 		return nil, err
 	}
