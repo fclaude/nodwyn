@@ -100,6 +100,9 @@ func run(m *testing.M) int {
 		}
 	}
 	if setupErr == nil {
+		setupErr = reachable()
+	}
+	if setupErr == nil {
 		binary = filepath.Join(dir, "nodwyn")
 		build := exec.Command("go", "build", "-o", binary, "./cmd/nodwyn")
 		build.Dir = repoRoot()
@@ -118,6 +121,25 @@ func run(m *testing.M) int {
 		code = 1
 	}
 	return code
+}
+
+// reachable asks the endpoint once before any scenario, so an endpoint this
+// machine cannot reach is said once, plainly, and not as nine scenarios
+// failing one by one over ten minutes (the Gitea runner's first runs). Any
+// answer, a refusal for want of a key included, is an endpoint that is there.
+func reachable() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, live.rawURL, nil)
+	if err != nil {
+		return fmt.Errorf("NODWYN_LIVE_URL: %s", scrub(err.Error()))
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("this machine cannot reach the endpoint: %s", scrub(err.Error()))
+	}
+	resp.Body.Close()
+	return nil
 }
 
 func repoRoot() string {
