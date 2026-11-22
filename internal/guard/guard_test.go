@@ -2,6 +2,10 @@ package guard
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"os"
 	"os/exec"
@@ -15,6 +19,7 @@ import (
 	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 type fixed struct {
@@ -473,5 +478,29 @@ func TestDenylistExceptsTheScratchDirectory(t *testing.T) {
 	os.Symlink(filepath.Join(data, "sessions"), filepath.Join(scratch, "out"))
 	if d.Denies(filepath.Join(scratch, "out", "x.jsonl")) == "" {
 		t.Fatal("a link out of the scratch directory escaped the denylist")
+	}
+}
+
+// A guard record cuts each argument to 120 characters, and the log redacts
+// what it is given: a private key cut before its END line no longer read as
+// one, and its first line of base64, which holds an ed25519 key's whole
+// seed, was logged. The argument is redacted before it is cut.
+func TestGuardRecordRedactsAKeyBeforeCuttingIt(t *testing.T) {
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+	body := strings.Split(key, "\n")[1]
+	got := summarizeArgs([]scheme.Value{scheme.Str("testdata/key.pem"), scheme.Str(key)})
+	if strings.Contains(got, body) || strings.Contains(redact.Redact(got, nil).Text, body) {
+		t.Fatalf("the key reached the record: %s", got)
+	}
+	if !strings.Contains(got, "[REDACTED") {
+		t.Fatalf("no placeholder in %s", got)
 	}
 }

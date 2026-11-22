@@ -19,6 +19,7 @@ import (
 	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // Verdict is the outcome class of a Decision.
@@ -376,11 +377,14 @@ func (g *Guard) record(rec log.GuardDecision) error {
 }
 
 // summarizeArgs renders arguments for the log, truncating long strings so a
-// file's contents do not end up in a guard record.
+// file's contents do not end up in a guard record. Each is redacted before
+// it is cut: the log's own redaction runs on the cut text, where a private
+// key that lost its END line no longer matched, and the line holding its
+// whole seed was logged.
 func summarizeArgs(args []scheme.Value) string {
 	parts := make([]string, len(args))
 	for i, a := range args {
-		s := scheme.Write(a)
+		s := redact.Redact(scheme.Write(a), nil).Text
 		if len(s) > 120 {
 			s = s[:117] + "..."
 		}
