@@ -3086,3 +3086,18 @@ The last answer is now cut at `plan-reply-cap`, 16000 characters (about
 messages stay at `plan-earlier-cap`. The judge still reads no reply (ADR
 19). TestThePlannerReadsALongLastAnswerWhole holds this. Not yet measured
 beyond that session.
+
+## Amendment 2026-11-21: the lean profile gives no tool hints
+
+The lean profile promises nothing is said to the model while it works
+(docs/scheme.md §9.8), but two hints did not look at the profile:
+`readdef-hint`, on a shell script that reads a file, named `read-definition`
+and `fs-read`, and `second-look-hint`, on a history search before any
+change, named `second-look`. The lean model is offered only `shell-exec`
+and `fs-edit`, so both told it to call tools it did not have. A review found
+it on 2026-11-21 (a lean session given both hints with two tools offered).
+Both are now given only when `lean-quiet` is false, as in the full profile,
+which keeps them as measured. No benchmark run measured the lean loop with
+these hints on purpose: they were on only because nothing turned them off.
+`TestOnlyTheFullProfileHintsAtToolsWhileTheModelWorks` holds it.
+

@@ -151,7 +151,10 @@
     (for-each
      (lambda (c r)
        (when (checkloop-code-edit? c r) (set! checkloop-code-edited #t))
+       ;; Not under lean-quiet, as readdef-hint is not: the lean model is
+       ;; offered no second-look to call.
        (when (and (not checkloop-code-edited) (< second-look-hinted second-look-hints)
+                  (not (guard (e (else #f)) lean-quiet))
                   (or (unattended?) (plan-required?) (plan-recorded?))
                   (checkloop-history-search? c))
          (set! second-look-hinted (+ second-look-hinted 1))

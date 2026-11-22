@@ -2,12 +2,14 @@ package core
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/llm"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
@@ -1106,5 +1108,50 @@ func TestThePlannerSaysWhichPartsOfAConditionStay(t *testing.T) {
 	r.drain("n")
 	if planner := lastMessage(r, 1); !strings.Contains(planner, "When a step changes an existing condition, it names each part of the old condition and says whether that part stays.") {
 		t.Fatalf("the planner's request: %q", planner)
+	}
+}
+
+// The lean profile says nothing to the model while it works, yet a script
+// that read a file got the hint to call read-definition and fs-read, and a
+// history search the hint to call second-look: tools the lean model is not
+// offered. Under lean-quiet neither is given; the full profile gives both.
+// Each subtest sets its profile.
+func TestOnlyTheFullProfileHintsAtToolsWhileTheModelWorks(t *testing.T) {
+	for _, profile := range []string{"lean", "full"} {
+		t.Run(profile, func(t *testing.T) {
+			t.Setenv("NODWYN_PROFILE", profile)
+			repo := gitWorkTree(t)
+			srv := fake.NewT(t,
+				shellArgs("r", "cat", "tracked.txt"),
+				shellArgs("g", "git", "log", "--oneline"),
+				fake.Turn{Content: "nothing to change"},
+				fake.Turn{Content: "nothing to change"},
+				fake.Turn{Content: "nothing to change"},
+				fake.Turn{Content: "nothing to change"},
+				fake.Turn{Content: "nothing to change"},
+			)
+			logb := &bytes.Buffer{}
+			s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: logb, Limits: &LimitsChoice{Limits: budget.Task{ToolCalls: 10}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { s.Close() })
+			r := &rig{t: t, s: s, srv: srv, repo: repo, logb: logb}
+			r.turn("why does tracked.txt say one")
+			results := ""
+			for _, req := range srv.Requests {
+				for _, m := range req.Messages {
+					var msg struct{ Role, Content string }
+					if json.Unmarshal(m, &msg) == nil && msg.Role == "tool" {
+						results += msg.Content + "\n"
+					}
+				}
+			}
+			for _, hint := range []string{"[hint: read-definition", "[hint: searching the history"} {
+				if got := strings.Contains(results, hint); got != (profile == "full") {
+					t.Errorf("%s profile, %q given: %v\n%s", profile, hint, got, results)
+				}
+			}
+		})
 	}
 }

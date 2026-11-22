@@ -266,7 +266,12 @@
                     (set! hygiene-reads
                           (cons (list (assoc-ref c 'id) (readdef-header-path text) (hygiene-first-line text) text hygiene-round)
                                 hygiene-reads)))))
-               ((and (< readdef-hints-given readdef-hints) (assoc-ref r 'ok #f) (readdef-script-read? c))
+               ;; Not under lean-quiet: the lean profile says nothing to the
+               ;; model while it works, and its model is offered neither
+               ;; read-definition nor fs-read, which the hint names (a review,
+               ;; 2026-11-21).
+               ((and (< readdef-hints-given readdef-hints) (not (guard (e (else #f)) lean-quiet))
+                     (assoc-ref r 'ok #f) (readdef-script-read? c))
                 (set! readdef-hints-given (+ readdef-hints-given 1))
                 (fold-result (assoc-ref c 'id) (string-append (format "~a" (assoc-ref r 'value "")) readdef-hint)))))
        calls results))
