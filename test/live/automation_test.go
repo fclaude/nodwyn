@@ -270,11 +270,18 @@ func TestAWorkflowProgramRunsOnANewItem(t *testing.T) {
 	w := newWorld(t, map[string]string{"README.md": "# Alerts\n"})
 	w.record("workflow-program")
 	word := "lantern-" + number(t)
+	// A request with no tools still has the system prompt's rule to name
+	// the task in the first reply, and the model sometimes answers with a
+	// call it was not offered and no text (the Gitea runner's run 40427):
+	// the program asks again for plain text, as a program a person writes
+	// would, at most twice.
 	program := `(fs-write "alert-seen.txt" "program ran")
 (add-message "An alert is attached above. Reply with the word its body gives, and nothing else.")
-(let ((reply (assoc-ref (model-turn "control" '((tools . #f))) 'content)))
-  (fs-write "alert-word.txt" reply)
-  reply)`
+(let ask ((tries 0))
+  (let ((reply (assoc-ref (model-turn "control" '((tools . #f))) 'content)))
+    (if (and (string=? reply "") (< tries 2))
+        (begin (add-message "Reply in plain text with that word alone.") (ask (+ tries 1)))
+        (begin (fs-write "alert-word.txt" reply) reply))))`
 	id, items := w.commandWorkflow("Alerts to a file", map[string]any{"program": program})
 	addItem(t, items, `{"id":"A-7","version":"1","title":"Disk alert","body":"The word is `+word+`."}`)
 	fire := w.waitFire(id, "A-7", 15*time.Minute)
