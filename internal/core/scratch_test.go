@@ -451,3 +451,31 @@ func TestTheModelKeepsProjectNotes(t *testing.T) {
 		t.Fatalf("the next session is not shown the notes, or is shown the key:\n%s", sys)
 	}
 }
+
+// The sweep went by a directory's age, and a session touched its directory
+// only when a turn started: a task held open more than a week with no turn
+// lost its directory to another session's sweep. An open session's
+// directory is in use whatever its age, and goes once it is let go.
+func TestTheSweepLeavesAnOpenSessionsDirectoryHoweverOld(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TMPDIR", root)
+	root = scratchRoot()
+	dir, err := makeScratch(t.TempDir(), "idle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { removeScratch(dir) })
+	week := time.Now().Add(-8 * 24 * time.Hour)
+	if err := os.Chtimes(dir, week, week); err != nil {
+		t.Fatal(err)
+	}
+	sweepScratch(root)
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("the sweep removed an open session's directory: %v", err)
+	}
+	releaseScratch(dir)
+	sweepScratch(root)
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("a directory nobody holds was kept: %v", err)
+	}
+}

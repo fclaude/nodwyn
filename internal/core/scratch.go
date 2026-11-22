@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -73,7 +74,58 @@ func makeScratch(dataDir, id string) (string, error) {
 		_ = os.RemoveAll(dir)
 		return "", fmt.Errorf("core: scratch: %w", err)
 	}
+	holdScratch(resolved)
 	return resolved, nil
+}
+
+// held are the scratch directories this process's sessions hold, each open
+// with a shared lock on it until it is removed. The sweep goes by a
+// directory's age, and a session touched its directory only when a turn
+// started, so a task held open in the daemon for more than a week without
+// one lost its directory, and its kept state, to another session's sweep
+// (a review, 2026-11-21). A directory whose lock is held, in this process or
+// another, is in use; a crashed session's lock goes with its process.
+var held = struct {
+	sync.Mutex
+	dirs map[string]*os.File
+}{dirs: map[string]*os.File{}}
+
+func holdScratch(dir string) {
+	f, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB) != nil {
+		f.Close()
+		return
+	}
+	held.Lock()
+	held.dirs[dir] = f
+	held.Unlock()
+}
+
+func releaseScratch(dir string) {
+	held.Lock()
+	f := held.dirs[dir]
+	delete(held.dirs, dir)
+	held.Unlock()
+	if f != nil {
+		f.Close()
+	}
+}
+
+// inUse reports whether a session holds dir's lock.
+func inUse(dir string) bool {
+	f, err := os.Open(dir)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		return true
+	}
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return false
 }
 
 // expandScratch rewrites a leading $TMPDIR (or ${TMPDIR}) in a tool's path
@@ -113,13 +165,14 @@ func touchScratch(dir string) {
 // nothing else.
 func removeScratch(dir string) {
 	if dir != "" && strings.HasPrefix(filepath.Base(dir), "nodwyn-scratch-") {
+		releaseScratch(dir)
 		_ = os.RemoveAll(dir)
 	}
 }
 
 // sweepScratch removes scratch directories older than scratchMaxAge: those
-// of sessions that ended without closing. A session touches its directory
-// at every turn (touchScratch), so an open one is never this old. The
+// of sessions that ended without closing. An open session holds its
+// directory's lock (holdScratch), and one whose lock is held is left. The
 // system's temporary directory is shared, so only a directory of this
 // user's own, not a link to one, is removed.
 func sweepScratch(root string) {
@@ -131,8 +184,9 @@ func sweepScratch(root string) {
 		if !e.IsDir() || !strings.HasPrefix(e.Name(), "nodwyn-scratch-") {
 			continue
 		}
-		if info, err := e.Info(); err == nil && ownedByUs(info) && time.Since(info.ModTime()) > scratchMaxAge {
-			_ = os.RemoveAll(filepath.Join(root, e.Name()))
+		dir := filepath.Join(root, e.Name())
+		if info, err := e.Info(); err == nil && ownedByUs(info) && time.Since(info.ModTime()) > scratchMaxAge && !inUse(dir) {
+			_ = os.RemoveAll(dir)
 		}
 	}
 }
