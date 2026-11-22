@@ -251,7 +251,13 @@ func TestSchedulerCoalescesPersistsAndClosesIdle(t *testing.T) {
 	if err = s.writeSchedule(id, def); err != nil {
 		t.Fatal(err)
 	}
-	tickSchedule(s, now.Add(16*time.Minute))
+	// Idle is 15 minutes after the session's last event, a real time; now
+	// is the test's start rounded down to the minute, so now+16m could be
+	// less than 15 minutes after an event late in that minute or after a
+	// slow run, and the session stayed open on a loaded machine. The tick
+	// is 16 minutes after the real time instead: paused, the schedule has
+	// nothing due then, so only the idle rule is tested.
+	tickSchedule(s, time.Now().Add(16*time.Minute))
 	if _, open := s.sessions[id]; open {
 		t.Fatal("idle session stayed open")
 	}
