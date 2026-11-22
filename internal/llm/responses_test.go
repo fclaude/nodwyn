@@ -420,3 +420,27 @@ func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
 		})
 	}
 }
+
+// Some chat-completions and Responses servers send "" as the arguments of a
+// function with no parameters. It was kept as the JSON string "", and a
+// tool that takes nothing failed with "arguments must be a JSON object";
+// it is {}, as Ollama's and Anthropic's empty arguments are.
+func TestEmptyArgumentsAreAnEmptyObject(t *testing.T) {
+	chat := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"git-status","arguments":""}}]},"finish_reason":"tool_calls"}]}`)
+	}))
+	defer chat.Close()
+	responses, _ := responsesServer(t, `{"status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"c1","name":"git-status","arguments":""}]}`)
+	for name, o := range map[string]*OpenAI{"chat completions": NewOpenAI(chat.URL, nil), "responses": NewOpenAI(responses.URL+"/v1", nil)} {
+		if name == "responses" {
+			o.Dialect = "responses"
+		}
+		out, err := o.Chat(context.Background(), Request{Model: "m"}, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(out.Message.ToolCalls) != 1 || string(out.Message.ToolCalls[0].Args) != "{}" {
+			t.Fatalf("%s: %+v", name, out.Message.ToolCalls)
+		}
+	}
+}

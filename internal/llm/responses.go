@@ -282,7 +282,7 @@ func (o *OpenAI) respond(ctx context.Context, req Request, onDelta func(Delta)) 
 					Data: item.EncryptedContent, Before: len(out.Message.ToolCalls), Origin: o.ReasoningOrigin})
 			}
 		case "function_call":
-			args := json.RawMessage(item.Arguments)
+			args := callArgs(item.Arguments)
 			if !json.Valid(args) {
 				// Keep what the model sent; the tool reports the bad arguments.
 				args, _ = json.Marshal(item.Arguments)

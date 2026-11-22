@@ -415,7 +415,7 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 		out.Message.Blocks = []ThinkingBlock{{Type: ReasoningDetails, Data: string(details), Origin: o.ReasoningOrigin}}
 	}
 	for i, tc := range choice.Message.ToolCalls {
-		args := json.RawMessage(tc.Function.Arguments)
+		args := callArgs(tc.Function.Arguments)
 		if !json.Valid(args) {
 			// Keep what the model sent; the tool reports the bad arguments.
 			args, _ = json.Marshal(tc.Function.Arguments)
@@ -435,6 +435,18 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 // carriesDetails says whether a reply's reasoning_details hold anything to
 // give back: an array of at least one item. null, an empty array and a field
 // that is not there hold nothing, so such a reply is kept as before.
+// callArgs is a tool call's arguments as the model sent them, and {} when it
+// sent none: some chat-completions and Responses servers send "" for a
+// function with no parameters, which was kept as the JSON string "", so a
+// tool that takes nothing (git-status) failed with "arguments must be a
+// JSON object" (a review, 2026-11-21). Ollama and Anthropic did this already.
+func callArgs(sent string) json.RawMessage {
+	if strings.TrimSpace(sent) == "" {
+		return json.RawMessage("{}")
+	}
+	return json.RawMessage(sent)
+}
+
 func carriesDetails(raw json.RawMessage) bool {
 	var items []json.RawMessage
 	return json.Unmarshal(raw, &items) == nil && len(items) > 0
