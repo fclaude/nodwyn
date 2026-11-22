@@ -109,3 +109,24 @@ and in a failed edit's quote, so the answer never carries one (make exfil's
 TestEditThroughAPlaceholderLeaksNothing caught the first version, which
 quoted the file as written), and the next edit's `old` matches it as
 before.
+
+## Amendment 2026-11-21: an edit may not uncover a credential
+
+Keeping a placeholder's text in place was not enough to keep it from the
+model. Redaction recognises a credential by its shape and the text around
+it, so `(fs-edit "conf.txt" "k: [REDACTED github-token]" "k: zz[REDACTED
+github-token]")` wrote `k: zzghp_…`, which no rule matches, and the edit's
+answer, built from the new text redacted, showed the token; so did every
+read after it, and ingress sends what a read returns to the model. An edit
+that changed only the text beside the placeholder (`"k: "` to `"k: zz"`)
+did the same. A review found it on 2026-11-21 for AWS, GitHub, Anthropic,
+Slack and JWT shapes.
+
+fs-edit, and its preview, now refuse an edit after which a text redaction
+replaced in the file would appear unredacted in the file as the model
+reads it, unless the file already showed that text unredacted somewhere.
+Nothing is written, and the error says to keep the text beside a
+placeholder as it is or separate it. `TestFsEditRefusesToUncoverACredential`
+holds it. A shell command can still change a file's text the same way;
+that is a confirmed call, as before.
+

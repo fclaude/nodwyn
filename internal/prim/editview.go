@@ -138,6 +138,32 @@ func replacement(span []held, repl string) (string, error) {
 	return b.String(), nil
 }
 
+// uncovers refuses an edit after which a credential the model read as a
+// placeholder would read as itself. Redaction recognises a credential by its
+// shape and the text around it, so an edit that keeps the placeholder but
+// glues a letter to it ("k: zz[REDACTED github-token]"), or changes the
+// words beside it, can leave the same text no longer redacted: the answer
+// and every later read would then show it (found by a review on
+// 2026-11-21). A credential the file already showed unredacted somewhere is
+// no secret from the model, and is not held to this.
+func uncovers(cur, next string) error {
+	before := redact.Redact(cur, nil)
+	var after string
+	for _, e := range before.Events {
+		secret := cur[e.Start:e.End]
+		if strings.Contains(before.Text, secret) || !strings.Contains(next, secret) {
+			continue
+		}
+		if after == "" {
+			after = redact.Redact(next, nil).Text
+		}
+		if strings.Contains(after, secret) {
+			return fmt.Errorf("the edit would leave the text a %s placeholder stands for no longer recognised as a credential, so it would be shown: keep the text beside a placeholder as it is, or separate it with a space or a line", redact.Placeholder(e.Class))
+		}
+	}
+	return nil
+}
+
 // placeholderList names classes' placeholders for an error.
 func placeholderList(classes []string) string {
 	if len(classes) == 0 {

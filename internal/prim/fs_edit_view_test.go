@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/fclaude/brote/scheme"
+
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // editView is a harness with fixture.go holding text and every confirm
@@ -207,4 +209,42 @@ func TestFsEditListAndMultiLineCredentials(t *testing.T) {
 	if got, want := e.text(t), "key = `"+pem+"` // private\nname = \""+anthropic+"\" // fixture\n"; got != want {
 		t.Fatalf("file:\n%s\nwant:\n%s", got, want)
 	}
+}
+
+// Redaction knows a credential by its shape and what is beside it, so an
+// edit that keeps the placeholder but glues text to it, or changes the text
+// beside it without touching the placeholder at all, could leave the
+// credential no longer recognised: the answer, and every read after, then
+// showed it to the model. Such an edit is refused and the file is unchanged.
+func TestFsEditRefusesToUncoverACredential(t *testing.T) {
+	github := "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"
+	for _, c := range []struct{ secret, holder, old, new string }{
+		{github, "[REDACTED github-token]", "k: [REDACTED github-token]", "k: zz[REDACTED github-token]"},
+		{github, "[REDACTED github-token]", "k: ", "k: zz"},
+		{aws, awsHolder, "k: " + awsHolder, "k: x" + awsHolder + "x"},
+	} {
+		text := "k: " + c.secret + "\n"
+		e := newEditView(t, text)
+		if r := e.view(t); !strings.Contains(r, c.holder) {
+			t.Fatalf("the fixture is not redacted as %s: %q", c.holder, r)
+		}
+		err := e.edit(t, c.old, c.new, false)
+		if err == nil || !strings.Contains(err.Error(), "no longer recognised as a credential") {
+			t.Fatalf("%q -> %q: %v", c.old, c.new, err)
+		}
+		if got := e.text(t); got != text {
+			t.Fatalf("%q -> %q wrote %q", c.old, c.new, got)
+		}
+	}
+	// Text set apart from the placeholder keeps it a credential, and is written.
+	e := newEditView(t, "k: "+github+"\n")
+	if err := e.edit(t, "k: [REDACTED github-token]", "k: [REDACTED github-token] # rotated", false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// view is the fixture as the model reads it.
+func (e editView) view(t *testing.T) string {
+	t.Helper()
+	return redact.Redact(e.text(t), nil).Text
 }

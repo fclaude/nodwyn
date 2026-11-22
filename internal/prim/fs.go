@@ -734,6 +734,9 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			return "cannot read " + args[0].S + ": " + err.Error()
 		}
 		next, err := applyEdits(string(cur), edits, list, o.Lean)
+		if err == nil {
+			err = uncovers(string(cur), next)
+		}
 		if err != nil {
 			return "edit would fail: " + err.Error()
 		}
@@ -782,6 +785,9 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			}
 			next, sites, notes, err := applyEditsAt(string(cur), edits, list, o.Lean)
 			if err != nil {
+				return scheme.Value{}, err
+			}
+			if err := uncovers(string(cur), next); err != nil {
 				return scheme.Value{}, err
 			}
 			st, _ := os.Stat(abs)
