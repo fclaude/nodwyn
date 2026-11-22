@@ -154,20 +154,16 @@ func land(ctx context.Context, o Options, message string) (string, error) {
 	}
 	l := lander{ctx: ctx, o: o, env: landEnv(o)}
 	root := o.Root
+	// Before anything runs, a resumed rebase included: its commits run the
+	// hooks too.
+	if err := l.modelHooks(w); err != nil {
+		return "", err
+	}
 	if branch, err := l.git(root, "rev-parse", "--abbrev-ref", "HEAD"); err != nil || branch != w.Branch {
 		if inRebase(l, root) {
 			return l.continueRebase(w)
 		}
 		return "", fmt.Errorf("HEAD is %q, not this session's branch %s", branch, w.Branch)
-	}
-	if hooks, err := l.git(root, "config", "--get", "core.hooksPath"); err == nil && hooks != "" {
-		abs := hooks
-		if !filepath.IsAbs(abs) {
-			abs = filepath.Join(root, hooks)
-		}
-		if rel, err := filepath.Rel(root, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return "", fmt.Errorf("core.hooksPath is %s, inside this worktree, where the model could have written the hooks a commit runs: land it from a terminal", hooks)
-		}
 	}
 	var said []string
 	// 1. Commit what changed.
@@ -376,6 +372,42 @@ func (l lander) moveLocal(w *Worktree, head string) string {
 		return "the checkout at " + checkout + " could not be fast-forwarded: " + err.Error()
 	}
 	return "the checkout at " + checkout + " fast-forwarded to " + short(head)
+}
+
+// modelHooks refuses a core.hooksPath where the model could have written the
+// hooks git-land's git runs: inside this worktree, or inside the person's
+// checkout, which the fast-forward fills with the model's commits before git
+// runs its hooks there. A relative path is the worktree's own or the
+// checkout's, as git reads it in each. The check was made only after a
+// resumed rebase had gone on, and only for the worktree (a review,
+// 2026-11-21).
+func (l lander) modelHooks(w *Worktree) error {
+	for _, dir := range []string{l.o.Root, w.Repository} {
+		if dir == "" {
+			continue
+		}
+		hooks, err := l.git(dir, "config", "--get", "core.hooksPath")
+		if err != nil || hooks == "" {
+			continue
+		}
+		abs := hooks
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(dir, hooks)
+		}
+		for _, inside := range []string{l.o.Root, w.Repository} {
+			if inside == "" {
+				continue
+			}
+			if rel, err := filepath.Rel(inside, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				where := "this worktree"
+				if inside == w.Repository {
+					where = "the repository's checkout"
+				}
+				return fmt.Errorf("core.hooksPath is %s, inside %s, where the model could have written the hooks a commit runs: land it from a terminal", hooks, where)
+			}
+		}
+	}
+	return nil
 }
 
 // inRebase reports a rebase in progress in the worktree.

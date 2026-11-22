@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/fclaude/brote/scheme"
+
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 // landRig is a repository with a bare remote its main tracks, a clean
@@ -253,4 +255,56 @@ func TestGitLandKeepsIgnoredFileInBaseCheckout(t *testing.T) {
 	if string(got) != "personal copy" {
 		t.Fatalf("git-land replaced the ignored file in the main checkout with %q: %s", got, result)
 	}
+}
+
+// git-land refused a core.hooksPath inside the worktree only on a first
+// landing: one that went on with a rebase it had stopped skipped the check,
+// and its commits ran the hooks the model wrote. Nor was a path inside the
+// person's checkout refused, where the fast-forward puts the model's hooks
+// before git runs them there. Both are refused before anything runs.
+func TestGitLandRunsNoHookTheModelCouldHaveWritten(t *testing.T) {
+	t.Run("a resumed rebase", func(t *testing.T) {
+		r := newLandRig(t)
+		other := filepath.Join(filepath.Dir(r.repo), "other")
+		r.git(filepath.Dir(r.repo), "clone", "-q", r.remote, other)
+		r.write(other, "app.txt", "one\nTWO\nthree\n")
+		r.git(other, "commit", "-qam", "upper case two")
+		r.git(other, "push", "-q", "origin", "main")
+		r.write(r.tree, "app.txt", "one\n2\nthree\n")
+		if _, err := r.land("Two is a digit"); err == nil || !strings.Contains(err.Error(), "conflict") {
+			t.Fatalf("the first landing: %v", err)
+		}
+		r.git(r.repo, "config", "core.hooksPath", ".hooks")
+		marker := writeHooks(t, r.tree, r.repo)
+		r.write(r.tree, "app.txt", "one\nTWO, or 2\nthree\n")
+		if _, err := r.land(""); err == nil || !strings.Contains(err.Error(), "core.hooksPath") {
+			t.Fatalf("the resumed landing: %v", err)
+		}
+		if b, err := os.ReadFile(marker); err == nil {
+			t.Fatalf("hooks ran: %s", b)
+		}
+	})
+	t.Run("the person's checkout", func(t *testing.T) {
+		r := newLandRig(t)
+		r.git(r.repo, "config", "core.hooksPath", filepath.Join(r.repo, ".hooks"))
+		marker := writeHooks(t, r.tree, r.repo)
+		if _, err := r.land("Add hooks"); err == nil || !strings.Contains(err.Error(), "the repository's checkout") {
+			t.Fatalf("landing: %v", err)
+		}
+		if b, err := os.ReadFile(marker); err == nil {
+			t.Fatalf("hooks ran: %s", b)
+		}
+	})
+}
+
+// writeHooks writes hooks in tree's .hooks that say they ran in a file
+// beside repo, and returns its path.
+func writeHooks(t *testing.T, tree, repo string) string {
+	t.Helper()
+	marker := filepath.Join(filepath.Dir(repo), "RAN")
+	must.MkdirAll(t, filepath.Join(tree, ".hooks"), 0o755)
+	for _, h := range []string{"pre-commit", "prepare-commit-msg", "commit-msg", "post-commit", "post-rewrite", "post-checkout", "post-merge", "pre-push", "reference-transaction"} {
+		must.WriteFile(t, filepath.Join(tree, ".hooks", h), []byte("#!/bin/sh\necho "+h+" >> "+marker+"\n"), 0o755)
+	}
+	return marker
 }
