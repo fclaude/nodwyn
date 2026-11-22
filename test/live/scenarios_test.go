@@ -33,12 +33,17 @@ func number(t *testing.T) string {
 // task still knows what it found.
 func TestChatReadsAFileAndAResumedTaskRemembersIt(t *testing.T) {
 	code := number(t)
+	// A count of crates, not a code: called a launch code, the number was
+	// taken for a secret, and a resumed task refused to repeat it (the
+	// Gitea runner's run 40453). The request says to read the file: asked
+	// what the file "says", the model once searched the conversation
+	// instead and answered that it could not tell.
 	w := newWorld(t, map[string]string{
-		"README.md":       "# Launch notes\n\nThe notes are in notes/.\n",
-		"notes/launch.md": "Checklist\n\n- fuel\n- The launch code is " + code + ".\n",
+		"README.md":          "# Warehouse notes\n\nThe notes are in notes/.\n",
+		"notes/inventory.md": "Inventory\n\n- pallets: 12\n- The warehouse holds " + code + " crates.\n",
 	})
 	w.record("chat-reads-and-resumes")
-	id, out := w.chat(10*time.Minute, nil, "What is the launch code written in notes/launch.md? Answer with the number only.")
+	id, out := w.chat(10*time.Minute, nil, "Read the file notes/inventory.md and tell me how many crates the warehouse holds. Answer with the number only.")
 	evs := w.events(id)
 	if got := replies(evs); len(got) == 0 || !strings.Contains(got[len(got)-1], code) {
 		t.Fatalf("the answer does not give %s: %q\n%s", code, got, out)
@@ -50,7 +55,7 @@ func TestChatReadsAFileAndAResumedTaskRemembersIt(t *testing.T) {
 		t.Errorf("the turn ended %v", o)
 	}
 	// A resumed task holds the end of its log and the conversation before it.
-	_, out = w.chat(10*time.Minute, []string{"--resume", id}, "Which launch code did you give me a moment ago? Answer with the number only, without reading any file.")
+	_, out = w.chat(10*time.Minute, []string{"--resume", id}, "How many crates did you tell me a moment ago? Answer with the number only, without reading any file.")
 	evs = w.events(id)
 	if got := replies(evs); !strings.Contains(got[len(got)-1], code) {
 		t.Fatalf("resumed, the task did not remember %s: %q\n%s", code, got[len(got)-1], out)
