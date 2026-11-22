@@ -422,6 +422,13 @@ func vetTree(raw []byte, base string, pin guard.RepoPin, deny guard.PathDenylist
 	if bad != nil {
 		return nil, nil, nil, bad
 	}
+	// A page made standalone links the front matter's css in its head, and
+	// loads it when opened, as it would an image from elsewhere (a review,
+	// 2026-11-21): the document's own stylesheets are not kept.
+	if meta, ok := tree["meta"].(map[string]any); ok && !embeds && meta["css"] != nil {
+		delete(meta, "css")
+		dropped = append(dropped, "the front matter's css (a stylesheet: a page would load it when opened)")
+	}
 	if meta, ok := tree["meta"].(map[string]any); ok && title != "" {
 		if meta["title"] == nil && meta["pagetitle"] == nil {
 			meta["pagetitle"] = map[string]any{"t": "MetaString", "c": title}

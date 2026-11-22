@@ -377,3 +377,26 @@ func TestDocExportRefusesATreeTooLargeToHold(t *testing.T) {
 		t.Fatal("a document was written")
 	}
 }
+
+// A standalone page links the front matter's css in its head and loads it
+// when opened, the beacon a remote image is dropped for: the page kept it.
+// It is dropped from a page and said so; a .docx, which embeds, is
+// unchanged.
+func TestDocExportDropsTheFrontMattersStylesheetFromAPage(t *testing.T) {
+	pandoc := newFakePandoc(t, "")
+	h := exportHarness(t, pandoc.path)
+	must.WriteFile(t, filepath.Join(h.root, "notes.md"), []byte("hi"), 0o644)
+	tree := `{"pandoc-api-version":[1,23,1,1],"meta":{"css":{"t":"MetaInlines","c":[{"t":"Str","c":"https://evil.example/track.css"}]}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"hi"}]}]}`
+	must.WriteFile(t, filepath.Join(pandoc.dir, "tree.json"), []byte(tree), 0o644)
+	got := h.mustEval(t, `(doc-export "notes.md" "out/notes.html")`)
+	if sent := pandoc.read("input2"); strings.Contains(sent, "evil.example") {
+		t.Fatalf("the stylesheet reached the writer: %s", sent)
+	}
+	if !strings.Contains(got.S, "the front matter's css") {
+		t.Fatalf("result %q", got.S)
+	}
+	h.mustEval(t, `(doc-export "notes.md" "out/notes.docx")`)
+	if sent := pandoc.read("input2"); !strings.Contains(sent, "evil.example") {
+		t.Fatalf("a .docx lost its metadata: %s", sent)
+	}
+}
