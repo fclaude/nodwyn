@@ -137,12 +137,25 @@ func (s *server) applyPoll(id string, definitionSeq uint64, items []watch.Item, 
 		return
 	}
 	next := map[string]string{}
+	listed := map[string]bool{}
 	for _, item := range items {
+		listed[item.ID] = true
 		if version, ok := state.Seen[item.ID]; ok {
 			next[item.ID] = version
 		} else if len(def.Source.On) > 0 && !slices.Contains(def.Source.On, "opened") {
 			// Its first version is the baseline for the next update.
 			next[item.ID] = item.Version
+		}
+	}
+	// A source lists its newest items only (50 pull requests, 25 messages),
+	// so an item missing from one poll may come back: archiving newer mail
+	// lets older mail into the list, a reopened pull request returns. It is
+	// remembered, so it does not fire again as new, and a change it brings
+	// back is an update. What is remembered is bounded: past rememberSeen,
+	// items no poll lists are forgotten.
+	for id, version := range state.Seen {
+		if !listed[id] && len(next) < rememberSeen {
+			next[id] = version
 		}
 	}
 	var fire []watch.Event
@@ -222,6 +235,9 @@ func (s *server) applyPoll(id string, definitionSeq uint64, items []watch.Item, 
 		_, _ = store.Append(id, workflow.KindSeen, workflow.Seen{Items: next})
 	}
 }
+
+// rememberSeen bounds what a workflow remembers of its source's items.
+const rememberSeen = 2000
 
 func eventVersions(events []watch.Event) *workflow.Seen {
 	items := make(map[string]string, len(events))

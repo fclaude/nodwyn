@@ -581,3 +581,26 @@ The `schedule` and `workflows` browser checks select, highlight, save,
 reload and execute programs, check their results and requests, and check
 phone width and source that resembles markup. Services are fakes; real
 mailboxes and forges are not exercised.
+
+## Amendment 2026-11-21: what a workflow has seen
+
+§4 says each new item or new version fires once, but what a workflow had
+seen was only what its last poll listed, and sources list their newest
+items alone (a forge's 50 most recently updated pull requests, a mailbox's
+25 newest messages). An item missing from one poll was forgotten: when it
+came back unchanged (a reopened pull request; older mail let into the list
+when newer mail was archived) it fired again as opened, and with
+`on = ["updated"]` a change it came back with was only recorded. A
+workflow now remembers the items it saw that a poll does not list, up to
+2,000 in all, so such an item fires only for a new version, as an update.
+
+Slice 3 says what is open at a workflow's first check is recorded and not
+acted on, unless the person asks (`existing`). Changing an existing
+workflow's source (another repository, server, query, folder or command)
+kept the old source's record, so everything already open at the new one
+fired, and an item there whose id an old subject had went to that
+subject's task. A definition with a source that lists other items now
+starts afresh: its first check is recorded as a new workflow's is, and the
+old subjects are dropped (the one task of one-task routing stays). Changing
+only the key, the events (`on`) or anything else keeps what was seen.
+

@@ -497,3 +497,71 @@ func TestResumeAfterFloodProcessesTheBacklog(t *testing.T) {
 	}
 
 }
+
+// A source lists only its newest items, and what was seen was only what the
+// last poll listed: a pull request that left the listing and came back
+// unchanged fired again as opened. It is remembered and does not, and a new
+// head it comes back with is an update.
+func TestAnItemThatLeavesTheListingAndReturnsFiresOnlyForAChange(t *testing.T) {
+	f := forge.New("forge-token")
+	defer f.Close()
+	m := fake.NewT(t, fake.Turn{Content: "Done."}, fake.Turn{Content: "Done again."})
+	defer m.Close()
+	s := schedulerServer(t, forgeOptions(t, f, m))
+	id := setWorkflow(t, s, pullsWorkflow(f, t.TempDir()))
+	now := midday()
+	s.pollWorkflows(context.Background(), now)
+	f.Set("fc/nodwyn", forge.Pull{Number: 7, Head: "h", Title: "T", Author: "ana"})
+	s.pollWorkflows(context.Background(), now.Add(3*time.Minute))
+	st := flowState(t, s, id)
+	if len(st.Fires) != 1 {
+		t.Fatalf("fires %d", len(st.Fires))
+	}
+	scheduleIdle(t, s, st.Subjects["7"])
+	f.Set("fc/nodwyn")
+	s.pollWorkflows(context.Background(), now.Add(6*time.Minute))
+	f.Set("fc/nodwyn", forge.Pull{Number: 7, Head: "h", Title: "T", Author: "ana"})
+	s.pollWorkflows(context.Background(), now.Add(9*time.Minute))
+	if st = flowState(t, s, id); len(st.Fires) != 1 {
+		t.Fatalf("unchanged #7 fired again: %+v", st.Fires)
+	}
+	f.Set("fc/nodwyn")
+	s.pollWorkflows(context.Background(), now.Add(12*time.Minute))
+	f.Set("fc/nodwyn", forge.Pull{Number: 7, Head: "h2", Title: "T", Author: "ana"})
+	s.pollWorkflows(context.Background(), now.Add(15*time.Minute))
+	if st = flowState(t, s, id); len(st.Fires) != 2 || st.Fires[1].Kind != "updated" {
+		t.Fatalf("a new head after a gap: %+v", st.Fires)
+	}
+	scheduleIdle(t, s, st.Subjects["7"])
+}
+
+// Pointing a workflow at another repository kept what the old one had seen,
+// so every pull request already open in the new one ran a task, which a new
+// workflow only records (ADR 53, slice 3). Another source starts afresh.
+func TestAWorkflowGivenAnotherSourceRecordsWhatIsOpenThere(t *testing.T) {
+	f := forge.New("forge-token")
+	defer f.Close()
+	m := fake.NewT(t)
+	defer m.Close()
+	s := schedulerServer(t, forgeOptions(t, f, m))
+	d := pullsWorkflow(f, t.TempDir())
+	id := setWorkflow(t, s, d)
+	now := midday()
+	s.pollWorkflows(context.Background(), now)
+	f.Set("fc/other", forge.Pull{Number: 1, Head: "x", Title: "open", Author: "ana"}, forge.Pull{Number: 2, Head: "y", Title: "another", Author: "ana"})
+	d.Source.Repo = "fc/other"
+	raw, err := jsonRaw(map[string]any{"id": id, "definition": d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	_, re := s.workflowMethod(request{Method: "workflow.write", Params: raw}, &peer{actor: "test"})
+	s.mu.Unlock()
+	if re != nil {
+		t.Fatal(re.Message)
+	}
+	s.pollWorkflows(context.Background(), now.Add(3*time.Minute))
+	if st := flowState(t, s, id); len(st.Fires) != 0 || !st.Seeded || len(st.Seen) != 2 {
+		t.Fatalf("fires %+v, seeded %v, seen %v", st.Fires, st.Seeded, st.Seen)
+	}
+}

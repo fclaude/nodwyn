@@ -252,6 +252,12 @@ type State struct {
 	firedSource map[string]watch.Source
 }
 
+// sameItems says a and b list the same items: the same kind of source at the
+// same place, whatever key reads it or which of its changes are events.
+func sameItems(a, b watch.Source) bool {
+	return a.Kind == b.Kind && a.Server == b.Server && a.Repo == b.Repo && a.Query == b.Query && a.Dir == b.Dir && slices.Equal(a.Command, b.Command)
+}
+
 // recent is how many fires State keeps.
 const recent = 20
 
@@ -261,6 +267,19 @@ func (s *State) observe(r record) {
 	case KindDefine:
 		var d FloodControl
 		if json.Unmarshal(r.Payload, &d) == nil {
+			if s.Definition != nil && !sameItems(s.Definition.Source, d.Source) {
+				// Another source is a new start: what it has now is seen
+				// at its first check and not acted on, unless the person
+				// asks (Existing), and its items are not the old source's
+				// subjects, whose ids they may share. The one task of
+				// OneTask routing stays the workflow's.
+				s.Seen, s.Seeded = nil, false
+				for subject := range s.Subjects {
+					if subject != "" {
+						delete(s.Subjects, subject)
+					}
+				}
+			}
 			s.Definition, s.Sequence, s.Backlog = &d.Define, r.Seq, d.Backlog
 		}
 	case KindSeen:
