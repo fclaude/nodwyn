@@ -664,7 +664,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device Device, 
 			callErr = errors.New("that message is too large to send: a request is at most 1 MB")
 		case access == needsTouch:
 			callErr = errTouch
-		case access == granted && c.link && linkSettings[req.Method] && linkWidens(req.Method, req.Params) != "":
+		case access == granted && c.link && linkWidens(req.Method, req.Params) != "":
 			callErr = fmt.Errorf("%s widens what this host's tasks may do: it is changed in the host's own console, after a touch of your passkey", linkWidens(req.Method, req.Params))
 		case access == refused:
 			callErr = errors.New("operation unavailable in this browser mode; use the terminal client")
@@ -988,7 +988,20 @@ var linkMay = []string{"judge.server"}
 
 // linkWidens says why a call a link makes would widen what the host's tasks
 // may do, "" when it would not. A call it cannot read is refused too.
+// Turning a task's Don't ask on is one: ADR 54 (amended 2026-10-30) bounds a
+// link that sets approval.dont_ask by the daemon's refusal of it to a
+// device, but the daemon does not count a link that is the person's as one,
+// so it is refused here; turning it off, the safe direction, is not.
 func linkWidens(method string, params json.RawMessage) string {
+	if method == "session.approve_all" {
+		var p struct {
+			On *bool `json:"on"`
+		}
+		if json.Unmarshal(params, &p) != nil || p.On == nil || *p.On {
+			return "Don't ask"
+		}
+		return ""
+	}
 	if method != "settings.write" {
 		return ""
 	}

@@ -487,3 +487,21 @@ Evidence: `TestTerminalInvitationsAuthoriseComputerLinks`,
 both the default owner link and passkey authorisation of an existing restricted
 link, asserting its unchanged token and host entry, automatic reconnect, model
 and settings actions, and the existing sensitive-setting restrictions.
+
+## Amendment 2026-11-21: what bounds a link's approvals
+
+The 2026-10-30 amendment counted on "the daemon still refuses
+`session.approve_all` turned on for a device" to bound a link that sets
+`approval.dont_ask`. A link that is the person's says `hello` with `owner`
+or a passkey, and the daemon then does not count it as a device, so the
+bound did not hold: such a link could offer Don't ask and turn it on for
+the host's open tasks. The host's bridge now refuses `session.approve_all`
+with `on` true (or unreadable) to every link, as it refuses a setting that
+widens (`linkWidens`); turning it off is still the link's. The console never
+offered turning it on for a task on another host.
+
+The 2026-10-23 amendment's §4 keeps devices refused to every link, but
+`devices.invite` was in the tier every paired device has, so a link could
+make plain invitations on the host. The bridge now refuses it to a link
+(`linkRefused`). `TestALinkMakesNoInvitation` and `TestLinkWidens` hold both.
+

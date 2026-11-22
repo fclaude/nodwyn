@@ -570,6 +570,11 @@ func TestLinkWidens(t *testing.T) {
 		{"uploads refused", "settings.docs.write", `{"google_upload":"deny"}`, ""},
 		{"uploads allowed", "settings.docs.write", `{"google_upload":"allow"}`, ""},
 		{"a model", "settings.model.write", `{"server":"p","model":"m"}`, ""},
+		// The daemon refuses Don't ask on to a device, not to a link that is
+		// the person's, which ADR 54 counted on.
+		{"Don't ask on", "session.approve_all", `{"id":"t","on":true}`, "Don't ask"},
+		{"Don't ask off", "session.approve_all", `{"id":"t","on":false}`, ""},
+		{"Don't ask unreadable", "session.approve_all", `{"id":"t"}`, "Don't ask"},
 	} {
 		if got := linkWidens(tt.method, json.RawMessage(tt.params)); got != tt.want {
 			t.Errorf("%s: linkWidens = %q, want %q", tt.name, got, tt.want)
