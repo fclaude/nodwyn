@@ -117,7 +117,10 @@ A plan's `Docs:` steps name every file this list asks for the change.
   fakes in `test/fakes` (ollama, jev, mcp, oauth, drive, container) stand in.
   A scripted fake model is `ollama.NewT(t, ...)`, which fails the test if the
   loop asks after the script ran out. `make smoke` talks to the real control
-  plane; run it only when asked.
+  plane, and `make live` runs the live suite (`test/live`, ADR 63) against
+  the endpoint its environment names; run them only when asked. The live
+  suite's endpoint is the Gitea runner's secrets and variables, never a file
+  in the repository.
 - Commit, push and `make promote` only when asked. A commit's subject is a
   sentence saying what is now true ("Browser checks exit when they are
   done"); its body says why, with the evidence. No AI attribution lines

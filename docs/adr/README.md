@@ -72,3 +72,4 @@ the bootstrap's dev tools), which `plan.md` no longer has: read it with
 
 - [0061](./0061-platform-test-runner.md) — Platform-weighted process sharding, a non-race iteration command, and race acceptance before pushes
 - [0062](./0062-the-task-browser.md) — The task's web browser: Raulí's tools as `browser-NAME` primitives across the guard, driving a headless Chromium that reaches only `[browser] sites` in config.toml, through Raulí's request filter and an egress proxy in nodwyn's process; an action on a page asks, pages are `external:web`, screenshots, logins and the live view come later (amends 7, 23)
+- [0063](./0063-live-model-checks.md) — Live model checks: `test/live` behind a `live` build tag, run only by the Gitea runner nightly or `make live` against an endpoint its secrets and variables name, through a recording proxy so nothing kept names the endpoint; scenarios check files, logs and what was sent, never wording

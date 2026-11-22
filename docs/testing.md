@@ -39,6 +39,18 @@ runner, the core suite is split into eight shards and runs up to two at once.
 The kernel killed `core.test` when five shards ran together on 2026-11-17. A
 local attempt with three larger shards also hit the 8 GiB limit.
 
+### Live model checks
+
+`.gitea/workflows/live.yml` runs the live suite (`test/live`, ADR 63) nightly
+and by hand, on the same runner: nodwyn built from main against a real model
+endpoint named by the repository's Actions secrets (`NODWYN_LIVE_URL`,
+`NODWYN_LIVE_KEY`) and variables (`NODWYN_LIVE_PROVIDER`, `NODWYN_LIVE_MODEL`,
+`NODWYN_LIVE_DIALECT`). It does nothing until the provider and the model are
+set. Its report is kept as the job's `nodwyn-live-report` artifact for 30
+days. `make live` runs it anywhere the same variables are set;
+[test/live/README.md](../test/live/README.md) says what each scenario checks.
+No other check uses a real model.
+
 ## GitHub Actions
 
 The Linux acceptance step caps concurrent shards at two and keeps the full

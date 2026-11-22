@@ -4,7 +4,7 @@ MODULE  := github.com/fclaude/nodwyn
 VERSION := $(shell git describe --always --dirty --abbrev=12 --exclude='*' 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build build-webview egress app test test-race test-runner test-unsharded test-race-unsharded lint exfil browser accept validate promote selfcheck smoke book expert clean
+.PHONY: build build-webview egress app test test-race test-runner test-unsharded test-race-unsharded lint exfil browser accept validate promote selfcheck smoke live book expert clean
 
 build: egress
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
@@ -74,6 +74,10 @@ selfcheck: build
 ## smoke: manual two-turn session against the real control plane (not CI)
 smoke:
 	scripts/smoke.sh
+
+## live: the live suite against the endpoint NODWYN_LIVE_* names (test/live, ADR 63; the Gitea runner's, never CI)
+live:
+	go test -tags live -count=1 -p 1 -timeout 140m ./test/live/
 
 ## book: docs/book/nodwyn.pdf (needs texlive)
 book:
