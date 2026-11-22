@@ -3112,10 +3112,12 @@ workflow's program asking with `'((tools . #f))` on the Gitea runner wrote
 an empty answer (run 40427). `name-task` only names the task, so such a
 request in the conversation's own context now also offers it until the task
 is named, `model-turn` runs the call and returns the reply without it, and
-the widened offer is what `llm.req` records. A reply that only named the
-task, with no text, means to answer after the call's result, as the 27B
-model did against the live suite; `model-turn` then asks once more, the
-task named, with the tools the caller asked for. A narrowed context (the
+the widened offer is what `llm.req` records. A reply whose only call named
+the task means to answer after the call's result, as the 27B model did
+against the live suite (no text, or only "I'll name the task, then give the
+word."); `model-turn` then asks once more, the task named, with the tools
+the caller asked for, and returns that reply, as any reply with calls is
+followed by another. A narrowed context (the
 planner, a sub-agent) has a prompt of its own and is sent as asked. The
 lean profile's prompt carries no such rule and is unchanged. This does not
 stop a model from answering a restricted request with calls it was not

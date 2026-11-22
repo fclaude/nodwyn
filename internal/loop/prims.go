@@ -373,13 +373,14 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 		if resp, ran, err = l.runNameTask(c.Ctx, resp); err != nil {
 			return scheme.Void, err
 		}
-		// A reply that only named the task means to answer after the
-		// call's result, as replies to calls do: the model is asked once
-		// more, now with the call and its result in the conversation and
-		// the task named, so with the tools the caller asked for. Asked
-		// once, it answered "ready" in the next reply and the program got
-		// no text (the live suite against a 27B model, 2026-11-22).
-		if ran && len(resp.Message.ToolCalls) == 0 && strings.TrimSpace(resp.Message.Content) == "" {
+		// A reply whose only call named the task means to answer after the
+		// call's result, as a reply with calls does in any turn: the model
+		// is asked once more, now with the call and its result in the
+		// conversation and the task named, so with the tools the caller
+		// asked for, and that reply is the one returned. Against a 27B
+		// model the first reply held no text, or only "I'll name the task,
+		// then give the word." (the live suite and Gitea run 40458).
+		if ran && len(resp.Message.ToolCalls) == 0 {
 			if t.budget != nil {
 				if err := t.budget.Check(c.Ctx); err != nil {
 					return scheme.Void, halt(err)

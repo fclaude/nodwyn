@@ -238,10 +238,13 @@ func TestCleanTitle(t *testing.T) {
 // whatever tools a request offers, so a request that offered none (a
 // program's model-turn with '((tools . #f))) still drew a name-task call,
 // and no text. Such a request now offers name-task alone: the reply's call
-// is run, the task is named, and the program sees the text and no call.
-// The offer is recorded as it was sent, so replay rebuilds the request.
+// is run, the task is named, the model is asked for its next reply, as after
+// any call, and the program sees that reply's text and no call. The offer
+// is recorded as it was sent, so replay rebuilds the request.
 func TestARequestWithoutToolsStillOffersNameTask(t *testing.T) {
-	r := titleRigAnswering(t, true, false, fake.Turn{Content: "hi", ToolCalls: []fake.ToolCall{{ID: "n", Name: "name-task", Args: map[string]any{"title": "Say hello back"}}}})
+	r := titleRigAnswering(t, true, false,
+		fake.Turn{Content: "I'll name the task, then say hi.", ToolCalls: []fake.ToolCall{{ID: "n", Name: "name-task", Args: map[string]any{"title": "Say hello back"}}}},
+		fake.Turn{Content: "hi"})
 	src := `(add-message "Say hi.")
 (let ((reply (model-turn "control" '((tools . #f)))))
   (list (assoc-ref reply 'content) (length (assoc-ref reply 'tool-calls '()))))`
@@ -259,10 +262,14 @@ func TestARequestWithoutToolsStillOffersNameTask(t *testing.T) {
 	}
 	var req log.LLMReq
 	var result log.EvalResult
+	seenReq := false
 	for _, ev := range r.logged() {
 		switch ev.Kind {
 		case log.KindLLMReq:
-			_ = ev.Decode(&req)
+			if !seenReq {
+				_ = ev.Decode(&req)
+				seenReq = true
+			}
 		case log.KindEvalResult:
 			_ = ev.Decode(&result)
 		}
