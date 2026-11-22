@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -49,6 +50,9 @@ type endpoint struct {
 	// for its largest context may not fit the server's memory.
 	numCtx string
 	target *url.URL
+	// addrs are the addresses the endpoint's host resolves to: an error
+	// from the network names the address it dialled, not the name.
+	addrs []string
 }
 
 var (
@@ -86,6 +90,11 @@ func run(m *testing.M) int {
 		if live.target, err = url.Parse(live.rawURL); err != nil || live.target.Host == "" {
 			setupErr = fmt.Errorf("NODWYN_LIVE_URL is not a URL")
 		}
+		if live.target != nil && live.target.Hostname() != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			live.addrs, _ = net.DefaultResolver.LookupHost(ctx, live.target.Hostname())
+			cancel()
+		}
 		if n, err := strconv.Atoi(live.numCtx); live.numCtx != "" && (err != nil || n < 1024) {
 			setupErr = fmt.Errorf("NODWYN_LIVE_NUM_CTX is a context length in tokens, such as 163840")
 		}
@@ -116,17 +125,24 @@ func repoRoot() string {
 	return filepath.Clean(filepath.Join(wd, "..", ".."))
 }
 
-// scrub replaces the endpoint's address, its host and its key in s, so
-// nothing the suite prints or keeps names them.
+// scrub replaces the endpoint's address, its host, the addresses the host
+// resolves to and its key in s, so nothing the suite prints or keeps names
+// them. The first run on the Gitea runner printed the address a refused
+// connection was dialled to, which only the host's name was replaced in.
 func scrub(s string) string {
-	for _, secret := range []struct{ value, as string }{
+	secrets := []struct{ value, as string }{
 		{live.key, "[live key]"},
 		{strings.TrimRight(live.rawURL, "/"), "[live url]"},
 		{hostOf(live.target), "[live host]"},
-	} {
+	}
+	for _, secret := range secrets {
 		if len(secret.value) >= 4 {
 			s = strings.ReplaceAll(s, secret.value, secret.as)
 		}
+	}
+	// An address is replaced whatever its length (::1 is three letters).
+	for _, addr := range live.addrs {
+		s = strings.ReplaceAll(s, addr, "[live address]")
 	}
 	return s
 }
