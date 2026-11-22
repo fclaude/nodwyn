@@ -1006,6 +1006,9 @@ func linkWidens(method string, params json.RawMessage) string {
 	return ""
 }
 
+// linkRefused are the methods a paired device has that a link does not.
+var linkRefused = map[string]bool{"devices.invite": true}
+
 // access is what a caller may do with a method.
 type access int
 
@@ -1021,6 +1024,12 @@ func (b *bridge) access(method string, c caller) access {
 	case t == tierRead:
 		return granted
 	case t == tierNone || b.readOnly:
+		return refused
+	// Devices stay refused to every link (ADR 54, amended 2026-10-23 §4): a
+	// device may make a plain invitation, but one made with a link's token,
+	// which is kept on another computer, would pair browsers that keep
+	// their access after the link is revoked.
+	case c.link && linkRefused[method]:
 		return refused
 	case t == tierPasskey:
 		switch {

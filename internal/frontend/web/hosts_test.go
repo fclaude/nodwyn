@@ -576,3 +576,24 @@ func TestLinkWidens(t *testing.T) {
 		}
 	}
 }
+
+// A paired device may make a plain invitation, and the tier rule gave a link
+// that too: whoever held a link's token, kept on another computer, could
+// pair browsers that keep their access after the link is revoked. ADR 54
+// keeps devices refused to every link; this computer's devices keep it.
+func TestALinkMakesNoInvitation(t *testing.T) {
+	b := &bridge{devices: OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))}
+	for _, c := range []caller{{link: true}, {person: true, link: true}} {
+		if got := b.access("devices.invite", c); got != refused {
+			t.Errorf("a link %+v is given devices.invite: %v", c, got)
+		}
+	}
+	for _, c := range []caller{{local: true}, {}, {person: true}} {
+		if !b.allowed("devices.invite", c) {
+			t.Errorf("a device %+v may not invite", c)
+		}
+	}
+	if !b.allowed("devices.leave", caller{link: true}) {
+		t.Error("a link may not end its own pairing")
+	}
+}
