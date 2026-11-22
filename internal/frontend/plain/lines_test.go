@@ -149,3 +149,69 @@ func TestQuestionAcceptsOnlyInputTypedAfterItsPrompt(t *testing.T) {
 		t.Fatal("input writer did not finish")
 	}
 }
+
+// recorder keeps what the editor draws, and says when it first drew.
+type recorder struct {
+	mu    sync.Mutex
+	b     bytes.Buffer
+	ready chan struct{}
+	once  sync.Once
+}
+
+func (r *recorder) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.b.Write(p)
+	r.once.Do(func() { close(r.ready) })
+	return len(p), nil
+}
+
+func (r *recorder) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.b.String()
+}
+
+// Line mode writes through TerminalText, and gave the editor that writer
+// too: the escape sequence that turns bracketed paste on reached the
+// terminal as the text "[?2004h", cursor moves as "[D", and a pasted
+// message arrived as several. The editor draws to the terminal itself;
+// only its prompt, which can hold a repository's text, is cleaned.
+func TestTheLineEditorDrawsPastLineModesFilter(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Skip("no pseudo-terminal:", err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	out := &recorder{ready: make(chan struct{})}
+	reader := newLineReader(slave, TerminalText(out))
+	read := make(chan string, 1)
+	go func() {
+		line, _ := reader.read("\x1b]0;title\x07you> ")
+		read <- line
+	}()
+	select {
+	case <-out.ready:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prompt not drawn")
+	}
+	if _, err := io.WriteString(master, "ab\x1b[D\x1b[200~one\rtwo\x1b[201~\r"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-read:
+		if got != "aoneb\ntwo" {
+			t.Fatalf("read %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("line not received")
+	}
+	drawn := out.String()
+	if !strings.Contains(drawn, "\x1b[?2004h") || !strings.Contains(drawn, "\r") {
+		t.Fatalf("the editor's sequences were filtered out: %q", drawn)
+	}
+	if strings.Contains(drawn, "\x1b]0;") {
+		t.Fatalf("the prompt's escape sequence was drawn: %q", drawn)
+	}
+}

@@ -713,16 +713,21 @@ func TerminalText(w io.Writer) io.Writer {
 type terminalText struct{ w io.Writer }
 
 func (t terminalText) Write(p []byte) (int, error) {
-	clean := strings.Map(func(r rune) rune {
+	if _, err := io.WriteString(t.w, controlsOut(string(p))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+// controlsOut is s without the control characters a terminal acts on,
+// newlines and tabs kept.
+func controlsOut(s string) string {
+	return strings.Map(func(r rune) rune {
 		if r != '\n' && r != '\t' && unicode.IsControl(r) {
 			return -1
 		}
 		return r
-	}, string(p))
-	if _, err := io.WriteString(t.w, clean); err != nil {
-		return 0, err
-	}
-	return len(p), nil
+	}, s)
 }
 
 // dim marks secondary text. Plain mode has no colours; the marker is a

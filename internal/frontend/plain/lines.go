@@ -31,10 +31,20 @@ func newLineReader(in io.Reader, out io.Writer) *lineReader {
 	lr := &lineReader{out: out}
 	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
 		lr.tty = f
+		// The editor draws with escape sequences (bracketed paste on and
+		// off, cursor moves) and, in raw mode, its own carriage returns:
+		// through TerminalText they reached the terminal as "[?2004h" and
+		// "[D", bracketed paste never turned on, and a pasted message
+		// arrived as several. It writes to the terminal itself; its prompt
+		// is cleaned instead (read).
+		editor := out
+		if t, ok := out.(terminalText); ok {
+			editor = t.w
+		}
 		lr.term = lineedit.NewTerminal(struct {
 			io.Reader
 			io.Writer
-		}{f, out}, "")
+		}{f, editor}, "")
 		return lr
 	}
 	lr.useScanner(in)
@@ -85,7 +95,7 @@ func (lr *lineReader) read(prompt string) (line string, ok bool) {
 	defer term.Restore(int(lr.tty.Fd()), old)
 	lr.term.SetBracketedPasteMode(true)
 	defer lr.term.SetBracketedPasteMode(false)
-	lr.term.SetPrompt(prompt)
+	lr.term.SetPrompt(controlsOut(prompt))
 	var pasted strings.Builder
 	for {
 		line, err = lr.term.ReadLine()
