@@ -148,9 +148,17 @@ func (s *Session) offer(ctx context.Context, server config.MCPServer, client *mc
 	}
 	status.State = "ready"
 	return mcpConnection{status: status, register: func() MCPServer {
+		var refused []string
 		for _, tool := range tools {
 			declared, ok := server.Tools[tool.Name]
 			if !ok || !declared.On {
+				continue
+			}
+			// A name a model API refuses would fail every request of the
+			// task, not only this tool's: it is not offered, and the
+			// server's state says so.
+			if !config.OfferableName(config.ToolName(server.Name, tool.Name)) {
+				refused = append(refused, tool.Name)
 				continue
 			}
 			p := mcpPrim(server, tool, declared, client, before)
@@ -161,6 +169,9 @@ func (s *Session) offer(ctx context.Context, server config.MCPServer, client *mc
 			status.Tools = append(status.Tools, p.Name)
 		}
 		sort.Strings(status.Tools)
+		if len(refused) > 0 {
+			status.Detail = fmt.Sprintf("not offered: %s; a model takes a tool's name, %s__ and the tool's, only in letters, digits, _ and -, at most 64 characters", strings.Join(refused, ", "), server.Name)
+		}
 		return status
 	}}
 }

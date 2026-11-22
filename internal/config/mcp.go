@@ -176,6 +176,16 @@ var serverName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 // console shows server/tool.
 func ToolName(server, tool string) string { return server + "__" + tool }
 
+// modelToolName is what every model API takes as a tool's name: OpenAI's
+// function names and Anthropic's tool names are letters, digits, _ and -, at
+// most 64 characters.
+var modelToolName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// OfferableName says a model API takes name, a ToolName, as a tool's name.
+// An MCP server names its tools as it likes (recent MCP versions allow dots),
+// and one name a model API refuses fails every request that offers it.
+func OfferableName(name string) bool { return modelToolName.MatchString(name) }
+
 // LoadMCP reads the configured servers; missing is none.
 func LoadMCP(path string) ([]MCPServer, error) {
 	var f mcpFile

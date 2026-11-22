@@ -63,7 +63,10 @@ func mcpRig(t *testing.T, server *fakemcp.Server, approve, keyed bool, after fun
 		manifest = mcp.Manifest(tools)
 	}
 	if err := config.SaveMCPServer(config.MCPFile(paths), config.MCPServer{Name: "chat", URL: server.URL, Credential: credential, Position: position, Manifest: manifest,
-		Workspaces: []string{repo}, Tools: map[string]config.MCPTool{"search": {Effect: config.EffectRead, On: true}, "post_message": {On: true}, "delete_everything": {On: false}}}); err != nil {
+		Workspaces: []string{repo}, Tools: map[string]config.MCPTool{"search": {Effect: config.EffectRead, On: true}, "post_message": {On: true}, "delete_everything": {On: false},
+			// Turned on, for the test of a name no model takes; the other
+			// fakes have no such tool.
+			"files.read": {Effect: config.EffectRead, On: true}}}); err != nil {
 		t.Fatal(err)
 	}
 	if after != nil {
@@ -406,5 +409,24 @@ func TestMCPSendsFalseAndZeroAsGiven(t *testing.T) {
 	got, _ := json.Marshal(server.Calls[0].Args)
 	if string(got) != `{"limit":0,"path":"/x","recursive":false}` {
 		t.Fatalf("the server got %s", got)
+	}
+}
+
+// An MCP server names its tools as it likes, and the tool's name was offered
+// to the model as it came: chat__files.read, which model APIs refuse, failed
+// every request of the task. A tool whose name a model would refuse is not
+// offered, and the server's state names it.
+func TestAnMCPToolNamedAsNoModelTakesIsNotOffered(t *testing.T) {
+	t.Parallel()
+	server := fakemcp.New(append(mcpTools(), fakemcp.Tool{Name: "files.read", Description: "Read a file", Reply: func(map[string]any) (string, bool) { return "x", false }})...)
+	defer server.Close()
+	r, _ := mcpRig(t, server, true, false, nil, fake.Turn{Content: "ok"})
+	status := r.s.MCP()
+	if len(status) != 1 || status[0].State != "ready" || strings.Join(status[0].Tools, ",") != "chat__post_message,chat__search" || !strings.Contains(status[0].Detail, "not offered: files.read") {
+		t.Fatalf("status: %+v", status)
+	}
+	r.turn("hello")
+	if raw := string(r.srv.Requests[0].Raw); strings.Contains(raw, "files.read") || !strings.Contains(raw, "chat__search") {
+		t.Fatal("the model was offered the wrong tools")
 	}
 }

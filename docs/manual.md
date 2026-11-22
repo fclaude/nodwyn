@@ -1386,7 +1386,11 @@ is offered. nodwyn lists the server's tools, you say what each does (reads,
 or changes things) and which are offered, and it pins that tool list; if the
 server's list changes, new sessions withhold its tools until you review it
 again. The servers are kept in `mcp.toml` in the config directory. The model
-sees a tool as `server__tool`, and every call crosses the guard: its
+sees a tool as `server__tool`; a tool whose name makes that more than 64
+characters, or holds anything but letters, digits, `_` and `-` (a dot,
+which recent MCP versions allow), is not offered, since model APIs refuse
+such a name and would fail every request, and the server's state names it.
+Every call crosses the guard: its
 arguments are payloads that leave the machine, a tool that changes things
 asks, and an undeclared one asks every call with no standing answer.
 
