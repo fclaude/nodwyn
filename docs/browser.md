@@ -626,7 +626,8 @@ it under **Archived** at the end of the list (**Unarchive**, or resuming
 it, brings it back), and **Delete…**, which asks, then removes its
 conversation and log for good and leaves the files it changed as they
 are. An open task is closed first. A paired phone renames and archives;
-only this computer deletes.
+this computer deletes, and so does a device signed in with a passkey,
+after a touch of it.
 
 **Attaching.** The paperclip in either composer attaches files to the next
 message (at most 20 MB each): text formats, `.docx`, `.xlsx`, `.pptx`, PDF

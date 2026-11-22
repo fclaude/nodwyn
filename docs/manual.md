@@ -3425,8 +3425,11 @@ still choose a forgotten one by typing its path.
 ## nodwyn on a phone
 
 A phone reaches the console that `nodwyn ui --listen` (or `nodwyn app
---listen`) serves to other devices, and pairs with the printed code and a
-name ([the browser view](browser.md), "Other devices"). Served over https
+--listen`) serves to other devices, and pairs with an invitation and a
+name: `nodwyn devices invite` on the computer prints one, or a device
+already paired invites it ([A server you reach from other
+devices](#a-server-you-reach-from-other-devices)). A console reached that way
+prints no pairing code and refuses one. Served over https
 (`--tls-cert`, or a proxy that ends TLS and `--name https://NAME`), the
 console is also an app: Safari's **Share › Add to Home Screen** on an
 iPhone, or Chrome's **Install app** on Android, puts nodwyn on the Home
