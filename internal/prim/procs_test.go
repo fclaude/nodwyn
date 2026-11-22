@@ -2,6 +2,7 @@ package prim
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +136,34 @@ func TestShellPrimsNeedASession(t *testing.T) {
 func TestShellStopReportsAKilledProcessEnded(t *testing.T) {
 	in, _ := procInterp(t)
 	evalStr(t, in, `(shell-start "sh" (list "-c" "trap '' TERM; echo ready; while :; do sleep 1; done"))`)
+	if out := evalStr(t, in, `(shell-stop "p1")`); strings.Contains(out, "running") {
+		t.Fatalf("stop: %q", out)
+	}
+}
+
+// A program's end was seen only when its output pipe closed, so one whose
+// child left the process group (setsid) and kept the pipe stayed "running"
+// for shell-read and shell-stop, holding one of the session's places, until
+// the child ended. It has ended when its program has.
+func TestAStartedProgramEndsWhenItsProgramDoes(t *testing.T) {
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("no setsid")
+	}
+	in, _ := procInterp(t)
+	// The child is this test's, named by a duration nothing else sleeps for.
+	t.Cleanup(func() { _ = exec.Command("pkill", "-f", "^sleep 29.123$").Run() })
+	evalStr(t, in, `(shell-start "bash" (list "-c" "setsid sleep 29.123 & echo hi; exit 4"))`)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		out := evalStr(t, in, `(shell-read "p1")`)
+		if strings.Contains(out, "exited") && strings.Contains(out, "4") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("still running after its program ended: %q", out)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 	if out := evalStr(t, in, `(shell-stop "p1")`); strings.Contains(out, "running") {
 		t.Fatalf("stop: %q", out)
 	}

@@ -272,6 +272,13 @@ func (ps *Procs) start(o Options, name string, args []string) (*proc, error) {
 	cmd.Env = childEnv(o)
 	cmd.Stdout, cmd.Stderr = p, p
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// The process has ended when its program has, though something it
+	// started still holds its output: Wait waited for the pipe to close,
+	// and a child that left the process group (setsid) kept the program
+	// "running" for shell-stop, holding one of procLimit's places, until
+	// it ended itself (a review, 2026-11-21). What it writes after this
+	// is not read.
+	cmd.WaitDelay = procOutputGrace
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -290,6 +297,10 @@ func (ps *Procs) start(o Options, name string, args []string) (*proc, error) {
 	}()
 	return p, nil
 }
+
+// procOutputGrace is how long a started program's output is read after the
+// program ends, for what its children still write.
+const procOutputGrace = 2 * time.Second
 
 // Close stops every process the session started, and returns once each
 // shell-exec command left running has ended and its files are closed, so the
