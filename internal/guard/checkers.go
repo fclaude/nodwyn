@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/fclaude/brote/scheme"
@@ -435,28 +437,52 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 	// lists, through a pipe, a group or a file.
 	fed := slices.ContainsFunc(commands, func(c scriptCommand) bool { return takesInput(c.words) })
 	var flagged []string
+	// dirs are the directories a cd earlier in the line may have gone to: a
+	// relative word after one is judged there as well as in the root, since
+	// the line runs in the root but "cd && cat .ssh/id_rsa" reads the home
+	// directory's key. Every cd counts, whichever branch or subshell it is
+	// in: a reader of words cannot tell which ran.
+	var dirs []string
 	// outside asks about tok when it names a path outside the repository
 	// and the scratch directory, unless ok, given the path, lets it be. Each
-	// of its paths (a flag's value after =) is judged.
+	// word the shell's brace expansion makes of it, and each of their paths
+	// (a flag's value after =), is judged.
 	outside := func(tok string, ok func(string) bool) {
 		if devices[tok] {
 			return
 		}
-		for _, part := range strings.Split(a.spelled(tok), "=") {
-			if path := a.outsidePart(part, ok); path != "" {
-				note("command line names a path outside the repository: " + path)
-				flagged = append(flagged, path)
-				security = true
-				return
+		words, judged := braceWords(tok)
+		if !judged {
+			note("command line has a brace expansion too large to judge: " + tok)
+			flagged = append(flagged, tok)
+			security = true
+			return
+		}
+		for _, word := range words {
+			for _, part := range strings.Split(a.spelled(word), "=") {
+				for _, p := range besideDirs(part, dirs) {
+					if path := a.outsidePart(p, ok); path != "" {
+						note("command line names a path outside the repository: " + path)
+						flagged = append(flagged, path)
+						security = true
+						return
+					}
+				}
 			}
 		}
 	}
 	for _, command := range commands {
 		programs, patterns := programs(command.words), patternWords(command.words)
 		first, kind := program(command.words), access(command.words)
+		files0 := files0From(command.words)
 		for i, tok := range command.words {
 			switch {
 			case patterns[i], command.scripts[i]:
+			case files0[i]:
+				// du, wc and find read the list of files they act on from
+				// --files0-from's file, and print what they cannot use of
+				// it: a names-only program reads that file's contents.
+				outside(tok, inEnvironment)
 			case programs[i]:
 				// A program is judged as one, whatever kind of command it
 				// makes: an ls from outside is no names-only ls.
@@ -498,6 +524,28 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		for _, tok := range command.targets {
 			outside(tok, nil)
 		}
+		for _, w := range command.words {
+			// A cd tries CDPATH's directories for a relative name.
+			if value, set := strings.CutPrefix(w, "CDPATH="); set {
+				for _, d := range strings.Split(value, ":") {
+					if d = a.spelled(d); filepath.IsAbs(d) {
+						dirs = append(dirs, filepath.Clean(d))
+					}
+				}
+			}
+		}
+		cd := first
+		for cd < len(command.words) && (command.words[cd] == "builtin" || command.words[cd] == "command") {
+			cd++
+		}
+		if cd < len(command.words) && changesDir[filepath.Base(command.words[cd])] {
+			dirs = a.cdTargets(command.words[cd+1:], dirs)
+			if !slices.ContainsFunc(command.words[cd+1:], isOperand) {
+				// A cd with no directory goes to the home directory, which
+				// is outside as "cd ~" is.
+				outside("~", nil)
+			}
+		}
 	}
 	if a.Sandbox != nil && len(flagged) > 0 {
 		return Decision{Verdict: Deny, Reason: "the command line names " + strings.Join(flagged, ", ") + ", in a directory nodwyn keeps off limits in sandbox mode too (its own configuration and data, and credentials such as ~/.ssh), so it was refused and nothing of it ran", Detail: line}
@@ -521,6 +569,167 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		return Decision{Verdict: Confirm, Security: security, Reason: strings.Join(reasons, "; "), Detail: line}
 	}
 	return Decision{Verdict: Allow}
+}
+
+// changesDir are the builtins that move the shell to another directory.
+var changesDir = map[string]bool{"cd": true, "pushd": true}
+
+func isOperand(word string) bool { return word != "" && !strings.HasPrefix(word, "-") }
+
+// cdTargets is dirs with the directories a cd given args may go to: the home
+// directory for none, else each word its operand expands to, an absolute
+// one as it is and a relative one in the root and in each of dirs.
+func (a ArgvTrigger) cdTargets(args []string, dirs []string) []string {
+	operand := slices.IndexFunc(args, isOperand)
+	if operand < 0 {
+		home, _ := os.UserHomeDir()
+		if home == "" {
+			return dirs
+		}
+		return append(dirs, home)
+	}
+	words, _ := braceWords(args[operand])
+	out := dirs
+	for _, w := range words {
+		w = a.spelled(w)
+		if filepath.IsAbs(w) {
+			out = append(out, filepath.Clean(w))
+			continue
+		}
+		out = append(out, filepath.Join(a.Root, w))
+		for _, d := range dirs {
+			out = append(out, filepath.Join(d, w))
+		}
+	}
+	if len(out) > maxBraceWords {
+		out = out[len(out)-maxBraceWords:]
+	}
+	return out
+}
+
+// besideDirs is part, and when it is a relative path, part in each of dirs.
+func besideDirs(part string, dirs []string) []string {
+	out := []string{part}
+	if part == "" || strings.HasPrefix(part, "-") || filepath.IsAbs(part) {
+		return out
+	}
+	for _, d := range dirs {
+		out = append(out, filepath.Join(d, part))
+	}
+	return out
+}
+
+// files0From marks the words of a command that are the file its program
+// reads its list of files from: --files0-from's value (GNU du and wc) and
+// find's -files0-from.
+func files0From(words []string) map[int]bool {
+	marked := map[int]bool{}
+	for i, w := range words {
+		switch {
+		case strings.HasPrefix(w, "--files0-from="):
+			marked[i] = true
+		case (w == "--files0-from" || w == "-files0-from") && i+1 < len(words):
+			marked[i+1] = true
+		}
+	}
+	return marked
+}
+
+// maxBraceWords is the most words a brace expansion is judged as; a word
+// that makes more is asked about whole.
+const maxBraceWords = 256
+
+// braceWords is word as the shell's brace expansion writes it: {a,b} a word
+// for each of a and b, {1..3} and {a..c} one for each in the sequence,
+// nested and in turn. A word the shell would leave as it is ("{}", "{a}",
+// "${HOME}") is itself. False when it makes more than maxBraceWords: then
+// {,/}etc/shadow would be judged as written, a relative name inside the
+// repository, though the shell reads /etc/shadow.
+func braceWords(word string) ([]string, bool) {
+	open, close, alternatives := braceGroup(word)
+	if open < 0 {
+		return []string{word}, true
+	}
+	var out []string
+	for _, alt := range alternatives {
+		more, ok := braceWords(word[:open] + alt + word[close+1:])
+		if !ok || len(out)+len(more) > maxBraceWords {
+			return nil, false
+		}
+		out = append(out, more...)
+	}
+	return out, true
+}
+
+var braceSequence = regexp.MustCompile(`^(?:(-?\d+)\.\.(-?\d+)|([A-Za-z])\.\.([A-Za-z]))$`)
+
+// braceGroup is the first group of word the shell expands, its braces' places
+// and the words it stands for, or -1.
+func braceGroup(word string) (open, close int, alternatives []string) {
+	for i := 0; i < len(word); i++ {
+		if word[i] != '{' || (i > 0 && word[i-1] == '$') {
+			continue
+		}
+		depth, commas := 0, []int{}
+		for j := i; j < len(word); j++ {
+			switch word[j] {
+			case '{':
+				depth++
+			case ',':
+				if depth == 1 {
+					commas = append(commas, j)
+				}
+			case '}':
+				depth--
+			}
+			if depth > 0 {
+				continue
+			}
+			inner := word[i+1 : j]
+			if len(commas) > 0 {
+				last := i
+				for _, c := range commas {
+					alternatives = append(alternatives, word[last+1:c])
+					last = c
+				}
+				return i, j, append(alternatives, word[last+1:j])
+			}
+			if m := braceSequence.FindStringSubmatch(inner); m != nil {
+				return i, j, sequence(m)
+			}
+			break
+		}
+	}
+	return -1, -1, nil
+}
+
+// sequence is the words of a {from..to} group braceSequence matched, at most
+// one more than maxBraceWords, which braceWords then refuses.
+func sequence(m []string) []string {
+	var from, to int
+	letters := m[1] == ""
+	if letters {
+		from, to = int(m[3][0]), int(m[4][0])
+	} else {
+		from, _ = strconv.Atoi(m[1])
+		to, _ = strconv.Atoi(m[2])
+	}
+	step := 1
+	if to < from {
+		step = -1
+	}
+	var out []string
+	for n := from; len(out) <= maxBraceWords; n += step {
+		if letters {
+			out = append(out, string(rune(n)))
+		} else {
+			out = append(out, strconv.Itoa(n))
+		}
+		if n == to {
+			break
+		}
+	}
+	return out
 }
 
 // outsidePart is part, one path of a command-line word, when it reaches

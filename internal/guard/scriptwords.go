@@ -361,6 +361,36 @@ func nestedScripts(words []string) []nestedScript {
 			}
 		}
 	}
+	// env -S splits its string into the command it runs and its first
+	// arguments, as a shell splits a line: env -S 'cat /etc/shadow' was one
+	// word, a program named inside the repository.
+	for i := range programs(words) {
+		if filepath.Base(words[i]) != "env" {
+			continue
+		}
+		for j := i + 1; j < len(words) && strings.HasPrefix(words[j], "-"); j++ {
+			w, text, at := words[j], "", j
+			switch {
+			case w == "-S" || w == "--split-string":
+				if j+1 >= len(words) {
+					continue
+				}
+				text, at = words[j+1], j+1
+			case strings.HasPrefix(w, "--split-string="):
+				text = strings.TrimPrefix(w, "--split-string=")
+			case strings.HasPrefix(w, "-S"):
+				text = strings.TrimPrefix(w, "-S")
+			default:
+				continue
+			}
+			marked := []int{at}
+			for k := at + 1; k < len(words); k++ {
+				marked = append(marked, k)
+			}
+			out = append(out, nestedScript{text: strings.Join(append([]string{text}, words[at+1:]...), " "), at: marked})
+			break
+		}
+	}
 	for i := range programs(words) {
 		if filepath.Base(words[i]) != "eval" || i+1 >= len(words) {
 			continue

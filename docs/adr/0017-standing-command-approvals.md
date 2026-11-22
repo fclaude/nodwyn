@@ -496,3 +496,21 @@ confirm, though it names no path or command line, so "Don't ask" lands a
 worktree task's work unasked ([ADR 34](0034-sessions-in-git-worktrees.md),
 amended the same day). No other call without a path or command line is
 answered by it.
+
+## Amendment 2026-11-21: paths the shell builds
+
+The argument trigger judged each word as written, against the repository
+root. A review found lines that reach outside without spelling the path:
+`cd && cat .ssh/id_rsa` (a bare `cd` goes home), `cat {,/}etc/shadow` (brace
+expansion), `env -S 'cat /etc/shadow'` (one word to the reader),
+`du --files0-from=/etc/shadow` (du names files, but reads that one and
+prints what it cannot use of it). Each was allowed with no reason, so an
+unattended setting, the judge or sandbox mode answered it. Now a word is
+judged as each word its brace expansion makes (more than 256 are asked
+about whole); a relative word after a `cd` or `pushd`, `builtin cd` and
+`CDPATH` included, is judged in the root and in each directory a `cd` of
+the line may have gone to, and a `cd` with no directory names the home
+directory; `env -S` and `--split-string` are read as a nested command line,
+as `bash -c` is; and `--files0-from`'s file is judged as a file read.
+`TestArgvTriggerJudgesPathsTheShellBuilds` holds it.
+

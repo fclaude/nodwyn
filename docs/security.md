@@ -72,6 +72,13 @@ including flag values; the session's scratch directory retains its exception.
 The home directory as the shell spells it (`~`, `~/…`, `$HOME`, `${HOME}`,
 `~name`) counts as outside, and `$TMPDIR` as the scratch directory; any other
 variable is read as written.
+Paths the shell builds are judged as it builds them: each word a brace
+expansion makes (`{,/}etc/shadow` is also `/etc/shadow`; one that makes more
+than 256 words is asked about whole), a relative name after a `cd` or
+`pushd` in the line (a bare `cd` goes to the home directory, and `CDPATH` is
+followed) both in the repository and where the `cd` may have gone, `env -S`'s
+string as the command line it is, and the file `du`, `wc` and `find` read
+their list of files from (`--files0-from`) as a file they read.
 It reads a shell's `-c` line word by word, variables, substitutions, subshells
 and redirection targets included, so a path anywhere in the line is seen; a
 line it cannot split is read as one word. A program in a Python environment's
