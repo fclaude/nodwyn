@@ -90,7 +90,10 @@ func doHTTPRequest(cs CredentialStore, c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
-	method = strings.ToUpper(method)
+	// As the guard judged it (methodArg): an empty method is a GET.
+	if method = strings.ToUpper(method); method == "" {
+		method = http.MethodGet
+	}
 
 	position, err := c.String(3)
 	if err != nil {

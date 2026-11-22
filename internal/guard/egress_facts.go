@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -85,12 +86,20 @@ func destHost(p *scheme.Prim, args []scheme.Value) string {
 
 // methodArg returns the method argument if the primitive declares a
 // "method" role parameter, else its fixed host metadata.
+// A method argument is judged as the request goes out: upper case, and
+// GET when it is empty, as Go's HTTP client sends it. Judged as "", it
+// matched every binding row whatever methods the row allows, so a POST-only
+// row let a GET through (a review, 2026-11-21).
 func methodArg(p *scheme.Prim, args []scheme.Value) string {
 	for i, pa := range p.Meta.Params {
 		if pa.Role == "method" {
-			if i < len(args) && args[i].Kind == scheme.KString {
-				return args[i].S
+			switch {
+			case i >= len(args) || (args[i].Kind == scheme.KString && args[i].S == ""):
+				return http.MethodGet
+			case args[i].Kind == scheme.KString:
+				return strings.ToUpper(args[i].S)
 			}
+			// Not a method at all: the call fails, and no fixed one stands in.
 			return ""
 		}
 	}

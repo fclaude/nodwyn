@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/brote/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
 )
 
 // credPrim builds a test prim with credential + dest + method + position params.
@@ -74,10 +75,42 @@ func TestFixedEgressScopeAndArgumentPrecedence(t *testing.T) {
 	if got.Method != "GET" || got.Position != "query:key" {
 		t.Fatalf("arguments ignored: %+v", got)
 	}
-	for _, args := range [][]scheme.Value{nil, {scheme.Bool(false), scheme.Bool(false)}, {scheme.Str(""), scheme.Str("")}} {
-		got = egressFactsOf(p, args)
-		if got.Method != "" || got.Position != "" {
+	// A method left out or empty is the GET that is sent (methodArg), never
+	// the fixed POST; one that is no string is none.
+	for _, c := range []struct {
+		args   []scheme.Value
+		method string
+	}{{nil, "GET"}, {[]scheme.Value{scheme.Bool(false), scheme.Bool(false)}, ""}, {[]scheme.Value{scheme.Str(""), scheme.Str("")}, "GET"}} {
+		got = egressFactsOf(p, c.args)
+		if got.Method != c.method || got.Position != "" {
 			t.Fatalf("invalid arguments replaced by fixed facts: %+v", got)
 		}
+	}
+}
+
+// An empty method was judged as "", which every binding row matched whatever
+// methods it allows, while the request went out as GET: a POST-only row let
+// a GET through. A method is judged as it is sent, upper case and GET when
+// empty.
+func TestAnEmptyMethodIsJudgedAsTheGETItSends(t *testing.T) {
+	p := credPrim()
+	for in, want := range map[string]string{"": "GET", "post": "POST", "PUT": "PUT"} {
+		args := []scheme.Value{
+			{Kind: scheme.KHandle, H: &scheme.Handle{Class: "openai-key", ID: "ab"}},
+			scheme.Str("https://api.openai.com/v1/chat"),
+			scheme.Str(in),
+			scheme.Str("header:Authorization"),
+		}
+		if got := egressFactsOf(p, args).Method; got != want {
+			t.Errorf("method %q is judged as %q, want %q", in, got, want)
+		}
+	}
+	row, err := binding.Exact("openai-key", "api.openai.com", "POST", "header:Authorization")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := binding.Table{Bind: []binding.Binding{row}}
+	if bound, _ := table.Lookup("openai-key", "api.openai.com", egressFactsOf(p, []scheme.Value{{Kind: scheme.KHandle, H: &scheme.Handle{Class: "openai-key", ID: "ab"}}, scheme.Str("https://api.openai.com/v1/chat"), scheme.Str(""), scheme.Str("header:Authorization")}).Method, "header:Authorization"); bound {
+		t.Fatal("a POST-only row binds an empty method")
 	}
 }
