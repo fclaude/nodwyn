@@ -148,6 +148,11 @@ func (c *cli) run() error {
 	name := c.fs.Arg(0)
 	switch {
 	case c.showVersion || name == "version":
+		// It reads nothing else, so anything else is refused rather than
+		// passed over: nodwyn version --x said the version.
+		if name == "version" && len(c.rest()) > 0 {
+			return fmt.Errorf("version takes no arguments, got %q", strings.Join(c.rest(), " "))
+		}
 		fmt.Println("nodwyn", versionString())
 		return nil
 	case name == "licenses":

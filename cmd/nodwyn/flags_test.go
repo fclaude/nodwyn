@@ -54,3 +54,36 @@ func TestSharedFlagsAreRefusedWhereTheyDoNothing(t *testing.T) {
 		t.Errorf("--plain sessions: %v\n%s", err, out)
 	}
 }
+
+// A command's --help printed its usage and then failed with "nodwyn: flag:
+// help requested"; nodwyn version took any argument and printed the version;
+// and run status ID --socket PATH said the ID was missing. Help succeeds,
+// version refuses what it does not read, and run says where the flag goes.
+func TestHelpVersionAndAMisplacedRunFlagAnswerAsTheySay(t *testing.T) {
+	dir := t.TempDir()
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--"}, args...)...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	for _, args := range [][]string{{"tui", "--help"}, {"run", "--help"}, {"run", "status", "-h"}} {
+		out, err := run(args...)
+		if err != nil || strings.Contains(out, "help requested") || !strings.Contains(out, "Usage of nodwyn") {
+			t.Errorf("%v: %v\n%s", args, err, out)
+		}
+	}
+	for args, want := range map[string]string{
+		"version --x":              "version takes no arguments",
+		"version extra":            "version takes no arguments",
+		"run status ID --socket x": "put --socket before the session ID",
+	} {
+		if out, err := run(strings.Fields(args)...); err == nil || !strings.Contains(out, want) {
+			t.Errorf("%s: %v\n%s\nwant %q", args, err, out, want)
+		}
+	}
+	if out, err := run("version"); err != nil || !strings.Contains(out, "nodwyn ") {
+		t.Errorf("version: %v\n%s", err, out)
+	}
+}

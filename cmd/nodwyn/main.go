@@ -4,6 +4,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -91,6 +93,11 @@ func main() {
 		args = []string{"app"}
 	}
 	if err := newCLI(args).run(); err != nil {
+		// A command's own flag set has printed its usage for --help: asking
+		// for help is no failure, and "flag: help requested" no message.
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
 		fail(err)
 	}
 }

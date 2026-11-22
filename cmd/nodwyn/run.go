@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/budget"
@@ -104,6 +105,11 @@ func runTask(args []string) error {
 			fmt.Fprintln(os.Stderr, "unattended: nobody answers this run; it stops after a turn that marks no plan step")
 		}
 	} else {
+		// The flag set stops at the ID, so a flag after it is an argument:
+		// say where it goes rather than that the ID is missing.
+		if flags.NArg() > 1 && strings.HasPrefix(flags.Arg(1), "-") {
+			return fmt.Errorf("run %s: put %s before the session ID", command, flags.Arg(1))
+		}
 		if flags.NArg() != 1 {
 			return errors.New("run " + command + " requires a session ID")
 		}
