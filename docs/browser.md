@@ -1213,6 +1213,10 @@ buttons are the console's own (`.btn`), and **Reload file and discard edits**
 asks (**Discard edits** / **Keep editing**) when the draft differs from the
 file, so one slip does not lose it.
 
+**Review and save** shows the conversation, where that confirmation is asked,
+and once it is answered the editor comes back with its draft and says whether
+the policy was saved.
+
 Each save validates TOML and requires a one-time diff confirmation. Session/turn
 approvals cannot waive it. A revision comparison under the shared policy lock
 rejects stale edits; a new read and review are required. Publication is atomic

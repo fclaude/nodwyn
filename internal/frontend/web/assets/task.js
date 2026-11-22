@@ -2392,11 +2392,13 @@ export class TaskView {
     };
     draw();
   }
-  closeInspector() {
+  // keepPolicy leaves the policy editor's state for a save waiting on its
+  // confirm, which is drawn in the conversation (policyOperation).
+  closeInspector(keepPolicy = false) {
     const review = this.inspecting === "review";
     if (review) this.rememberReview();
     this.inspecting = null;
-    this.policy = null;
+    if (!keepPolicy) this.policy = null;
     this.el.inspector.hidden = true;
     this.el.transcript.hidden = false;
     this.el.inspector.classList.remove("review-view");
@@ -2428,6 +2430,15 @@ export class TaskView {
     if (write) Object.assign(params, { revision: request.doc.Revision, content: request.draft });
     try {
       const started = await this.conn.call(write ? "session.policy.write" : "session.policy.read", params);
+      // A save asks for a diff confirmation, drawn in the conversation,
+      // which the editor hid: it is shown, and the editor, its draft kept,
+      // comes back with what the save came to. Going back to the
+      // conversation to answer used to drop the editor's state, and with it
+      // the result and, on a refusal, the draft.
+      if (write && this.inspecting === "policy") {
+        this.closeInspector(true);
+        toast("Review the change in the conversation to save it.");
+      }
       this.expect(started.operation_id, (result) => {
         if (this.policy !== request) return;
         request.error = result.Err;
@@ -2435,6 +2446,11 @@ export class TaskView {
         if (!result.Err && !result.Saved) {
           request.doc = result;
           request.draft = result.Content;
+        }
+        if (write) {
+          if (result.Err) toastError(`Policy not saved: ${result.Err}`);
+          else toast("Policy saved.");
+          if (this.inspecting !== "policy") return this.inspect("policy");
         }
         if (this.inspecting === "policy") this.showPolicy(content);
       });

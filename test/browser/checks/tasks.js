@@ -470,6 +470,23 @@ check(async () => {
   await page.screenshot({ path: `${out}/tasks-policy.png` });
   step("the policy editor asks before discarding a draft");
 
+  // Review and save asks with a diff in the conversation, which the editor
+  // hid: the conversation is shown with the question, and once it is
+  // answered the editor comes back saying the policy was saved. Answering
+  // it from the conversation used to drop the editor and its result.
+  const draft = original + "\n# saved by the tasks check\n";
+  await page.fill("#policy-content", draft);
+  const writes = sent.of("session.policy.write").length;
+  await page.click("button:text-is('Review and save')");
+  await until("the save was asked for", async () => sent.of("session.policy.write").length === writes + 1);
+  assert.strictEqual(sent.of("session.policy.write").at(-1).content, draft, "the save sent another text");
+  await page.waitForSelector('.ask-card button:text-is("Allow once")', { state: "visible" });
+  assert.ok(await page.isHidden(".inspector-view"), "the editor still covers the question");
+  await page.click('.ask-card button:text-is("Allow once")');
+  await page.waitForFunction(() => !document.querySelector(".inspector-view")?.hidden && document.querySelector(".inspector-view").textContent.includes("Policy saved"), null, { timeout: 15000 });
+  await page.screenshot({ path: `${out}/tasks-policy-saved.png` });
+  step("a policy save is answered in the conversation and the editor says it was saved");
+
   // A new task is named by the model from its first message (ADR 39,
   // amended 2026-10-23): the sidebar and the heading show the model's short
   // title, not the message cut down, and a person's rename still wins.
