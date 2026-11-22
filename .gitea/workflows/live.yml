@@ -77,6 +77,11 @@ jobs:
           NODWYN_LIVE_KEY: ${{ secrets.NODWYN_LIVE_KEY }}
           NODWYN_LIVE_REPORT: ${{ runner.temp }}/nodwyn-live-report
         run: make live
+      - name: Show the report
+        # go test prints the suite's own output only when it fails; the
+        # report says what each scenario did either way.
+        if: always()
+        run: cat "$RUNNER_TEMP/nodwyn-live-report/report.md" 2>/dev/null || echo "no report was written"
       - name: Keep the report
         if: always()
         uses: actions/upload-artifact@c6a366c94c3e0affe28c06c8df20a878f24da3cf # v3.2.2
