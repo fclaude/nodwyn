@@ -14,6 +14,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/schedule"
@@ -239,5 +240,27 @@ func TestNoConfirmDeclinesWithoutReadingALine(t *testing.T) {
 	}
 	if !strings.Contains(got, "allow? [y/N/a=always under a.txt/t=all writes this turn] n (--no-confirm)") || !strings.Contains(got, "the second message") {
 		t.Fatalf("the confirm read a line, or was not said:\n%s", got)
+	}
+}
+
+// --no-confirm promises a script's next line stays its next message, but a
+// masked secret prompt read it, and credential-register stored the message
+// as the credential. With --no-confirm the prompt is cancelled unread.
+func TestNoConfirmCancelsASecretPromptWithoutReadingALine(t *testing.T) {
+	model := fake.NewT(t, fake.Turn{Content: "the next message arrived"})
+	o := testOptions(t, model.URL)
+	store, err := keychain.Create(filepath.Join(t.TempDir(), "keychain"), keychain.FastKDF, []byte("test-passphrase"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Keychain = store
+	client, _ := testDaemon(t, o)
+	id := openTask(t, client, o.Repo)
+	got := runChat(t, &Chat{Client: client, ID: id, NoConfirm: true, In: strings.NewReader(":eval (credential-register \"svc\")\nhello, my next message\n")})
+	if !strings.Contains(got, "credential-register: svc") || !strings.Contains(got, "cancelled") || !strings.Contains(got, "the next message arrived") {
+		t.Fatalf("the prompt read a line, or the message was not sent:\n%s", got)
+	}
+	if list := store.List(); len(list) != 0 {
+		t.Fatalf("a credential was stored: %v", list)
 	}
 }

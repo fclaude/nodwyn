@@ -602,7 +602,12 @@ func approvalQuestion(o guard.ApprovalOptions) string {
 
 func (c *Chat) secretInput(p event.SecretPrompt) {
 	fmt.Fprintf(c.Out, "\n─── credential-register: %s\n", p.Class)
-	line, ok := c.lines.secret("secret (masked, empty to cancel): ")
+	// With NoConfirm nothing is read for it, as for a confirm: the script's
+	// next line is its next message, and was stored as the credential.
+	line, ok := "", false
+	if !c.NoConfirm {
+		line, ok = c.lines.secret("secret (masked, empty to cancel): ")
+	}
 	if !ok {
 		line = ""
 	}
