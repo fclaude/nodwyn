@@ -444,3 +444,20 @@ func TestEmptyArgumentsAreAnEmptyObject(t *testing.T) {
 		}
 	}
 }
+
+// A reply's reasoning goes back each where it came among the reply's calls
+// (ADR 9, amended 2026-10-07), but an item after the last call, which the
+// reply records with Before equal to the number of calls, was left out.
+func TestReasoningAfterTheLastCallGoesBack(t *testing.T) {
+	req := Request{Model: "m", Messages: []Message{{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "a", Name: "x", Args: json.RawMessage(`{}`)}},
+		Blocks: []ThinkingBlock{{Type: "reasoning", Data: "enc0", Before: 0, Origin: "o"}, {Type: "reasoning", Data: "enc1", Before: 1, Origin: "o"}}}}}
+	b, err := json.Marshal(toResponses(req, "o").Input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	first, call, last := strings.Index(got, "enc0"), strings.Index(got, `"function_call"`), strings.Index(got, "enc1")
+	if first < 0 || call < 0 || last < 0 || !(first < call && call < last) {
+		t.Fatalf("input: %s", got)
+	}
+}

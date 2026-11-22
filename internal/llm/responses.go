@@ -197,6 +197,12 @@ func toResponses(req Request, origin string) respRequest {
 			}
 			w.Input = append(w.Input, respCall{Type: "function_call", CallID: tc.ID, Name: tc.Name, Arguments: args})
 		}
+		// Reasoning after the reply's last call (Before is the number of
+		// calls) goes back after it; it was left out, as Anthropic's
+		// equivalent is not.
+		if len(m.ToolCalls) > 0 {
+			reasoning(len(m.ToolCalls))
+		}
 	}
 	for _, t := range req.Tools {
 		w.Tools = append(w.Tools, respTool{Type: "function", Name: t.Name, Description: t.Description, Parameters: t.Parameters})
