@@ -1,12 +1,18 @@
 package prim
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // A ranged read returns a header and the lines exactly as in the file, line
@@ -83,5 +89,40 @@ func TestReadRanges(t *testing.T) {
 	// The repository pin applies to ranged reads as to whole ones.
 	if _, err := h.eval(t, `(fs-read "/etc/passwd" 1 1)`); err == nil {
 		t.Error("a ranged read escaped the repository")
+	}
+}
+
+// Redaction knows a key by its BEGIN and END lines together, so a range that
+// started or ended inside a key returned its base64 lines as they are. Those
+// lines read as a placeholder each, keeping their numbers; a range that holds
+// the whole key returns it for ingress to redact, as any read is.
+func TestReadRangesHideAPartOfAKey(t *testing.T) {
+	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)}))
+	text := "fixture := `\n" + key + "`\nafter\n"
+	lines := strings.SplitAfter(text, "\n")
+	for _, r := range [][2]int64{{1, 10}, {5, 10}, {20, 40}} {
+		got, err := ReadLines(strings.NewReader(text), "f", r[0], r[1], 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range lines[2 : len(lines)-4] { // the key's base64 lines
+			if strings.Contains(got, strings.TrimSpace(line)) {
+				t.Fatalf("range %v shows part of the key:\n%s", r, got)
+			}
+		}
+		if !strings.Contains(got, "[REDACTED pem]\n") || strings.Count(got, "\n") != len(strings.Split(strings.TrimSuffix(got, "\n"), "\n")) {
+			t.Fatalf("range %v:\n%s", r, got)
+		}
+	}
+	whole, err := ReadLines(strings.NewReader(text), "f", 1, 100, 1<<20)
+	if err != nil || !strings.HasSuffix(whole, text) {
+		t.Fatalf("a range holding the whole key: %q %v", whole, err)
+	}
+	if got := redact.Redact(whole, nil).Text; strings.Contains(got, strings.TrimSpace(lines[3])) {
+		t.Fatalf("ingress does not redact the whole key: %s", got)
 	}
 }

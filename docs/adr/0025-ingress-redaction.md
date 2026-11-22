@@ -123,3 +123,18 @@ reduces the address in a send error to its scheme, host and path, and both
 keyed senders (`Session.Do` and the MCP HTTP transport) return their errors
 through it. A reply body that repeats the query is outside this: the binding
 chose a server that sees the key.
+
+## Amendment 2026-11-21: a range that cuts a PEM block
+
+"PEM newlines cannot evade it" held for a block read whole. A ranged
+fs-read that started or ended inside a block returned its base64 lines
+with neither the BEGIN nor the END line, so the PEM rule had nothing to
+match and the model read part of the key; the tool's own description sends
+the model to ranges for any file over about 18 KB. A ranged read now
+follows the file's blocks from its first line, and gives each line of a
+block it holds only part of as `[REDACTED pem]`, so the lines keep their
+numbers. A block the range holds whole is left to ingress redaction.
+`TestReadRangesHideAPartOfAKey` holds it. The shell's output cap, which
+keeps the first and last halves of a long output, can cut a block the
+same way; that is not changed here.
+

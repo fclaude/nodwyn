@@ -8,11 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/fclaude/brote/scheme"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/redact"
 )
@@ -154,7 +156,7 @@ func ReadLines(src io.Reader, name string, start, count int64, budget int) (stri
 		return "", fmt.Errorf("count must be at least 1, got %d", count)
 	}
 	r := bufio.NewReaderSize(src, 64<<10)
-	var body strings.Builder
+	var body pemLines
 	var total, first, end int64 // lines in the file; the lines returned
 	stopped, cut := false, false
 	for {
@@ -166,10 +168,11 @@ func ReadLines(src io.Reader, name string, start, count int64, budget int) (stri
 			break
 		}
 		total++
+		block, began, ended := body.track(text)
 		if stopped || total < start || total >= start+count {
 			continue
 		}
-		if body.Len()+len(text) > budget {
+		if body.size+len(text) > budget {
 			if first == 0 {
 				// One line longer than the budget: its start, cut at a
 				// UTF-8 boundary.
@@ -177,7 +180,7 @@ func ReadLines(src io.Reader, name string, start, count int64, budget int) (stri
 				for n > 0 && !utf8.RuneStart(text[n]) {
 					n--
 				}
-				body.WriteString(text[:n])
+				body.add(text[:n], block, began, false)
 				first, end, cut = total, total, true
 			}
 			stopped = true
@@ -186,7 +189,7 @@ func ReadLines(src io.Reader, name string, start, count int64, budget int) (stri
 		if first == 0 {
 			first = total
 		}
-		body.WriteString(text)
+		body.add(text, block, began, ended)
 		end = total
 	}
 	switch {
@@ -198,6 +201,66 @@ func ReadLines(src io.Reader, name string, start, count int64, budget int) (stri
 		return fmt.Sprintf("[line %d of %d, cut at %d bytes]\n", first, total, budget) + body.String(), nil
 	}
 	return fmt.Sprintf("[lines %d-%d of %d]\n", first, end, total) + body.String(), nil
+}
+
+var (
+	pemBegin = regexp.MustCompile(`-----BEGIN [A-Z ]+-----`)
+	pemEnd   = regexp.MustCompile(`-----END [A-Z ]+-----`)
+)
+
+// pemLines is the lines a range returns, with the PEM block each is in.
+// Redaction knows a key by its BEGIN and END lines together, so a range
+// that starts or ends inside a block returned its base64 lines as they are,
+// and the model read part of the key: those lines are given as a
+// placeholder instead, one each, so the lines keep their numbers. A block
+// the range holds whole is left to ingress redaction, as any read is.
+type pemLines struct {
+	lines   []string
+	blocks  []int // the block each line is in, 0 for none
+	began   map[int]bool
+	ended   map[int]bool
+	size    int
+	n       int  // blocks seen in the file so far
+	inBlock bool // the file is inside block n
+}
+
+// track reads one line of the file, in range or not, and says which block
+// it is in and whether it begins or ends that block.
+func (p *pemLines) track(text string) (block int, began, ended bool) {
+	if !p.inBlock && pemBegin.MatchString(text) {
+		p.inBlock, began = true, true
+		p.n++
+	}
+	if !p.inBlock {
+		return 0, false, false
+	}
+	block = p.n
+	if pemEnd.MatchString(text) {
+		p.inBlock, ended = false, true
+	}
+	return block, began, ended
+}
+
+func (p *pemLines) add(text string, block int, began, ended bool) {
+	if p.began == nil {
+		p.began, p.ended = map[int]bool{}, map[int]bool{}
+	}
+	p.lines, p.blocks = append(p.lines, text), append(p.blocks, block)
+	p.began[block] = p.began[block] || began
+	p.ended[block] = p.ended[block] || ended
+	p.size += len(text)
+}
+
+func (p *pemLines) String() string {
+	var b strings.Builder
+	for i, text := range p.lines {
+		if block := p.blocks[i]; block != 0 && !(p.began[block] && p.ended[block]) {
+			ending := text[len(strings.TrimRight(text, "\r\n")):]
+			text = redact.Placeholder(l1.ClassPEM) + ending
+		}
+		b.WriteString(text)
+	}
+	return b.String()
 }
 
 func fsWrite(o Options, pin guard.RepoPin) *scheme.Prim {
