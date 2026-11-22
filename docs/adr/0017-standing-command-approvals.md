@@ -514,3 +514,18 @@ directory; `env -S` and `--split-string` are read as a nested command line,
 as `bash -c` is; and `--files0-from`'s file is judged as a file read.
 `TestArgvTriggerJudgesPathsTheShellBuilds` holds it.
 
+## Amendment 2026-11-21: no standing answer for the network, deletes or commits
+
+The Decision says there is no approval for anything that commits, pushes,
+deletes or reaches the network, but a confirm's "a" offered the command's
+prefix whatever it was: `curl https://example.com` offered `curl`, after
+which curl reached any host unasked, `rm src/a.go` offered `rm`, and
+`git push` and `git commit` offered themselves. `Prefix` now proposes none
+for the network tools the argument trigger names, `rm`, `rmdir`, `shred`,
+`unlink`, `sudo`, `doas`, `xargs` and `parallel`, the wrappers (`env`,
+`timeout`, `nice` and the rest, whose prefix would cover every program
+they run), and git's `push`, `commit`, `merge`, `rebase`, `reset`, `clean`
+and `rm`, so such a confirm is answered once at a time.
+`TestNoStandingApprovalForTheNetworkDeletesOrCommits` holds it. A prefix a
+person writes in `allow.toml` is still theirs.
+

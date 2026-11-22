@@ -189,14 +189,35 @@ func Prefix(argv []string) string {
 		return Prefix(run)
 	}
 	prog := argv[0]
-	if interpreters[filepath.Base(prog)] {
+	base := filepath.Base(prog)
+	if interpreters[base] || neverStanding[base] || wrappers[base] {
 		return ""
 	}
 	if len(argv) > 1 && !strings.HasPrefix(argv[1], "-") && !strings.Contains(argv[1], "/") && !strings.Contains(argv[1], ".") {
+		if base == "git" && neverStandingGit[argv[1]] {
+			return ""
+		}
 		return prog + " " + argv[1]
 	}
 	return prog
 }
+
+// neverStanding are the programs no standing approval covers (ADR 17: there
+// is none for anything that commits, pushes, deletes or reaches the network;
+// those stay per-call confirms). "a" on curl https://example.com offered
+// "curl", which then let curl reach any host unasked, and "rm" covered every
+// later rm (a review, 2026-11-21). A wrapper (wrappers) has no prefix either:
+// "timeout" or "env" would cover every program it runs.
+var neverStanding = func() map[string]bool {
+	m := map[string]bool{"rm": true, "rmdir": true, "shred": true, "unlink": true, "sudo": true, "doas": true, "xargs": true, "parallel": true}
+	for _, n := range DefaultArgvTrigger("").Network {
+		m[n] = true
+	}
+	return m
+}()
+
+// neverStandingGit are the git subcommands that commit, push or delete.
+var neverStandingGit = map[string]bool{"push": true, "commit": true, "merge": true, "rebase": true, "reset": true, "clean": true, "rm": true}
 
 // Argv extracts the command line from a primitive application (for the
 // core, which builds Prefix from a prompt).

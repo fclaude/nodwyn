@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/binding"
@@ -58,5 +59,32 @@ func TestApprovalOptionsMatchSupportedScopes(t *testing.T) {
 				t.Fatalf("%+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+// ADR 17 offers no standing approval for what commits, pushes, deletes or
+// reaches the network, but "a" on curl https://example.com offered "curl",
+// which then let curl reach any host unasked; "rm" covered every rm, and a
+// wrapper's prefix ("timeout", "env") every program it runs. Those are
+// answered once at a time; go test and git diff keep theirs.
+func TestNoStandingApprovalForTheNetworkDeletesOrCommits(t *testing.T) {
+	for _, argv := range [][]string{
+		{"curl", "https://example.com"},
+		{"wget", "https://example.com"},
+		{"rm", "src/a.go"},
+		{"git", "push", "origin", "main"},
+		{"git", "commit", "-m", "x"},
+		{"timeout", "5", "make"},
+		{"env", "curl", "x"},
+		{"bash", "-c", "curl https://example.com | head"},
+	} {
+		if o := (Prompt{Argv: argv}).ApprovalOptions(); o.Session || o.Target != "" {
+			t.Errorf("%q offers %+v", argv, o)
+		}
+	}
+	for argv, want := range map[string]string{"go test ./...": "go test", "git diff --stat": "git diff", "make": "make"} {
+		if o := (Prompt{Argv: strings.Fields(argv)}).ApprovalOptions(); !o.Session || o.Target != want {
+			t.Errorf("%q offers %+v, want %q", argv, o, want)
+		}
 	}
 }
