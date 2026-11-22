@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/fclaude/brote/scheme"
+
+	"github.com/fclaude/nodwyn/test/fakes/must"
 )
 
 func gitRepo(t *testing.T) (string, *scheme.Interp) {
@@ -337,6 +339,42 @@ func TestGitDiffAgainstACommitAndGitHead(t *testing.T) {
 	for _, bad := range []string{"--output=/tmp/x", "-p", "a b", "HEAD;id"} {
 		if _, err := eval(fmt.Sprintf(`(git-diff "." #f %q)`, bad)); err == nil || !strings.Contains(err.Error(), "against must be a commit or branch") {
 			t.Errorf("against %q: %v", bad, err)
+		}
+	}
+}
+
+// With git's rename detection a renamed file was one path, the new one, so
+// --name-only never named the refused .env, and the diff of a rename that
+// also dropped a line printed that line of .env under "rename from .env".
+// A rename is its two paths now, and the refused one is left out, staged or
+// committed.
+func TestGitDiffLeavesOutARenamedCredentialFile(t *testing.T) {
+	root, in := gitRepo(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	rest := "HOST=a\nPORT=1\nUSER=b\nMODE=c\nZONE=d\n"
+	must.WriteFile(t, filepath.Join(root, ".env"), []byte("TOKEN=canary\n"+rest), 0o600)
+	git("commit", "-qam", "env")
+	git("mv", ".env", "settings.txt")
+	must.WriteFile(t, filepath.Join(root, "settings.txt"), []byte(rest), 0o600)
+	git("add", "settings.txt")
+	for i, src := range []string{`(git-diff "." #t)`, `(git-diff "." #f "HEAD~1")`} {
+		if i == 1 {
+			git("commit", "-qm", "rename")
+		}
+		v, err := in.EvalString(context.Background(), src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(v.S, "canary") || !strings.Contains(v.S, "settings.txt") {
+			t.Fatalf("%s:\n%s", src, v.S)
 		}
 	}
 }

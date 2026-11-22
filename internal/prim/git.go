@@ -69,7 +69,10 @@ func gitPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 						return scheme.Value{}, fmt.Errorf("git-diff: %s is not in the repository", c.Args[0].S)
 					}
 				}
-				args := []string{"diff", "--no-ext-diff", "--no-textconv", "--no-color"}
+				// --no-renames: a renamed file is its two paths, so a refused one is named
+				// and left out; with rename detection, --name-only named only the new
+				// path and the diff printed the refused file's old lines.
+				args := []string{"diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames"}
 				if len(c.Args) > 1 {
 					if c.Args[1].Kind != scheme.KBool {
 						return scheme.Value{}, errors.New("git-diff: staged must be true or false")
