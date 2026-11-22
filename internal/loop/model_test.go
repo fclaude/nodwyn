@@ -127,7 +127,7 @@ func TestCacheEstimatesSeparateEndpoints(t *testing.T) {
 		"same-server": {Model: "m", Host: fast.URL, Server: "slow", Provider: llm.NewOllama(fast.URL)},
 	}}}
 	for _, name := range []string{"slow", "fast", "same-host", "same-server", "slow"} {
-		if _, err := l.ask(context.Background(), name, toolOffer{}, false); err != nil {
+		if _, _, err := l.ask(context.Background(), name, toolOffer{}, false); err != nil {
 			t.Fatal(err)
 		}
 		events := host.EventsSoFar()

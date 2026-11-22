@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -19,6 +20,13 @@ import (
 // daemon's sessions do (Options.Titles), or not.
 func titleRig(t *testing.T, titles bool, turns ...fake.Turn) *rig {
 	t.Helper()
+	return titleRigAnswering(t, titles, true, turns...)
+}
+
+// titleRigAnswering is titleRig whose confirms are declined (noConfirm) or
+// asked, as a scheduled program's session's are.
+func titleRigAnswering(t *testing.T, titles, noConfirm bool, turns ...fake.Turn) *rig {
+	t.Helper()
 	repo := t.TempDir()
 	must.WriteFile(t, filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
 	srv := fake.NewT(t, turns...)
@@ -27,7 +35,7 @@ func titleRig(t *testing.T, titles bool, turns ...fake.Turn) *rig {
 	cfg.Control.URL = srv.URL
 	cfg.Control.Model = "test-model"
 	logb := &bytes.Buffer{}
-	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb, Titles: titles})
+	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: noConfirm, LogWriter: logb, Titles: titles})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,5 +231,107 @@ func TestCleanTitle(t *testing.T) {
 	long := cleanTitle(strings.Repeat("word ", 40))
 	if n := utf8.RuneCountInString(long); n > maxTitle || n < maxTitle/2 || strings.HasSuffix(long, " ") {
 		t.Errorf("a 200-character reply became %d characters: %q", n, long)
+	}
+}
+
+// The system prompt tells the model to name the task in its first reply,
+// whatever tools a request offers, so a request that offered none (a
+// program's model-turn with '((tools . #f))) still drew a name-task call,
+// and no text. Such a request now offers name-task alone: the reply's call
+// is run, the task is named, and the program sees the text and no call.
+// The offer is recorded as it was sent, so replay rebuilds the request.
+func TestARequestWithoutToolsStillOffersNameTask(t *testing.T) {
+	r := titleRigAnswering(t, true, false, fake.Turn{Content: "hi", ToolCalls: []fake.ToolCall{{ID: "n", Name: "name-task", Args: map[string]any{"title": "Say hello back"}}}})
+	src := `(add-message "Say hi.")
+(let ((reply (model-turn "control" '((tools . #f)))))
+  (list (assoc-ref reply 'content) (length (assoc-ref reply 'tool-calls '()))))`
+	// As a schedule's or a workflow's program runs: in a turn of its own.
+	if err := r.s.EvalScheduled(src, log.ScheduleRun{Started: time.Now(), Manual: true, Actor: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	first := r.srv.Requests[0]
+	if len(first.Tools) != 1 || !offers(first, "name-task") {
+		t.Fatalf("the request offered %d tools; want name-task alone", len(first.Tools))
+	}
+	if titles, _ := r.titles(); len(titles) != 1 || titles[0].Title != "Say hello back" {
+		t.Fatalf("session.title records = %+v", titles)
+	}
+	var req log.LLMReq
+	var result log.EvalResult
+	for _, ev := range r.logged() {
+		switch ev.Kind {
+		case log.KindLLMReq:
+			_ = ev.Decode(&req)
+		case log.KindEvalResult:
+			_ = ev.Decode(&result)
+		}
+	}
+	if req.NoTools || len(req.OfferedTools) != 1 || req.OfferedTools[0] != "name-task" {
+		t.Fatalf("the recorded offer: no_tools %v, offered %v", req.NoTools, req.OfferedTools)
+	}
+	if result.Error != "" || result.Value != `("hi" 0)` {
+		t.Fatalf("the program saw %q (%s)", result.Value, result.Error)
+	}
+}
+
+// Where the prompt does not name the tool, or the caller offered it itself,
+// a request is sent as it was asked.
+func TestNameTaskIsAddedOnlyWhereThePromptAsksForIt(t *testing.T) {
+	r := titleRigAnswering(t, false, false, fake.Turn{Content: "hi"})
+	if err := r.s.EvalScheduled(`(add-message "Say hi.") (model-turn "control" '((tools . #f)))`, log.ScheduleRun{Started: time.Now(), Manual: true, Actor: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if n := len(r.srv.Requests[0].Tools); n != 0 {
+		t.Fatalf("a session without titles was offered %d tools", n)
+	}
+}
+
+// Once the task has a name, a request that restricts its tools is sent as
+// asked: a stop report late in a task is not offered name-task.
+func TestARestrictedRequestAfterTheNameOffersNoNameTask(t *testing.T) {
+	r := titleRigAnswering(t, true, false, fake.Turn{Content: "first"})
+	if _, err := r.s.Record(log.KindSessionTitle, log.SessionTitle{Actor: "test", Title: "Already named"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.s.EvalScheduled(`(add-message "Say hi.") (model-turn "control" '((tools . #f)))`, log.ScheduleRun{Started: time.Now(), Manual: true, Actor: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if n := len(r.srv.Requests[0].Tools); n != 0 {
+		t.Fatalf("a named task's restricted request offered %d tools", n)
+	}
+}
+
+// A reply that only names the task means to answer after the call's result,
+// as a reply to a call does; asked once, the program got no text (the live
+// suite against a 27B model). model-turn asks once more, now with the task
+// named, so with the tools the caller asked for: none.
+func TestAReplyThatOnlyNamesTheTaskIsAskedAgain(t *testing.T) {
+	r := titleRigAnswering(t, true, false,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "n", Name: "name-task", Args: map[string]any{"title": "Confirm the agent is ready"}}}},
+		fake.Turn{Content: "ready"})
+	src := `(add-message "Reply with the single word ready.")
+(let ((reply (model-turn "control" '((tools . #f)))))
+  (list (assoc-ref reply 'content) (length (assoc-ref reply 'tool-calls '()))))`
+	if err := r.s.EvalScheduled(src, log.ScheduleRun{Started: time.Now(), Manual: true, Actor: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if len(r.srv.Requests) != 2 || len(r.srv.Requests[1].Tools) != 0 {
+		t.Fatalf("%d requests; want two, the second offering no tools", len(r.srv.Requests))
+	}
+	if !strings.Contains(string(r.srv.Requests[1].Raw), "Named.") {
+		t.Error("the second request does not carry the name-task call's result")
+	}
+	var result log.EvalResult
+	for _, ev := range r.logged() {
+		if ev.Kind == log.KindEvalResult {
+			_ = ev.Decode(&result)
+		}
+	}
+	if result.Error != "" || result.Value != `("ready" 0)` {
+		t.Fatalf("the program saw %q (%s)", result.Value, result.Error)
 	}
 }

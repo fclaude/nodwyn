@@ -57,6 +57,39 @@ func (l *Loop) parseToolOffer(v scheme.Value) (toolOffer, error) {
 	return toolOffer{only: only}, nil
 }
 
+// nameTaskTool names the task (ADR 39). The conversation's own system prompt
+// tells the model to call it in its first reply, and that prompt is the same
+// for every request, so the provider's cache holds (ADR 9): a request that
+// offered no tools, or only some, still told the model to call it, and the
+// model answered with that call, and others it was not offered, and no text
+// (a workflow program's model-turn on the Gitea runner, 2026-11-22). It only
+// names the task, so it stays offered (withNameTask).
+const nameTaskTool = "name-task"
+
+// withNameTask is offer, widened by name-task when the offer restricts the
+// tools, the request's system prompt is the session's own and names the
+// tool, the catalog has it, and the log holds no name for the task yet (a
+// stop report late in a task is not offered it); the second result says it
+// was widened. A
+// narrowed context, a sub-agent's or the planner's, has a prompt of its own
+// and is left as asked. The widened offer is what is recorded, so a replay
+// rebuilds the same request.
+func (l *Loop) withNameTask(offer toolOffer, system string, events []log.Event) (toolOffer, bool) {
+	if !offer.none && offer.only == nil {
+		return offer, false
+	}
+	if system != l.system || !strings.Contains(l.system, nameTaskTool) || slices.Contains(offer.only, nameTaskTool) {
+		return offer, false
+	}
+	if !slices.ContainsFunc(l.tools, func(t llm.Tool) bool { return t.Name == nameTaskTool }) {
+		return offer, false
+	}
+	if slices.ContainsFunc(events, func(ev log.Event) bool { return ev.Kind == log.KindSessionTitle }) {
+		return offer, false
+	}
+	return toolOffer{only: append(slices.Clone(offer.only), nameTaskTool)}, true
+}
+
 // offered is the part of the session's tool catalog an offer names, in
 // catalog order.
 func offered(catalog []llm.Tool, offer toolOffer) []llm.Tool {
@@ -82,23 +115,29 @@ func offered(catalog []llm.Tool, offer toolOffer) []llm.Tool {
 // request's hash lets nodwyn replay --window prove it. With headroom the
 // window is trimmed only past the ceiling instead of the high water.
 // Attached images are read from the workspace here, or withheld (images.go).
-func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom bool) (*llm.Response, error) {
+func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom bool) (*llm.Response, bool, error) {
 	ep, err := l.endpoint(name)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	pol, ceiling := l.policy()
 	highWater := pol.HighWater
 	if headroom && ceiling > pol.HighWater {
 		pol.HighWater = ceiling
 	}
-	w := window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, pol)
+	events := l.host.EventsSoFar()
+	w := window.Build(events, l.system, l.toolsLen, pol)
 	if !hasUserMessage(w.Messages) {
-		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
+		return nil, false, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
 	}
+	system := ""
+	if len(w.Messages) > 0 && w.Messages[0].Role == llm.RoleSystem {
+		system = w.Messages[0].Content
+	}
+	offer, widened := l.withNameTask(offer, system, events)
 	withheld, err := l.images(ctx, name, ep, &w)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	// A model's own cap is its max_output, or a quarter of a small context
 	// (config.Window.ReplyCap): either is the reply cap Settings › Models
@@ -112,7 +151,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 	request.Tools = offered(l.tools, offer)
 	digest, err := window.RequestHash(request)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	rec := log.LLMReq{
 		RequestHash: digest,
@@ -129,7 +168,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		rec.Endpoint, rec.NumCtx, rec.KeepAlive = name, ep.NumCtx, ep.KeepAlive
 	}
 	if err := l.record(log.KindLLMReq, rec); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "waiting for model"}})
 
@@ -146,14 +185,14 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 			err = fmt.Errorf("%w. %s", err, hint)
 		}
 		_ = l.record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
-		return nil, err
+		return nil, false, err
 	}
 	notes := append(l.tidyCalls(resp), keepDetails(resp)...)
 	l.show(resp)
 	respRec := responseRecord(resp, ep.Rates)
 	respRec.Usage.EstimatedCachedTokens = l.estimateCache(fmt.Sprintf("%q %q %q", ep.Server, ep.Host, ep.Model), respRec.Usage)
 	if err := l.record(log.KindLLMResp, respRec); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, text := range notes {
 		_ = l.record(log.KindNote, log.Note{Text: text})
@@ -167,7 +206,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		}
 		_ = l.record(log.KindNote, log.Note{Text: note})
 	}
-	return resp, nil
+	return resp, widened, nil
 }
 
 // tidyCalls puts the arguments of the reply's calls that came wrapped in a

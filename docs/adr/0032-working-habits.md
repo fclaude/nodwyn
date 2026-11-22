@@ -3101,3 +3101,24 @@ which keeps them as measured. No benchmark run measured the lean loop with
 these hints on purpose: they were on only because nothing turned them off.
 `TestOnlyTheFullProfileHintsAtToolsWhileTheModelWorks` holds it.
 
+## Amendment 2026-11-22: a restricted request still offers name-task
+
+The full profile's system prompt tells the model to name the task in its
+first reply (ADR 39, amended 2026-10-23), and that prompt is the same for
+every request so the provider's cache holds (ADR 9). A request that offered
+no tools, or only some, still carried the rule, and the model answered with
+a `name-task` call it was not offered, and other calls, and no text: a
+workflow's program asking with `'((tools . #f))` on the Gitea runner wrote
+an empty answer (run 40427). `name-task` only names the task, so such a
+request in the conversation's own context now also offers it until the task
+is named, `model-turn` runs the call and returns the reply without it, and
+the widened offer is what `llm.req` records. A reply that only named the
+task, with no text, means to answer after the call's result, as the 27B
+model did against the live suite; `model-turn` then asks once more, the
+task named, with the tools the caller asked for. A narrowed context (the
+planner, a sub-agent) has a prompt of its own and is sent as asked. The
+lean profile's prompt carries no such rule and is unchanged. This does not
+stop a model from answering a restricted request with calls it was not
+offered; the live suite's program asks again when the text is empty.
+`TestARequestWithoutToolsStillOffersNameTask` holds it.
+

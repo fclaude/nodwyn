@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -343,21 +344,93 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, halt(err)
 		}
 	}
-	resp, err := l.ask(c.Ctx, name, offer, headroom)
-	if err != nil {
-		return scheme.Void, err
-	}
 	var rates llm.Rates
 	if ep, err := l.endpoint(name); err == nil {
 		rates = ep.Rates
 	}
-	cost, _ := llm.Cost(resp.Usage, rates)
-	if t.budget != nil {
-		t.budget.AddTokens(budget.CountedPrompt(resp.Usage.PromptTokens, resp.Usage.CachedTokens), resp.Usage.OutputTokens)
-		t.budget.AddSpend(cost, resp.Usage.CachedTokens)
+	var cost *float64
+	ask := func() (*llm.Response, bool, error) {
+		resp, widened, err := l.ask(c.Ctx, name, offer, headroom)
+		if err != nil {
+			return nil, false, err
+		}
+		spent, _ := llm.Cost(resp.Usage, rates)
+		if t.budget != nil {
+			t.budget.AddTokens(budget.CountedPrompt(resp.Usage.PromptTokens, resp.Usage.CachedTokens), resp.Usage.OutputTokens)
+			t.budget.AddSpend(spent, resp.Usage.CachedTokens)
+		}
+		cost = addCost(cost, spent)
+		return resp, widened, nil
+	}
+	resp, widened, err := ask()
+	if err != nil {
+		return scheme.Void, err
+	}
+	if widened {
+		// The caller did not ask for name-task: it is run here, and the
+		// caller sees only the calls it could have asked for.
+		var ran bool
+		if resp, ran, err = l.runNameTask(c.Ctx, resp); err != nil {
+			return scheme.Void, err
+		}
+		// A reply that only named the task means to answer after the
+		// call's result, as replies to calls do: the model is asked once
+		// more, now with the call and its result in the conversation and
+		// the task named, so with the tools the caller asked for. Asked
+		// once, it answered "ready" in the next reply and the program got
+		// no text (the live suite against a 27B model, 2026-11-22).
+		if ran && len(resp.Message.ToolCalls) == 0 && strings.TrimSpace(resp.Message.Content) == "" {
+			if t.budget != nil {
+				if err := t.budget.Check(c.Ctx); err != nil {
+					return scheme.Void, halt(err)
+				}
+			}
+			if resp, _, err = ask(); err != nil {
+				return scheme.Void, err
+			}
+		}
 	}
 	t.expect(resp.Message.ToolCalls)
 	return replyValue(resp, cost), nil
+}
+
+// addCost is a and b together, unknown (nil) when either is.
+func addCost(a, b *float64) *float64 {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return nil
+	}
+	sum := *a + *b
+	return &sum
+}
+
+// runNameTask runs the name-task calls of a reply to a request that offered
+// the tool without its caller asking (withNameTask), recording each as any
+// call is, and returns the reply without them. Like the task's name itself,
+// it is housekeeping, not the caller's work, so it is not counted against
+// the turn's tool calls. ran says it ran one.
+func (l *Loop) runNameTask(ctx context.Context, resp *llm.Response) (*llm.Response, bool, error) {
+	var rest []llm.ToolCall
+	ran := false
+	for _, tc := range resp.Message.ToolCalls {
+		if tc.Name != nameTaskTool {
+			rest = append(rest, tc)
+			continue
+		}
+		ran = true
+		res, _, _, err := l.runTool(ctx, tc)
+		if err == nil {
+			err = l.recordResult(res, 0)
+		}
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	trimmed := *resp
+	trimmed.Message.ToolCalls = rest
+	return &trimmed, ran, nil
 }
 
 // runTools is (run-tools calls): run each call in order, stopping the turn
