@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -60,7 +61,21 @@ func waitRun(t *testing.T, c *client, id, status string) run.State {
 // starts one with neither, its limits are the task's, which no change
 // reaches while the run goes on, and it ends when the model says so.
 func TestARunStartsWithoutLimitsOfItsOwn(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "1. first step"}, fake.Turn{Content: "done\n" + run.CompleteLine})
+	// The model answers only once the test has asked to change the limits
+	// while the run goes on: answering at once, it sometimes let the run
+	// end first, and the change, then made to an idle task, was allowed.
+	replies := []fake.Turn{{Content: "1. first step"}, {Content: "done\n" + run.CompleteLine}}
+	checked := make(chan struct{})
+	var mu sync.Mutex
+	asked := 0
+	srv := fake.NewFunc(func(fake.Request) fake.Turn {
+		<-checked
+		mu.Lock()
+		defer mu.Unlock()
+		reply := replies[min(asked, len(replies)-1)]
+		asked++
+		return reply
+	})
 	defer srv.Close()
 	o := options(t)
 	o.Provider = llm.NewOllama(srv.URL)
@@ -91,6 +106,7 @@ func TestARunStartsWithoutLimitsOfItsOwn(t *testing.T) {
 	if r := c.call("session.limits.set", map[string]any{"id": started.ID, "limits": map[string]any{}}); r.Error == nil || !strings.Contains(r.Error.Message, "active run") {
 		t.Fatalf("a run's limits changed while it went on: %+v", r.Error)
 	}
+	close(checked)
 	if done := waitRun(t, c, started.ID, "completed"); done.Turns != 1 {
 		t.Fatalf("%+v", done)
 	}
