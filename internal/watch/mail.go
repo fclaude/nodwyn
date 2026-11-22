@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
+	"net/http"
 	"net/mail"
 	"net/url"
 	"regexp"
@@ -72,11 +74,17 @@ func (p Poller) mail(ctx context.Context, s Source, look Look) ([]Item, error) {
 // mailError says what a refusal of Gmail most likely means: a credential
 // that has expired or been revoked, or one authorized without the scope the
 // call needs.
+// The code is read from the answer: the message also names the host, and
+// a port such as 40133 holds "401".
 func mailError(err error) error {
+	var status statusError
+	if !errors.As(err, &status) {
+		return err
+	}
 	switch {
-	case strings.Contains(err.Error(), "401"):
+	case status.code == http.StatusUnauthorized:
 		return fmt.Errorf("%w: Gmail refused the credential, which may have expired or been revoked (nodwyn credential login ID authorizes it again)", err)
-	case strings.Contains(err.Error(), "403"):
+	case status.code == http.StatusForbidden:
 		return fmt.Errorf("%w: the credential needs the gmail.readonly scope (nodwyn credential add --oauth2 google --scopes gmail.readonly), and Gmail's API turned on in its Google project", err)
 	}
 	return err
@@ -265,7 +273,7 @@ func (p Poller) SaveDraft(ctx context.Context, s Source, reply Reply, body strin
 		return err
 	}
 	if _, err := p.send(ctx, s, "POST", mailBase(s)+"/gmail/v1/users/me/drafts", "header:Authorization:Bearer", payload); err != nil {
-		if strings.Contains(err.Error(), "403") {
+		if status := (statusError{}); errors.As(err, &status) && status.code == http.StatusForbidden {
 			return fmt.Errorf("%w: the credential needs the gmail.compose scope to save a draft", err)
 		}
 		return err

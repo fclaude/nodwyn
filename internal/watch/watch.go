@@ -328,10 +328,19 @@ func (p Poller) send(ctx context.Context, s Source, method, address, position st
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("%s answered %s", u.Host, resp.Status)
+		return nil, statusError{host: u.Host, status: resp.Status, code: resp.StatusCode}
 	}
 	return raw, nil
 }
+
+// statusError is a source's answer that was not a success, with its code
+// for what reads it to tell one refusal from another.
+type statusError struct {
+	host, status string
+	code         int
+}
+
+func (e statusError) Error() string { return e.host + " answered " + e.status }
 
 // pulls asks a forge for the open pull requests.
 func (p Poller) pulls(ctx context.Context, s Source, address, position string) ([]Item, error) {

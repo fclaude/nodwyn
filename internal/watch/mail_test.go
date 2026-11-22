@@ -154,3 +154,18 @@ func TestADraftReplyJoinsTheThreadAndAddsNoHeader(t *testing.T) {
 		t.Fatal("a refused draft reached Gmail")
 	}
 }
+
+// Gmail's refusals were told apart by "401" or "403" anywhere in the error,
+// which also names the host: a 403 from a server on port 40133 read as an
+// expired credential, and the test above failed whenever its fake was given
+// such a port. The answer's code is what is read.
+func TestARefusalIsReadFromItsCodeNotFromTheAddress(t *testing.T) {
+	forbidden := statusError{host: "127.0.0.1:40133", status: "403 Forbidden", code: 403}
+	if err := mailError(forbidden); !strings.Contains(err.Error(), "gmail.readonly scope") {
+		t.Fatalf("a 403: %v", err)
+	}
+	unauthorised := statusError{host: "127.0.0.1:40333", status: "401 Unauthorized", code: 401}
+	if err := mailError(unauthorised); !strings.Contains(err.Error(), "may have expired or been revoked") {
+		t.Fatalf("a 401: %v", err)
+	}
+}
