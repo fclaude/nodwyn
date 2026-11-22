@@ -972,6 +972,9 @@ inspect the transcript before sending again. No operation is automatically retri
 
 `--read-only` retains the original view-only mode. The server filters advertised
 methods and enforces this restriction independently of the browser controls.
+With `--listen`, another device pairs with an invitation (`nodwyn devices
+invite`) and reads tasks too; a passkey is not offered there, and another
+nodwyn cannot link to a read-only console.
 The interactive mode includes a pending-prompt panel with reasons, literal
 arguments, egress scope, and the existing write diff (additions/deletions colored
 without changing the diff algorithm). Allow once and Deny answer only that live

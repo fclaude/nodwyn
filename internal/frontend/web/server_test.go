@@ -1320,3 +1320,44 @@ func TestAnOversizedMessageIsAnsweredNotFatal(t *testing.T) {
 		t.Fatalf("the connection is not usable after it: %s", raw["error"])
 	}
 }
+
+// nodwyn ui --read-only --listen says other devices pair with an
+// invitation and can read tasks, but the console refused every invitation
+// and told the pairing page it was not shared, so no device could pair. A
+// device pairs by invitation and reads; another nodwyn does not link.
+func TestAReadOnlySharedConsolePairsAReader(t *testing.T) {
+	devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
+	host := "desk.tailnet.ts.net:7777"
+	s := New(Options{PairingCode: testCode, Devices: devices, ReadOnly: true, Hosts: []string{host}})
+	s.b.ctx = context.Background()
+	s.b.listensAt("100.64.0.5:7777")
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(body))
+		r.RemoteAddr = "100.64.0.9:40000"
+		r.Header.Set("Origin", "http://"+host)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		s.b.ServeHTTP(w, r)
+		return w
+	}
+	if got := request("GET", "/pair", "").Body.String(); !strings.Contains(got, `"shared":true`) || !strings.Contains(got, `"passkey":false`) {
+		t.Fatalf("GET /pair: %s", got)
+	}
+	code, _, err := devices.Invite(Terminal, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := request("POST", "/pair", `{"invite":"`+code+`","device":"phone"}`); w.Code != http.StatusNoContent {
+		t.Fatalf("an invitation: %d %s", w.Code, w.Body)
+	}
+	link, _, err := devices.Invite(Terminal, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := request("POST", "/pair", `{"invite":"`+link+`","device":"laptop","host":true}`); w.Code != http.StatusForbidden {
+		t.Fatalf("a link: %d %s", w.Code, w.Body)
+	}
+	if !s.b.allowed("session.list", caller{}) || s.b.allowed("session.send", caller{}) {
+		t.Fatal("the paired device does more than read")
+	}
+}

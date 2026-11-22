@@ -425,7 +425,10 @@ type pairingInfo struct {
 
 // pairing answers GET /pair, before the browser is paired.
 func (b *bridge) pairing(w http.ResponseWriter, r *http.Request) {
-	info := pairingInfo{Shared: b.shared() && !b.readOnly, Passkey: b.shared() && !b.readOnly && passkeyHost(r.Host, b.secure(r.Host))}
+	// A read-only console pairs a device by invitation, to read tasks, as
+	// `nodwyn ui --read-only --listen` says; a passkey there would sign in
+	// the person's device to a console that lets it do nothing more.
+	info := pairingInfo{Shared: b.shared(), Passkey: b.shared() && !b.readOnly && passkeyHost(r.Host, b.secure(r.Host))}
 	if info.Passkey {
 		keys, _ := b.devices.Passkeys()
 		info.Passkeys = len(keys) > 0
@@ -467,8 +470,14 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 	case p.Invite != "":
 		// Another machine pairs as a named device: its answers carry the
 		// name, and it can be revoked without restarting anything.
-		if !b.shared() || b.readOnly {
+		if !b.shared() {
 			http.Error(w, "Device pairing is not enabled", http.StatusForbidden)
+			return
+		}
+		// A read-only console pairs devices that read; another nodwyn links
+		// to a console it can act through.
+		if b.readOnly && p.Host {
+			http.Error(w, "This console is read-only: another nodwyn links to one that is not", http.StatusForbidden)
 			return
 		}
 		if p.Device == "" {
