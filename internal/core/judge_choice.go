@@ -63,6 +63,14 @@ func CheckJudge(c config.Config, store *keychain.Store, server string) error {
 	if err != nil {
 		return err
 	}
+	// Another OpenAI-compatible server has no Decisions API (ADR 46 §6):
+	// Settings lists only OpenAI's own, but the TUI's :judge and
+	// session.judge.set took any, and every question then failed (a
+	// review, 2026-11-21). The server [judge] names is the person's own
+	// choice in config.toml, as Settings shows it whatever its address.
+	if host := prim.JudgeHost(prim.JudgeOptions{URL: spec.URL}); spec.Provider == "openai" && host != "api.openai.com" && server != c.Judge.Server {
+		return fmt.Errorf("%s is an OpenAI-compatible server at %s, which has no Decisions API: the judge asks OpenAI at https://api.openai.com/v1", server, host)
+	}
 	if PlanSignIn(store, spec.Class) {
 		return fmt.Errorf("%s signs in with a ChatGPT plan, which only reaches its chat models; the judge asks OpenAI's Decisions API with an API key, so add an OpenAI provider with one", server)
 	}

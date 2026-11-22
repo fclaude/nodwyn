@@ -202,3 +202,26 @@ func TestResumedTaskKeepsItsJudge(t *testing.T) {
 		t.Fatal("no note says the judge was lost")
 	}
 }
+
+// Only OpenAI at its own address has the Decisions API (ADR 46 §6), and
+// Settings offers only that, but a task's judge could be chosen on any
+// openai-provider server through the TUI or session.judge.set, and every
+// question then failed. Such a server is refused unless it is the one
+// [judge] names.
+func TestAJudgeIsOnlyOpenAIsOwnOpenAIServer(t *testing.T) {
+	c := config.Default()
+	c.Servers = map[string]config.Server{
+		"openai-api": {Provider: "openai", URL: "https://api.openai.com/v1", Credential: "openai-key"},
+		"openrouter": {Provider: "openai", URL: "https://openrouter.ai/api/v1", Credential: "router-key"},
+	}
+	if err := CheckJudge(c, nil, "openai-api"); err != nil {
+		t.Fatalf("OpenAI's own: %v", err)
+	}
+	if err := CheckJudge(c, nil, "openrouter"); err == nil || !strings.Contains(err.Error(), "no Decisions API") {
+		t.Fatalf("another server: %v", err)
+	}
+	c.Judge.Server = "openrouter"
+	if err := CheckJudge(c, nil, "openrouter"); err != nil {
+		t.Fatalf("the one [judge] names: %v", err)
+	}
+}
