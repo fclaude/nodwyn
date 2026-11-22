@@ -389,15 +389,22 @@ func orderedParts(ctx context.Context, r *zip.ReadCloser, main, rels, elem strin
 	return out, err
 }
 
+// maxColumns is a spreadsheet's widest row, column XFD: a reference past it
+// is no spreadsheet's, and following one would pad a row with millions of
+// empty fields or overflow the column number.
+const maxColumns = 16384
+
 // cellColumn is the zero-based column of a cell reference such as "C12",
-// and false when it has none.
+// and false when it has none or names a column past XFD.
 func cellColumn(ref string) (int, bool) {
 	col, n := 0, 0
 	for _, c := range ref {
 		if c < 'A' || c > 'Z' {
 			break
 		}
-		col, n = col*26+int(c-'A')+1, n+1
+		if col, n = col*26+int(c-'A')+1, n+1; col > maxColumns {
+			return 0, false
+		}
 	}
 	return col - 1, n > 0
 }

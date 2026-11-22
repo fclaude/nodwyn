@@ -272,14 +272,14 @@ func (s *server) probeServers(entries []registryEntry) map[string]serverProbe {
 	if len(ask) == 0 {
 		return found
 	}
-	s.mu.Unlock()
 	asked := make([]serverProbe, len(ask))
-	var wg sync.WaitGroup
-	for i, m := range ask {
-		wg.Go(func() { asked[i] = probe(s.base(), m) })
-	}
-	wg.Wait()
-	s.mu.Lock()
+	s.slow("", func() {
+		var wg sync.WaitGroup
+		for i, m := range ask {
+			wg.Go(func() { asked[i] = probe(s.base(), m) })
+		}
+		wg.Wait()
+	})
 	probeCache.mu.Lock()
 	if probeCache.byServer == nil {
 		probeCache.byServer = map[string]serverProbe{}
@@ -438,9 +438,9 @@ func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 		authorize = s.keyed().Authorize(srv.Credential, config.KeyPosition(srv.Provider))
 	}
 	// As the probes do, the request runs without the lifecycle lock.
-	s.mu.Unlock()
-	names, err := offered(s.base(), srv, authorize)
-	s.mu.Lock()
+	var names []string
+	var err error
+	s.slow("", func() { names, err = offered(s.base(), srv, authorize) })
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}

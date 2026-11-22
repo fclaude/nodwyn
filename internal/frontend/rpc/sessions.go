@@ -95,7 +95,9 @@ func (s *server) base() context.Context {
 // so one made meanwhile is not missed. A task named by id is marked as being
 // resumed while work runs, so a second resume or scheduled run of it waits
 // for this one instead of racing it; work is then to start, resume or close
-// that task.
+// that task. The lock is taken again even when work panics, so the method's
+// own unlock finds it held and dispatchSafely fails only that call: unlocking
+// an unlocked mutex is a fatal error no recover catches.
 func (s *server) slow(id string, work func()) {
 	var done chan struct{}
 	if id != "" {

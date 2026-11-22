@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"image"
@@ -167,4 +168,32 @@ func TestImageAttachWaitsForItsConfirm(t *testing.T) {
 	if receipt.Type != "image" || receipt.Width != 20 || receipt.Height != 10 || receipt.ApprovedBy != actor || receipt.Text != "" {
 		t.Fatalf("receipt: %s", r.Result)
 	}
+}
+
+// A spreadsheet whose cell names a column past any spreadsheet's made the
+// extraction panic while the attachment ran without the daemon's lock, and
+// unwinding then unlocked that lock a second time: a fatal error no recover
+// catches, which took the daemon and every session in it down. Attaching it
+// is now an ordinary call that answers.
+func TestAHostileSpreadsheetDoesNotStopTheDaemon(t *testing.T) {
+	path, _ := start(t, options(t))
+	c := connect(t, path)
+	identity(t, c)
+	id := opened(t, c, t.TempDir())
+	var buf bytes.Buffer
+	z := zip.NewWriter(&buf)
+	w, err := z.Create("xl/worksheets/sheet1.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte(`<worksheet><row r="1"><c r="ZZZZZZZZZZZZZZ1"><v>1</v></c></row></worksheet>`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "sheet.xlsx")
+	must.WriteFile(t, file, buf.Bytes(), 0o600)
+	c.ok("session.attach", map[string]any{"id": id, "path": file})
+	c.ok("session.list", map[string]any{})
 }

@@ -826,12 +826,12 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 		provider = llm.NewOllama(m.URL)
 	}
 	// The request runs without the lifecycle lock, as the probes do.
-	s.mu.Unlock()
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(s.base(), 60*time.Second)
-	_, err = provider.Chat(ctx, llm.Request{Model: m.Model, Messages: []llm.Message{{Role: llm.RoleUser, Content: "Reply with the single word ok."}}, MaxTokens: 256, Effort: effort}, nil)
-	cancel()
-	s.mu.Lock()
+	s.slow("", func() {
+		ctx, cancel := context.WithTimeout(s.base(), 60*time.Second)
+		defer cancel()
+		_, err = provider.Chat(ctx, llm.Request{Model: m.Model, Messages: []llm.Message{{Role: llm.RoleUser, Content: "Reply with the single word ok."}}, MaxTokens: 256, Effort: effort}, nil)
+	})
 	result.Ms = time.Since(started).Milliseconds()
 	classify(&result, err, u.Host, m.Provider)
 	return result, nil

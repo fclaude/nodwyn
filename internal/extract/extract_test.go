@@ -170,3 +170,22 @@ func TestPDF(t *testing.T) {
 		t.Fatalf("%+v %v", r, err)
 	}
 }
+
+// A cell reference past the widest column a spreadsheet has, XFD, is no
+// spreadsheet's: following one padded the row with millions of empty
+// fields, or overflowed the column number and panicked. The cell keeps the
+// column it would have without a reference.
+func TestXlsxIgnoresAColumnPastXFD(t *testing.T) {
+	for _, ref := range []string{"ZZZZZ1", "ZZZZZZZZZZZZZZ1", "XFE1"} {
+		path := zipFile(t, "wide.xlsx", map[string]string{
+			"xl/worksheets/sheet1.xml": `<worksheet><row r="1"><c r="A1"><v>a</v></c><c r="` + ref + `"><v>b</v></c></row></worksheet>`,
+		})
+		r, err := File(context.Background(), path, "wide.xlsx")
+		if err != nil || !strings.Contains(r.Text, "1: a\tb\n") {
+			t.Fatalf("%s: got %d bytes %.80q (%v)", ref, len(r.Text), r.Text, err)
+		}
+	}
+	if col, ok := cellColumn("XFD1"); !ok || col != 16383 {
+		t.Fatalf("XFD1 is column %d, %v", col, ok)
+	}
+}

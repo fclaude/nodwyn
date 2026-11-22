@@ -31,9 +31,9 @@ func (s *server) searchConversation(req request, _ *peer) (any, *rpcError) {
 	store := s.store()
 	// A first search may build derived word indexes. It must not hold up
 	// lifecycle operations for other clients while reading these logs.
-	s.mu.Unlock()
-	result, err := store.SearchConversations(p.ID, p.Scope, p.Query, p.Limit)
-	s.mu.Lock()
+	var result any
+	var err error
+	s.slow("", func() { result, err = store.SearchConversations(p.ID, p.Scope, p.Query, p.Limit) })
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}

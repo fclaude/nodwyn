@@ -459,9 +459,12 @@ func (s *server) worktreeDiff(req request, _ *peer) (any, *rpcError) {
 	o.Private = []string{s.options.Paths.ConfigDir, s.options.Paths.DataDir}
 	ctx, cancel := context.WithTimeout(context.Background(), reviewDiffTimeout)
 	defer cancel()
-	s.mu.Unlock()
-	changes, omitted, err := prim.ChangedSince(ctx, o, w.BaseCommit, maxVersionDiffBytes, maxReviewDiffBytes)
-	s.mu.Lock()
+	var changes []prim.Change
+	var omitted int
+	var err error
+	s.slow("", func() {
+		changes, omitted, err = prim.ChangedSince(ctx, o, w.BaseCommit, maxVersionDiffBytes, maxReviewDiffBytes)
+	})
 	if errors.Is(err, context.DeadlineExceeded) {
 		return nil, failure(-32000, "Reading the changes took too long")
 	}
@@ -551,9 +554,9 @@ func (s *server) attach(req request, client *peer) (any, *rpcError) {
 	// (as mcp.inspect is). The session itself refuses a turn meanwhile, and
 	// closing it cancels the attachment.
 	session := owned.session
-	s.mu.Unlock()
-	receipt, err := session.Attach(p.Path, p.Name, client.actor)
-	s.mu.Lock()
+	var receipt any
+	var err error
+	s.slow("", func() { receipt, err = session.Attach(p.Path, p.Name, client.actor) })
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}
