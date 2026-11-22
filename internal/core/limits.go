@@ -29,9 +29,6 @@ func (s *Session) TaskLimits() (budget.Task, string) {
 // already its context's. The change is recorded before it applies, and
 // resuming the task keeps it.
 func (s *Session) SetLimits(limits budget.Task, actor string) error {
-	if s.opts.Managed != nil {
-		return errors.New("managed: turn limits are operator-owned")
-	}
 	if err := limits.Validate(); err != nil {
 		return err
 	}

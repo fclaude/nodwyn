@@ -1,7 +1,7 @@
 # ADR 56: A managed service for children's static apps
 
 - Date: 2026-10-24
-- Status: implemented; deployment and parent enrolment are separate acceptance steps
+- Status: withdrawn 2026-11-21 (see the amendment); it was implemented, and never deployed
 - Amends: 17, 18, 22, 30, 34, 36, 39, 45
 
 The family laptop launchers pointed to two consoles which had never been
@@ -110,3 +110,20 @@ The HTTP-protocol regression exercises thinking/text with nil and non-nil
 callbacks and fails against the preceding implementation. No daily reservation
 is refunded after a failed request. The family operator also explicitly chose
 no family-specific phrase filter in the separate publication policy.
+
+## Amendment 2026-11-21: withdrawn
+
+The managed service is removed: `cmd/nodwyn-kids`, `internal/frontend/kids`,
+the core's `Options.Managed` ceiling (`internal/core/managed.go` and its
+checks in the session's methods), the bridge's `ManagedHTTP` surface, the
+primitives' `WriteFile` sink and the `kids` browser check. It was never
+deployed, and nobody uses it; keeping it meant every change to the core,
+the bridge and the primitives carried a second embedding with its own
+authority rules. A review on 2026-11-21 also found its operator commands
+(`--invite`, `--revoke`) acting on a profile before checking it, and its
+profile format documented nowhere.
+
+None of the Decision above stands. What it amended in ADRs 17, 18, 22, 30,
+34, 36, 39 and 45 applied only to a session embedded with that profile, so
+ordinary sessions are unchanged by the removal. Mentions of managed
+sessions in ADR 49 and ADR 62 describe what was built then.

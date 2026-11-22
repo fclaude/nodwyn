@@ -27,10 +27,6 @@ import (
 
 // Options build a Session.
 type Options struct {
-	// Managed is selected only by the operator embedding the core. It cannot
-	// be enabled, replaced or widened by a project or a session.
-	Managed *ManagedProfile
-
 	Config   config.Config
 	Paths    config.Paths
 	Repo     string // repository root; every path is pinned under it
@@ -238,12 +234,6 @@ func fileExists(p string) bool {
 }
 
 func resolveOptions(o Options) (Options, error) {
-	if o.Managed != nil {
-		if err := o.Managed.validate(o); err != nil {
-			return Options{}, err
-		}
-	}
-
 	if o.Limits != nil {
 		if err := o.Limits.Limits.Validate(); err != nil {
 			return Options{}, err
@@ -415,11 +405,6 @@ func (s *Session) primitiveOptions() prim.Options {
 	// put back (keep.go).
 	po.Keeper = prim.NewKeeper(po)
 	s.keeper = po.Keeper
-	if o.Managed != nil {
-		po.Scratch, po.Temp, po.Mounts = "", "", nil
-		po.Procs, po.Terms, po.Keeper = nil, nil, nil
-		po.WriteFile = o.Managed.WriteFile
-	}
 	return po
 }
 
@@ -483,9 +468,6 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 // trustedProject takes one snapshot, so a file changed after its trust check
 // is never the code or policy loaded by this session.
 func (s *Session) trustedProject() (config.ProjectFiles, error) {
-	if s.opts.Managed != nil {
-		return config.ProjectFiles{}, nil
-	}
 	files, err := config.ReadProjectFiles(s.opts.Repo)
 	if err != nil {
 		return config.ProjectFiles{}, err
@@ -525,9 +507,6 @@ func (s *Session) initialize() (err error) {
 	// its tools are (ADR 9). A resumed session resolves it again, from the
 	// configuration, the environment and the way it is resumed.
 	profileEnv := os.Getenv(config.ProfileEnv)
-	if o.Managed != nil {
-		profileEnv = config.ProfileLean
-	}
 	if s.profile, err = o.Config.Loop.ResolveProfile(profileEnv, o.unattended()); err != nil {
 		return fmt.Errorf("core: %w", err)
 	}

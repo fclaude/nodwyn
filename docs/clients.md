@@ -291,22 +291,6 @@ task it opened there before any model is asked.
   current-turn gauges still read the loaded conversation. The TUI computes
   its own in `gauge.go` and `plan_budget.go`.
 
-## Managed child console (ADR 56)
-
-`nodwyn-kids` is a separate deployment embedding the core. Its browser has
-projects, a conversation, Stop, See app and website links. Create, rename and
-confirmed deletion are validated host operations. It exposes neither the TUI,
-ordinary RPC, tools/thinking/logs, settings, approvals nor linked hosts.
-Parent passkey devices can invite/revoke plain browsers after a fresh touch.
-Operator bootstrap is `nodwyn-kids --profile PATH --invite parent`; keep that
-invitation private. Laptop browsers receive only plain child invitations.
-
-The managed console accepts a one-use child invitation in a URL fragment for
-operator bootstrap of a private profile. It clears the fragment immediately
-and leaves any existing pairing intact; this never registers a passkey.
-
-Operator recovery can revoke one named managed device with `nodwyn-kids --profile PATH --revoke NAME`; ordinary browser administration still requires the parent passkey touch.
-
 The console header names the connected daemon as `account@host` and separately
 names the execution daemon while viewing a task, or the settings daemon
 while viewing linked settings. The new-task Runs on picker names its selected

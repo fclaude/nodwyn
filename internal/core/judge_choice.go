@@ -199,9 +199,6 @@ func (s *Session) SetJudgeFrom(c config.Config, server, actor string) (JudgeStat
 }
 
 func (s *Session) setJudge(cfg config.Config, server, actor string) (JudgeState, error) {
-	if s.opts.Managed != nil {
-		return JudgeState{}, errors.New("managed: judge selection is unavailable")
-	}
 	done, err := s.holdIdle()
 	if err != nil {
 		return JudgeState{}, err

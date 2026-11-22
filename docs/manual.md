@@ -3473,35 +3473,6 @@ leaving a `notes.md.before-path-migration` backup. Conflicting note contents or
 duplicate registered aliases require manual reconciliation; nodwyn does not merge
 permissions or discard one copy. See [ADR 45](adr/0045-project-trust-and-security-boundaries.md).
 
-## Managed children's app service
-
-The separate `nodwyn-kids --profile /etc/nodwyn-kids/profile.json` deployment
-serves the restricted My projects interface described in ADR 56. It is not an
-option that makes an ordinary desktop daemon a child sandbox. Open its private
-HTTPS hostname, connect each browser with its own one-use child invitation,
-create a project and describe the app or change. See app opens its separate
-private preview origin; Your website opens the last checked public publication.
-Saved means the edit is durable; it does not mean publication has succeeded.
-An operator path whose parent is a directory alias, such as macOS's `/var`,
-keeps the same journalled writes as its physical spelling. Links within a
-project are still refused.
-
-Only the operator bootstraps a parent invitation. Register a passkey separately
-on each child hostname; this does not replace another host's registration.
-Parent controls require a fresh passkey touch and can invite/revoke child
-browsers. Provider, policy and lower budget configuration remain operator-owned.
-At the daily allowance, building resumes on the next Los Angeles civil day.
-Public publication waits for the explicit operator policy (with family phrase filtering when selected) and never runs app
-code. Neither a tripwire nor CSP can identify every kind of personal content;
-the parent should review what children publish.
-
-An operator may open a one-use plain child invitation in that child's own
-profile with `/#child-invite=CODE&device=NAME`. The managed page removes the
-fragment before sending requests, consumes it only for an unpaired browser,
-and never replaces an existing pairing. Use no parent invitation for this.
-
-For operator recovery, `nodwyn-kids --profile PATH --revoke NAME` removes one named device. Use parent passkey controls for routine administration.
-
 ## Desktop shortcut icon
 
 The native app's icon is a dark **n** and blue dot on a cream rounded tile, on

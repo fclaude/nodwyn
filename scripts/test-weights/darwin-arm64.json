@@ -267,8 +267,6 @@
       "TestMCPToolsCrossTheGuard": 3.65,
       "TestMCPWithoutAKeyIsANamedDestination": 1.8,
       "TestMalformedPromptFailsTheSession": 2.74,
-      "TestManagedEnvelopeRefusesGuessedAndNestedHostCalls": 0.0,
-      "TestManagedGateIsBeforeAnyApprovalAndCannotBeLiftedByScheme": 0.0,
       "TestMemoryIsFoldedFromTheEndAndChecked": 0.71,
       "TestMissingControlFailsAtTheFirstModelRequest": 2.09,
       "TestModelAndWindowPrimitives": 2.03,

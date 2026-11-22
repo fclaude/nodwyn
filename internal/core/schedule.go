@@ -3,7 +3,6 @@ package core
 import (
 	"cmp"
 	"context"
-	"errors"
 	"slices"
 	"time"
 
@@ -238,9 +237,6 @@ func (s *Session) SendScheduled(text string, run log.ScheduleRun) error {
 // same run marker, approvals, budget and cancellation as a scheduled message.
 // Evaluation history stays out of model context, as with StartEval.
 func (s *Session) EvalScheduled(source string, run log.ScheduleRun) error {
-	if s.opts.Managed != nil {
-		return errors.New("managed: frontend evaluation is unavailable")
-	}
 	if err := s.scheduledApproval(); err != nil {
 		return err
 	}

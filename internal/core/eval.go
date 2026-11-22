@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 
 	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -14,9 +13,6 @@ import (
 // eval.result) and cannot overlap a turn. Source and result are redacted on
 // the durable path; neither enters model context.
 func (s *Session) StartEval(source, actor string) error {
-	if s.opts.Managed != nil {
-		return errors.New("managed: frontend evaluation is unavailable")
-	}
 	return s.startTurn(func(ctx context.Context) error {
 		_, err := s.evalRecorded(ctx, source, actor)
 		return err

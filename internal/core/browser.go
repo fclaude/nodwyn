@@ -127,11 +127,10 @@ type taskBrowser struct {
 }
 
 // registerBrowser offers the browser's primitives when config.toml lists
-// sites for it. A managed child app (ADR 56) gets none, as it gets no MCP
-// server.
+// sites for it.
 func (s *Session) registerBrowser() error {
 	sites := s.opts.Config.Browser.Sites
-	if len(sites) == 0 || s.opts.Managed != nil {
+	if len(sites) == 0 {
 		return nil
 	}
 	allow, err := egress.Allow(sites)
