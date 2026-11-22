@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -138,10 +139,36 @@ func (d *Devices) save(f deviceFile) error {
 	return os.Rename(tmp.Name(), d.path)
 }
 
+// fileLock holds devices.toml for one change against every process: the
+// console, the daemon and `nodwyn devices` each load the whole file, change
+// it and save it, and d.mu serialises only this process, so a revocation
+// saved from the terminal between a running console's load and its save
+// was undone by that save (a review, 2026-11-21). The lock is a file of its
+// own beside it, which the atomic rename of a save does not replace.
+func (d *Devices) fileLock() (unlock func(), err error) {
+	if err := os.MkdirAll(filepath.Dir(d.path), 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(d.path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return func() { f.Close() }, nil
+}
+
 // change loads the file, lets fn change it and saves it, under the lock.
 func (d *Devices) change(fn func(f *deviceFile) error) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	unlock, err := d.fileLock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	f, err := d.load()
 	if err != nil {
 		return err
@@ -190,6 +217,18 @@ func (d *Devices) Check(token string) (Device, bool) {
 	want := digest(token)
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	// Check may save (last seen, an idle device dropped), so it holds the
+	// file as change does. A file it cannot lock (a read-only directory)
+	// is still read, and not saved.
+	unlock, lockErr := d.fileLock()
+	if lockErr == nil {
+		defer unlock()
+	}
+	save := func(f deviceFile) {
+		if lockErr == nil {
+			_ = d.save(f)
+		}
+	}
 	f, err := d.load()
 	if err != nil {
 		return Device{}, false
@@ -201,14 +240,14 @@ func (d *Devices) Check(token string) (Device, bool) {
 		now := time.Now().UTC()
 		if now.Sub(x.LastSeen) > idleLife {
 			f.Device = slices.Delete(f.Device, i, i+1)
-			_ = d.save(f)
+			save(f)
 			return Device{}, false
 		}
 		// Last seen is kept to the hour: enough for the idle limit and to
 		// spot a stale device, without rewriting the file on every request.
 		if now.Sub(x.LastSeen) > time.Hour {
 			f.Device[i].LastSeen = now.Truncate(time.Second)
-			_ = d.save(f)
+			save(f)
 		}
 		if !slices.ContainsFunc(f.Passkey, func(p Passkey) bool { return p.Name == x.Passkey }) {
 			x.Passkey = ""

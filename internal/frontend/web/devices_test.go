@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -292,5 +294,49 @@ func TestAnInvitationTakesNoNameInUse(t *testing.T) {
 	}
 	if d, ok := devices.Check(again); !ok || d.Passkey != "laptop" {
 		t.Fatalf("the tablet signed in again: %+v", d)
+	}
+}
+
+// The console, the daemon and nodwyn devices each load devices.toml, change
+// it and save it, and the lock was only each process's own: a revocation
+// saved from the terminal between a console's load and its save was undone.
+// A change waits for the file's lock, which another process may hold.
+func TestAChangeToTheDevicesFileWaitsForAnotherProcess(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "devices.toml")
+	d := OpenDevices(path)
+	code, _, err := d.Invite(Terminal, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Join(code, "phone"); err != nil {
+		t.Fatal(err)
+	}
+	// Another process holds the file, as it does between its load and save.
+	held, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Flock(int(held.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- OpenDevices(path).Revoke("phone") }()
+	select {
+	case err := <-done:
+		held.Close()
+		t.Fatalf("the revocation did not wait for the other process: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	held.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the revocation never went ahead")
+	}
+	if list, err := d.List(); err != nil || len(list) != 0 {
+		t.Fatalf("devices: %v %v", list, err)
 	}
 }
