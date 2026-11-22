@@ -293,8 +293,24 @@ def process_table():
     return rows
 
 
+def memory_readings():
+    readings = []
+    for path, keys in (("/proc/meminfo", {"MemTotal", "MemAvailable"}),
+                       ("/proc/vmstat", {"oom_kill"})):
+        try:
+            lines = Path(path).read_text().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            key, _, value = line.partition(" ")
+            key = key.rstrip(":")
+            if key in keys:
+                readings.append(f"{key}={value.strip()}")
+    return ", ".join(readings) or "memory counters unavailable"
+
+
 class Supervisor:
-    def __init__(self, directory, limit=900):
+    def __init__(self, directory, limit=900, *, progress=False):
         self.directory = directory
         self.scratch = directory
         self.limit = limit
@@ -302,8 +318,11 @@ class Supervisor:
         self.jobs = []
         self.owned = {}
         self.groups = {}
+        self.progress = progress
+        self.next_progress = self.started
 
     def start(self, label, command, cwd, env, capture=False):
+        self.report_progress()
         log = self.directory / (label + ".log")
         output = self.directory / (label + ".stdout") if capture else log
         handles = [output.open("w")]
@@ -322,6 +341,8 @@ class Supervisor:
         job = {"label": label, "process": process, "handles": handles,
                "log": log, "output": output, "command": command}
         self.jobs.append(job)
+        if self.progress:
+            print(f"make test: started {label}", flush=True)
         self.sample()
         self.receipt()
         return job
@@ -355,7 +376,26 @@ class Supervisor:
         for pid in family:
             if pid in rows:
                 self.owned[pid] = rows[pid]
+        self.report_progress()
         return rows
+
+    def report_progress(self, *, final=False):
+        if not self.progress:
+            return
+        running = []
+        for job in self.jobs:
+            status = job["process"].poll()
+            if status is None:
+                running.append(job["label"])
+            elif not job.get("reported_exit"):
+                print(f"make test: finished {job['label']} (exit {status})", flush=True)
+                job["reported_exit"] = True
+        now = time.monotonic()
+        if final or now >= self.next_progress:
+            self.next_progress = now + 15
+            active = ", ".join(running) or "none"
+            print(f"make test: {now - self.started:.0f}s elapsed, active: {active}; "
+                  f"memory: {memory_readings()}", flush=True)
 
     def wait(self, job):
         process = job["process"]
@@ -397,6 +437,7 @@ class Supervisor:
                      if pid in rows and rows[pid][2:] == original[2:]]
         (self.directory / "cleanup.json").write_text(json.dumps({"remaining": remaining}) + "\n")
         self.receipt()
+        self.report_progress(final=True)
         if remaining:
             raise RuntimeError("test processes remain: " + repr(remaining))
 
@@ -408,6 +449,8 @@ def run_suite(root, supervisor, env, profile, cpu_count, weights, race=False):
         if requested < 1:
             raise ValueError("NODWYN_TEST_JOBS must be a positive integer")
         hot_limit = min(hot_limit, requested)
+    if supervisor.progress:
+        print(f"make test: up to {hot_limit} concurrent shards on {cpu_count} logical CPUs", flush=True)
     race_flags = ["-race"] if race else []
     listing = supervisor.start("packages", ["go", "list", "-json", "./..."], root, env, capture=True)
     packages = list(json_stream(supervisor.wait(listing)))
@@ -480,7 +523,7 @@ def main(arguments):
     cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
     env = dict(os.environ)
     env.setdefault("GOMEMLIMIT", "off")
-    supervisor = Supervisor(directory)
+    supervisor = Supervisor(directory, progress=env.get("NODWYN_TEST_PROGRESS") == "1")
     workspace = MacRamWorkspace(directory)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     signal.signal(signal.SIGHUP, lambda *_: sys.exit(129))

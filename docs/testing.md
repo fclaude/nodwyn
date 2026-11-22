@@ -38,8 +38,20 @@ and reserving 2 GiB for the other packages, runner and file cache. On an eight-C
 runner, the core suite is split into eight shards and runs up to two at once.
 The kernel killed `core.test` when five shards ran together on 2026-11-17. A
 local attempt with three larger shards also hit the 8 GiB limit.
-GitHub runs the browser checks and builds the macOS app. It also publishes
-the website and releases.
+
+## GitHub Actions
+
+The Linux acceptance step caps concurrent shards at two and keeps the full
+race suite. It prints phase and shard starts and exits, plus a memory reading
+at startup, every 15 seconds while waiting, and at cleanup. The Linux reading
+includes total and available memory and the kernel's OOM-kill counter when
+available. Set `NODWYN_TEST_PROGRESS=1` to see the same progress in a local
+sharded run.
+
+The Linux job has a 45-minute limit. New pushes to `main` cancel older push
+CI in progress. A manually dispatched release runs its own acceptance check.
+GitHub also runs the browser and macOS app checks and publishes the website
+and releases.
 
 ## Automatic platform settings
 

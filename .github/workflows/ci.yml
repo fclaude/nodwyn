@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
   check:
@@ -26,6 +26,9 @@ jobs:
           # The exact Go named by go.mod's toolchain line (ADR 33).
           go-version-file: go.mod
       - name: Acceptance checks
+        env:
+          NODWYN_TEST_JOBS: '2'
+          NODWYN_TEST_PROGRESS: '1'
         run: make accept GO_TEST_FLAGS=-count=1
       - name: Release builder checks
         run: |

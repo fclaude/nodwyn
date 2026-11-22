@@ -88,7 +88,8 @@ class RunnerTests(unittest.TestCase):
         self.env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ["PATH"],
                         FAKE_ROOT=str(self.repo), FAKE_EVENTS=str(self.events), TMPDIR=str(self.root),
                         NODWYN_TEST_RAM="off")
-        for key in ["GOFLAGS", "GOMAXPROCS", "GOOS", "GOARCH", "NODWYN_TEST_MODE", "NODWYN_TEST_JOBS"]:
+        for key in ["GOFLAGS", "GOMAXPROCS", "GOOS", "GOARCH", "NODWYN_TEST_MODE",
+                    "NODWYN_TEST_JOBS", "NODWYN_TEST_PROGRESS"]:
             self.env.pop(key, None)
 
     def run_command(self, *args, mode=""):
@@ -144,6 +145,20 @@ class RunnerTests(unittest.TestCase):
         commands = [r["args"] for r in self.recorded() if r["kind"] == "go" and r["args"][0] == "test"]
         self.assertEqual(len(commands), 2)
         self.assertTrue(all("-race" in command for command in commands))
+
+    def test_progress_reports_shards_and_memory(self):
+        self.env.update(NODWYN_TEST_JOBS="2", NODWYN_TEST_PROGRESS="1")
+        code, text = self.run_command("--race", "-count=1")
+        self.assertEqual(code, 0, text)
+        self.assertIn("up to 2 concurrent shards", text)
+        label = "internal-core-0"
+        started = text.index(f"started {label}")
+        finished = text.index(f"finished {label} (exit 0)")
+        self.assertLess(started, finished)
+        final = text.rindex("active: none; memory:")
+        self.assertLess(finished, final)
+        self.assertLess(final, text.index("PASS make test:"))
+        self.assertGreaterEqual(text.count("; memory:"), 2)
 
     def test_explicit_test_filter_preserves_go_semantics(self):
         code, text = self.run_command("--race", "-run", "TestExtra", "-count=2")

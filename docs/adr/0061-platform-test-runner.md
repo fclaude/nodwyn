@@ -111,3 +111,20 @@ can lower the sharded runner's queue limit. Gitea derives this limit from its
 memory cgroup independently of its CPU quota, leaving 2 GiB for the runner,
 the other packages and the file cache. It allows two concurrent shards on
 the 8 GiB runner.
+
+## Amendment 2026-11-22: GitHub acceptance reports progress and memory
+
+Four GitHub Linux jobs reached the 45-minute limit inside acceptance and had
+no downloadable job logs. A release retry on the latest affected commit
+passed the same check in under six minutes. GitHub also held newer pushes
+behind a stalled run on `main`.
+
+- GitHub acceptance sets `NODWYN_TEST_JOBS=2` to reduce concurrent race-test
+  memory use while retaining the existing partitioning and coverage.
+- GitHub acceptance enables `NODWYN_TEST_PROGRESS=1`. The sharded runner
+  writes phase and shard starts and exits and periodic Linux memory readings
+  directly to the job log. The OOM-kill counter can help distinguish memory
+  pressure from other stalls.
+- A new push to `main` can cancel obsolete push CI. Manual release checks
+  keep their own concurrency group, and the Linux job keeps its 45-minute
+  limit.
