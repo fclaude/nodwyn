@@ -281,20 +281,28 @@ check(async () => {
   // another host and back.
   await page.selectOption("#runs-on", "workshop");
   await page.waitForSelector(".work-in-host:has-text('Folders on workshop')");
+  // It is a page of its own, closed after the step. A routed page's socket
+  // still says it is open for a moment after the server has closed the real
+  // one behind it, so a request sent then makes Chromium log "WebSocket is
+  // already in CLOSING or CLOSED state.", which a page's own socket never
+  // does; the steps below close workshop's (GitHub's run 45214577737).
+  const slow = watch(await context.newPage(), "laptop, workshop slow");
   let holding = true;
-  await page.routeWebSocket(/[?&]host=workshop/, (ws) => {
+  await slow.routeWebSocket(/[?&]host=workshop/, (ws) => {
     const server = ws.connectToServer();
     server.onMessage((message) => setTimeout(() => ws.send(message), holding ? 1500 : 0));
   });
-  await page.reload();
-  await page.waitForFunction(() => document.activeElement?.id === "task");
-  await page.keyboard.type("half a thought");
-  await page.waitForSelector(".nav-host[data-host='workshop'] .host-head:has-text('ready')", { timeout: 20000 });
+  await slow.goto(page.url());
+  await slow.waitForFunction(() => document.activeElement?.id === "task");
+  await slow.keyboard.type("half a thought");
+  await slow.waitForSelector(".nav-host[data-host='workshop'] .host-head:has-text('ready')", { timeout: 20000 });
   holding = false;
+  await slow.waitForSelector("#work-in button.chip:has-text('work')");
+  await shows(slow, ".ask-setup .where", workshop.modelHost);
+  assert.deepStrictEqual(await slow.evaluate(() => [document.activeElement?.id, document.querySelector("#task").value]), ["task", "half a thought"], "the message box lost the focus or the message when workshop answered");
+  await slow.close();
   await page.waitForSelector("#work-in button.chip:has-text('work')");
   await shows(page, ".ask-setup .where", workshop.modelHost);
-  assert.deepStrictEqual(await page.evaluate(() => [document.activeElement?.id, document.querySelector("#task").value]), ["task", "half a thought"], "the message box lost the focus or the message when workshop answered");
-  await page.fill("#task", "");
   // Runs on and the model are one strip, in the same place and of the same
   // height whichever host is chosen, and Send ends the row under it.
   const strip = () =>
