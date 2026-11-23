@@ -8,6 +8,8 @@ By default a write inside the task's folder goes ahead. The diff is logged and s
 
 Some things always ask you, whatever the settings say: a write to a protected path (git hooks, CI configuration, the Makefile, `scripts/`, `.nodwyn/`), content that looks like a credential, a request that carries a credential, and an upload. Nothing outside the task's folder gets written at all.
 
+That promise covers the model's file tools, where nodwyn sees the path. A shell command is judged as a command: if you approve it, or a rule, the judge or **Don't ask** does, it can change a protected file without a separate question. `git config core.hooksPath …` and `sed -i … Makefile` are examples. Read a command before approving it.
+
 ![Settings, General: what a task may do without asking](shot:settings-general)
 
 Settings › General › Approvals sets the first two. **Writing files** is *Without asking* or *Ask me*, and **Running commands** is *Judge + me*, *Judge only*, *Ask me* or *Allow all*. Whichever you choose for commands also answers a command that names a path outside the task's folder (a read of the Go module cache, say) or is built from what a tool returned. *Judge only* refuses what the judge doesn't allow rather than putting it to you, and *Allow all* runs it; writes, sending out and keys still ask you. The last two ask the judge nothing at all, not even to score the plan, so they cost no judge tokens.
@@ -45,7 +47,7 @@ A standing approval still checks arguments: flags that pick a program, an output
 
 ## Don't ask
 
-Settings › General › Approvals › **Don't ask in tasks** can offer a switch under each task's reply box. With it on, that task's ordinary writes and commands go through without a question until you turn it off or the task closes. Protected paths and credential-shaped content still ask, and nothing the guard refuses becomes allowed. It's never saved, so a resumed task asks again. The setting is off until you choose to offer it, and it shows a red warning while it's on. Use it only in a task you're watching.
+Settings › General › Approvals › **Don't ask in tasks** can offer a switch under each task's reply box. With it on, that task's ordinary writes and commands go through without a question until you turn it off or the task closes. Protected paths and credential-shaped content still ask when the model writes them directly, and nothing the guard refuses becomes allowed. Commands, though, are what this switch approves, so a command that edits the Makefile or git's configuration goes through too. It's never saved, so a resumed task asks again. The setting is off until you choose to offer it, and it shows a red warning while it's on. Use it only in a task you're watching.
 
 ## The judge
 

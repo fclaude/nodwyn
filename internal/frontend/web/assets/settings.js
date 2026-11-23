@@ -528,7 +528,7 @@ function approvalSection(ctx, redraw) {
   return section(
     "approval",
     "Approvals",
-    "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/) and content that looks like a credential always ask, and nothing outside the task's folder is written. Who answers commands answers every command, one naming a path outside the folder or built from what a tool returned included; each task can be given its own, as it starts or since. “Always”, in a question, covers that command or folder for the rest of the task.",
+    "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/) and content that looks like a credential always ask, and nothing outside the task's folder is written. A command is judged as a command: one that is answered can change a protected file, as git config or sed -i can. Who answers commands answers every command, one naming a path outside the folder or built from what a tool returned included; each task can be given its own, as it starts or since. “Always”, in a question, covers that command or folder for the rest of the task.",
     ...row("Writing files", choice(ctx, "approval.writes", writeChoices, redraw), h("p", { class: "hint" }, writesHint(picked(desk, "approval.writes")))),
     ...row("Running commands", choice(ctx, "approval.commands", commandsChoices, redraw), h("p", { class: "hint" }, commandsHint(picked(desk, "approval.commands"), !!desk.settings?.judge))),
     ...row(
@@ -596,7 +596,7 @@ function dontAskWarning() {
       "div",
       { class: "danger-body" },
       h("strong", {}, "Don't ask hands a task the keys to your account."),
-      h("p", {}, "Each task gets a Don't ask switch. Once it is on, every write and command the model asks for runs as you — no judge, no question, nobody looking — until you switch it off or the task closes. Only protected files, content that looks like a key and commands built from tool output still ask."),
+      h("p", {}, "Each task gets a Don't ask switch. Once it is on, every write and command the model asks for runs as you — no judge, no question, nobody looking — until you switch it off or the task closes. Only the model's own writes to protected files, content that looks like a key and commands built from tool output still ask: a command that edits the Makefile or git's configuration runs."),
       h("p", {}, "What models did here while it was on, none of it asked:"),
       h(
         "ul",

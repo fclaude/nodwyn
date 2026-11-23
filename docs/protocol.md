@@ -513,6 +513,9 @@ write or command) is answered yes without a prompt, as the person who turned
 it on, recorded in the `guard.decision` with `scope: "all"`; a confirmation
 pending when it is turned on is answered too, and nothing is installed.
 Security confirmations and protected paths still prompt, and denials stand.
+A protected path is one a write primitive names; a command that changes a
+protected file is an ordinary command and is answered (ADR 17, amended
+2026-11-22).
 It lives in the daemon's memory for that session only: no Scheme primitive
 reads or changes it, whatever the code's origin (a repository's
 `.nodwyn/init.scm` runs as user-origin Scheme), a resumed session starts

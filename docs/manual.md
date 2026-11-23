@@ -749,6 +749,17 @@ dont_ask = false    # the default: no task offers "Don't ask" ("Standing approva
   an upload. A command built from tool output, or naming a path outside the
   folder, goes to whoever answers commands, below.
 
+  The protected paths are guarded where the guard sees the path: a write by
+  the model's file tools. A command writes whatever the shell lets it, and
+  is judged as a command, so whoever answers commands answers one that
+  changes a protected file: `git config core.hooksPath tools/hooks` (every
+  later commit runs what is there), `sed -i … Makefile`, `echo … >
+  .git/hooks/pre-commit`. A command you approve once, a standing approval
+  covers, the judge allows, Don't ask answers or a run's `--yolo` answers
+  goes ahead, and nothing asks about the protected file. Read a command
+  before you approve it; `git-land` still refuses a `core.hooksPath` the
+  model could have written (ADR 34).
+
 `[approval]` is for sessions a person answers. Line mode's `--no-confirm`
 answers its prompts no, its `--yolo` turns on Don't ask, and `nodwyn run`'s
 flags decide the confirms of a run, below; `writes` applies to every
@@ -1028,8 +1039,11 @@ In the console, **Don't ask: approve writes and commands** under the composer
 stops the questions for one task: its ordinary writes and commands are
 approved without asking until you uncheck it or the task closes. Landing a worktree task's work (git-land)
 counts as one, so it goes ahead too. Protected
-paths and writes that look like a key still ask, and nothing the guard
-refuses is allowed. No Scheme can turn it on, a repository's `init.scm`
+paths and writes that look like a key still ask when the model writes them
+with its file tools, and nothing the guard refuses is allowed. A command is
+ordinary, so one that changes a protected file (`git config`, `sed -i` on
+the Makefile, a redirect into `.git/hooks`) goes ahead unasked ("Confirms"
+above). No Scheme can turn it on, a repository's `init.scm`
 included, and it is never saved: a resumed task asks again. Line mode's
 `--yolo` turns it on as its task opens, and off again when it leaves a task
 another client has open. Since writes in

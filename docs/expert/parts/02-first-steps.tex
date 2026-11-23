@@ -216,7 +216,10 @@ shown, dimmed.
 In the console, \textbf{Don't ask: approve writes and commands} under the
 composer goes further for one task: every ordinary write and command is
 approved until you uncheck it or the task closes, and the judge is not
-asked. Protected paths and writes that look like a key still ask. No Scheme
+asked. Protected paths and writes that look like a key still ask when the
+model writes them with its file tools; a command is ordinary, so one that
+changes a protected file (\code{git config core.hooksPath}, \code{sed -i} on
+the Makefile) goes ahead. No Scheme
 can turn it on, not even a folder's \file{init.scm}, and a resumed task
 starts asking again. The switch is there only once Settings › General › Approvals
 offers it (\code{[approval] dont\_ask = true}, off by default, shown with a
@@ -365,8 +368,9 @@ benchmark, a CI job, a long task on a throwaway checkout. A run's
 \code{-{}-yolo} turns on the task's Don't ask, which Settings must offer:
 the task is still one a person answers.)
 It does not overrule refusals, and it refuses \emph{security} confirms
-rather than pretending someone said yes: writes to protected paths, content
-that looks like a key, a command line built out of tool output. With nobody
+rather than pretending someone said yes: writes to protected paths by the
+file tools, content that looks like a key, a command line built out of tool
+output. A command that changes a protected file is ordinary, and answered. With nobody
 watching, the default loop also changes its manners: it asks the model to
 work by evidence and ends a turn only when something changed and a test ran
 after it (Chapter~\ref{ch:plans}).

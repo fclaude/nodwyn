@@ -247,7 +247,9 @@ unsaved changes keeps those made in every tab. The tabs:
   whether tasks offer **Don't ask**; and, once a Google credential is stored,
   how uploads to Google Docs are handled (the manual, "Documents out"). A
   write to a protected file, content that looks like a credential and a
-  command built from what a tool returned always ask. The transcript says
+  command built from what a tool returned always ask. A protected file is
+  one the model's file tools write; a command that changes one is a command,
+  answered by whoever answers commands. The transcript says
   which calls went ahead, which the judge allowed, and why it refused one.
   - **Advanced** — **Waiting**: how long a model reply and a command may
   take. A task's limits are not here: they are the task's own, set on its
@@ -985,7 +987,8 @@ confirmations remain one-time only; no grant overrides a denial. Under the
 composer, **Don't ask: approve writes and commands** answers every ordinary
 write and command in that task without asking (and a worktree task's git-land), and the question waiting when
 it is checked, until it is unchecked or the task closes; security and
-protected-path questions still ask, the conversation says when it was switched
+protected-path questions still ask (a command that changes a protected
+file is not one: it is answered), the conversation says when it was switched
 and each call it approved says so. It is the daemon's, not Scheme's
 (`session.approve_all`, [protocol](protocol.md)), it is never saved, so a
 resumed task starts asking again, and only this computer turns it on: a

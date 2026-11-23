@@ -538,3 +538,29 @@ repository pin follows them, it also lands under an approved prefix. The
 protected paths were already judged where they lead. It matters with
 `approval.writes = "ask"`; `TestAStandingWriteApprovalFollowsLinks` holds it.
 
+## Amendment 2026-11-22: what a protected path guards, and what it does not
+
+The protected paths (`guard.Protected`: `.nodwyn/`, `.nibb/`, `.github/`,
+`.gitea/`, `scripts/`, `Makefile`, `.git/`) are judged by `ProtectedPaths`,
+which reads the path a write primitive names. A shell command names no path
+the guard can trust to be all it writes: `git config core.hooksPath x` and
+`git config core.sshCommand …` write `.git/config` without naming it, `sed
+-i … Makefile` and `echo … > .git/hooks/pre-commit` name it among other
+words, and the shell can build the name from pieces. The command checkers
+judge what a command reads, where it reaches and whether a standing
+approval may cover its arguments, not what it writes, so `Prompt.Ordinary`
+counts every such command as ordinary. Whoever answers commands answers it:
+the person once, a standing approval, the judge, "don't ask" or a run's
+`--yolo`.
+
+This is a limit, not a decision to change: the documents that said
+protected paths "still ask" under "don't ask" now say they ask for the file
+tools' writes, and that a command which changes a protected file is
+answered as a command. A live session showed it: under "don't ask", a model
+set `git config user.name` through the shell, writing `.git/config`
+unasked. What stands between such a write and the person is `git-land`'s
+refusal of a `core.hooksPath` the model could have written (ADR 34), and
+the person reading a command before approving it. Asking about every
+command that names a protected path, and about `git config` writes and
+`git -c`, would catch the common cases and not a path the shell builds; it
+is not built.

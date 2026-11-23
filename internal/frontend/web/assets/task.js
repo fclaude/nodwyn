@@ -738,7 +738,7 @@ export class TaskView {
     // 2026-10-05).
     const dontAsk = h(
       "label",
-      { class: "dont-ask", title: "Writes and commands in this task are approved without asking until you uncheck this or the task closes. Protected files, writes that look like a key and commands built from tool output still ask; what the guard refuses stays refused." },
+      { class: "dont-ask", title: "Writes and commands in this task are approved without asking until you uncheck this or the task closes. Protected files written by the model's file tools, writes that look like a key and commands built from tool output still ask, but a command that changes a protected file runs; what the guard refuses stays refused." },
       h("input", { type: "checkbox", onchange: (event) => this.setApproveAll(event.target.checked) }),
       h("span", {}, "Don't ask: approve writes and commands"),
     );
