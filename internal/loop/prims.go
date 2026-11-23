@@ -389,6 +389,21 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			if resp, _, err = ask(); err != nil {
 				return scheme.Void, err
 			}
+			// That reply can be empty too: qwen3.8-flash-next named the task,
+			// then replied with neither text nor calls, its thinking
+			// repeating the prompt, and the program got "" (Gitea run 40635,
+			// and 1 of 11 runs against tarro). An empty reply is asked again
+			// once, as a plain ask-model's is (ADR 32, amended 2026-10-06).
+			if strings.TrimSpace(resp.Message.Content) == "" && len(resp.Message.ToolCalls) == 0 {
+				if t.budget != nil {
+					if err := t.budget.Check(c.Ctx); err != nil {
+						return scheme.Void, halt(err)
+					}
+				}
+				if resp, _, err = ask(); err != nil {
+					return scheme.Void, err
+				}
+			}
 		}
 	}
 	t.expect(resp.Message.ToolCalls)

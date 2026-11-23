@@ -342,3 +342,35 @@ func TestAReplyThatOnlyNamesTheTaskIsAskedAgain(t *testing.T) {
 		t.Fatalf("the program saw %q (%s)", result.Value, result.Error)
 	}
 }
+
+// The reply after naming the task can be empty as well: the flash model on
+// the Gitea runner named the task, then replied with nothing, and the
+// program got "" (run 40635). That reply is asked again once, as an empty
+// plain reply is, and the third reply is the one returned.
+func TestAnEmptyReplyAfterNamingTheTaskIsAskedAgain(t *testing.T) {
+	r := titleRigAnswering(t, true, false,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "n", Name: "name-task", Args: map[string]any{"title": "Confirm the agent is ready"}}}},
+		fake.Turn{Content: ""},
+		fake.Turn{Content: "ready"})
+	src := `(add-message "Reply with the single word ready.")
+(let ((reply (model-turn "control" '((tools . #f)))))
+  (list (assoc-ref reply 'content) (length (assoc-ref reply 'tool-calls '()))))`
+	if err := r.s.EvalScheduled(src, log.ScheduleRun{Started: time.Now(), Manual: true, Actor: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if len(r.srv.Requests) != 3 || len(r.srv.Requests[2].Tools) != 0 {
+		t.Fatalf("%d requests; want three, the last offering no tools", len(r.srv.Requests))
+	}
+	var result log.EvalResult
+	for _, ev := range r.logged() {
+		if ev.Kind == log.KindEvalResult {
+			if err := ev.Decode(&result); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if result.Error != "" || result.Value != `("ready" 0)` {
+		t.Fatalf("the program saw %q (%s)", result.Value, result.Error)
+	}
+}
