@@ -45,7 +45,7 @@ func TestChatReadsAFileAndAResumedTaskRemembersIt(t *testing.T) {
 	w.record("chat-reads-and-resumes")
 	id, out := w.chat(10*time.Minute, nil, "Read the file notes/inventory.md and tell me how many crates the warehouse holds. Answer with the number only.")
 	evs := w.events(id)
-	if got := replies(evs); len(got) == 0 || !strings.Contains(got[len(got)-1], code) {
+	if got := replies(evs); len(got) == 0 || !saysNumber(got[len(got)-1], code) {
 		t.Fatalf("the answer does not give %s: %q\n%s", code, got, out)
 	}
 	if !slices.ContainsFunc(calls(evs), func(c string) bool { return c == "fs-read" || c == "shell-exec" || c == "index-grep" }) {
@@ -57,9 +57,16 @@ func TestChatReadsAFileAndAResumedTaskRemembersIt(t *testing.T) {
 	// A resumed task holds the end of its log and the conversation before it.
 	_, out = w.chat(10*time.Minute, []string{"--resume", id}, "How many crates did you tell me a moment ago? Answer with the number only, without reading any file.")
 	evs = w.events(id)
-	if got := replies(evs); !strings.Contains(got[len(got)-1], code) {
+	if got := replies(evs); !saysNumber(got[len(got)-1], code) {
 		t.Fatalf("resumed, the task did not remember %s: %q\n%s", code, got[len(got)-1], out)
 	}
+}
+
+// saysNumber reports whether reply gives the number n, written with or
+// without thousands separators: qwen3.8-flash-next answered a resumed task
+// with "578,732" for 578732 (the Gitea runner's run 40548).
+func saysNumber(reply, n string) bool {
+	return strings.Contains(strings.NewReplacer(",", "", "\u00a0", "", "\u202f", "", "_", "").Replace(reply), n)
 }
 
 // An unattended run fixes a failing Go test, and the fix holds when the
