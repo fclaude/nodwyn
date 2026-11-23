@@ -10,10 +10,10 @@ Both start so they end near 05:30, before the working day: the endpoint's
 GPU is in use while its owner is awake, and its heat warms the office just
 before work.
 
-- `.gitea/workflows/live.yml` runs the extended tier at 05:12 Pacific every
+- `.gitea/workflows/live.yml` runs the extended tier at 04:55 Pacific every
   morning but Monday's, when main has a commit from the last day (no new commit, nothing to test),
   and by hand with the tier chosen;
-- `.gitea/workflows/live-weekly.yml` runs the extended tier at 05:12 Pacific every
+- `.gitea/workflows/live-weekly.yml` runs the extended tier at 04:55 Pacific every
   Monday, whatever changed, and when it passes, releases the tested commit on GitHub
   (`scripts/release-after-live.py`): it starts GitHub's `release.yml` with the
   next patch version when GitHub's main is the tested commit and has commits

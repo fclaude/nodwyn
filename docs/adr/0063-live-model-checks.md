@@ -76,7 +76,7 @@ pass. Two models tell a regression in nodwyn, which both show, from one
 model's quirk, which one shows: on tarro, `qwen3.8-27b-160k` (27B, dense) and
 `qwen3.8-flash-next-256k` (177B, 10 of 512 experts a token).
 
-Both start at 05:12 Pacific (`TZ=America/Los_Angeles` in the cron, which
+Both start at 04:55 Pacific (`TZ=America/Los_Angeles` in the cron, which
 Gitea reads) and end near 05:30: the endpoint's GPU is its owner's while
 they are awake, so the suite runs while they sleep, and as late as it can,
 since the GPU's heat warms the office just before the working day.

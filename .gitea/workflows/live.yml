@@ -23,11 +23,12 @@ name: Live model checks
 # nodwyn talks to a proxy on 127.0.0.1 and never sees the address.
 on:
   schedule:
-    # 05:12 in California, every morning but Monday's, when live-weekly.yml
+    # 04:55 in California, every morning but Monday's, when live-weekly.yml
     # runs: the endpoint's GPU is the person's while they are awake, and its
     # heat is better spent warming the office just before the working day, so
-    # the run (about 13 minutes) ends near 05:30. Gitea reads the TZ= prefix.
-    - cron: "TZ=America/Los_Angeles 12 5 * * 0,2-6"
+    # the run (about 33 minutes for both models, Gitea run 40548) ends near
+    # 05:30. Gitea reads the TZ= prefix.
+    - cron: "TZ=America/Los_Angeles 55 4 * * 0,2-6"
   workflow_dispatch:
     inputs:
       tier:
