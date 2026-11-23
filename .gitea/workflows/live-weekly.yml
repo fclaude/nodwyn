@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   live:
-    if: ${{ vars.NODWYN_LIVE_PROVIDER != '' && vars.NODWYN_LIVE_MODEL != '' }}
+    if: ${{ vars.NODWYN_LIVE_PROVIDER != '' && vars.NODWYN_LIVE_MODELS != '' }}
     runs-on: ${{ vars.NODWYN_LINUX_RUNNER || 'linux-alpine' }}
     timeout-minutes: 330
     env:
@@ -55,16 +55,15 @@ jobs:
         env:
           NODWYN_LIVE_TIER: extended
           NODWYN_LIVE_PROVIDER: ${{ vars.NODWYN_LIVE_PROVIDER }}
-          NODWYN_LIVE_MODEL: ${{ vars.NODWYN_LIVE_MODEL }}
+          NODWYN_LIVE_MODELS: ${{ vars.NODWYN_LIVE_MODELS }}
           NODWYN_LIVE_DIALECT: ${{ vars.NODWYN_LIVE_DIALECT }}
-          NODWYN_LIVE_NUM_CTX: ${{ vars.NODWYN_LIVE_NUM_CTX }}
           NODWYN_LIVE_URL: ${{ secrets.NODWYN_LIVE_URL }}
           NODWYN_LIVE_KEY: ${{ secrets.NODWYN_LIVE_KEY }}
           NODWYN_LIVE_REPORT: ${{ runner.temp }}/nodwyn-live-report
-        run: make live
+        run: bash scripts/live-models.sh
       - name: Show the report
         if: always()
-        run: cat "$RUNNER_TEMP/nodwyn-live-report/report.md" 2>/dev/null || echo "no report was written"
+        run: cat "$RUNNER_TEMP"/nodwyn-live-report/*/report.md 2>/dev/null || echo "no report was written"
       - name: Keep the report
         if: always()
         uses: actions/upload-artifact@c6a366c94c3e0affe28c06c8df20a878f24da3cf # v3.2.2

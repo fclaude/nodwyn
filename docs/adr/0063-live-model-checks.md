@@ -69,8 +69,12 @@ that run, so a release is always of a commit the live suite passed. Starting
 it needs a GitHub token, the Gitea secret `NODWYN_RELEASE_GITHUB_TOKEN`,
 limited to this repository's Actions.
 
-The tarro endpoint serves one model, so the suite has one matrix entry; a
-second model would tell a regression in nodwyn from one model's quirk.
+The workflows run the suite once for each model in the variable
+`NODWYN_LIVE_MODELS` (`scripts/live-models.sh`), one after the other, since
+one GPU holds one of them at a time; a weekly release needs every model to
+pass. Two models tell a regression in nodwyn, which both show, from one
+model's quirk, which one shows: on tarro, `qwen3.8-27b-160k` (27B, dense) and
+`qwen3.8-flash-next-256k` (177B, 10 of 512 experts a token).
 
 Both start at 05:12 Pacific (`TZ=America/Los_Angeles` in the cron, which
 Gitea reads) and end near 05:30: the endpoint's GPU is its owner's while

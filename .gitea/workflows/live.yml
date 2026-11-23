@@ -13,9 +13,11 @@ name: Live model checks
 #   secrets  NODWYN_LIVE_URL  the endpoint's address, with its version path
 #            NODWYN_LIVE_KEY  its key; leave it unset for a keyless server
 #   vars     NODWYN_LIVE_PROVIDER  ollama, openai or anthropic
-#            NODWYN_LIVE_MODEL     the model the scenarios ask
+#            NODWYN_LIVE_MODELS    the models the scenarios ask, one run each, one
+#                                  after the other: name or name@context (the
+#                                  context to ask an Ollama model for), spaces
+#                                  between (scripts/live-models.sh)
 #            NODWYN_LIVE_DIALECT   optional: a chat-completions dialect, or responses
-#            NODWYN_LIVE_NUM_CTX   optional: the context to ask an Ollama model for
 # Gitea masks the secrets in the job's log, and the suite itself prints and
 # keeps them only as [live url], [live host], [live address] and [live key]:
 # nodwyn talks to a proxy on 127.0.0.1 and never sees the address.
@@ -43,7 +45,7 @@ concurrency:
 
 jobs:
   live:
-    if: ${{ vars.NODWYN_LIVE_PROVIDER != '' && vars.NODWYN_LIVE_MODEL != '' }}
+    if: ${{ vars.NODWYN_LIVE_PROVIDER != '' && vars.NODWYN_LIVE_MODELS != '' }}
     runs-on: ${{ vars.NODWYN_LINUX_RUNNER || 'linux-alpine' }}
     timeout-minutes: 240
     env:
@@ -85,18 +87,17 @@ jobs:
         env:
           NODWYN_LIVE_TIER: ${{ inputs.tier || 'extended' }}
           NODWYN_LIVE_PROVIDER: ${{ vars.NODWYN_LIVE_PROVIDER }}
-          NODWYN_LIVE_MODEL: ${{ vars.NODWYN_LIVE_MODEL }}
+          NODWYN_LIVE_MODELS: ${{ vars.NODWYN_LIVE_MODELS }}
           NODWYN_LIVE_DIALECT: ${{ vars.NODWYN_LIVE_DIALECT }}
-          NODWYN_LIVE_NUM_CTX: ${{ vars.NODWYN_LIVE_NUM_CTX }}
           NODWYN_LIVE_URL: ${{ secrets.NODWYN_LIVE_URL }}
           NODWYN_LIVE_KEY: ${{ secrets.NODWYN_LIVE_KEY }}
           NODWYN_LIVE_REPORT: ${{ runner.temp }}/nodwyn-live-report
-        run: make live
+        run: bash scripts/live-models.sh
       - name: Show the report
         # go test prints the suite's own output only when it fails; the
         # report says what each scenario did either way.
         if: always() && steps.gate.outputs.run == 'true'
-        run: cat "$RUNNER_TEMP/nodwyn-live-report/report.md" 2>/dev/null || echo "no report was written"
+        run: cat "$RUNNER_TEMP"/nodwyn-live-report/*/report.md 2>/dev/null || echo "no report was written"
       - name: Keep the report
         if: always() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@c6a366c94c3e0affe28c06c8df20a878f24da3cf # v3.2.2

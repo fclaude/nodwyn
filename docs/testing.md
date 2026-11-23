@@ -49,9 +49,10 @@ when it passes, releases the tested commit on GitHub with the next patch
 version (`scripts/release-after-live.py`, which needs the
 `NODWYN_RELEASE_GITHUB_TOKEN` secret). Both run on the same runner: nodwyn built from main against a real model
 endpoint named by the repository's Actions secrets (`NODWYN_LIVE_URL`,
-`NODWYN_LIVE_KEY`) and variables (`NODWYN_LIVE_PROVIDER`, `NODWYN_LIVE_MODEL`,
-`NODWYN_LIVE_DIALECT`). It does nothing until the provider and the model are
-set. Its report is kept as the job's `nodwyn-live-report` artifact for 30
+`NODWYN_LIVE_KEY`) and variables (`NODWYN_LIVE_PROVIDER`, `NODWYN_LIVE_MODELS`,
+`NODWYN_LIVE_DIALECT`), once for each model in `NODWYN_LIVE_MODELS`, one after
+the other (`scripts/live-models.sh`). It does nothing until the provider and
+the models are set. Its report is kept as the job's `nodwyn-live-report` artifact for 30
 days. `make live` runs it anywhere the same variables are set;
 [test/live/README.md](../test/live/README.md) says what each scenario checks.
 No other check uses a real model.

@@ -41,8 +41,19 @@ The suite reads the endpoint from its environment, never from a file here:
 | `NODWYN_LIVE_TIER` | `core` (the default) or `extended` |
 
 In Gitea, the address and the key are repository secrets and the rest
-repository variables (Settings › Actions); the workflow does nothing until
-`NODWYN_LIVE_PROVIDER` and `NODWYN_LIVE_MODEL` are set.
+repository variables (Settings › Actions). There the model is a list,
+`NODWYN_LIVE_MODELS`: `scripts/live-models.sh` runs the suite once per entry,
+one after the other so the endpoint holds one model at a time, with each
+model's report in a directory of its own, and fails when any model failed.
+An entry is a model, or `model@context` for `NODWYN_LIVE_NUM_CTX`:
+
+```
+qwen3.8-27b-160k:latest@163840 qwen3.8-flash-next-256k:latest@262144
+```
+
+The workflows do nothing until `NODWYN_LIVE_PROVIDER` and
+`NODWYN_LIVE_MODELS` are set, and the weekly release needs every model to
+pass.
 
 nodwyn never sees the address: each scenario's nodwyn talks to a proxy on
 127.0.0.1 that forwards to the endpoint and keeps every request body, so a
