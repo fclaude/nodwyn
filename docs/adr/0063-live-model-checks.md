@@ -51,3 +51,24 @@ one at a time and stop at limits of their own. A model can still fail a
 scenario for a reason nodwyn did not cause; the kept log says which. Not
 built yet: worktree tasks and `git-land`, MCP tools, the console in a
 browser, and the judge against a real Decisions endpoint.
+
+## Amendment 2026-11-22: tiers, a nightly gate, and a weekly release
+
+The suite has two tiers: the core nine scenarios, and an extended tier that
+adds what a model does when led to misbehave (a prompt injection in a file,
+paths the shell builds under Don't ask, the protected Makefile) and longer
+work (AGENTS.md rules kept by a run, compaction, a worktree task landed with
+`git-land` onto a remote). `NODWYN_LIVE_TIER=extended` runs them all.
+
+The nightly workflow runs the extended tier when main has a commit from the
+last day and skips otherwise. A Sunday-night workflow runs it whatever
+changed and, when it passes, releases the tested commit on GitHub: it starts
+`release.yml` (ADR 42) with the next patch version only when GitHub's main is
+the commit tested and has commits since the latest release, and waits for
+that run, so a release is always of a commit the live suite passed. Starting
+it needs a GitHub token, the Gitea secret `NODWYN_RELEASE_GITHUB_TOKEN`,
+limited to this repository's Actions.
+
+The tarro endpoint serves one model, so the suite has one matrix entry; a
+second model would tell a regression in nodwyn from one model's quirk.
+

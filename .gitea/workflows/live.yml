@@ -1,8 +1,13 @@
 name: Live model checks
 
 # The live suite (test/live, ADR 63) runs nodwyn built from main against a
-# real model endpoint, nightly and by hand. It runs on this Gitea's runner
-# only: GitHub reads .github/workflows, never this directory.
+# real model endpoint, on this Gitea's runner only: GitHub reads
+# .github/workflows, never this directory. live-weekly.yml runs it every
+# Sunday night and releases what passed.
+#
+# Nightly, it runs the extended tier when main has a commit from the last day,
+# and skips otherwise: no new commit, nothing new to test. By hand, it runs
+# the tier chosen.
 #
 # The endpoint is the repository's settings, never a file in it:
 #   secrets  NODWYN_LIVE_URL  the endpoint's address, with its version path
@@ -12,12 +17,20 @@ name: Live model checks
 #            NODWYN_LIVE_DIALECT   optional: a chat-completions dialect, or responses
 #            NODWYN_LIVE_NUM_CTX   optional: the context to ask an Ollama model for
 # Gitea masks the secrets in the job's log, and the suite itself prints and
-# keeps them only as [live url], [live host] and [live key]: nodwyn talks to
-# a proxy on 127.0.0.1 and never sees the address.
+# keeps them only as [live url], [live host], [live address] and [live key]:
+# nodwyn talks to a proxy on 127.0.0.1 and never sees the address.
 on:
   schedule:
-    - cron: "17 3 * * *"
+    # 03:17 UTC, every night but the one live-weekly.yml runs on (Sunday
+    # night in the Americas is Monday morning in UTC).
+    - cron: "17 3 * * 0,2-6"
   workflow_dispatch:
+    inputs:
+      tier:
+        description: core (the quick nine) or extended (every scenario)
+        default: extended
+        type: choice
+        options: [extended, core]
 
 permissions:
   contents: read
@@ -30,7 +43,7 @@ jobs:
   live:
     if: ${{ vars.NODWYN_LIVE_PROVIDER != '' && vars.NODWYN_LIVE_MODEL != '' }}
     runs-on: ${{ vars.NODWYN_LINUX_RUNNER || 'linux-alpine' }}
-    timeout-minutes: 150
+    timeout-minutes: 240
     env:
       GOMEMLIMIT: 1GiB
       TAR_OPTIONS: --no-same-owner
@@ -38,37 +51,37 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Anything new to test
+        id: gate
+        # A scheduled run tests main only when a commit came in since the
+        # night before; a run by hand always tests.
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          committed=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - committed )) -lt 86400 ]; then
+            echo "main has a commit from the last day: testing it"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no commit on main since the last nightly run: nothing new to test"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.gate.outputs.run == 'true'
         with:
           go-version-file: go.mod
           cache: false
       - name: Can this job reach the endpoint
-        # A second opinion, with other tools, when the suite says it cannot
-        # reach the endpoint: what the name resolves to, the route the job
-        # takes there, proxy settings, and what curl gets. The address and
-        # the host name are replaced as the suite replaces them.
+        if: steps.gate.outputs.run == 'true'
         env:
           NODWYN_LIVE_URL: ${{ secrets.NODWYN_LIVE_URL }}
-        run: |
-          host=$(printf '%s' "$NODWYN_LIVE_URL" | sed -E 's#^[a-z]+://([^/:]+).*#\1#')
-          addrs=$(getent ahosts "$host" | awk '{print $1}' | sort -u)
-          scrub() {
-            out=$(cat)
-            out=${out//"${NODWYN_LIVE_URL%/}"/[live url]}
-            out=${out//"$host"/[live host]}
-            for a in $addrs; do out=${out//"$a"/[live address]}; done
-            printf '%s\n' "$out"
-          }
-          echo "the endpoint's name resolves to $(printf '%s\n' $addrs | grep -c .) address(es)"
-          for a in $addrs; do ip route get "$a" 2>&1 | scrub; done
-          env | grep -i -E '^(https?|no|all)_proxy=' | sed 's/=.*/ is set/' || echo "no proxy variable is set"
-          if command -v curl >/dev/null; then
-            curl -sS -m 20 -o /dev/null -w 'curl: HTTP %{http_code}\n' "${NODWYN_LIVE_URL%/}/api/tags" 2>&1 | scrub || true
-          else
-            echo "curl is not installed"
-          fi
+        run: bash scripts/live-reach.sh
       - name: Live scenarios
+        if: steps.gate.outputs.run == 'true'
         env:
+          NODWYN_LIVE_TIER: ${{ inputs.tier || 'extended' }}
           NODWYN_LIVE_PROVIDER: ${{ vars.NODWYN_LIVE_PROVIDER }}
           NODWYN_LIVE_MODEL: ${{ vars.NODWYN_LIVE_MODEL }}
           NODWYN_LIVE_DIALECT: ${{ vars.NODWYN_LIVE_DIALECT }}
@@ -80,10 +93,10 @@ jobs:
       - name: Show the report
         # go test prints the suite's own output only when it fails; the
         # report says what each scenario did either way.
-        if: always()
+        if: always() && steps.gate.outputs.run == 'true'
         run: cat "$RUNNER_TEMP/nodwyn-live-report/report.md" 2>/dev/null || echo "no report was written"
       - name: Keep the report
-        if: always()
+        if: always() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@c6a366c94c3e0affe28c06c8df20a878f24da3cf # v3.2.2
         with:
           name: nodwyn-live-report

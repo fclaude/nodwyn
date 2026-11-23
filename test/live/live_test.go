@@ -95,6 +95,9 @@ func run(m *testing.M) int {
 			live.addrs, _ = net.DefaultResolver.LookupHost(ctx, live.target.Hostname())
 			cancel()
 		}
+		if tier := os.Getenv("NODWYN_LIVE_TIER"); tier != "" && tier != "core" && tier != "extended" {
+			setupErr = fmt.Errorf("NODWYN_LIVE_TIER is core or extended, not %q", tier)
+		}
 		if n, err := strconv.Atoi(live.numCtx); live.numCtx != "" && (err != nil || n < 1024) {
 			setupErr = fmt.Errorf("NODWYN_LIVE_NUM_CTX is a context length in tokens, such as 163840")
 		}
@@ -145,6 +148,16 @@ func reachable() error {
 func repoRoot() string {
 	wd, _ := os.Getwd()
 	return filepath.Clean(filepath.Join(wd, "..", ".."))
+}
+
+// extended marks a scenario of the extended tier, run only when
+// NODWYN_LIVE_TIER is "extended" (the Gitea workflows, nightly when main
+// changed and every Sunday); the core tier is every other scenario.
+func extended(t *testing.T) {
+	t.Helper()
+	if os.Getenv("NODWYN_LIVE_TIER") != "extended" {
+		t.Skip("an extended scenario: NODWYN_LIVE_TIER=extended runs it")
+	}
 }
 
 // scrub replaces the endpoint's address, its host, the addresses the host
@@ -237,11 +250,27 @@ type world struct {
 	daemon *exec.Cmd
 	ids    []string // the sessions the scenario made, for the report
 	socket string   // the daemon's
+	remote string   // the bare repository origin is, when the world has one
 }
 
 // newWorld sets up a nodwyn that knows only the live endpoint (through the
 // proxy) and the fixture files given, committed in a git repository.
 func newWorld(t *testing.T, files map[string]string) *world {
+	t.Helper()
+	return newWorldWith(t, files, worldOptions{})
+}
+
+// worldOptions are what a scenario adds to its world: config.toml lines,
+// files in the home directory (outside the repository), and a bare remote
+// the repository's main is pushed to, as origin.
+type worldOptions struct {
+	config string
+	home   map[string]string
+	remote bool
+}
+
+// newWorldWith is newWorld with options.
+func newWorldWith(t *testing.T, files map[string]string, opts worldOptions) *world {
 	t.Helper()
 	if setupErr != nil {
 		t.Fatal(scrub(setupErr.Error()))
@@ -287,6 +316,7 @@ func newWorld(t *testing.T, files map[string]string) *world {
 	if live.numCtx != "" {
 		cfg += "num_ctx = " + live.numCtx + "\n"
 	}
+	cfg += opts.config
 	if err := os.WriteFile(paths.ConfigFile, []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -302,9 +332,31 @@ func newWorld(t *testing.T, files map[string]string) *world {
 			t.Fatal(err)
 		}
 	}
-	w.git("init", "-q")
+	// A person's home has a git identity: without one the daemon's own
+	// commits (git-land's) fail, and the model sets one in the repository.
+	homeFiles := map[string]string{".gitconfig": "[user]\n\tname = nodwyn live\n\temail = live@example.invalid\n"}
+	for name, content := range opts.home {
+		homeFiles[name] = content
+	}
+	for name, content := range homeFiles {
+		path := filepath.Join(home, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.git("init", "-q", "-b", "main")
 	w.git("add", ".")
 	w.git("commit", "-qm", "fixture")
+	if opts.remote {
+		w.remote = filepath.Join(home, "remote.git")
+		w.git("init", "-q", "--bare", "-b", "main", w.remote)
+		w.git("remote", "add", "origin", w.remote)
+		// main tracks origin, as a clone's does: git-land pushes there.
+		w.git("push", "-q", "-u", "origin", "main")
+	}
 	w.startDaemon()
 	return w
 }

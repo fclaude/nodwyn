@@ -41,8 +41,12 @@ local attempt with three larger shards also hit the 8 GiB limit.
 
 ### Live model checks
 
-`.gitea/workflows/live.yml` runs the live suite (`test/live`, ADR 63) nightly
-and by hand, on the same runner: nodwyn built from main against a real model
+`.gitea/workflows/live.yml` runs the live suite's extended tier (`test/live`,
+ADR 63) every night but Sunday's when main has a commit from the last day, and
+by hand; `.gitea/workflows/live-weekly.yml` runs it every Sunday night and,
+when it passes, releases the tested commit on GitHub with the next patch
+version (`scripts/release-after-live.py`, which needs the
+`NODWYN_RELEASE_GITHUB_TOKEN` secret). Both run on the same runner: nodwyn built from main against a real model
 endpoint named by the repository's Actions secrets (`NODWYN_LIVE_URL`,
 `NODWYN_LIVE_KEY`) and variables (`NODWYN_LIVE_PROVIDER`, `NODWYN_LIVE_MODEL`,
 `NODWYN_LIVE_DIALECT`). It does nothing until the provider and the model are

@@ -1,0 +1,82 @@
+name: Weekly live checks and release
+
+# Every Sunday night the extended live suite (test/live, ADR 63) runs on main,
+# whatever changed, and when it passes, the commit it tested is released on
+# GitHub: scripts/release-after-live.py starts GitHub's release.yml (ADR 42)
+# with the next patch version, when GitHub's main is the tested commit and has
+# commits since the latest release, and waits for that run. It runs on this
+# Gitea's runner only; GitHub reads .github/workflows, never this directory.
+#
+# Besides live.yml's endpoint settings it needs one secret:
+#   NODWYN_RELEASE_GITHUB_TOKEN  a GitHub token that may start workflows on
+#                                fclaude/nodwyn (fine-grained: Actions read and
+#                                write, Contents read, on that repository only)
+on:
+  schedule:
+    # 05:37 UTC on Monday: Sunday 21:37 in California (22:37 in summer).
+    - cron: "37 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release on GitHub when the suite passes
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitea-live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    if: ${{ vars.NODWYN_LIVE_PROVIDER != '' && vars.NODWYN_LIVE_MODEL != '' }}
+    runs-on: ${{ vars.NODWYN_LINUX_RUNNER || 'linux-alpine' }}
+    timeout-minutes: 330
+    env:
+      GOMEMLIMIT: 1GiB
+      TAR_OPTIONS: --no-same-owner
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Can this job reach the endpoint
+        env:
+          NODWYN_LIVE_URL: ${{ secrets.NODWYN_LIVE_URL }}
+        run: bash scripts/live-reach.sh
+      - name: Live scenarios
+        env:
+          NODWYN_LIVE_TIER: extended
+          NODWYN_LIVE_PROVIDER: ${{ vars.NODWYN_LIVE_PROVIDER }}
+          NODWYN_LIVE_MODEL: ${{ vars.NODWYN_LIVE_MODEL }}
+          NODWYN_LIVE_DIALECT: ${{ vars.NODWYN_LIVE_DIALECT }}
+          NODWYN_LIVE_NUM_CTX: ${{ vars.NODWYN_LIVE_NUM_CTX }}
+          NODWYN_LIVE_URL: ${{ secrets.NODWYN_LIVE_URL }}
+          NODWYN_LIVE_KEY: ${{ secrets.NODWYN_LIVE_KEY }}
+          NODWYN_LIVE_REPORT: ${{ runner.temp }}/nodwyn-live-report
+        run: make live
+      - name: Show the report
+        if: always()
+        run: cat "$RUNNER_TEMP/nodwyn-live-report/report.md" 2>/dev/null || echo "no report was written"
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@c6a366c94c3e0affe28c06c8df20a878f24da3cf # v3.2.2
+        with:
+          name: nodwyn-live-weekly-report
+          path: ${{ runner.temp }}/nodwyn-live-report
+          if-no-files-found: ignore
+          retention-days: 90
+      - name: Release what passed
+        # Only after every scenario passed, and not when a run by hand said not
+        # to. The script releases only the commit tested, and only when it is
+        # newer than the latest release.
+        if: success() && (github.event_name == 'schedule' || inputs.release)
+        env:
+          GITHUB_TOKEN: ${{ secrets.NODWYN_RELEASE_GITHUB_TOKEN }}
+          TESTED_SHA: ${{ github.sha }}
+        run: python3 scripts/release-after-live.py
