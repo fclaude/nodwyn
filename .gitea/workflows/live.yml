@@ -3,9 +3,9 @@ name: Live model checks
 # The live suite (test/live, ADR 63) runs nodwyn built from main against a
 # real model endpoint, on this Gitea's runner only: GitHub reads
 # .github/workflows, never this directory. live-weekly.yml runs it every
-# Sunday night and releases what passed.
+# Monday morning and releases what passed.
 #
-# Nightly, it runs the extended tier when main has a commit from the last day,
+# Every other morning, it runs the extended tier when main has a commit from the last day,
 # and skips otherwise: no new commit, nothing new to test. By hand, it runs
 # the tier chosen.
 #
@@ -21,9 +21,11 @@ name: Live model checks
 # nodwyn talks to a proxy on 127.0.0.1 and never sees the address.
 on:
   schedule:
-    # 03:17 UTC, every night but the one live-weekly.yml runs on (Sunday
-    # night in the Americas is Monday morning in UTC).
-    - cron: "17 3 * * 0,2-6"
+    # 05:12 in California, every morning but Monday's, when live-weekly.yml
+    # runs: the endpoint's GPU is the person's while they are awake, and its
+    # heat is better spent warming the office just before the working day, so
+    # the run (about 13 minutes) ends near 05:30. Gitea reads the TZ= prefix.
+    - cron: "TZ=America/Los_Angeles 12 5 * * 0,2-6"
   workflow_dispatch:
     inputs:
       tier:
@@ -54,7 +56,7 @@ jobs:
       - name: Anything new to test
         id: gate
         # A scheduled run tests main only when a commit came in since the
-        # night before; a run by hand always tests.
+        # morning before; a run by hand always tests.
         run: |
           if [ "${{ github.event_name }}" != "schedule" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -65,7 +67,7 @@ jobs:
             echo "main has a commit from the last day: testing it"
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
-            echo "no commit on main since the last nightly run: nothing new to test"
+            echo "no commit on main since the last morning's run: nothing new to test"
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

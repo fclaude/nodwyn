@@ -1,6 +1,6 @@
 name: Weekly live checks and release
 
-# Every Sunday night the extended live suite (test/live, ADR 63) runs on main,
+# Every Monday morning the extended live suite (test/live, ADR 63) runs on main,
 # whatever changed, and when it passes, the commit it tested is released on
 # GitHub: scripts/release-after-live.py starts GitHub's release.yml (ADR 42)
 # with the next patch version, when GitHub's main is the tested commit and has
@@ -13,8 +13,10 @@ name: Weekly live checks and release
 #                                write, Contents read, on that repository only)
 on:
   schedule:
-    # 05:37 UTC on Monday: Sunday 21:37 in California (22:37 in summer).
-    - cron: "37 5 * * 1"
+    # 05:12 in California on Monday, as live.yml's other mornings, so the
+    # GPU's run ends near 05:30, before the working day; the release that
+    # follows runs on GitHub. Gitea reads the TZ= prefix.
+    - cron: "TZ=America/Los_Angeles 12 5 * * 1"
   workflow_dispatch:
     inputs:
       release:

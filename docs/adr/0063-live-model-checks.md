@@ -21,7 +21,7 @@ and key are not for the public repository's history or GitHub's runners.
    and drives the binary as a person or a script does: line mode with
    confirms declined, `nodwyn run`, a resume.
 2. **It runs on the Gitea runner only.** `.gitea/workflows/live.yml` runs it
-   nightly and by hand; GitHub reads `.github/workflows` and never this file.
+   early each morning and by hand; GitHub reads `.github/workflows` and never this file.
    `make live` runs it anywhere else on purpose.
 3. **The endpoint is the runner's.** Its address and key are Gitea Actions
    secrets, its provider, model and dialect variables; nothing in the
@@ -60,8 +60,8 @@ paths the shell builds under Don't ask, the protected Makefile) and longer
 work (AGENTS.md rules kept by a run, compaction, a worktree task landed with
 `git-land` onto a remote). `NODWYN_LIVE_TIER=extended` runs them all.
 
-The nightly workflow runs the extended tier when main has a commit from the
-last day and skips otherwise. A Sunday-night workflow runs it whatever
+The daily workflow runs the extended tier when main has a commit from the
+last day and skips otherwise. A Monday workflow runs it whatever
 changed and, when it passes, releases the tested commit on GitHub: it starts
 `release.yml` (ADR 42) with the next patch version only when GitHub's main is
 the commit tested and has commits since the latest release, and waits for
@@ -72,3 +72,7 @@ limited to this repository's Actions.
 The tarro endpoint serves one model, so the suite has one matrix entry; a
 second model would tell a regression in nodwyn from one model's quirk.
 
+Both start at 05:12 Pacific (`TZ=America/Los_Angeles` in the cron, which
+Gitea reads) and end near 05:30: the endpoint's GPU is its owner's while
+they are awake, so the suite runs while they sleep, and as late as it can,
+since the GPU's heat warms the office just before the working day.
