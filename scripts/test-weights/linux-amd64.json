@@ -1,7 +1,7 @@
 {
   "core_source_commit": "3fc5188ca41183f56787897c949457dfe85bbd8e",
   "go": "1.27.3",
-  "host": "Tarro, i9-14900K",
+  "host": "Linux build machine",
   "measured": "2026-11-02",
   "method": "Top-level race-test wall durations; core from a profiled full package, prim from a serial package run. Scheduling hints only; new/renamed tests remain included.",
   "packages": {

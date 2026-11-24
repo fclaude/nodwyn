@@ -273,7 +273,7 @@ func outsideTurn(id string) fake.Turn {
 }
 
 // Who answers commands answers a security confirm about one too (ADR 35,
-// amended 2026-10-30): a path outside the repository, from the tarro
+// amended 2026-10-30): a path outside the repository, from
 // sessions 792638a8 and 34fd6421, where the person was asked about reads of
 // the module cache whichever answer they had chosen. With the judge, then
 // the person, the judge is asked first; alone, it decides; without asking,

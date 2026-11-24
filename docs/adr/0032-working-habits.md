@@ -3130,9 +3130,9 @@ offered; the live suite's program asks again when the text is empty.
 The reply `model-turn` asks for after a reply whose only call named the task
 can be empty as well. On the Gitea runner (run 40635), qwen3.8-flash-next
 named the task in a scheduled program's `'((tools . #f))` request, then
-replied with neither text nor calls, and the program got "". Against tarro
-it did so once in eleven runs of the scenario; the other runs named the task
-and answered, or answered without naming it. The empty reply's thinking
+replied with neither text nor calls, and the program got "". Against the
+live suite's endpoint it did so once in eleven runs of the scenario; the
+other runs named the task and answered, or answered without naming it. The empty reply's thinking
 repeated the prompt back, a model that lost its place rather than one with
 nothing to say. Such a reply is now asked again once, as an empty plain
 reply is (2026-10-06), and the third reply is the one returned.

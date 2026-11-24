@@ -139,9 +139,9 @@ check(async () => {
   await page.fill("#host-as", "laptop");
   await page.fill("#host-name", "workshop");
   await page.fill("#host-invite", invite);
-  await page.fill("#host-as", "fc@tarro");
+  await page.fill("#host-as", "my@desktop");
   await page.click("#add-host-form button[type=submit]");
-  await shows(page, "#add-host-form [role=alert]", "Name this computer", "fc-tarro");
+  await shows(page, "#add-host-form [role=alert]", "Name this computer", "my-desktop");
   assert.strictEqual(of(sent.local, "host.link").length, beforeManual, "an invalid device name was sent");
   await page.fill("#host-as", "laptop");
   await page.fill("#host-name", "bad@host");

@@ -197,7 +197,7 @@ in a browser. These commands do not call paid model services.
 ## Integration checks (2026-11-02)
 
 The normal commands were exercised on the same current-source snapshot on
-Linux/amd64 (Tarro and X1) and macOS/arm64 (mbpro), using Go 1.27.3. All 58
+Linux/amd64 (the build machine and X1) and macOS/arm64 (mbpro), using Go 1.27.3. All 58
 Go packages completed, including 1,000 named tests/examples in the split
 packages. Single warm checks of the non-race command took approximately
 12 seconds, 18 seconds and 41 seconds respectively; these are checks of this
@@ -221,9 +221,9 @@ On mbpro, the normal non-race command took 41.42 seconds with its ordinary
 SSD temporary directory, versus 19.99 and 19.60 seconds with temporary fixtures
 and Go build work on a disposable APFS RAM volume. These are individual warm
 runs, not three-run medians. An HFS+ RAM control was similarly fast; a shorter
-SSD path remained slow. Tarro stayed near 12 seconds with either RAM or SSD
+SSD path remained slow. The Linux build machine stayed near 12 seconds with either RAM or SSD
 scratch space. No application source, test assertion, worker default or GC
-setting changed. See the [profiling report and resource evidence](http://kitten:3000/fc/nodwyn-evals/src/branch/main/benchmarks/analysis/workstation-tests-2026-11-02/remaining-gap.md).
+setting changed.
 
 The manual workspace used in that experiment has now been integrated into the
 normal full commands, with private mounting, retained diagnostics and cleanup

@@ -13,9 +13,9 @@ name: Weekly live checks and release
 #                                write, Contents read, on that repository only)
 on:
   schedule:
-    # 04:55 in California on Monday, as live.yml's other mornings, so the
-    # GPU's run ends near 05:30, before the working day; the release that
-    # follows runs on GitHub. Gitea reads the TZ= prefix.
+    # 04:55 in California on Monday, as live.yml's other mornings:
+    # off-peak for the endpoint. The release that follows runs on GitHub.
+    # Gitea reads the TZ= prefix.
     - cron: "TZ=America/Los_Angeles 55 4 * * 1"
   workflow_dispatch:
     inputs:

@@ -284,7 +284,7 @@ function addHost(ctx, redraw) {
         const device = as.value.trim() || `${stem(conn.hello?.host || "", "computer")}-${Array.from(random, (b) => b.toString(16).padStart(2, "0")).join("")}`;
         const validName = /^[a-z0-9][a-z0-9._-]{0,31}$/;
         if (!validName.test(device)) {
-          error.textContent = "Name this computer with up to 32 lower-case letters, digits, dots, underscores or dashes, starting with a letter or digit. For example, laptop or fc-tarro.";
+          error.textContent = "Name this computer with up to 32 lower-case letters, digits, dots, underscores or dashes, starting with a letter or digit. For example, laptop or my-desktop.";
           as.focus();
           return;
         }

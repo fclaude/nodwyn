@@ -299,6 +299,6 @@ from the daemon handshake, independently of the browser address. A linked
 host that cannot be read has no handshake to name it: its Runs on option,
 and the line under the composer when it is chosen, say its state and the
 reason its link last closed with, and its model's field says *Not
-reachable* rather than offer the models it last had (for example `tarro · not reachable —
-tarro cannot be reached: connection refused`). Native Linux
+reachable* rather than offer the models it last had (for example `workshop · not reachable —
+workshop cannot be reached: connection refused`). Native Linux
 release and package instructions are in [the Linux desktop contract](../packaging/linux/README.md).

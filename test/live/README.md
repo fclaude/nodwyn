@@ -6,9 +6,7 @@ place a real model answers. It never runs in `make test`, `validate`,
 promotion or GitHub: the `live` build tag keeps it out of every ordinary
 build, and only `make live` or the Gitea workflows run it:
 
-Both start so they end near 05:30, before the working day: the endpoint's
-GPU is in use while its owner is awake, and its heat warms the office just
-before work.
+Both start at 04:55 Pacific, off-peak for the endpoint.
 
 - `.gitea/workflows/live.yml` runs the extended tier at 04:55 Pacific every
   morning but Monday's, when main has a commit from the last day (no new commit, nothing to test),

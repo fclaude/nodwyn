@@ -24,10 +24,8 @@ name: Live model checks
 on:
   schedule:
     # 04:55 in California, every morning but Monday's, when live-weekly.yml
-    # runs: the endpoint's GPU is the person's while they are awake, and its
-    # heat is better spent warming the office just before the working day, so
-    # the run (about 33 minutes for both models, Gitea run 40548) ends near
-    # 05:30. Gitea reads the TZ= prefix.
+    # runs: off-peak for the endpoint. A run takes about 33 minutes for both
+    # models (Gitea run 40548). Gitea reads the TZ= prefix.
     - cron: "TZ=America/Los_Angeles 55 4 * * 0,2-6"
   workflow_dispatch:
     inputs:

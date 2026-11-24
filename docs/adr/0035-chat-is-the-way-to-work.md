@@ -253,7 +253,7 @@ security confirm.
 
 ## Amendment 2026-10-30: who answers commands answers all of them, and each task chooses
 
-With approval.commands at `allow` on tarro, the person was still asked, in
+With approval.commands at `allow` on one machine, the person was still asked, in
 session 34fd6421, about `go mod download` and a listing of the module cache:
 the command named a path outside the repository, a security confirm, which
 every value but `judge-auto` sent to the person. The person asked for the
@@ -295,7 +295,7 @@ it on an open task, on a new one, and sees it kept for the next.
 
 ## Amendment 2026-10-30: asking the person or allowing all asks no judge
 
-On tarro, a task opened with approval.commands at `allow` and Jev beside it
+On one machine, a task opened with approval.commands at `allow` and Jev beside it
 in the composer was billed for Jev on every message: the plan gate asked
 the judge whether a plan was needed and scored each draft whenever the task
 had a judge, whatever answered its commands, and with `allow` Jev answered
