@@ -2,10 +2,10 @@ name: Live model checks
 
 # The live suite (test/live, ADR 63) runs nodwyn built from main against a
 # real model endpoint, on this Gitea's runner only: GitHub reads
-# .github/workflows, never this directory. live-weekly.yml runs it every
-# Monday morning and releases what passed.
+# .github/workflows, never this directory. live-weekly.yml runs it
+# on the release mornings and releases what passed.
 #
-# Every other morning, it runs the extended tier when main has a commit from the last day,
+# On the other mornings, it runs the extended tier when main has a commit from the last day,
 # and skips otherwise: no new commit, nothing new to test. By hand, it runs
 # the tier chosen.
 #
@@ -23,10 +23,10 @@ name: Live model checks
 # nodwyn talks to a proxy on 127.0.0.1 and never sees the address.
 on:
   schedule:
-    # 04:55 in California, every morning but Monday's, when live-weekly.yml
-    # runs: off-peak for the endpoint. A run takes about 33 minutes for both
+    # 04:55 in California, on the mornings live-weekly.yml does not
+    # run: off-peak for the endpoint. A run takes about 33 minutes for both
     # models (Gitea run 40548). Gitea reads the TZ= prefix.
-    - cron: "TZ=America/Los_Angeles 55 4 * * 0,2-6"
+    - cron: "TZ=America/Los_Angeles 55 4 * * 3,4,6"
   workflow_dispatch:
     inputs:
       tier:

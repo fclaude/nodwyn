@@ -6,16 +6,18 @@ place a real model answers. It never runs in `make test`, `validate`,
 promotion or GitHub: the `live` build tag keeps it out of every ordinary
 build, and only `make live` or the Gitea workflows run it:
 
-Both start at 04:55 Pacific, off-peak for the endpoint.
+Both start off-peak for the endpoint.
 
-- `.gitea/workflows/live.yml` runs the extended tier at 04:55 Pacific every
-  morning but Monday's, when main has a commit from the last day (no new commit, nothing to test),
-  and by hand with the tier chosen;
-- `.gitea/workflows/live-weekly.yml` runs the extended tier at 04:55 Pacific every
-  Monday, whatever changed, and when it passes, releases the tested commit on GitHub
-  (`scripts/release-after-live.py`): it starts GitHub's `release.yml` with the
-  next patch version when GitHub's main is the tested commit and has commits
-  since the latest release, and waits for that run. It needs the secret
+- `.gitea/workflows/live.yml` runs the extended tier at 04:55 Pacific on
+  Wednesday, Thursday and Saturday, when main has a commit from the last day
+  (no new commit, nothing to test), and by hand with the tier chosen;
+- `.gitea/workflows/live-weekly.yml` runs the extended tier at 04:20 Pacific on
+  Sunday, Monday, Tuesday and Friday (with nothing to release, on Monday
+  alone), a model that fails run a second time, and when every model passes,
+  releases the tested commit on GitHub (`scripts/release-after-live.py`): it
+  starts GitHub's `release.yml` with the next patch version when GitHub's main
+  is the tested commit and has commits since the latest release, and waits
+  for that run. It needs the secret
   `NODWYN_RELEASE_GITHUB_TOKEN`, a fine-grained GitHub token limited to
   fclaude/nodwyn with Actions read and write and Contents read.
 
@@ -50,8 +52,9 @@ qwen3.8-27b-160k:latest@163840 qwen3.8-flash-next-256k:latest@262144
 ```
 
 The workflows do nothing until `NODWYN_LIVE_PROVIDER` and
-`NODWYN_LIVE_MODELS` are set, and the weekly release needs every model to
-pass.
+`NODWYN_LIVE_MODELS` are set, and a release needs every model to pass.
+`NODWYN_LIVE_ATTEMPTS` is how many runs of the suite a model has to pass one
+of (1; the release runs give it 2).
 
 nodwyn never sees the address: each scenario's nodwyn talks to a proxy on
 127.0.0.1 that forwards to the endpoint and keeps every request body, so a

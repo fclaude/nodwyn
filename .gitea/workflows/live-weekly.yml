@@ -1,11 +1,13 @@
-name: Weekly live checks and release
+name: Live checks and release
 
-# Every Monday morning the extended live suite (test/live, ADR 63) runs on main,
-# whatever changed, and when it passes, the commit it tested is released on
-# GitHub: scripts/release-after-live.py starts GitHub's release.yml (ADR 42)
-# with the next patch version, when GitHub's main is the tested commit and has
-# commits since the latest release, and waits for that run. It runs on this
-# Gitea's runner only; GitHub reads .github/workflows, never this directory.
+# On Sunday, Monday, Tuesday and Friday mornings the extended live suite
+# (test/live, ADR 63) runs on main, a model that fails run a second time, and
+# when every model passes, the commit it tested is released on GitHub:
+# scripts/release-after-live.py starts GitHub's release.yml (ADR 42) with the
+# next patch version, when GitHub's main is the tested commit and has commits
+# since the latest release, and waits for that run. With nothing to release
+# it runs on Monday alone, whatever changed. It runs on this Gitea's runner
+# only; GitHub reads .github/workflows, never this directory.
 #
 # Besides live.yml's endpoint settings it needs one secret:
 #   NODWYN_RELEASE_GITHUB_TOKEN  a GitHub token that may start workflows on
@@ -13,10 +15,10 @@ name: Weekly live checks and release
 #                                write, Contents read, on that repository only)
 on:
   schedule:
-    # 04:55 in California on Monday, as live.yml's other mornings:
-    # off-peak for the endpoint. The release that follows runs on GitHub.
-    # Gitea reads the TZ= prefix.
-    - cron: "TZ=America/Los_Angeles 55 4 * * 1"
+    # 04:20 in California, off-peak for the endpoint: a run takes about 35
+    # minutes, and 70 when both models need their second. The release that
+    # follows runs on GitHub. Gitea reads the TZ= prefix.
+    - cron: "TZ=America/Los_Angeles 20 4 * * 0,1,2,5"
   workflow_dispatch:
     inputs:
       release:
@@ -43,16 +45,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Anything to release
+        id: gate
+        # A scheduled run with nothing to release tests on Monday alone; a
+        # run by hand always tests.
+        env:
+          GITHUB_TOKEN: ${{ secrets.NODWYN_RELEASE_GITHUB_TOKEN }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ] || [ "$(TZ=America/Los_Angeles date +%u)" = 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHECK_ONLY=1 python3 scripts/release-after-live.py >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.gate.outputs.run == 'true'
         with:
           go-version-file: go.mod
           cache: false
       - name: Can this job reach the endpoint
+        if: steps.gate.outputs.run == 'true'
         env:
           NODWYN_LIVE_URL: ${{ secrets.NODWYN_LIVE_URL }}
         run: bash scripts/live-reach.sh
       - name: Live scenarios
+        if: steps.gate.outputs.run == 'true'
         env:
+          NODWYN_LIVE_ATTEMPTS: 2
           NODWYN_LIVE_TIER: extended
           NODWYN_LIVE_PROVIDER: ${{ vars.NODWYN_LIVE_PROVIDER }}
           NODWYN_LIVE_MODELS: ${{ vars.NODWYN_LIVE_MODELS }}
@@ -62,10 +81,10 @@ jobs:
           NODWYN_LIVE_REPORT: ${{ runner.temp }}/nodwyn-live-report
         run: bash scripts/live-models.sh
       - name: Show the report
-        if: always()
+        if: always() && steps.gate.outputs.run == 'true'
         run: cat "$RUNNER_TEMP"/nodwyn-live-report/*/report.md 2>/dev/null || echo "no report was written"
       - name: Keep the report
-        if: always()
+        if: always() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@c6a366c94c3e0affe28c06c8df20a878f24da3cf # v3.2.2
         with:
           name: nodwyn-live-weekly-report
@@ -76,7 +95,7 @@ jobs:
         # Only after every scenario passed, and not when a run by hand said not
         # to. The script releases only the commit tested, and only when it is
         # newer than the latest release.
-        if: success() && (github.event_name == 'schedule' || inputs.release)
+        if: success() && steps.gate.outputs.run == 'true' && (github.event_name == 'schedule' || inputs.release)
         env:
           GITHUB_TOKEN: ${{ secrets.NODWYN_RELEASE_GITHUB_TOKEN }}
           TESTED_SHA: ${{ github.sha }}

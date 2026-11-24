@@ -77,3 +77,14 @@ model's quirk, which one shows.
 
 Both start at 04:55 Pacific (`TZ=America/Los_Angeles` in the cron, which
 Gitea reads), off-peak for the endpoint.
+
+## Amendment 2026-11-23: four release mornings, and a second run
+
+Every model still has to pass for a release. In the five runs on both models
+so far, the 27B model passed every scenario each time and qwen3.8-flash-next
+in one, so a release a week, on one run, depended on chance. The release
+workflow now runs on Sunday, Monday, Tuesday and Friday at 04:20 Pacific, and a
+model that fails is run once more (`NODWYN_LIVE_ATTEMPTS=2`): it passes when
+one of its two runs passes whole. Both runs' reports are kept. A morning with
+no commit since the latest release is skipped, but for Monday's; the daily
+workflow keeps the other three mornings, and runs each model once.

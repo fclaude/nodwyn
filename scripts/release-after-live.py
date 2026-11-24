@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Start a GitHub release of the commit the weekly live run tested (ADR 63).
+"""Start a GitHub release of the commit a live run tested (ADR 63).
 
-The weekly Gitea workflow runs this after the extended live suite passed. It
+Gitea's live-weekly.yml runs this after the extended live suite passed. It
 releases only what was tested: GitHub's main must be the tested commit, and
 it must have commits since the latest release. The version is the latest
 release's with its patch number raised by one; release.yml (ADR 42) does the
@@ -11,7 +11,9 @@ Environment: GITHUB_TOKEN, a token that may start workflows on the
 repository (its value is sent only in an Authorization header and never
 printed); TESTED_SHA, the commit the live suite ran; REPOSITORY, owner/name
 on GitHub (default fclaude/nodwyn); DRY_RUN=1 to say what it would do and
-start nothing.
+start nothing; CHECK_ONLY=1 to print only run=true or run=false, whether
+TESTED_SHA has commits since the latest release (run=true when GitHub cannot
+say, so a fault there never skips the tests).
 """
 
 import calendar
@@ -57,14 +59,24 @@ def main():
     dry = os.environ.get("DRY_RUN") == "1"
     if not tested:
         raise SystemExit("release-after-live: TESTED_SHA is not set")
-    if not token and not dry:
+    if not token and not dry and os.environ.get("CHECK_ONLY") != "1":
         raise SystemExit("release-after-live: GITHUB_TOKEN is not set (the NODWYN_RELEASE_GITHUB_TOKEN secret)")
+
+    if os.environ.get("CHECK_ONLY") == "1":
+        status, latest = call("GET", f"/repos/{repository}/releases/latest", token)
+        ahead = 1
+        if status == 200 and latest:
+            status, compare = call("GET", f"/repos/{repository}/compare/{latest['tag_name']}...{tested}", token)
+            if status == 200 and compare:
+                ahead = compare.get("ahead_by", 1)
+        print("run=true" if ahead else "run=false")
+        return 0
 
     status, head = call("GET", f"/repos/{repository}/commits/main", token)
     if status != 200 or not head:
         raise SystemExit(f"release-after-live: reading GitHub's main answered {status}")
     if head["sha"] != tested:
-        print(f"No release: GitHub's main is {head['sha'][:12]}, not the tested {tested[:12]}; the next weekly run tests it.")
+        print(f"No release: GitHub's main is {head['sha'][:12]}, not the tested {tested[:12]}; the next release run tests it.")
         return 0
 
     status, latest = call("GET", f"/repos/{repository}/releases/latest", token)
