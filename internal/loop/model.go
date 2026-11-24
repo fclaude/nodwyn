@@ -24,6 +24,11 @@ type toolOffer struct {
 	only []string
 }
 
+// names reports whether the offer includes the tool of that name.
+func (o toolOffer) names(name string) bool {
+	return !o.none && (o.only == nil || slices.Contains(o.only, name))
+}
+
 // parseToolOffer reads model-turn's tools option: #f offers no tools, #t
 // all of them, a list of tool names only those; anything else is an error.
 func (l *Loop) parseToolOffer(v scheme.Value) (toolOffer, error) {

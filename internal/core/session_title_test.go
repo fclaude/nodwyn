@@ -374,3 +374,69 @@ func TestAnEmptyReplyAfterNamingTheTaskIsAskedAgain(t *testing.T) {
 		t.Fatalf("the program saw %q (%s)", result.Value, result.Error)
 	}
 }
+
+// A model may answer a request that offered no tools with a call. The
+// program never asked for it and has nothing to answer it with, so
+// add-message answers it as not run; before, the program ended there (the
+// live suite's workflow program). A call that was offered still has to be
+// run or skipped first.
+func TestAddMessageAnswersACallTheRequestDidNotOffer(t *testing.T) {
+	stray := fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "stray.txt", "content": "no"}}}}
+	for _, c := range []struct{ name, tools, want string }{
+		{"no tools", "#f", `"word"`},
+		{"other tools", `("fs-read")`, `"word"`},
+		{"offered", `("fs-write")`, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			turns := []fake.Turn{stray}
+			if c.want != "" {
+				turns = append(turns, fake.Turn{Content: "word"})
+			}
+			r := titleRigAnswering(t, true, false, turns...)
+			if _, err := r.s.Record(log.KindSessionTitle, log.SessionTitle{Actor: "test", Title: "Already named"}); err != nil {
+				t.Fatal(err)
+			}
+			src := `(add-message "Reply with the word.")
+(model-turn "control" '((tools . ` + c.tools + `)))
+(add-message "Reply in plain text.")
+(assoc-ref (model-turn "control" '((tools . #f))) 'content)`
+			if err := r.s.EvalScheduled(src, log.ScheduleRun{Started: time.Now(), Manual: true, Actor: "test"}); err != nil {
+				t.Fatal(err)
+			}
+			r.drain("n")
+			var result log.EvalResult
+			answered, ran := 0, 0
+			for _, ev := range r.logged() {
+				switch ev.Kind {
+				case log.KindEvalResult:
+					if err := ev.Decode(&result); err != nil {
+						t.Fatal(err)
+					}
+				case log.KindToolResult:
+					var res log.ToolResult
+					if err := ev.Decode(&res); err != nil {
+						t.Fatal(err)
+					}
+					if res.ID == "w" {
+						answered++
+						if res.OK {
+							ran++
+						}
+					}
+				}
+			}
+			if ran != 0 {
+				t.Fatal("the stray call ran")
+			}
+			if c.want == "" {
+				if !strings.Contains(result.Error, "unanswered; run or skip them first") {
+					t.Fatalf("an offered call left unanswered: %q (%s)", result.Value, result.Error)
+				}
+				return
+			}
+			if result.Error != "" || result.Value != c.want || answered != 1 {
+				t.Fatalf("the program saw %q (%s); the call has %d results, want 1", result.Value, result.Error, answered)
+			}
+		})
+	}
+}

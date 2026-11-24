@@ -168,7 +168,7 @@ func pathCall(id, name, path string) llm.ToolCall {
 
 // run is the strategy's (run-tools calls), after the model answered with them.
 func (r *batchRig) run(ctx context.Context, calls ...llm.ToolCall) (scheme.Value, error) {
-	r.l.turn.expect(calls)
+	r.l.turn.expect(calls, toolOffer{})
 	items := make([]scheme.Value, len(calls))
 	for i, tc := range calls {
 		items[i] = callValue(tc)

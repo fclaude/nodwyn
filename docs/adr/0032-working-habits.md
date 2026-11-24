@@ -3137,3 +3137,16 @@ repeated the prompt back, a model that lost its place rather than one with
 nothing to say. Such a reply is now asked again once, as an empty plain
 reply is (2026-10-06), and the third reply is the one returned.
 `TestAnEmptyReplyAfterNamingTheTaskIsAskedAgain` holds it.
+
+## Amendment 2026-11-23: a call the request did not offer does not end a program
+
+A model can answer a request with a call to a tool it was not offered (above,
+2026-11-22). A program that offered none has nothing to answer the call with,
+and its next `add-message` ended it: "1 calls from the latest model-turn are
+unanswered". A live workflow program failed with one request and an error
+(Gitea run 40811); its log was not kept, and a scripted model that makes such
+a call fails the same way. `add-message` now answers those calls as not run,
+saying the request did not offer the tool. A call that was offered is still
+refused until it is run or skipped, and the strategies that tell the model
+why a stray call was skipped do so first, as before.
+`TestAddMessageAnswersACallTheRequestDidNotOffer` holds it.

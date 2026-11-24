@@ -46,14 +46,16 @@ func (t *turnState) parked() bool {
 type pendingCall struct {
 	call     llm.ToolCall
 	answered bool
+	stray    bool // the request did not offer its tool
 }
 
-// expect makes calls, from a new model response, the pending ones.
-func (t *turnState) expect(calls []llm.ToolCall) {
+// expect makes calls, from a new model response to a request that offered
+// offer, the pending ones.
+func (t *turnState) expect(calls []llm.ToolCall, offer toolOffer) {
 	t.progress.response()
 	t.pending = t.pending[:0]
 	for _, tc := range calls {
-		t.pending = append(t.pending, pendingCall{call: tc})
+		t.pending = append(t.pending, pendingCall{call: tc, stray: !offer.names(tc.Name)})
 	}
 }
 
@@ -117,6 +119,21 @@ func (l *Loop) skipPending(reason string) error {
 		}
 	}
 	return l.skipTools(calls, reason)
+}
+
+// skipStray answers, as not executed, the pending calls to tools their
+// request did not offer: a program that offered none has nothing to answer
+// them with. The strategies that tell the model why skip them themselves,
+// before they add a message.
+func (l *Loop) skipStray() error {
+	var calls []llm.ToolCall
+	for i := range l.turn.pending {
+		if p := &l.turn.pending[i]; p.stray && !p.answered {
+			p.answered = true
+			calls = append(calls, p.call)
+		}
+	}
+	return l.skipTools(calls, "the request did not offer this tool; nothing was run")
 }
 
 // reserveCall counts the next tool call against the turn's budget and

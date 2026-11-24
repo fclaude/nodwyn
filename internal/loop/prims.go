@@ -57,7 +57,7 @@ func (l *Loop) install() error {
 		{
 			Name: "add-message",
 			Meta: scheme.Meta{
-				Doc:    "Add text to the conversation; the model reads it as a user message at the next model-turn. Refused while calls from the latest model-turn are unanswered.",
+				Doc:    "Add text to the conversation; the model reads it as a user message at the next model-turn. Refused while calls from the latest model-turn are unanswered; a call to a tool that request did not offer is answered as not run.",
 				Params: []scheme.Param{{Name: "text", Type: "string", Doc: "what the model should read"}},
 				Hidden: true,
 				Origin: "builtin",
@@ -406,7 +406,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			}
 		}
 	}
-	t.expect(resp.Message.ToolCalls)
+	t.expect(resp.Message.ToolCalls, offer)
 	return replyValue(resp, cost), nil
 }
 
@@ -568,6 +568,9 @@ func (l *Loop) addMessage(c *scheme.Call) (scheme.Value, error) {
 	}
 	if strings.TrimSpace(text) == "" {
 		return scheme.Void, errors.New("text is required")
+	}
+	if err := l.skipStray(); err != nil {
+		return scheme.Void, err
 	}
 	if n := t.unanswered(); n > 0 {
 		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", n)
