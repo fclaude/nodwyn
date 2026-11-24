@@ -1,6 +1,7 @@
 # build outputs
 /bin/
 /validate
+/nodwyn
 /dist/
 *.test
 coverage.out
