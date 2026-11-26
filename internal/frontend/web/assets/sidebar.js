@@ -3,7 +3,7 @@
 // person archived (ADR 39), then the places that are not tasks. With a
 // linked host (ADR 54), what needs you is every host's, and each host's
 // folders are under its name and state.
-import { h, icon, ago, minutes } from "./dom.js";
+import { h, icon, ago, minutes, toast, toastError } from "./dom.js";
 import { summary } from "./prompts.js";
 import { searchURL } from "./search.js";
 import { chosenFolder } from "./home.js";
@@ -23,6 +23,87 @@ const hostsOpen = new Set(readList("nodwyn-hosts-open"));
 
 // perFolder is how many tasks a folder shows before "Show more".
 const perFolder = 5;
+
+// The open conversation menu, if one is: a single node held outside the
+// sidebar, so redraws of the list do not take it with them. It closes on
+// any pointer down outside it, on Escape, and before another one opens.
+let openMenu = null;
+function closeMenu() {
+  openMenu?.remove();
+  openMenu = null;
+  document.removeEventListener("pointerdown", onOutside, true);
+  document.removeEventListener("keydown", onMenuKey, true);
+}
+function onOutside(event) {
+  if (openMenu && !openMenu.contains(event.target)) closeMenu();
+}
+function onMenuKey(event) {
+  if (event.key !== "Escape") return;
+  // The list redraws under the open menu, so the row right-clicked may be
+  // a newer node by now: focus the one with its address.
+  const href = openMenu?.taskHref;
+  closeMenu();
+  if (href) document.querySelector(`#sidebar .nav-task[href="${CSS.escape(href)}"]`)?.focus();
+}
+// openTaskMenu is the right-click menu of a conversation in the sidebar:
+// Close for an open one, Archive or Unarchive and Delete for a saved one
+// (a task that can ask is never put away, as on its page). Each entry is
+// offered only when the host's connection allows it, so a link that only
+// answers shows nothing to choose.
+function openTaskMenu(event, desk, hostConn, anchor, item) {
+  event.preventDefault();
+  closeMenu();
+  const run = async (method, said) => {
+    closeMenu();
+    try {
+      // Close says so first, as the task's button does; Archive says so
+      // once the daemon has put it away, and Delete once it is gone.
+      if (method === "session.close") toast(said);
+      await hostConn.call(method, method === "session.archive" ? { id: item.id, archived: !item.archived } : { id: item.id });
+      if (method !== "session.close") toast(said);
+      if (method === "session.delete" && location.hash.includes(item.id)) location.hash = "#/";
+      await desk.reload();
+    } catch (error) {
+      toastError(error.message);
+    }
+  };
+  const entry = (label, handler, { danger = false, disabled = false, title = "" } = {}) =>
+    h("button", { type: "button", role: "menuitem", class: `menu-item${danger ? " danger" : ""}`, disabled, title: title || undefined, onclick: handler }, label);
+  const items = [];
+  if (item.open) {
+    if (hostConn.has("session.close")) items.push(entry("Close", () => run("session.close", "Closing the task; its conversation is kept."), { title: "Close the task. Its conversation is kept and can be resumed." }));
+  } else {
+    if (hostConn.has("session.archive"))
+      items.push(entry(item.archived ? "Unarchive" : "Archive", () => run("session.archive", item.archived ? "Back in the task list." : "Archived. It waits under Archived in the sidebar.")));
+    if (hostConn.has("session.delete"))
+      items.push(entry("Delete\u2026", () => {
+        menu.replaceChildren(
+          h("p", { class: "menu-confirm" }, "Delete this task for good? Its conversation and its log go; the files it changed stay as they are."),
+          h("div", { class: "row-actions" },
+            entry("Delete", () => run("session.delete", "Deleted the task."), { danger: true }),
+            entry("Cancel", () => closeMenu())),
+        );
+        menu.querySelector(".menu-item.danger")?.focus();
+      }, { danger: true }));
+  }
+  if (!items.length) return;
+  const menu = h("div", { class: "side-menu", role: "menu", "aria-label": item.title || item.id }, items);
+  menu.taskHref = anchor.getAttribute("href");
+  document.body.append(menu);
+  const margin = 8;
+  menu.style.left = `${Math.max(margin, Math.min(event.clientX, innerWidth - menu.offsetWidth - margin))}px`;
+  menu.style.top = `${Math.max(margin, Math.min(event.clientY, innerHeight - menu.offsetHeight - margin))}px`;
+  openMenu = menu;
+  // The pointer that opened the menu is already down; only later ones
+  // close it.
+  setTimeout(() => {
+    if (openMenu === menu) {
+      document.addEventListener("pointerdown", onOutside, true);
+      document.addEventListener("keydown", onMenuKey, true);
+    }
+  }, 0);
+  menu.querySelector(".menu-item")?.focus();
+}
 
 function readList(key) {
   try {
@@ -71,14 +152,19 @@ export function renderSidebar(nav, { desk, hosts, route, conn, rerender }) {
   const currentHost = route.host || "";
   const several = !!hosts?.several;
   const matches = (item) => !filter || `${item.title} ${item.repo} ${item.worktree?.branch || ""}`.toLowerCase().includes(filter.toLowerCase());
-  // row is a task of the host d shows, linked on that host.
-  const row = (d, item, sub, dot) =>
-    h(
+  const hostConn = (d) => hosts?.get(d.host)?.conn || d.conn || conn;
+  // row is a task of the host d shows, linked on that host. A right-click
+  // opens its menu of Close, Archive and Delete.
+  const row = (d, item, sub, dot) => {
+    const node = h(
       "a",
       { class: `nav-task ${dot ? "dotted" : "plain"}`, href: d.href(item.id), "aria-current": item.id === current && d.host === currentHost ? "page" : null, title: item.title || item.id },
       h("span", { class: "title" }, dot ? h("span", { class: `dot ${dot}` }) : null, h("span", {}, item.title || "Untitled task")),
       h("span", { class: "sub" }, sub),
     );
+    node.addEventListener("contextmenu", (event) => openTaskMenu(event, d, hostConn(d), node, item));
+    return node;
+  };
   const group = (label, items, count) => (items.length ? h("div", { class: "nav-group" }, h("div", { class: "eyebrow" }, label, count ? h("span", { class: "count" }, String(items.length)) : null), items) : null);
   // A folder's heading folds it; a search shows every match whatever is folded.
   const heading = (name, repo, n, open, toggle) =>

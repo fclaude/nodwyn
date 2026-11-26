@@ -214,6 +214,61 @@ check(async () => {
   s = await settled("deleted after reload", (s) => folder(s, "receipts") && !folder(s, "receipts").tasks.includes("Receipt question 1") && folder(s, "receipts").tasks.includes("Receipts overview"));
   step("deleted");
 
+  // A right-click on a conversation opens its menu: Close for an open task,
+  // Archive and Delete for a saved one, each acting like the heading's.
+  // Delete asks inside the menu; Cancel keeps the task.
+  const sideMenu = () => page.$$eval(".side-menu .menu-item", (els) => els.map((e) => e.textContent.trim()));
+  const rowID = (title) => page.$eval(`.sidebar .nav-task:has(.title span:text-is("${title}"))`, (el) => el.getAttribute("href").split("/").pop());
+  const rightClick = async (title) => {
+    await page.click(`.sidebar .nav-task:has(.title span:text-is("${title}"))`, { button: "right" });
+    await page.waitForSelector(".side-menu");
+  };
+  await rightClick("Receipt question 5");
+  assert.deepStrictEqual(await sideMenu(), ["Close"], "an open task's menu");
+  await page.screenshot({ path: `${out}/tasks-context-menu.png` });
+  // Escape closes the menu and puts the focus back on the row, even when a
+  // redraw replaced the row while the menu was open.
+  await page.evaluate(() => dispatchEvent(new HashChangeEvent("hashchange")));
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".side-menu", { state: "detached" });
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.classList.contains("nav-task")), true, "Escape left the focus off the row");
+  const q5 = await rowID("Receipt question 5");
+  const closes = sent.of("session.close").length;
+  await rightClick("Receipt question 5");
+  await page.click('.side-menu .menu-item:text-is("Close")');
+  await page.waitForSelector(".side-menu", { state: "detached" });
+  assert.strictEqual(sent.of("session.close").length, closes + 1, "Close from the menu sent nothing");
+  assert.deepStrictEqual(sent.of("session.close").at(-1), { id: q5 });
+  const archives = sent.of("session.archive").length;
+  await rightClick("Receipt question 5");
+  assert.deepStrictEqual(await sideMenu(), ["Archive", "Delete\u2026"], "a saved task's menu");
+  await page.click('.side-menu .menu-item:text-is("Archive")');
+  // The archive folds itself when the open task is elsewhere; unfold it.
+  await page.waitForSelector(".nav-group.archived .folder-head");
+  if ((await page.$eval(".nav-group.archived .folder-head", (el) => el.getAttribute("aria-expanded"))) === "false") await page.click(".nav-group.archived .folder-head");
+  s = await settled("archived from its menu", (s) => !folder(s, "receipts").tasks.includes("Receipt question 5") && s.archived?.tasks.includes("Receipt question 5"));
+  assert.deepStrictEqual(sent.of("session.archive").slice(archives), [{ id: q5, archived: true }]);
+  await rightClick("Receipt question 5");
+  assert.deepStrictEqual(await sideMenu(), ["Unarchive", "Delete\u2026"], "an archived task's menu");
+  await page.click('.side-menu .menu-item:text-is("Unarchive")');
+  s = await settled("unarchived from its menu", (s) => !s.archived && folder(s, "receipts").tasks.includes("Receipt question 5"));
+  assert.deepStrictEqual(sent.of("session.archive").slice(archives).map((a) => a.archived), [true, false]);
+  const deletes = sent.of("session.delete").length;
+  await rightClick("Receipt question 5");
+  await page.click('.side-menu .menu-item:text-is("Delete\u2026")');
+  await page.waitForSelector('.side-menu .menu-confirm');
+  await page.screenshot({ path: `${out}/tasks-context-delete.png` });
+  await page.click('.side-menu button:text-is("Cancel")');
+  await page.waitForSelector(".side-menu", { state: "detached" });
+  assert.strictEqual(sent.of("session.delete").length, deletes, "Cancel deleted");
+  await rightClick("Receipt question 5");
+  await page.click('.side-menu .menu-item:text-is("Delete\u2026")');
+  await page.click('.side-menu button:text-is("Delete")');
+  await page.waitForSelector(".side-menu", { state: "detached" });
+  s = await settled("deleted from its menu", (s) => !folder(s, "receipts").tasks.includes("Receipt question 5"));
+  assert.deepStrictEqual(sent.of("session.delete").slice(deletes), [{ id: q5 }]);
+  step("a conversation's menu closes, archives and deletes it");
+
   // Limits (ADR 49, amended 2026-10-27): a task has none unless one is set
   // on its panel. Home offers none and sends none; the task's panel says
   // None in one line, adds a limit from a menu of the kinds not set, changes

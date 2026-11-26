@@ -441,6 +441,15 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 }
 .menu-item:hover:not(:disabled) { background: var(--selected); color: var(--ink); }
 .menu-item.danger { color: var(--bad); }
+/* A conversation's right-click menu in the sidebar: like the heading's, but
+   held at the cursor, outside the list, so a redraw cannot take it away. */
+.side-menu {
+  position: fixed; left: 0; top: 0; z-index: 30; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 6px;
+  display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; box-shadow: var(--shadow);
+}
+.side-menu .menu-confirm { margin: 4px 6px 8px; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.side-menu .row-actions { justify-content: flex-end; }
 .callout.load-failed { align-items: center; justify-content: space-between; }
 .title-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .title-row h1 { min-width: 0; }

@@ -614,7 +614,9 @@ console, the pencil beside a task's heading renames it, and an empty name
 takes the title back to the first message; a closed
 task can be archived, which takes it off the task list until you unarchive
 or resume it, or deleted, which removes its conversation and log for good
-and leaves the files it changed. The sidebar lists tasks under their
+and leaves the files it changed. The same choice is on a right-click on the
+conversation in the sidebar: **Close** for an open task, **Archive** or
+**Unarchive** and **Delete…** for a saved one. The sidebar lists tasks under their
 folders, the folder with the latest activity first ([the browser
 view](browser.md), "Tasks, folders and files"; ADR 39). The names and the
 archive are records in each session's log, so they last across restarts and

@@ -627,7 +627,9 @@ gives back the first message. A closed task has **Archive**, which moves
 it under **Archived** at the end of the list (**Unarchive**, or resuming
 it, brings it back), and **Delete…**, which asks, then removes its
 conversation and log for good and leaves the files it changed as they
-are. An open task is closed first. A paired phone renames and archives;
+are. An open task is closed first. Right-clicking a conversation in the
+sidebar opens the same choice as a menu: **Close** for an open task,
+**Archive** or **Unarchive** and **Delete…** for a saved one. A paired phone renames and archives;
 this computer deletes, and so does a device signed in with a passkey,
 after a touch of it.
 
